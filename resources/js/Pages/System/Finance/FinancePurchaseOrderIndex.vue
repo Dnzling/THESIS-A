@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -18,7 +18,8 @@
                 <i class="pi pi-clock text-orange-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
           </div>
         </template>
       </Card>
@@ -32,7 +33,8 @@
                 <i class="pi pi-check-circle text-green-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
           </div>
         </template>
       </Card>
@@ -46,12 +48,13 @@
                 <i class="pi pi-times-circle text-red-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.rejected }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.rejected }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br">
         <template #content>
           <div class="p-5">
             <div class="flex items-center justify-between mb-3">
@@ -60,24 +63,17 @@
                 <i class="pi pi-credit-cardtext-sm"></i>
               </div>
             </div>
-            <p class="text-xl font-bold">₱{{ formatNumber(stats.totalAmount) }}</p>
+            <Skeleton v-if="loading" width="7rem" height="1.75rem" />
+            <p v-else class="text-xl font-bold">₱{{ formatNumber(stats.totalAmount) }}</p>
           </div>
         </template>
       </Card>
     </div>
 
-    <!-- iOS-style Filters Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
       <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-            <h2 class="text-lg font-semibold text-gray-900">Filter Purchase Orders</h2>
-          </div>
-        </div>
-      </template>
-      
-      <template #content>
-        <div class="p-6 pt-2">
+        <div class="m-4 mt-6">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Purchase Orders</h2>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Search Input -->
             <div class="md:col-span-2 space-y-2">
@@ -110,43 +106,17 @@
 
             <!-- Refresh Button -->
             <div class="flex items-end">
-              <button
-                @click="loadPOs"
-                class="w-full px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
-              >
-                <i class="pi pi-refresh" :class="{ 'animate-spin': loading }"></i>
-                <span>Refresh</span>
-              </button>
+              <Button fluid icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadPOs" />
             </div>
           </div>
         </div>
       </template>
-    </Card>
-
-    <!-- POs Table Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-            <h2 class="text-lg font-semibold text-gray-900">Purchase Orders</h2>
-          </div>
-        </div>
-      </template>
-
       <template #content>
-        <div class="p-6 pt-2">
+        <div>
           <!-- Loading State -->
-          <div v-if="loading" class="space-y-4">
-            <div v-for="i in 3" :key="i" class="bg-gray-50 rounded-xl p-4">
-              <div class="grid grid-cols-6 gap-4">
-                <Skeleton width="120px" height="20px" />
-                <Skeleton width="140px" height="20px" />
-                <Skeleton width="100px" height="20px" />
-                <Skeleton width="100px" height="20px" />
-                <Skeleton width="80px" height="20px" />
-                <Skeleton width="80px" height="20px" />
-              </div>
-            </div>
+          <div v-if="loading" class="space-y-3 px-4 pb-4">
+            <div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div>
+            <div v-for="row in 6" :key="`po-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="`cell-${row}-${cell}`" height="1.25rem" /></div>
           </div>
 
           <!-- Data Table -->
@@ -154,17 +124,25 @@
             v-else
             :value="purchaseOrders" 
             :loading="loading"
-            stripedRows
+            rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm text-xs"
+            class="p-datatable-sm text-xs m-4"
             paginator
-            
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
-            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
           >
+
+               <!-- Order Date Column -->
+            <Column header="Order Date" style="min-width: 120px">
+              <template #body="{ data }">
+                <div class="flex items-center gap-2">
+                  <span class="text-gray-700">{{ formatDate(data.order_date) }}</span>
+                </div>
+              </template>
+            </Column>
+
             <!-- PO Number Column -->
-            <Column field="po_number" header="PO Number" style="min-width: 160px" sortable>
+            <Column field="po_number" header="PO Number" sortable>
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-xs text-blue-600 hover:underline cursor-pointer" @click="viewPO(data)">
@@ -189,7 +167,6 @@
             <Column header="Branch" style="min-width: 140px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <i class="pi pi-map-marker text-gray-400 text-xs"></i>
                   <div>
                     <p class="font-medium text-gray-900">{{ data.branch?.name || '-' }}</p>
                     <p class="text-xs text-gray-500">{{ data.branch?.branch_code || '' }}</p>
@@ -198,18 +175,10 @@
               </template>
             </Column>
 
-            <!-- Order Date Column -->
-            <Column header="Order Date" style="min-width: 120px">
-              <template #body="{ data }">
-                <div class="flex items-center gap-2">
-                  <i class="pi pi-calendar text-gray-400 text-xs"></i>
-                  <span class="text-gray-700">{{ formatDate(data.order_date) }}</span>
-                </div>
-              </template>
-            </Column>
+       
 
             <!-- Total Column -->
-            <Column header="Total" style="min-width: 120px" class="text-right">
+            <Column header="Total" style="min-width: 120px" class="justify-end">
               <template #body="{ data }">
                 <span class="font-semibold text-green-600">₱{{ formatNumber(data.total_amount || data.subtotal || 0) }}</span>
               </template>
@@ -219,8 +188,7 @@
             <Column header="Status" style="min-width: 140px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div :class="getStatusDot(data.status)" class="w-2 h-2 rounded-full"></div>
-                  <Tag 
+                  <Badge
                     :value="formatStatus(data.status)" 
                     :severity="statusSeverity(data.status)"
                     class="rounded-full text-xs px-3 py-1"
@@ -230,16 +198,17 @@
             </Column>
 
             <!-- Actions Column -->
-            <Column header="Actions" style="width: 100px" headerStyle="text-align: center">
+            <Column  style="width: 100px" class="align-center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <button
+                  <Button
                     @click="viewPO(data)"
-                    class="w-8 h-8 rounded-full hover:bg-blue-50 flex items-center justify-center transition-colors"
+                    icon="pi pi-eye"
+                    size="small"
+                    outlined rounded label="View"
                     v-tooltip="'View Details'"
-                  >
-                    <i class="pi pi-eye text-gray-500 hover:text-blue-600 text-sm"></i>
-                  </button>
+                  />
+  
                 </div>
               </template>
             </Column>
@@ -256,11 +225,6 @@
             </template>
           </DataTable>
 
-          <!-- Summary Footer -->
-          <div v-if="purchaseOrders.length > 0" class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-sm">
-            <span class="text-gray-500">Showing {{ purchaseOrders.length }} of {{ purchaseOrders.length }} orders</span>
-            <span class="font-medium text-gray-900">Total: ₱{{ formatNumber(totalAmount) }}</span>
-          </div>
         </div>
       </template>
     </Card>
@@ -273,7 +237,9 @@ import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
@@ -281,7 +247,7 @@ import financeService from '../../../services/finance.service'
 
 const router = useRouter()
 const toast = useToast()
-const loading = ref(false)
+const loading = ref(true)
 const purchaseOrders = ref<any[]>([])
 
 const filters = ref({

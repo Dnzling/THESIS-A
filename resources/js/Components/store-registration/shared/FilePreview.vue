@@ -2,8 +2,9 @@
   <div class="border border-gray-200 rounded-lg p-4">
     <div class="flex items-center space-x-4">
       <div class="shrink-0">
-        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-          <i class="pi pi-file text-xl text-blue-600"></i>
+        <div class="h-14 w-14 overflow-hidden rounded-lg border border-orange-100 bg-slate-50">
+          <img v-if="previewUrl && file?.type.startsWith('image/')" :src="previewUrl" :alt="label" class="h-full w-full object-cover" />
+          <iframe v-else-if="previewUrl && file?.type === 'application/pdf'" :src="`${previewUrl}#toolbar=0&navpanes=0`" :title="label" tabindex="-1" class="pointer-events-none h-full w-full border-0" />
         </div>
       </div>
       <div class="flex-1 min-w-0">
@@ -35,12 +36,19 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount, ref, watch } from 'vue'
 interface Props {
   file: File | null
   label: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+const previewUrl = ref('')
+watch(() => props.file, (file) => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = file ? URL.createObjectURL(file) : ''
+}, { immediate: true })
+onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value) })
 
 const formatFileSize = (bytes: number) => {
   if (bytes === 0) return '0 Bytes'

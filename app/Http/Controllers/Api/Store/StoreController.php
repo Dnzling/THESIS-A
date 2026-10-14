@@ -6,11 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Admin\SubscriptionPlan;
+use App\Models\Hr\Employee;
+use App\Models\Core\Role;
+use App\Models\Hr\Department;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
+use App\Services\ProductCatalog\DefaultFurnitureTagService;
+use Illuminate\Support\Facades\DB;
 
 class StoreController extends Controller
 {
@@ -63,6 +69,9 @@ class StoreController extends Controller
     public function store(Request $request)
     {
         try {
+            if ($request->user()?->store_id) {
+                return response()->json(['success' => false, 'message' => 'This account already has a store.'], 409);
+            }
             $validated = $request->validate([
                 'store_name' => 'required|string|max:255',
                 'email' => 'nullable|string|max:255',
@@ -71,12 +80,26 @@ class StoreController extends Controller
                 'business_type' => 'nullable|string|max:100',
                 'province' => 'nullable|string|max:100',
                 'city' => 'required|string|max:100',
+                'barangay' => 'required|string|max:150',
                 'address' => 'required|string|max:200',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
-                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
+            $ownerRole = null;
+            if ($request->user()) {
+                $ownerRole = Role::query()
+                    ->whereNull('store_id')
+                    ->whereRaw('LOWER(name) = ?', ['owner'])
+                    ->first();
+
+                if (!$ownerRole) {
+                    throw new \RuntimeException('The global owner role is not configured.');
+                }
+            }
+
+            $freePlan = SubscriptionPlan::query()->where('plan_key', 'free')->firstOrFail();
+            return DB::transaction(function () use ($request, $validated, $ownerRole, $freePlan) {
             $payload = [
                 'name' => $validated['store_name'],
                 'type' => $validated['business_type'] ?? 'retail',
@@ -84,9 +107,10 @@ class StoreController extends Controller
                 'email' => $validated['email'] ?? null,
                 'province' => $validated['province'] ?? 'Cavite',
                 'city' => $validated['city'],
+                'barangay' => $validated['barangay'],
                 'address' => $validated['address'],
-                'latitude' => $validated['latitude'] ?? null,
-                'longitude' => $validated['longitude'] ?? null,
+                'status' => 'active',
+                'subscription_status' => 'trial',
             ];
 
             $storeSettings = [
@@ -94,14 +118,15 @@ class StoreController extends Controller
             ];
 
             $payload['settings'] = $storeSettings;
-            $payload['subscription_tier'] = !empty($validated['plan'])
-                ? strtolower((string) $validated['plan'])
-                : 'free';
-            $payload['subscription_ends_at'] = now()->addDays(7)->toDateString();
+            $payload['subscription_tier'] = $freePlan->id;
+            $payload['subscription_ends_at'] = null;
             $payload['trial_started_at'] = now();
-            $payload['trial_ends_at'] = now()->addDays(7);
+            $payload['trial_ends_at'] = now()->addMonth();
 
             $store = Store::create($payload);
+            $store->update(['store_code' => 'FS-' . now()->format('Y') . '-' . str_pad((string) $store->id, 6, '0', STR_PAD_LEFT)]);
+            app(DefaultFurnitureCategoryService::class)->populateForStore((int) $store->id);
+            app(DefaultFurnitureTagService::class)->populateForStore((int) $store->id);
 
             if ($request->user()) {
                 $request->user()->update([
@@ -115,20 +140,56 @@ class StoreController extends Controller
                 $branchCode = $branchCode . '-' . str_pad((string) random_int(1, 999), 3, '0', STR_PAD_LEFT);
             }
 
-            Branch::create([
+            $branch = Branch::create([
                 'store_id' => $store->id,
                 'name' => $store->name . ' - Main',
                 'address' => $store->address,
                 'city' => $store->city,
+                'barangay' => $store->barangay,
                 'province' => $store->province,
-                'latitude' => $store->latitude,
-                'longitude' => $store->longitude,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
                 'contact_number' => $store->phone ?? ($validated['contact_number'] ?? '0000000000'),
                 'branch_code' => $branchCode,
                 'is_main_branch' => true,
                 'status' => 'active',
                 'branch_type' => 'storefront',
+                'geofence_enabled' => false,
             ]);
+
+            if ($request->user()) {
+                $request->user()->update(['branch_id' => $branch->id]);
+
+                $ownerRoleId = (int) $ownerRole->id;
+
+                $managementDepartment = Department::query()->firstOrCreate(
+                    ['store_id' => $store->id, 'name' => 'Management'],
+                    [
+                        'description' => 'Store management department',
+                        'status' => 'active',
+                        'created_by' => $request->user()->id,
+                    ]
+                );
+
+                // The registering account is the first employee and store owner.
+                $request->user()->update(['role_id' => $ownerRoleId]);
+
+                Employee::query()->firstOrCreate(
+                    ['user_id' => $request->user()->id, 'store_id' => $store->id],
+                    [
+                        'store_id' => $store->id,
+                        'branch_id' => $branch->id,
+                        'role_id' => $ownerRoleId,
+                        'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
+                        'fname' => (string) $request->user()->fname,
+                        'lname' => (string) $request->user()->lname,
+                        'department' => $managementDepartment->name,
+                        'employment_type' => 'full_time',
+                        'status' => 'active',
+                        'hire_date' => now()->toDateString(),
+                    ]
+                );
+            }
 
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
 
@@ -138,9 +199,12 @@ class StoreController extends Controller
                 'store' => [
                     'store_id' => $store->id,
                     'store_name' => $store->name,
+                    'store_code' => $store->store_code,
+                    'trial_ends_at' => $store->trial_ends_at,
                     'contact_person' => $validated['contact_person'],
                 ]
             ], 201);
+            });
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -164,24 +228,52 @@ class StoreController extends Controller
     public function updateSubscription(Request $request, Store $store)
     {
         try {
+            abort_unless((int) $request->user()?->store_id === (int) $store->id && $request->user()?->hasRole('owner'), 403);
             $validated = $request->validate([
                 'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
                 'setup_mode' => 'nullable|string|in:free,paid',
+                'months' => 'nullable|integer|min:1|max:36',
+                'billing_cycle' => 'nullable|string|in:monthly,yearly',
             ]);
 
             $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
-            $store->subscription_tier = strtolower((string) $validated['subscription_tier']);
-            $store->subscription_ends_at = $setupMode === 'free' ? now()->addDays(7)->toDateString() : null;
+            $planKey = strtolower((string) $validated['subscription_tier']);
+            $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->firstOrFail();
+            if ($planKey !== 'free') {
+                return response()->json(['success' => false, 'message' => 'Paid subscriptions must be activated by a successful payment.'], 403);
+            }
+            if ($store->subscription_status === 'trial') {
+                return response()->json(['success' => true, 'data' => $store], 200);
+            }
+            if ($store->subscription_status === 'expired' || $store->subscription_status === 'paid') {
+                return response()->json(['success' => false, 'message' => 'An existing subscription cannot be reset to a free trial.'], 403);
+            }
+            $months = (int) ($validated['months'] ?? (($validated['billing_cycle'] ?? '') === 'yearly' ? 12 : 1));
+            $previousPlanKey = (string) $store->subscription_tier;
+
+            $store->subscription_tier = $plan->id;
+            if ($setupMode === 'free') {
+                $store->subscription_ends_at = null;
+            } else {
+                $currentEndsAt = $previousPlanKey !== 'free' && $store->subscription_ends_at
+                    ? \Carbon\Carbon::parse($store->subscription_ends_at)
+                    : null;
+                $nextEndsAt = now()->addMonths($months);
+                $store->subscription_ends_at = ($currentEndsAt && $currentEndsAt->gt($nextEndsAt))
+                    ? $currentEndsAt->toDateString()
+                    : $nextEndsAt->toDateString();
+            }
 
             if (Schema::hasColumn('stores', 'trial_started_at')) {
-                $store->trial_started_at = $setupMode === 'free' ? now() : null;
+                $store->trial_started_at = null;
             }
             if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                $store->trial_ends_at = $setupMode === 'free' ? now()->addDays(7) : null;
+                $store->trial_ends_at = null;
             }
 
             $store->save();
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+            app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
             return response()->json([
                 'success' => true,

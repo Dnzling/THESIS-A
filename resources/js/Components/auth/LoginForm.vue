@@ -4,17 +4,19 @@
       <div class="grid h-full gap-0 lg:grid-cols-2">
         <Auth3DHero
           theme="light"
-          title="Hello Furnisync!"
-          subtitle="Showcase your catalog in 3D and create immersive product stories in minutes."
+          visual="furniture"
+          title="Your business, beautifully connected"
+          subtitle="Manage your furniture store or supplier operations from one connected workspace."
           brand="Furnisync"
-          footer="Interactive 3D model preview"
+          footer="Built for furniture businesses and suppliers"
           class="h-full"
         />
         <div class="flex flex-col justify-center p-8 lg:p-12">
           <div class="flex items-center justify-left mb-6">
             <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-600">Business &amp; Supplier Portal</p>
               <h1 class="text-3xl font-bold text-orange-500">Welcome Back</h1>
-              <p class="text-gray-400 mt-1 text-sm font-medium">Sign in to your account</p>
+              <p class="text-gray-500 mt-1 text-sm font-medium">Sign in to manage your store or supplier account</p>
             </div>
           </div>
 
@@ -68,14 +70,14 @@
           </div>
   
           <!-- Remember Me & Forgot Password -->
-          <div class="flex items-center justify-between">
+          <!-- <div class="flex items-center justify-between">
             <div class="flex items-center">
               <Checkbox v-model="formData.rememberMe" inputId="rememberMe" :binary="true" />
               <label for="rememberMe" class="ml-2 text-sm text-gray-700 cursor-pointer">
                 Remember me
               </label>
             </div>
-          </div>
+          </div> -->
   
           <!-- Submit Button -->
           <Button type="submit" label="Log In" :loading="props.isSubmitting"
@@ -104,7 +106,7 @@
     <Dialog v-model:visible="props.isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
       <div class="flex flex-col items-center justify-center p-6">
         <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
-        <p class="mt-4 text-lg font-medium text-gray-700">Signing you in...</p>
+        <p class="mt-4 text-lg font-medium text-gray-700">Logging you in...</p>
         <p class="text-gray-500">Please wait a moment</p>
       </div>
     </Dialog>

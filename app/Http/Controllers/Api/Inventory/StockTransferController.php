@@ -10,6 +10,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
+use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Support\EmployeeContext;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class StockTransferController extends Controller
 {
@@ -107,6 +109,9 @@ class StockTransferController extends Controller
         if ($storeId > 0) {
             $query->where('store_id', $storeId);
         }
+        if ($request->boolean('logistics_ready')) {
+            $query->whereNotNull('delivery_status');
+        }
         if ($branchId > 0) {
             $query->where(function ($builder) use ($branchId) {
                 $builder->where('from_branch_id', $branchId)
@@ -147,17 +152,75 @@ class StockTransferController extends Controller
             'toBranch',
             'items.product',
             'items.variation',
-            'requestedBy',
-            'senderApprovedBy',
-            'receiverAcknowledgedBy',
-            'financeApprovedBy',
-            'shippedBy',
-            'receivedBy'
+            'requestedBy.user:id,fname,lname',
+            'senderApprovedBy.user:id,fname,lname',
+            'receiverAcknowledgedBy.user:id,fname,lname',
+            'financeApprovedBy.user:id,fname,lname',
+            'shippedBy.user:id,fname,lname',
+            'receivedBy.user:id,fname,lname',
         ])->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $transfer,
+        ]);
+    }
+
+    /**
+     * Preview the server-calculated transfer fee before submission.
+     * POST /api/inventory/transfers/estimate
+     */
+    public function estimate(Request $request): JsonResponse
+    {
+        $storeId = (int) (Auth::user()?->store_id ?? 0);
+        $validated = $request->validate([
+            'from_branch_id' => 'required|integer|different:to_branch_id',
+            'to_branch_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.variation_id' => 'nullable|integer|exists:product_variations,id',
+            'items.*.requested_quantity' => 'required|integer|min:1',
+        ]);
+
+        $branchCount = DB::table('branches')
+            ->where('store_id', $storeId)
+            ->whereIn('id', [$validated['from_branch_id'], $validated['to_branch_id']])
+            ->count();
+        abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
+
+        $goodsValue = 0.0;
+        foreach ($validated['items'] as $item) {
+            $inventory = BranchInventory::with('product')
+                ->where('store_id', $storeId)
+                ->where('branch_id', $validated['from_branch_id'])
+                ->where('product_id', $item['product_id'])
+                ->where('variation_id', $item['variation_id'] ?? null)
+                ->first();
+
+            abort_unless($inventory, 422, 'An item is not stocked at the selected source location.');
+            abort_if(
+                (int) $item['requested_quantity'] > (int) $inventory->quantity_available,
+                422,
+                "Requested quantity exceeds available stock for {$inventory->product?->product_name}."
+            );
+
+            $goodsValue += (float) ($inventory->product?->getRawOriginal('cost_price') ?? 0)
+                * (int) $item['requested_quantity'];
+        }
+
+        $distance = BranchDistance::getDistance($validated['from_branch_id'], $validated['to_branch_id']);
+        $settings = ProcurementSettings::where('store_id', $storeId)->first();
+        $transferCost = $settings?->calculateTransferCost($distance, $goodsValue) ?? 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'goods_value' => round($goodsValue, 2),
+                'distance_km' => round((float) $distance, 2),
+                'shipping_fee' => round((float) $transferCost, 2),
+                'total_value' => round($goodsValue + $transferCost, 2),
+                'cost_method' => $settings?->transfer_cost_method ?? 'none',
+            ],
         ]);
     }
 
@@ -182,6 +245,12 @@ class StockTransferController extends Controller
             'items.*.notes' => 'nullable|string',
         ]);
 
+        $branchCount = DB::table('branches')
+            ->where('store_id', $storeId)
+            ->whereIn('id', [$validated['from_branch_id'], $validated['to_branch_id']])
+            ->count();
+        abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
+
         DB::beginTransaction();
         try {
             // Get procurement settings
@@ -193,12 +262,19 @@ class StockTransferController extends Controller
             // Calculate goods value and distance
             $goodsValue = 0;
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('store_id', $storeId)
+                    ->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
 
-                $goodsValue += ($inventory?->average_cost ?? 0) * $item['requested_quantity'];
+                if (! $inventory || (int) $item['requested_quantity'] > (int) $inventory->quantity_available) {
+                    throw ValidationException::withMessages([
+                        'items' => "Requested quantity exceeds the stock available at the selected source location for product #{$item['product_id']}.",
+                    ]);
+                }
+
+                $goodsValue += (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0) * $item['requested_quantity'];
             }
 
             // Get distance between branches
@@ -230,7 +306,8 @@ class StockTransferController extends Controller
 
             // Create items
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('store_id', $storeId)
+                    ->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
@@ -240,7 +317,7 @@ class StockTransferController extends Controller
                     'product_id' => $item['product_id'],
                     'variation_id' => $item['variation_id'] ?? null,
                     'requested_quantity' => $item['requested_quantity'],
-                    'unit_value' => $inventory?->average_cost ?? 0,
+                    'unit_value' => (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0),
                     'notes' => $item['notes'] ?? null,
                 ]);
             }
@@ -296,6 +373,9 @@ class StockTransferController extends Controller
                 'data' => $transfer->load('items.product'),
             ], 201);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -420,10 +500,10 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::with('items.product')->findOrFail($id);
 
-        if ($transfer->status !== 'in_transit') {
+        if (!in_array($transfer->status, ['sender_approved', 'in_transit'], true) || $transfer->delivery_status !== 'ready_for_dispatch') {
             return response()->json([
                 'success' => false,
-                'message' => 'Delivery can only be created when transfer is in transit.',
+                'message' => 'Delivery can only be assigned once the transfer is ready for dispatch.',
             ], 422);
         }
 
@@ -436,12 +516,24 @@ class StockTransferController extends Controller
         }
 
         $validated = $request->validate([
+            'driver_user_id' => 'required|integer|exists:users,id',
             'vehicle_type' => 'required|string|max:100',
             'driver_name' => 'required|string|max:100',
             'driver_contact' => 'required|string|max:50',
             'tracking_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
+
+        $driver = User::query()
+            ->with(['role:id,name', 'employee:id,user_id,role_id,status', 'employee.role:id,name'])
+            ->where('store_id', $transfer->store_id)
+            ->where('is_active', true)
+            ->find((int) $validated['driver_user_id']);
+        $isDriver = strtolower((string) $driver?->role?->name) === 'driver'
+            || strtolower((string) $driver?->employee?->role?->name) === 'driver';
+        if (!$driver || !$isDriver || $driver->employee?->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+        }
 
         $extraNotes = trim((string) ($validated['notes'] ?? ''));
         $noteParts = array_filter([
@@ -452,6 +544,8 @@ class StockTransferController extends Controller
         ]);
 
         $transfer->update([
+            'driver_user_id' => $driver->id,
+            'delivery_status' => 'assigned',
             'vehicle_type' => $validated['vehicle_type'],
             'driver_name' => $validated['driver_name'],
             'driver_contact' => $validated['driver_contact'],
@@ -487,7 +581,7 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::findOrFail($id);
 
-        if (!in_array($transfer->status, ['in_transit', 'received'], true)) {
+        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery', 'received'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Delivery logs can only be added when transfer is In Transit or Received.',
@@ -585,7 +679,6 @@ class StockTransferController extends Controller
                 $inventory->quantity_on_hand = $inventory->quantity_available;
                 $inventory->save();
                 $inventory->updateStockStatus();
-                $inventory->calculateTotalValue();
 
                 // Create transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -655,12 +748,16 @@ class StockTransferController extends Controller
      */
     public function receive(Request $request, int $id): JsonResponse
     {
-        $transfer = StockTransfer::with('items')->findOrFail($id);
+        $context = $this->getUserContext($request);
+        $transfer = StockTransfer::with('items')
+            ->where('store_id', $context['store_id'])
+            ->when($context['branch_id'] > 0, fn ($query) => $query->where('to_branch_id', $context['branch_id']))
+            ->findOrFail($id);
 
-        if ($transfer->status !== 'in_transit') {
+        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery'], true) || $transfer->delivery_status !== 'delivered') {
             return response()->json([
                 'success' => false,
-                'message' => 'Only in-transit transfers can be received',
+                'message' => 'Only transfers delivered by logistics can be received',
             ], 422);
         }
 
@@ -685,6 +782,12 @@ class StockTransferController extends Controller
         try {
             foreach ($validated['items'] as $itemData) {
                 $item = $transfer->items->firstWhere('id', $itemData['id']);
+                if (!$item) {
+                    throw new \InvalidArgumentException('A receipt item does not belong to this transfer.');
+                }
+                if ($itemData['received_quantity'] + ($itemData['damaged_quantity'] ?? 0) > ($item->approved_quantity ?? $item->requested_quantity)) {
+                    throw new \InvalidArgumentException('Received and damaged quantities cannot exceed the approved quantity.');
+                }
 
                 // Update item
                 $item->update([
@@ -719,7 +822,6 @@ class StockTransferController extends Controller
                 $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
                 $inventory->save();
                 $inventory->updateStockStatus();
-                $inventory->calculateTotalValue();
 
                 // Create transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -777,6 +879,8 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'received',
+                'delivery_status' => 'delivered',
+                'delivered_at' => $transfer->delivered_at ?: now(),
                 'received_by' => EmployeeContext::currentEmployeeId(),
                 'received_date' => now(),
                 'notes' => implode("\n", $noteParts),

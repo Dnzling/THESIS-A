@@ -34,6 +34,11 @@ class ReorderSuggestionRequest extends FormRequest
                 'integer',
                 'exists:products,id',
             ],
+            'variation_id' => [
+                'nullable',
+                'integer',
+                'exists:product_variations,id',
+            ],
             'branch_id' => [
                 'required',
                 'integer',
@@ -96,6 +101,12 @@ class ReorderSuggestionRequest extends FormRequest
                 'sometimes',
                 'integer',
                 'exists:products,id',
+            ];
+            $rules['variation_id'] = [
+                'sometimes',
+                'nullable',
+                'integer',
+                'exists:product_variations,id',
             ];
             $rules['branch_id'] = [
                 'sometimes',

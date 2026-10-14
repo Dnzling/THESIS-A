@@ -43,9 +43,13 @@ class InventoryPermissionsSeeder extends Seeder
 
             // Catalog entities
             ['name' => 'inventory.products.view', 'display_name' => 'View Products', 'module' => 'inventory'],
+            ['name' => 'inventory.purchase_orders.view', 'display_name' => 'View Inventory Purchase Orders', 'module' => 'inventory'],
+            ['name' => 'inventory.purchase_orders.manage', 'display_name' => 'Manage Inventory Purchase Orders', 'module' => 'inventory'],
             ['name' => 'inventory.products.create', 'display_name' => 'Create Products', 'module' => 'inventory'],
             ['name' => 'inventory.products.update', 'display_name' => 'Update Products', 'module' => 'inventory'],
             ['name' => 'inventory.products.delete', 'display_name' => 'Delete Products', 'module' => 'inventory'],
+            ['name' => 'inventory.product.view', 'display_name' => 'View Inventory Product Directory', 'module' => 'inventory'],
+            ['name' => 'inventory.product.manage', 'display_name' => 'Manage Inventory Product Directory', 'module' => 'inventory'],
             ['name' => 'inventory.categories.view', 'display_name' => 'View Categories', 'module' => 'inventory'],
             ['name' => 'inventory.categories.create', 'display_name' => 'Create Categories', 'module' => 'inventory'],
             ['name' => 'inventory.categories.update', 'display_name' => 'Update Categories', 'module' => 'inventory'],
@@ -92,7 +96,7 @@ class InventoryPermissionsSeeder extends Seeder
             ['name' => 'inventory.stock-issues.create', 'display_name' => 'Create Stock Issues', 'module' => 'inventory'],
             ['name' => 'inventory.stock-issues.edit', 'display_name' => 'Edit Stock Issues', 'module' => 'inventory'],
             ['name' => 'inventory.stock-issues.update', 'display_name' => 'Update Stock Issues', 'module' => 'inventory'],
-            ['name' => 'inventory.stock-issues.approve', 'display_name' => 'Approve Stock Issues', 'module' => 'inventory'],
+            ['name' => 'stock_issues.approve', 'display_name' => 'Approve Stock Issues', 'module' => 'inventory'],
 
             // Stock returns
             ['name' => 'inventory.stock-returns.view', 'display_name' => 'View Stock Returns', 'module' => 'inventory'],

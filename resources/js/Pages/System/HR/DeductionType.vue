@@ -1,71 +1,21 @@
 <template>
-  <div class=" mx-auto">
+  <div class="mx-auto text-xs">
     <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
+    <div class="mb-4 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-800">Deduction Types</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage company deduction types and configurations</p>
+        <h1 class="text-base font-semibold text-gray-900">Deduction Types</h1>
       </div>
-      <Button label="Add Deduction Type" icon="pi pi-plus" severity="info" @click="openCreateDialog" />
-    </div>
-
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center jusstify-between">
-          <div>
-            <div class="text-sm text-gray-500">Total Types</div>
-            <div class="text-2xl font-semibold text-gray-800">{{ deductionTypes.length }}</div>
-          </div>
-          <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-list text-blue-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Active</div>
-            <div class="text-2xl font-semibold text-green-600">{{ activeCount }}</div>
-          </div>
-          <div class="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-check-circle text-green-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Mandatory</div>
-            <div class="text-2xl font-semibold text-orange-600">{{ mandatoryCount }}</div>
-          </div>
-          <div class="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-lock text-orange-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Taxable</div>
-            <div class="text-2xl font-semibold text-purple-600">{{ taxableCount }}</div>
-          </div>
-          <div class="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-percentage text-purple-500"></i>
-          </div>
-        </div>
+      <div class="flex gap-2">
+        <Button label="Benefit Requests" icon="pi pi-heart" severity="secondary" outlined size="small" @click="openBenefitRequests" />
+        <Button label="Add Deduction Type" icon="pi pi-plus" severity="warn" size="small" @click="openCreateDialog" />
       </div>
     </div>
-
     <!-- Filters -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div class="flex flex-wrap gap-4">
+    <div class="mb-4 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+      <div class="flex flex-wrap gap-2">
         <IconField>
           <InputIcon class="pi pi-search" />
-          <InputText v-model="filters.search" placeholder="Search..." class="w-64" @input="fetchDeductionTypes" />
+          <InputText v-model="filters.search" placeholder="Search..." class="w-64 text-xs" size="small" @input="fetchDeductionTypes" />
         </IconField>
 
         <Select
@@ -75,7 +25,8 @@
           optionValue="value"
           placeholder="All Categories"
           showClear
-          class="w-48"
+          class="w-48 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
 
@@ -86,7 +37,8 @@
           optionValue="value"
           placeholder="All Calculation Types"
           showClear
-          class="w-48"
+          class="w-48 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
 
@@ -97,14 +49,15 @@
           optionValue="value"
           placeholder="All Status"
           showClear
-          class="w-40"
+          class="w-40 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
       </div>
     </div>
 
     <!-- Data Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
       <DataTable
         :value="deductionTypes"
         :loading="loading"
@@ -115,7 +68,7 @@
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         rowHover
         responsiveLayout="scroll"
-        class="text-sm"
+        class="p-datatable-sm text-xs"
       >
         <Column field="code" header="Code" sortable style="width: 100px">
           <template #body="{ data }">
@@ -169,16 +122,16 @@
         <Column header="Flags" style="width: 150px">
           <template #body="{ data }">
             <div class="flex flex-wrap gap-1">
-              <Tag v-if="data.is_mandatory" value="Mandatory" severity="warning" size="small" />
-              <Tag v-if="data.is_taxable" value="Taxable" severity="help" size="small" />
-              <Tag v-if="data.show_on_payslip" value="Payslip" severity="info" size="small" />
+              <Badge v-if="data.is_mandatory" value="Mandatory" severity="warning" size="small" />
+              <Badge v-if="data.is_taxable" value="Taxable" severity="help" size="small" />
+              <Badge v-if="data.show_on_payslip" value="Payslip" severity="info" size="small" />
             </div>
           </template>
         </Column>
 
         <Column field="is_active" header="Status" sortable style="width: 100px">
           <template #body="{ data }">
-            <Tag
+            <badge
               :value="data.is_active ? 'Active' : 'Inactive'"
               :severity="data.is_active ? 'success' : 'danger'"
             />
@@ -371,6 +324,12 @@
         </div>
 
         <!-- Frequency -->
+        <div v-if="form.category === 'benefit'">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Benefit coverage limit (optional)</label>
+          <InputNumber v-model="form.benefit_limit" mode="currency" currency="PHP" locale="en-PH" :min="0" class="w-full" />
+          <small class="text-gray-500">If empty, paid employee contributions define the available amount.</small>
+        </div>
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
           <Select
@@ -430,7 +389,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-gray-50 p-3 rounded-lg">
             <div class="text-xs text-gray-500">Category</div>
-            <Tag :value="formatCategory(selectedDeduction.category)" :severity="getCategorySeverity(selectedDeduction.category)" />
+            <Badge :value="formatCategory(selectedDeduction.category)" :severity="getCategorySeverity(selectedDeduction.category)" />
           </div>
 
           <div class="bg-gray-50 p-3 rounded-lg">
@@ -543,6 +502,7 @@ import { useAuthStore } from '../../../stores/auth'
 // Toast
 const toast = useToast()
 const authStore = useAuthStore()
+const openBenefitRequests = () => { window.location.href = '/hr/benefit-requests' }
 
 // Set authorization header
 
@@ -576,6 +536,7 @@ const form = ref({
   calculation_type: 'fixed',
   frequency: 'monthly',
   default_amount: 0,
+  benefit_limit: null as number | null,
   percentage_value: 0,
   percentage_basis: 'basic',
   min_amount: null as number | null,
@@ -693,6 +654,7 @@ const resetForm = () => {
     calculation_type: 'fixed',
     frequency: 'monthly',
     default_amount: 0,
+    benefit_limit: null,
     percentage_value: 0,
     percentage_basis: 'basic',
     min_amount: null,
@@ -854,6 +816,7 @@ const openEditDialog = (deduction: any) => {
     calculation_type: deduction.calculation_type,
     frequency: deduction.frequency || 'monthly',
     default_amount: deduction.default_amount || 0,
+    benefit_limit: deduction.benefit_limit === null ? null : Number(deduction.benefit_limit),
     percentage_value: deduction.percentage_value || 0,
     percentage_basis: deduction.percentage_basis || 'basic',
     min_amount: deduction.min_amount,
@@ -898,5 +861,3 @@ onMounted(() => {
   fetchDeductionTypes()
 })
 </script>
-
-

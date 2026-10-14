@@ -4,12 +4,10 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
     
             <div class="flex gap-2">
-                <Button label="Tree View" icon="pi pi-sitemap" :severity="viewMode === 'tree' ? 'primary' : 'secondary'"
-                    outlined @click="viewMode = 'tree'" />
-                <Button label="List View" icon="pi pi-list" :severity="viewMode === 'list' ? 'primary' : 'secondary'"
-                    outlined @click="viewMode = 'list'" />
-                <Button  label="Add Category"
-                    icon="pi pi-plus" @click="openCreateDialog" class="ml-auto" />
+                <h1 class="text-2xl font-semibold text-gray-900">Categories</h1>
+                <div class="flex items-center gap-1">
+                    <Button label="Add Category" size="small" icon="pi pi-plus" @click="openCreateDialog" class="justify-end" />
+                </div>
             </div>
         </div>
     
@@ -41,8 +39,8 @@
         <Card v-else-if="viewMode === 'tree' && !loading">
             <template #content>
                 <Tree :value="categoryTree" class="w-full" :pt="{
-                root: { class: 'border-none' }
-              }">
+                    root: { class: 'border-none' }
+                  }">
                     <template #default="{ node }">
                         <div class="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
                             <div class="flex items-center gap-3">
@@ -52,16 +50,15 @@
                                     <p class="font-semibold text-gray-900">{{ node.label }}</p>
                                     <div class="flex items-center gap-2 mt-1">
                                         <span class="text-xs font-mono text-gray-500">{{ node.data.category_code }}</span>
-                                        <Badge :value="`${node.data.products_count || 0} products`" severity="info"
-                                            size="small" />
+                                        <Badge :value="`${node.data.products_count || 0} products`" size="small" />
                                         <Tag v-if="node.data.is_active" value="Active" severity="success" size="small" />
                                         <Tag v-else value="Inactive" severity="secondary" size="small" />
                                     </div>
                                 </div>
                             </div>
                             <div class="flex gap-1">
-                                <Button icon="pi pi-plus" severity="info" text rounded size="small"
-                                    v-tooltip.top="'Add Subcategory'" @click="addSubcategory(node.data)" />
+                                <Button icon="pi pi-eye" text rounded size="small" v-tooltip.top="'View Products'"
+                                    @click="openProductsDialog(node.data)" />
                                 <Button icon="pi pi-pencil" severity="warning" text rounded size="small"
                                     v-tooltip.top="'Edit'" @click="editCategory(node.data)" />
                                 <Button icon="pi pi-trash" severity="danger" text rounded size="small"
@@ -110,16 +107,9 @@
                         </template>
                     </Column>
     
-                    <Column field="parent.category_name" header="Parent Category">
-                        <template #body="{ data }">
-                            <span v-if="data.parent" class="text-sm text-gray-700">{{ data.parent.category_name }}</span>
-                            <Tag v-else value="Root Category" severity="info" size="small" />
-                        </template>
-                    </Column>
-    
                     <Column field="products_count" header="Products" sortable>
                         <template #body="{ data }">
-                            <Badge :value="data.products_count || 0" severity="info" />
+                            <Badge :value="data.products_count || 0" />
                         </template>
                     </Column>
     
@@ -139,8 +129,8 @@
                     <Column header="Actions" :frozen="true" alignFrozen="right">
                         <template #body="{ data }">
                             <div class="flex gap-1">
-                                <Button icon="pi pi-plus" severity="info" text rounded v-tooltip.top="'Add Subcategory'"
-                                    @click="addSubcategory(data)" />
+                                <Button icon="pi pi-eye" text rounded v-tooltip.top="'View Products'"
+                                    @click="openProductsDialog(data)" />
                                 <Button icon="pi pi-pencil" severity="warning" text rounded v-tooltip.top="'Edit'"
                                     @click="editCategory(data)" />
                                 <Button icon="pi pi-trash" severity="danger" text rounded v-tooltip.top="'Delete'"
@@ -157,16 +147,6 @@
             :header="editMode ? 'Edit Category' : (isSubcategory ? 'Add Subcategory' : 'Add Category')" :modal="true"
             class="w-full max-w-2xl">
             <div class="space-y-4 mt-4">
-                <!-- Category Code -->
-                <div class="flex flex-col gap-2">
-                    <label for="category_code" class="text-sm font-semibold text-gray-700">
-                        Category Code <span class="text-red-500">*</span>
-                    </label>
-                    <InputText id="category_code" v-model="formData.category_code" placeholder="e.g., SOFA, CHAIR, TABLE"
-                        :class="{ 'p-invalid': errors.category_code }" />
-                    <small v-if="errors.category_code" class="text-red-500">{{ errors.category_code }}</small>
-                </div>
-    
                 <!-- Category Name -->
                 <div class="flex flex-col gap-2">
                     <label for="category_name" class="text-sm font-semibold text-gray-700">
@@ -198,23 +178,23 @@
     
                 <!-- Icon -->
                 <!-- <div class="flex flex-col gap-2">
-                    <label for="icon_path" class="text-sm font-semibold text-gray-700">
-                        Icon (PrimeIcons class)
-                    </label>
-                    <div class="flex gap-2">
-                        <InputText id="icon_path" v-model="formData.icon_path" placeholder="e.g., pi pi-box, pi pi-home"
-                            class="flex-1" />
-                        <Button label="Browse Icons" icon="pi pi-external-link" outlined @click="openIconBrowser" />
+                        <label for="icon_path" class="text-sm font-semibold text-gray-700">
+                            Icon (PrimeIcons class)
+                        </label>
+                        <div class="flex gap-2">
+                            <InputText id="icon_path" v-model="formData.icon_path" placeholder="e.g., pi pi-box, pi pi-home"
+                                class="flex-1" />
+                            <Button label="Browse Icons" icon="pi pi-external-link" outlined @click="openIconBrowser" />
+                        </div>
+                        <div v-if="formData.icon_path" class="flex items-center gap-2 text-sm text-gray-600">
+                            <span>Preview:</span>
+                            <i :class="formData.icon_path" class="text-2xl"></i>
+                        </div>
+                        <small class="text-gray-500">Visit <a href="https://primevue.org/icons" target="_blank"
+                                class="text-blue-600">primeicons.org</a> for icon names</small>
                     </div>
-                    <div v-if="formData.icon_path" class="flex items-center gap-2 text-sm text-gray-600">
-                        <span>Preview:</span>
-                        <i :class="formData.icon_path" class="text-2xl"></i>
-                    </div>
-                    <small class="text-gray-500">Visit <a href="https://primevue.org/icons" target="_blank"
-                            class="text-blue-600">primeicons.org</a> for icon names</small>
-                </div>
-    
-                <!-- Display Order -->
+        
+                    <!-- Display Order -->
                 <div class="flex flex-col gap-2">
                     <label for="display_order" class="text-sm font-semibold text-gray-700">
                         Display Order
@@ -229,7 +209,7 @@
                     <label for="is_active" class="text-sm font-semibold text-gray-700 cursor-pointer">Active</label>
                 </div>
             </div>
-     -->
+            -->
             <template #footer>
                 <Button label="Cancel" severity="secondary" outlined @click="dialogVisible = false" />
                 <Button :label="editMode ? 'Update' : 'Create'" icon="pi pi-check" @click="saveCategory"
@@ -237,6 +217,31 @@
             </template>
         </Dialog>
     
+        <Dialog v-model:visible="productsDialogVisible"
+            :header="`${selectedProductsCategory?.category_name || 'Category'} Products`" :modal="true"
+            class="w-full max-w-5xl">
+            <div class="space-y-4">
+                <IconField>
+                    <InputIcon class="pi pi-search" />
+                    <InputText v-model="productSearch" placeholder="Search SKU or product name..." class="w-full" />
+                </IconField>
+                <DataTable :value="filteredCategoryProducts" :loading="productsLoading" dataKey="id" stripedRows>
+                    <template #empty>
+                        <div class="py-10 text-center text-gray-500">No finished goods found in this category.</div>
+                    </template>
+                    <Column header="SKU"><template #body="{ data }"><span class="font-mono text-sm">{{ data.sku }}</span></template></Column>
+                    <Column header="Product" style="min-width: 240px">
+                        <template #body="{ data }">
+                            <p class="font-semibold text-gray-900">{{ data.product_name }}</p>
+                            <p class="text-xs text-gray-500">{{ variationSubtitle(data) }}</p>
+                        </template>
+                    </Column>
+                    <Column header="Selling Price"><template #body="{ data }">{{ formatCurrency(data.base_price) }}</template></Column>
+                    <Column header="Action"><template #body="{ data }"><Button icon="pi pi-eye" text rounded severity="info" @click="viewProduct(data)" /></template></Column>
+                </DataTable>
+            </div>
+        </Dialog>
+
         <!-- Delete Confirmation Dialog -->
         <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
             <div class="flex items-center gap-3">
@@ -278,6 +283,11 @@ const isSubcategory = ref(false)
 const currentCategory = ref(null)
 const searchQuery = ref('')
 const viewMode = ref('list') // 'tree' or 'list'
+const productsDialogVisible = ref(false)
+const productsLoading = ref(false)
+const selectedProductsCategory = ref<any>(null)
+const categoryProducts = ref<any[]>([])
+const productSearch = ref('')
 
 const filters = reactive({
   is_active: null,
@@ -285,7 +295,6 @@ const filters = reactive({
 })
 
 const formData = reactive({
-  category_code: '',
   category_name: '',
   description: '',
   parent_category_id: null,
@@ -319,6 +328,15 @@ const parentCategoryOptions = computed(() => {
     )
   }
   return categories.value.filter(c => !c.parent_category_id)
+})
+
+const filteredCategoryProducts = computed(() => {
+  const query = productSearch.value.trim().toLowerCase()
+  if (!query) return categoryProducts.value
+  return categoryProducts.value.filter((product: any) =>
+    String(product.sku || '').toLowerCase().includes(query) ||
+    String(product.product_name || '').toLowerCase().includes(query)
+  )
 })
 
 // Methods
@@ -362,6 +380,42 @@ const onSearch = () => {
   loadCategories()
 }
 
+const openProductsDialog = async (category: any) => {
+  selectedProductsCategory.value = category
+  productSearch.value = ''
+  categoryProducts.value = []
+  productsDialogVisible.value = true
+  productsLoading.value = true
+  try {
+    const response = await merchandisingService.getProducts({
+      category_id: category.id,
+      product_type: 'finished_good',
+      is_active: true,
+      include_variations: true,
+      per_page: 200,
+    })
+    const payload = response?.data?.data || response?.data || []
+    categoryProducts.value = Array.isArray(payload) ? payload : (payload?.data || [])
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load category products', life: 3000 })
+  } finally {
+    productsLoading.value = false
+  }
+}
+
+const variationSubtitle = (product: any) => {
+  const names = (product.variations || []).map((variant: any) => variant.variation_name).filter(Boolean)
+  return names.length ? names.slice(0, 3).join(' · ') : 'No variants'
+}
+
+const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', {
+  style: 'currency', currency: 'PHP', minimumFractionDigits: 2,
+}).format(Number(value || 0))
+
+const viewProduct = (product: any) => {
+  window.location.href = `/merchandising/products/${product.id}`
+}
+
 const openCreateDialog = () => {
   resetForm()
   editMode.value = false
@@ -380,7 +434,6 @@ const addSubcategory = (parent: any) => {
 const editCategory = (category: any) => {
   currentCategory.value = category
   Object.assign(formData, {
-    category_code: category.category_code,
     category_name: category.category_name,
     description: category.description || '',
     parent_category_id: category.parent_category_id,
@@ -461,10 +514,6 @@ const deleteCategory = async () => {
 const validate = () => {
   errors.value = {}
 
-  if (!formData.category_code) {
-    errors.value.category_code = 'Category code is required'
-  }
-
   if (!formData.category_name) {
     errors.value.category_name = 'Category name is required'
   }
@@ -473,7 +522,6 @@ const validate = () => {
 }
 
 const resetForm = () => {
-  formData.category_code = ''
   formData.category_name = ''
   formData.description = ''
   formData.parent_category_id = null

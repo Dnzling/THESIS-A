@@ -1,794 +1,853 @@
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">Pricing Rules</h2>
-        <p class="text-sm text-gray-500 mt-1">Set discounts and dynamic pricing strategies</p>
-      </div>
-      <div class="flex gap-2">
-        <Button 
-          label="Bulk Update" 
-          icon="pi pi-upload" 
-          severity="secondary"
-          outlined
-          @click="$router.push({ name: 'merchandising.pricing.bulk' })"
-        />
-        <Button 
-          v-if="authStore.hasPermission('merchandising.pricing.edit')"
-          label="Add Pricing Rule" 
-          icon="pi pi-plus" 
-          @click="openCreateDialog"
-        />
-      </div>
-    </div>
-
-    <!-- Active Promotions Banner -->
-    <div v-if="activePromotions > 0" class="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
-      <div class="flex items-center gap-3">
-        <div class="bg-green-600 rounded-full p-3">
-          <i class="pi pi-check-circle text-white text-xl"></i>
+    <div class="space-y-6">
+        <div
+            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">
+                    Promotions & Discounts
+                </h1>
+                <p class="mt-1 text-sm text-slate-500">
+                    Run scheduled offers for this store. Individual sale prices
+                    stay on each product.
+                </p>
+            </div>
+            <Button
+                v-if="canManage"
+                label="Create Promotion"
+                icon="pi pi-plus"
+                @click="openCreate"
+                size="small"
+            />
         </div>
-        <div class="flex-1">
-          <p class="font-semibold text-green-900">{{ activePromotions }} Active Promotions</p>
-          <p class="text-sm text-green-700">Currently running pricing rules affecting your products</p>
+
+        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card
+                v-for="item in statCards"
+                :key="item.label"
+                class="border border-slate-200 shadow-none"
+                ><template #content>
+                    <p
+                        class="text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                        {{ item.label }}
+                    </p>
+                    <div class="mt-2 flex items-center justify-between">
+                        <p class="text-2xl font-bold">{{ item.value }}</p>
+                        <i :class="[item.icon, item.color, 'text-xl']" />
+                    </div>
+                </template>
+            </Card>
         </div>
-      </div>
-    </div>
 
-    <!-- Quick Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-gray-600">Total Rules</p>
-              <h3 class="text-2xl font-bold text-gray-900 mt-1">{{ stats.totalRules }}</h3>
-            </div>
-            <div class="bg-blue-100 p-3 rounded-full">
-              <i class="pi pi-percentage text-blue-600 text-2xl"></i>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-gray-600">Active Rules</p>
-              <h3 class="text-2xl font-bold text-green-600 mt-1">{{ stats.activeRules }}</h3>
-            </div>
-            <div class="bg-green-100 p-3 rounded-full">
-              <i class="pi pi-check-circle text-green-600 text-2xl"></i>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-gray-600">Scheduled</p>
-              <h3 class="text-2xl font-bold text-orange-600 mt-1">{{ stats.scheduledRules }}</h3>
-            </div>
-            <div class="bg-orange-100 p-3 rounded-full">
-              <i class="pi pi-clock text-orange-600 text-2xl"></i>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-gray-600">Products Affected</p>
-              <h3 class="text-2xl font-bold text-purple-600 mt-1">{{ stats.affectedProducts }}</h3>
-            </div>
-            <div class="bg-purple-100 p-3 rounded-full">
-              <i class="pi pi-box text-purple-600 text-2xl"></i>
-            </div>
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <!-- Filters -->
-    <Card>
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="searchQuery" placeholder="Search rules..." class="w-full" @input="onSearch" />
-          </IconField>
-
-          <Select 
-            v-model="filters.rule_type" 
-            :options="ruleTypes" 
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Types" 
-            showClear 
-            @change="loadPricingRules"
-          />
-
-          <Select 
-            v-model="filters.status" 
-            :options="statusOptions" 
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Status" 
-            showClear 
-            @change="loadPricingRules"
-          />
-
-          <Select 
-            v-model="filters.sort_by" 
-            :options="sortOptions" 
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Sort by" 
-            @change="loadPricingRules"
-          />
-        </div>
-      </template>
-    </Card>
-
-    <!-- Loading State -->
-    <div v-if="loading" class="space-y-3">
-      <Skeleton v-for="i in 5" :key="i" height="120px" class="rounded-lg" />
-    </div>
-
-    <!-- Pricing Rules List -->
-    <div v-else-if="pricingRules.length > 0" class="space-y-4">
-      <Card 
-        v-for="rule in pricingRules" 
-        :key="rule.id"
-        class="hover:shadow-lg transition-shadow"
-      >
-        <template #content>
-          <div class="space-y-4">
-            <!-- Rule Header -->
-            <div class="flex items-start justify-between">
-              <div class="flex-1">
-                <div class="flex items-center gap-3">
-                  <h3 class="text-lg font-bold text-gray-900">{{ rule.name }}</h3>
-                  <Tag :value="getRuleTypeLabel(rule.rule_type)" :severity="getRuleTypeSeverity(rule.rule_type)" />
-                  <Tag :value="getStatusLabel(rule)" :severity="getStatusSeverity(rule)" />
+        <Card class="border border-slate-200 shadow-none"
+            ><template #content>
+                <div class="grid gap-3 md:grid-cols-4">
+                    <IconField>
+                        <InputIcon class="pi pi-search" />
+                        <InputText
+                            v-model="filters.search"
+                            placeholder="Search promotions"
+                            fluid
+                            @input="searchLater"
+                        /> </IconField
+                    ><Select
+                        v-model="filters.status"
+                        :options="statusOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="All statuses"
+                        showClear
+                        fluid
+                        @change="loadPromotions"
+                    /><Select
+                        v-model="filters.sort_by"
+                        :options="sortOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        fluid
+                        @change="loadPromotions"
+                    />
                 </div>
-                <p class="text-sm text-gray-600 mt-2">{{ rule.description }}</p>
-              </div>
-              <div class="flex gap-1">
-                <Button 
-                  icon="pi pi-pencil" 
-                  severity="warning"
-                  text 
-                  rounded 
-                  v-tooltip.top="'Edit'"
-                  @click="editRule(rule)"
-                />
-                <Button 
-                  icon="pi pi-copy" 
-                  severity="secondary"
-                  text 
-                  rounded 
-                  v-tooltip.top="'Duplicate'"
-                  @click="duplicateRule(rule)"
-                />
-                <Button 
-                  :icon="rule.is_active ? 'pi pi-pause' : 'pi pi-play'" 
-                  :severity="rule.is_active ? 'warning' : 'success'"
-                  text 
-                  rounded 
-                  v-tooltip.top="rule.is_active ? 'Deactivate' : 'Activate'"
-                  @click="toggleRuleStatus(rule)"
-                />
-                <Button 
-                  icon="pi pi-trash" 
-                  severity="danger"
-                  text 
-                  rounded 
-                  v-tooltip.top="'Delete'"
-                  @click="confirmDelete(rule)"
-                />
-              </div>
-            </div>
+            </template>
+        </Card>
 
-            <!-- Rule Details -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Discount Amount</p>
-                <p class="text-lg font-bold text-green-600">
-                  {{ rule.discount_type === 'percentage' ? `${rule.discount_value}%` : `₱${formatPrice(rule.discount_value)}` }}
-                </p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Applies To</p>
-                <p class="text-sm font-semibold">{{ rule.applies_to || 'All Products' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Valid Period</p>
-                <p class="text-sm font-semibold">
-                  {{ rule.start_date ? formatDate(rule.start_date) : 'No start' }} - 
-                  {{ rule.end_date ? formatDate(rule.end_date) : 'No end' }}
-                </p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Priority</p>
-                <Badge :value="rule.priority || 0" severity="info" />
-              </div>
-            </div>
+        <div v-if="loading" class="space-y-3">
+            <Skeleton v-for="n in 3" :key="n" height="10rem" />
+        </div>
+        <div v-else-if="promotions.length" class="grid gap-4 xl:grid-cols-2">
+            <Card
+                v-for="promotion in promotions"
+                :key="promotion.id"
+                class="border border-slate-200 shadow-none"
+                ><template #content>
+                    <div class="space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h2 class="truncate text-lg font-semibold">
+                                        {{ promotion.name }}
+                                    </h2>
+                                    <Tag
+                                        :value="statusLabel(promotion.status)"
+                                        :severity="
+                                            statusSeverity(promotion.status)
+                                        "
+                                    />
+                                </div>
+                                <p
+                                    v-if="promotion.description"
+                                    class="mt-1 line-clamp-2 text-sm text-slate-500"
+                                >
+                                    {{ promotion.description }}
+                                </p>
+                            </div>
+                            <div v-if="canManage" class="flex shrink-0 gap-1">
+                                <Button
+                                    icon="pi pi-pencil"
+                                    text
+                                    rounded
+                                    aria-label="Edit"
+                                    @click="openEdit(promotion)"
+                                /><Button
+                                    icon="pi pi-copy"
+                                    text
+                                    rounded
+                                    severity="secondary"
+                                    aria-label="Duplicate"
+                                    @click="duplicatePromotion(promotion)"
+                                /><Button
+                                    :icon="
+                                        promotion.is_active
+                                            ? 'pi pi-pause'
+                                            : 'pi pi-play'
+                                    "
+                                    text
+                                    rounded
+                                    :severity="
+                                        promotion.is_active ? 'warn' : 'success'
+                                    "
+                                    aria-label="Change status"
+                                    @click="togglePromotion(promotion)"
+                                /><Button
+                                    icon="pi pi-trash"
+                                    text
+                                    rounded
+                                    severity="danger"
+                                    aria-label="Delete"
+                                    @click="askDelete(promotion)"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-4"
+                        >
+                            <div>
+                                <p class="detail-label">Offer</p>
+                                <p class="detail-value text-emerald-700">
+                                    {{ discountLabel(promotion) }}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="detail-label">Products</p>
+                                <p class="detail-value">
+                                    {{ promotion.affected_products_count }}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="detail-label">Minimum order</p>
+                                <p class="detail-value">
+                                    {{
+                                        +promotion.minimum_order_amount
+                                            ? money(
+                                                  promotion.minimum_order_amount,
+                                              )
+                                            : "None"
+                                    }}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="detail-label">Priority</p>
+                                <p class="detail-value">
+                                    {{ promotion.priority }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex gap-2">
+                                <i class="pi pi-box mt-0.5 text-slate-400" />
+                                <p>
+                                    <b>Applies to:</b>
+                                    <span class="text-slate-500">{{
+                                        promotion.target_label
+                                    }}</span>
+                                </p>
+                            </div>
+                            <div class="flex gap-2">
+                                <i
+                                    class="pi pi-calendar mt-0.5 text-slate-400"
+                                />
+                                <p>
+                                    <b>Schedule:</b>
+                                    <span class="text-slate-500">{{
+                                        scheduleLabel(promotion)
+                                    }}</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </template></Card
+            >
+        </div>
+        <Card v-else class="border border-dashed border-slate-300 shadow-none"
+            ><template #content>
+                <div class="py-10 text-center">
+                    <i class="pi pi-percentage text-5xl text-slate-300" />
+                    <h2 class="mt-4 font-semibold">No promotions found</h2>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Create a store-wide, category, or product promotion.
+                    </p>
+                    <Button
+                        v-if="canManage"
+                        label="Create Promotion"
+                        icon="pi pi-plus"
+                        class="mt-4"
+                        @click="openCreate"
+                    />
+                </div>
+            </template>
+        </Card>
 
-            <!-- Conditions -->
-            <div v-if="rule.conditions && rule.conditions.length > 0" class="border-t border-gray-200 pt-4">
-              <p class="text-sm font-semibold text-gray-700 mb-2">Conditions:</p>
-              <div class="flex flex-wrap gap-2">
-                <Tag 
-                  v-for="(condition, index) in rule.conditions" 
-                  :key="index"
-                  :value="formatCondition(condition)" 
-                  severity="secondary"
-                />
-              </div>
+        <Dialog
+            v-model:visible="dialogVisible"
+            modal
+            :header="editingId ? 'Edit Promotion' : 'Create Promotion'"
+            class="w-full max-w-3xl"
+        >
+            <div class="space-y-6 pt-2">
+                <section class="space-y-3">
+                    <div>
+                        <h3 class="font-semibold">Promotion details</h3>
+                        <p class="hint">Use a name staff can recognize.</p>
+                    </div>
+                    <div class="field">
+                        <label>Name *</label>
+                        <InputText
+                            v-model="form.name"
+                            placeholder="Holiday Bedroom Sale"
+                            fluid
+                            :invalid="!!errors.name"
+                        /><small v-if="errors.name" class="error">{{
+                            errors.name
+                        }}</small>
+                    </div>
+                    <div class="field">
+                        <label>Description</label
+                        ><Textarea
+                            v-model="form.description"
+                            rows="2"
+                            fluid
+                            placeholder="Internal campaign note"
+                        />
+                    </div>
+                </section>
+                <section class="section">
+                    <div>
+                        <h3 class="font-semibold">Discount</h3>
+                        <p class="hint">Choose one simple offer.</p>
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-2">
+                        <div class="field">
+                            <label>Discount type *</label
+                            ><Select
+                                v-model="form.discount_type"
+                                :options="discountTypes"
+                                optionLabel="label"
+                                optionValue="value"
+                                fluid
+                            />
+                        </div>
+                        <div class="field">
+                            <label>Value *</label>
+                            <InputNumber
+                                v-model="form.discount_value"
+                                :min="0.01"
+                                :max="
+                                    form.discount_type === 'percentage'
+                                        ? 100
+                                        : undefined
+                                "
+                                :suffix="
+                                    form.discount_type === 'percentage'
+                                        ? '%'
+                                        : undefined
+                                "
+                                :mode="
+                                    form.discount_type === 'fixed'
+                                        ? 'currency'
+                                        : 'decimal'
+                                "
+                                currency="PHP"
+                                locale="en-PH"
+                                fluid
+                            />
+                            <small v-if="errors.discount_value" class="error">{{
+                                errors.discount_value
+                            }}</small>
+                        </div>
+                    </div>
+                </section>
+                <section class="section">
+                    <div>
+                        <h3 class="font-semibold">Eligible products</h3>
+                        <p class="hint">
+                            Only this store's catalog is available.
+                        </p>
+                    </div>
+                    <div class="field">
+                        <label>Apply to *</label>
+                        <SelectButton
+                            v-model="form.target_type"
+                            :options="targetTypes"
+                            optionLabel="label"
+                            optionValue="value"
+                            :allowEmpty="false"
+                        />
+                    </div>
+                    <div v-if="form.target_type === 'categories'" class="field">
+                        <label>Categories *</label>
+                        <MultiSelect
+                            v-model="form.category_ids"
+                            :options="categories"
+                            optionLabel="category_name"
+                            optionValue="id"
+                            filter
+                            display="chip"
+                            placeholder="Select categories"
+                            fluid
+                        /><small v-if="errors.category_ids" class="error">{{
+                            errors.category_ids
+                        }}</small>
+                    </div>
+                    <div v-if="form.target_type === 'products'" class="field">
+                        <label>Products *</label>
+                        <MultiSelect
+                            v-model="form.product_ids"
+                            :options="products"
+                            optionLabel="product_name"
+                            optionValue="id"
+                            filter
+                            display="chip"
+                            :maxSelectedLabels="3"
+                            placeholder="Select products"
+                            fluid
+                            ><template #option="{ option }">
+                                <div>
+                                    <p class="font-medium">
+                                        {{ option.product_name }}
+                                    </p>
+                                    <p class="hint">
+                                        {{ option.sku || "No SKU" }} ·
+                                        {{
+                                            money(
+                                                option.discounted_price ||
+                                                    option.base_price,
+                                            )
+                                        }}
+                                    </p>
+                                </div>
+                            </template> </MultiSelect
+                        ><small v-if="errors.product_ids" class="error">{{
+                            errors.product_ids
+                        }}</small>
+                    </div>
+                </section>
+                <section class="section">
+                    <div>
+                        <h3 class="font-semibold">Schedule and eligibility</h3>
+                        <p class="hint">
+                            Leave dates empty for an ongoing offer.
+                        </p>
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-2">
+                        <div class="field">
+                            <label>Starts</label>
+                            <DatePicker
+                                v-model="form.starts_at"
+                                showTime
+                                hourFormat="12"
+                                fluid
+                                showButtonBar
+                            />
+                        </div>
+                        <div class="field">
+                            <label>Ends</label>
+                            <DatePicker
+                                v-model="form.ends_at"
+                                showTime
+                                hourFormat="12"
+                                fluid
+                                showButtonBar
+                                :minDate="form.starts_at || undefined"
+                            /><small v-if="errors.ends_at" class="error">{{
+                                errors.ends_at
+                            }}</small>
+                        </div>
+                        <div class="field">
+                            <label>Minimum order</label>
+                            <InputNumber
+                                v-model="form.minimum_order_amount"
+                                mode="currency"
+                                currency="PHP"
+                                locale="en-PH"
+                                :min="0"
+                                fluid
+                            /><small>Use ₱0 for no minimum.</small>
+                        </div>
+                        <div class="field">
+                            <label>Priority</label>
+                            <InputNumber
+                                v-model="form.priority"
+                                :min="0"
+                                :max="999"
+                                showButtons
+                                fluid
+                            /><small>Higher wins only for equal prices.</small>
+                        </div>
+                    </div>
+                    <div
+                        class="flex items-center justify-between rounded-lg border p-3"
+                    >
+                        <div>
+                            <p class="text-sm font-medium">
+                                Activate promotion
+                            </p>
+                            <p class="hint">
+                                The schedule controls when an active promotion
+                                runs.
+                            </p>
+                        </div>
+                        <ToggleSwitch v-model="form.is_active" />
+                    </div>
+                </section>
             </div>
-          </div>
-        </template>
-      </Card>
+            <template #footer
+                ><Button
+                    label="Cancel"
+                    severity="secondary"
+                    text
+                    @click="dialogVisible = false" /><Button
+                    :label="editingId ? 'Save Changes' : 'Create Promotion'"
+                    icon="pi pi-check"
+                    :loading="saving"
+                    @click="savePromotion()"
+            /></template>
+        </Dialog>
+        <Dialog v-model:visible="reviewVisible" modal header="Review existing discounts" :style="{ width: 'min(94vw, 760px)' }">
+            <p class="mb-4 text-sm text-slate-600">
+                These products already have individual discounts. Both rules will be kept, but customers will receive only the lower price. The individual discount remains when this promotion ends.
+            </p>
+            <p v-if="Number(form.minimum_order_amount) > 0" class="mb-3 text-xs text-slate-500">Promotional prices apply only when the order reaches {{ money(form.minimum_order_amount) }}.</p>
+            <div class="max-h-72 overflow-y-auto rounded-xl border border-slate-200">
+                <div v-for="item in conflictingProducts" :key="item.id" class="grid grid-cols-2 gap-2 border-b border-slate-100 p-3 text-xs last:border-b-0 sm:grid-cols-4">
+                    <div class="col-span-2 font-semibold text-slate-900 sm:col-span-1">{{ item.product_name }}</div>
+                    <div><span class="block text-slate-500">Regular</span>{{ money(item.base_price) }}</div>
+                    <div><span class="block text-slate-500">Individual</span>{{ money(item.discounted_price) }}</div>
+                    <div><span class="block text-slate-500">Promotion</span>{{ money(promotionPrice(item)) }}<span class="block font-semibold text-orange-600">Customer pays {{ money(Math.min(Number(item.discounted_price), promotionPrice(item))) }}</span></div>
+                </div>
+            </div>
+            <p v-if="form.target_type !== 'products'" class="mt-3 text-xs text-slate-500">Excluding products changes this promotion to target only the currently recorded eligible products.</p>
+            <template #footer>
+                <Button label="Cancel" severity="secondary" text size="small" @click="reviewVisible = false" />
+                <Button label="Exclude these products" severity="secondary" outlined size="small" :disabled="!products.some((p) => eligibleProductIds.includes(p.id) && !conflictingProducts.some((c) => c.id === p.id))" @click="excludeConflictsAndSave" />
+                <Button label="Keep both rules; apply better price" severity="warn" size="small" :loading="saving" @click="savePromotion(true)" />
+            </template>
+        </Dialog>
+        <ConfirmDialog />
     </div>
-
-    <!-- Empty State -->
-    <Card v-else>
-      <template #content>
-        <div class="text-center py-12">
-          <i class="pi pi-percentage text-6xl text-gray-300"></i>
-          <p class="text-gray-600 mt-4 text-lg">No pricing rules found</p>
-          <p class="text-gray-500 text-sm mt-2">Create pricing rules to manage discounts and promotions</p>
-          <Button 
-            label="Create Your First Rule" 
-            icon="pi pi-plus" 
-            class="mt-4" 
-            @click="openCreateDialog"
-          />
-        </div>
-      </template>
-    </Card>
-
-    <!-- Create/Edit Dialog -->
-    <Dialog 
-      v-model:visible="dialogVisible" 
-      :header="editMode ? 'Edit Pricing Rule' : 'Create Pricing Rule'" 
-      :modal="true" 
-      class="w-full max-w-3xl"
-    >
-      <div class="space-y-4 mt-4">
-        <!-- Rule Name -->
-        <div class="flex flex-col gap-2">
-          <label for="rule_name" class="text-sm font-semibold text-gray-700">
-            Rule Name <span class="text-red-500">*</span>
-          </label>
-          <InputText 
-            id="rule_name"
-            v-model="formData.name" 
-            placeholder="e.g., Summer Sale 2024" 
-            :class="{ 'p-invalid': errors.name }"
-          />
-          <small v-if="errors.name" class="text-red-500">{{ errors.name }}</small>
-        </div>
-
-        <!-- Description -->
-        <div class="flex flex-col gap-2">
-          <label for="description" class="text-sm font-semibold text-gray-700">
-            Description
-          </label>
-          <Textarea 
-            id="description"
-            v-model="formData.description" 
-            rows="2" 
-            placeholder="Optional description..."
-          />
-        </div>
-
-        <!-- Rule Type & Discount -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="flex flex-col gap-2">
-            <label for="rule_type" class="text-sm font-semibold text-gray-700">
-              Rule Type <span class="text-red-500">*</span>
-            </label>
-            <Select 
-              id="rule_type"
-              v-model="formData.rule_type" 
-              :options="ruleTypes" 
-              optionLabel="label"
-              optionValue="value"
-              placeholder="Select type" 
-              :class="{ 'p-invalid': errors.rule_type }"
-            />
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <label for="discount_type" class="text-sm font-semibold text-gray-700">
-              Discount Type <span class="text-red-500">*</span>
-            </label>
-            <Select 
-              id="discount_type"
-              v-model="formData.discount_type" 
-              :options="discountTypes" 
-              optionLabel="label"
-              optionValue="value"
-              placeholder="Select type" 
-            />
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <label for="discount_value" class="text-sm font-semibold text-gray-700">
-              Discount Value <span class="text-red-500">*</span>
-            </label>
-            <InputNumber 
-              id="discount_value"
-              v-model="formData.discount_value" 
-              :suffix="formData.discount_type === 'percentage' ? '%' : ''"
-              :min="0"
-              :max="formData.discount_type === 'percentage' ? 100 : undefined"
-              :class="{ 'p-invalid': errors.discount_value }"
-            />
-          </div>
-        </div>
-
-        <!-- Date Range -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="flex flex-col gap-2">
-            <label for="start_date" class="text-sm font-semibold text-gray-700">
-              Start Date
-            </label>
-            <DatePicker 
-              id="start_date"
-              v-model="formData.start_date" 
-              showTime 
-              hourFormat="24"
-              placeholder="Select start date"
-            />
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <label for="end_date" class="text-sm font-semibold text-gray-700">
-              End Date
-            </label>
-            <DatePicker 
-              id="end_date"
-              v-model="formData.end_date" 
-              showTime 
-              hourFormat="24"
-              placeholder="Select end date"
-            />
-          </div>
-        </div>
-
-        <!-- Applies To -->
-        <div class="flex flex-col gap-2">
-          <label for="applies_to" class="text-sm font-semibold text-gray-700">
-            Applies To
-          </label>
-          <Select 
-            id="applies_to"
-            v-model="formData.applies_to" 
-            :options="appliesOptions" 
-            placeholder="All Products" 
-            showClear
-          />
-          <small class="text-gray-500">Leave empty to apply to all products</small>
-        </div>
-
-        <!-- Priority & Active Status -->
-        <div class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col gap-2">
-            <label for="priority" class="text-sm font-semibold text-gray-700">
-              Priority
-            </label>
-            <InputNumber 
-              id="priority"
-              v-model="formData.priority" 
-              :min="0"
-              showButtons
-            />
-            <small class="text-gray-500">Higher priority rules apply first</small>
-          </div>
-
-          <div class="flex items-center gap-2 pt-6">
-            <Checkbox v-model="formData.is_active" inputId="is_active" :binary="true" />
-            <label for="is_active" class="text-sm font-semibold text-gray-700 cursor-pointer">
-              Active
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="dialogVisible = false" />
-        <Button :label="editMode ? 'Update' : 'Create'" icon="pi pi-check" @click="saveRule" :loading="saving" />
-      </template>
-    </Dialog>
-
-    <!-- Delete Confirmation Dialog -->
-    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
-      <div class="flex items-center gap-3">
-        <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
-        <div>
-          <p class="font-semibold">Are you sure you want to delete this pricing rule?</p>
-          <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="deleteDialogVisible = false" />
-        <Button label="Delete" severity="danger" @click="deleteRule" :loading="deleting" />
-      </template>
-    </Dialog>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import { useToast } from 'primevue/usetoast'
-import { useAuthStore } from '../../../../stores/auth'
+import { computed, onMounted, reactive, ref } from "vue";
+import { useToast } from "primevue/usetoast";
+import { useConfirm } from "primevue/useconfirm";
+import { useAuthStore } from "../../../../stores/auth";
+import merchandisingService from "../../../../services/merchandising.service";
+import Button from "primevue/button";
+import Card from "primevue/card";
+import ConfirmDialog from "primevue/confirmdialog";
+import DatePicker from "primevue/datepicker";
+import Dialog from "primevue/dialog";
+import IconField from "primevue/iconfield";
+import InputIcon from "primevue/inputicon";
+import InputNumber from "primevue/inputnumber";
+import InputText from "primevue/inputtext";
+import Message from "primevue/message";
+import MultiSelect from "primevue/multiselect";
+import Select from "primevue/select";
+import SelectButton from "primevue/selectbutton";
+import Skeleton from "primevue/skeleton";
+import Tag from "primevue/tag";
+import Textarea from "primevue/textarea";
+import ToggleSwitch from "primevue/toggleswitch";
 
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
-import Textarea from 'primevue/textarea'
-import Select from 'primevue/select'
-import Checkbox from 'primevue/checkbox'
-import DatePicker from 'primevue/datepicker'
-import Dialog from 'primevue/dialog'
-import Skeleton from 'primevue/skeleton'
-import Tag from 'primevue/tag'
-import Badge from 'primevue/badge'
-import IconField from 'primevue/iconfield'
-import InputIcon from 'primevue/inputicon'
-
-const toast = useToast()
-const authStore = useAuthStore()
-
-// State
-const pricingRules = ref([])
-const loading = ref(false)
-const saving = ref(false)
-const deleting = ref(false)
-const dialogVisible = ref(false)
-const deleteDialogVisible = ref(false)
-const editMode = ref(false)
-const currentRule = ref(null)
-const searchQuery = ref('')
-
-const stats = reactive({
-  totalRules: 0,
-  activeRules: 0,
-  scheduledRules: 0,
-  affectedProducts: 0
-})
-
+const toast = useToast(),
+    confirm = useConfirm(),
+    authStore = useAuthStore();
+const canManage = computed(() =>
+    authStore.hasPermission("merchandising.pricing.manage"),
+);
+const promotions = ref<any[]>([]),
+    categories = ref<any[]>([]),
+    products = ref<any[]>([]);
+const loading = ref(false),
+    saving = ref(false),
+    reviewVisible = ref(false),
+    dialogVisible = ref(false),
+    editingId = ref<number | null>(null);
+const errors = ref<Record<string, string>>({});
+const stats = reactive({ total: 0, active: 0, scheduled: 0, inactive: 0 });
 const filters = reactive({
-  rule_type: null,
-  status: null,
-  sort_by: 'priority_desc'
-})
-
-const formData = reactive({
-  name: '',
-  description: '',
-  rule_type: 'discount',
-  discount_type: 'percentage',
-  discount_value: 0,
-  start_date: null,
-  end_date: null,
-  applies_to: null,
-  priority: 0,
-  is_active: true,
-  conditions: []
-})
-
-const errors = ref<Record<string, string>>({})
-
-const ruleTypes = [
-  { label: 'Percentage Discount', value: 'discount' },
-  { label: 'Flash Sale', value: 'flash_sale' },
-  { label: 'Bulk Pricing', value: 'bulk' },
-  { label: 'BOGO (Buy One Get One)', value: 'bogo' },
-  { label: 'Bundle Discount', value: 'bundle' }
-]
-
+    search: "",
+    status: null as string | null,
+    sort_by: "priority_desc",
+});
+let timer: ReturnType<typeof setTimeout> | null = null;
+const blank = () => ({
+    name: "",
+    description: "",
+    discount_type: "percentage",
+    discount_value: 10,
+    target_type: "all",
+    category_ids: [] as number[],
+    product_ids: [] as number[],
+    minimum_order_amount: 0,
+    starts_at: null as Date | null,
+    ends_at: null as Date | null,
+    priority: 0,
+    is_active: true,
+});
+const form = reactive(blank());
+const eligibleProductIds = computed(() => products.value
+    .filter((product: any) => form.target_type === 'all'
+        || (form.target_type === 'products' && form.product_ids.includes(product.id))
+        || (form.target_type === 'categories' && (form.category_ids.includes(product.category_id) || form.category_ids.includes(product.subcategory_id))))
+    .map((product: any) => product.id));
+const conflictingProducts = computed(() => products.value.filter((product: any) =>
+    eligibleProductIds.value.includes(product.id)
+    && Number(product.base_price) > 0
+    && product.discounted_price != null
+    && Number(product.discounted_price) < Number(product.base_price)));
+const promotionPrice = (product: any) => Math.max(0, Number(product.base_price) -
+    (form.discount_type === 'percentage'
+        ? Number(product.base_price) * Number(form.discount_value) / 100
+        : Number(form.discount_value)));
+const excludeConflictsAndSave = () => {
+    const excluded = new Set(conflictingProducts.value.map((product: any) => product.id));
+    form.product_ids = eligibleProductIds.value.filter((id: number) => !excluded.has(id));
+    form.category_ids = [];
+    form.target_type = 'products';
+    reviewVisible.value = false;
+    savePromotion(true);
+};
 const discountTypes = [
-  { label: 'Percentage (%)', value: 'percentage' },
-  { label: 'Fixed Amount (₱)', value: 'fixed' }
-]
-
+        { label: "Percentage off", value: "percentage" },
+        { label: "Fixed amount off", value: "fixed" },
+    ],
+    targetTypes = [
+        { label: "All products", value: "all" },
+        { label: "Categories", value: "categories" },
+        { label: "Specific products", value: "products" },
+    ];
 const statusOptions = [
-  { label: 'Active', value: 'active' },
-  { label: 'Scheduled', value: 'scheduled' },
-  { label: 'Expired', value: 'expired' },
-  { label: 'Inactive', value: 'inactive' }
-]
-
-const sortOptions = [
-  { label: 'Priority: High to Low', value: 'priority_desc' },
-  { label: 'Priority: Low to High', value: 'priority_asc' },
-  { label: 'Newest First', value: 'created_desc' },
-  { label: 'Oldest First', value: 'created_asc' }
-]
-
-const appliesOptions = [
-  'All Products',
-  'Specific Category',
-  'Specific Products',
-  'Minimum Purchase Amount'
-]
-
-const activePromotions = computed(() => {
-  return pricingRules.value.filter((rule: any) => rule.is_active && isRuleActive(rule)).length
-})
-
-// Methods
-const loadPricingRules = async () => {
-  loading.value = true
-  try {
-    // Mock data - replace with actual API call
-    pricingRules.value = [
-      {
-        id: 1,
-        name: 'Summer Sale 2024',
-        description: '20% off on all sofas and chairs',
-        rule_type: 'discount',
-        discount_type: 'percentage',
-        discount_value: 20,
-        start_date: '2024-06-01T00:00:00',
-        end_date: '2024-08-31T23:59:59',
-        applies_to: 'Sofas & Chairs',
-        priority: 10,
-        is_active: true,
-        conditions: ['Category: Sofas', 'Category: Chairs']
-      },
-      {
-        id: 2,
-        name: 'Bulk Purchase Discount',
-        description: 'Buy 3 or more, get 15% off',
-        rule_type: 'bulk',
-        discount_type: 'percentage',
-        discount_value: 15,
-        start_date: null,
-        end_date: null,
-        applies_to: 'All Products',
-        priority: 5,
-        is_active: true,
-        conditions: ['Minimum Quantity: 3']
-      }
-    ]
-
-    calculateStats()
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load pricing rules',
-      life: 3000
-    })
-  } finally {
-    loading.value = false
-  }
-}
-
-const calculateStats = () => {
-  stats.totalRules = pricingRules.value.length
-  stats.activeRules = pricingRules.value.filter((rule: any) => rule.is_active).length
-  stats.scheduledRules = pricingRules.value.filter((rule: any) => isScheduled(rule)).length
-  stats.affectedProducts = 125 // Mock data
-}
-
-const onSearch = () => {
-  loadPricingRules()
-}
-
-const openCreateDialog = () => {
-  resetForm()
-  editMode.value = false
-  dialogVisible.value = true
-}
-
-const editRule = (rule: any) => {
-  currentRule.value = rule
-  Object.assign(formData, {
-    name: rule.name,
-    description: rule.description || '',
-    rule_type: rule.rule_type,
-    discount_type: rule.discount_type,
-    discount_value: rule.discount_value,
-    start_date: rule.start_date ? new Date(rule.start_date) : null,
-    end_date: rule.end_date ? new Date(rule.end_date) : null,
-    applies_to: rule.applies_to,
-    priority: rule.priority || 0,
-    is_active: rule.is_active,
-    conditions: rule.conditions || []
-  })
-  editMode.value = true
-  dialogVisible.value = true
-}
-
-const saveRule = async () => {
-  if (!validate()) return
-
-  saving.value = true
-  try {
-    // Mock save - replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: editMode.value ? 'Pricing rule updated' : 'Pricing rule created',
-      life: 3000
-    })
-
-    dialogVisible.value = false
-    loadPricingRules()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to save pricing rule',
-      life: 3000
-    })
-  } finally {
-    saving.value = false
-  }
-}
-
-const duplicateRule = (rule: any) => {
-  editRule({ ...rule, name: `${rule.name} (Copy)` })
-  editMode.value = false
-}
-
-const toggleRuleStatus = async (rule: any) => {
-  try {
-    rule.is_active = !rule.is_active
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: rule.is_active ? 'Rule activated' : 'Rule deactivated',
-      life: 2000
-    })
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to update rule status',
-      life: 3000
-    })
-  }
-}
-
-const confirmDelete = (rule: any) => {
-  currentRule.value = rule
-  deleteDialogVisible.value = true
-}
-
-const deleteRule = async () => {
-  deleting.value = true
-  try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Pricing rule deleted',
-      life: 3000
-    })
-    deleteDialogVisible.value = false
-    loadPricingRules()
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to delete rule',
-      life: 3000
-    })
-  } finally {
-    deleting.value = false
-  }
-}
-
-const validate = () => {
-  errors.value = {}
-  if (!formData.name) errors.value.name = 'Rule name is required'
-  if (!formData.rule_type) errors.value.rule_type = 'Rule type is required'
-  if (!formData.discount_value) errors.value.discount_value = 'Discount value is required'
-  return Object.keys(errors.value).length === 0
-}
-
-const resetForm = () => {
-  formData.name = ''
-  formData.description = ''
-  formData.rule_type = 'discount'
-  formData.discount_type = 'percentage'
-  formData.discount_value = 0
-  formData.start_date = null
-  formData.end_date = null
-  formData.applies_to = null
-  formData.priority = 0
-  formData.is_active = true
-  formData.conditions = []
-  errors.value = {}
-}
-
-const getRuleTypeLabel = (type: string) => {
-  const rule = ruleTypes.find(r => r.value === type)
-  return rule?.label || type
-}
-
-const getRuleTypeSeverity = (type: string) => {
-  const severities: Record<string, string> = {
-    'discount': 'info',
-    'flash_sale': 'danger',
-    'bulk': 'success',
-    'bogo': 'warning',
-    'bundle': 'secondary'
-  }
-  return severities[type] || 'info'
-}
-
-const getStatusLabel = (rule: any) => {
-  if (!rule.is_active) return 'Inactive'
-  if (isScheduled(rule)) return 'Scheduled'
-  if (isExpired(rule)) return 'Expired'
-  return 'Active'
-}
-
-const getStatusSeverity = (rule: any) => {
-  if (!rule.is_active) return 'secondary'
-  if (isScheduled(rule)) return 'warning'
-  if (isExpired(rule)) return 'danger'
-  return 'success'
-}
-
-const isRuleActive = (rule: any) => {
-  const now = new Date()
-  const start = rule.start_date ? new Date(rule.start_date) : null
-  const end = rule.end_date ? new Date(rule.end_date) : null
-  
-  if (start && now < start) return false
-  if (end && now > end) return false
-  return rule.is_active
-}
-
-const isScheduled = (rule: any) => {
-  if (!rule.start_date) return false
-  return new Date(rule.start_date) > new Date()
-}
-
-const isExpired = (rule: any) => {
-  if (!rule.end_date) return false
-  return new Date(rule.end_date) < new Date()
-}
-
-const formatCondition = (condition: string) => {
-  return condition
-}
-
-const formatPrice = (price: number) => {
-  return new Intl.NumberFormat('en-PH', { 
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2 
-  }).format(price)
-}
-
-const formatDate = (date: string) => {
-  if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
+        { label: "Running now", value: "active" },
+        { label: "Scheduled", value: "scheduled" },
+        { label: "Expired", value: "expired" },
+        { label: "Paused", value: "inactive" },
+    ],
+    sortOptions = [
+        { label: "Priority: high first", value: "priority_desc" },
+        { label: "Priority: low first", value: "priority_asc" },
+        { label: "Newest first", value: "newest" },
+        { label: "Oldest first", value: "oldest" },
+    ];
+const statCards = computed(() => [
+    {
+        label: "Total",
+        value: stats.total,
+        icon: "pi pi-percentage",
+        color: "text-blue-600",
+    },
+    {
+        label: "Running now",
+        value: stats.active,
+        icon: "pi pi-play-circle",
+        color: "text-emerald-600",
+    },
+    {
+        label: "Scheduled",
+        value: stats.scheduled,
+        icon: "pi pi-clock",
+        color: "text-amber-600",
+    },
+    {
+        label: "Paused",
+        value: stats.inactive,
+        icon: "pi pi-pause-circle",
+        color: "text-slate-500",
+    },
+]);
+const loadPromotions = async () => {
+    loading.value = true;
+    try {
+        const r = await merchandisingService.getPromotions(filters);
+        promotions.value = r.data?.promotions || [];
+        Object.assign(stats, r.data?.stats || {});
+    } catch (e: any) {
+        toast.add({
+            severity: "error",
+            summary: "Unable to load promotions",
+            detail: e.response?.data?.message || "Please try again.",
+            life: 3000,
+        });
+    } finally {
+        loading.value = false;
+    }
+};
+const loadOptions = async () => {
+    try {
+        const r = await merchandisingService.getPromotionOptions();
+        categories.value = r.data?.categories || [];
+        products.value = r.data?.products || [];
+    } catch {
+        toast.add({
+            severity: "warn",
+            summary: "Catalog options unavailable",
+            life: 3000,
+        });
+    }
+};
+const searchLater = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(loadPromotions, 300);
+};
+const openCreate = () => {
+    editingId.value = null;
+    Object.assign(form, blank());
+    errors.value = {};
+    dialogVisible.value = true;
+};
+const openEdit = (p: any) => {
+    editingId.value = p.id;
+    Object.assign(form, {
+        name: p.name,
+        description: p.description || "",
+        discount_type: p.discount_type,
+        discount_value: +p.discount_value,
+        target_type: p.target_type,
+        category_ids: [...(p.category_ids || [])],
+        product_ids: [...(p.product_ids || [])],
+        minimum_order_amount: +p.minimum_order_amount || 0,
+        starts_at: p.starts_at ? new Date(p.starts_at) : null,
+        ends_at: p.ends_at ? new Date(p.ends_at) : null,
+        priority: +p.priority || 0,
+        is_active: !!p.is_active,
+    });
+    errors.value = {};
+    dialogVisible.value = true;
+};
+const savePromotion = async (reviewed = false) => {
+    errors.value = {};
+    if (!form.name.trim()) errors.value.name = "Enter a promotion name.";
+    if (!form.discount_value || form.discount_value <= 0)
+        errors.value.discount_value = "Enter a discount greater than zero.";
+    if (form.target_type === "categories" && !form.category_ids.length)
+        errors.value.category_ids = "Select at least one category.";
+    if (form.target_type === "products" && !form.product_ids.length)
+        errors.value.product_ids = "Select at least one product.";
+    if (form.starts_at && form.ends_at && form.ends_at <= form.starts_at)
+        errors.value.ends_at = "End must be after start.";
+    if (Object.keys(errors.value).length) return;
+    if (!reviewed && form.is_active && conflictingProducts.value.length) {
+        reviewVisible.value = true;
+        return;
+    }
+    saving.value = true;
+    try {
+        const payload = {
+            ...form,
+            name: form.name.trim(),
+            starts_at: form.starts_at?.toISOString() || null,
+            ends_at: form.ends_at?.toISOString() || null,
+        };
+        const r = editingId.value
+            ? await merchandisingService.updatePromotion(
+                  editingId.value,
+                  payload,
+              )
+            : await merchandisingService.createPromotion(payload);
+        toast.add({
+            severity: "success",
+            summary: editingId.value
+                ? "Promotion updated"
+                : "Promotion created",
+            detail: r.message,
+            life: 2500,
+        });
+        dialogVisible.value = false;
+        reviewVisible.value = false;
+        await loadPromotions();
+    } catch (e: any) {
+        const v = e.response?.data?.errors || {};
+        errors.value = Object.fromEntries(
+            Object.entries(v).map(([k, x]: any) => [
+                k,
+                Array.isArray(x) ? x[0] : x,
+            ]),
+        );
+        toast.add({
+            severity: "error",
+            summary: "Could not save promotion",
+            detail: e.response?.data?.message || "Review the form.",
+            life: 3500,
+        });
+    } finally {
+        saving.value = false;
+    }
+};
+const togglePromotion = async (p: any) => {
+    try {
+        await merchandisingService.togglePromotion(p.id);
+        await loadPromotions();
+    } catch (e: any) {
+        toast.add({
+            severity: "error",
+            summary: "Status not updated",
+            detail: e.response?.data?.message,
+            life: 3000,
+        });
+    }
+};
+const duplicatePromotion = async (p: any) => {
+    try {
+        await merchandisingService.duplicatePromotion(p.id);
+        toast.add({
+            severity: "success",
+            summary: "Promotion duplicated",
+            detail: "The copy is paused for review.",
+            life: 2500,
+        });
+        await loadPromotions();
+    } catch (e: any) {
+        toast.add({
+            severity: "error",
+            summary: "Could not duplicate",
+            detail: e.response?.data?.message,
+            life: 3000,
+        });
+    }
+};
+const askDelete = (p: any) =>
+    confirm.require({
+        header: "Delete promotion?",
+        message: `Delete “${p.name}”?`,
+        icon: "pi pi-exclamation-triangle",
+        rejectProps: { label: "Cancel", severity: "secondary", text: true },
+        acceptProps: { label: "Delete", severity: "danger" },
+        accept: async () => {
+            try {
+                await merchandisingService.deletePromotion(p.id);
+                await loadPromotions();
+            } catch (e: any) {
+                toast.add({
+                    severity: "error",
+                    summary: "Could not delete",
+                    detail: e.response?.data?.message,
+                    life: 3000,
+                });
+            }
+        },
+    });
+const money = (v: any) =>
+        new Intl.NumberFormat("en-PH", {
+            style: "currency",
+            currency: "PHP",
+        }).format(+v || 0),
+    discountLabel = (p: any) =>
+        p.discount_type === "percentage"
+            ? `${+p.discount_value}% off`
+            : `${money(p.discount_value)} off`;
+const statusLabel = (s: string) =>
+        ({
+            active: "Running now",
+            scheduled: "Scheduled",
+            expired: "Expired",
+            inactive: "Paused",
+        })[s] || s,
+    statusSeverity = (s: string) =>
+        ({
+            active: "success",
+            scheduled: "warn",
+            expired: "danger",
+            inactive: "secondary",
+        })[s] || "info";
+const dt = (v: string) =>
+        new Intl.DateTimeFormat("en-PH", {
+            dateStyle: "medium",
+            timeStyle: "short",
+        }).format(new Date(v)),
+    scheduleLabel = (p: any) =>
+        p.starts_at || p.ends_at
+            ? `${p.starts_at ? dt(p.starts_at) : "Immediately"} – ${p.ends_at ? dt(p.ends_at) : "No end date"}`
+            : "Always while active";
 onMounted(() => {
-  loadPricingRules()
-})
+    loadPromotions();
+    loadOptions();
+});
 </script>
+
+<style scoped>
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.field label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.field small,
+.hint {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.field .error {
+    color: #dc2626;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 1.25rem;
+}
+
+.detail-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+.detail-value {
+    margin-top: 0.2rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+</style>

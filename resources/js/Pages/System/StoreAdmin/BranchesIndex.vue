@@ -3,9 +3,8 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Branches</h1>
-        <p class="text-sm text-slate-600">Manage store branches and geofence coverage.</p>
       </div>
-      <Button label="Add Branch" icon="pi pi-plus" @click="openCreateDialog" />
+      <Button label="Add Branch" icon="pi pi-plus" size="small" severity="warn" @click="openCreateDialog" />
     </div>
 
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
@@ -16,14 +15,22 @@
             <InputText v-model="search" placeholder="Search branch name or code" size="small" @input="loadBranches" />
           </div>
 
-          <DataTable
+          <div v-if="loading" class="space-y-3 py-2" aria-label="Loading branches">
+            <div class="grid grid-cols-4 gap-3">
+              <Skeleton v-for="column in 4" :key="`branch-heading-${column}`" height="1.25rem" />
+            </div>
+            <div v-for="row in 5" :key="`branch-row-${row}`" class="grid grid-cols-4 gap-3">
+              <Skeleton v-for="column in 4" :key="`branch-${row}-${column}`" height="2.5rem" />
+            </div>
+          </div>
+          <DataTable v-else
             :value="filteredBranches"
             :paginator="true"
             :rows="10"
             size="small"
-            stripedRows
+            rowHover
             dataKey="id"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-sm"
           >
             <Column field="name" header="Branch" sortable>
               <template #body="{ data }">
@@ -37,9 +44,17 @@
             <Column field="address" header="Address" />
             <Column header="Action" style="width: 110px">
               <template #body="{ data }">
-                <Button label="View" text size="small" icon="pi pi-arrow-right" @click="viewBranch(data.id)" />
+                <Button icon="pi pi-eye" text size="small"  @click="viewBranch(data.id)" />
               </template>
             </Column>
+            <template #empty>
+              <div class="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <i class="pi pi-building text-3xl text-slate-300" />
+                <p class="font-semibold text-slate-700">{{ search ? 'No branches match this search' : 'No branches registered yet' }}</p>
+                <p class="max-w-md text-sm text-slate-500">{{ search ? 'Try another branch name or code.' : 'Add a branch to manage this store’s locations.' }}</p>
+                <Button v-if="!search" label="Add Branch" icon="pi pi-plus" size="small" severity="warn" class="mt-1" @click="openCreateDialog" />
+              </div>
+            </template>
           </DataTable>
         </div>
       </template>
@@ -68,7 +83,13 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="space-y-2">
             <label class="text-xs font-semibold text-slate-600">Province</label>
-            <InputText v-model="form.province" class="w-full" readonly />
+            <Select v-if="form.branch_type === 'warehouse'" v-model="form.provinceId"
+              :options="provinceOptions" optionLabel="label" optionValue="value"
+              placeholder="Select province" filter fluid class="w-full"
+              :class="{ 'p-invalid': validationErrors.province }"
+              @change="onProvinceChange" />
+            <InputText v-else v-model="form.province" class="w-full" readonly />
+            <small v-if="validationErrors.province" class="text-xs text-red-600">{{ validationErrors.province }}</small>
           </div>
           <div class="space-y-2">
             <label class="text-xs font-semibold text-slate-600">City</label>
@@ -127,6 +148,7 @@ import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Dropdown from 'primevue/dropdown'
@@ -141,6 +163,7 @@ const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const branches = ref<any[]>([])
+const registeredStoreLocation = ref<any>(null)
 const search = ref('')
 const showCreateDialog = ref(false)
 const validationErrors = ref<Record<string, string>>({})
@@ -152,6 +175,7 @@ const isBarangaysLoading = ref(false)
 
 const branchTypeOptions = [
   { label: 'Storefront', value: 'storefront' },
+  { label: 'Wholesale', value: 'wholesale' },
   { label: 'Warehouse', value: 'warehouse' },
 ]
 
@@ -170,23 +194,28 @@ const emptyForm = () => ({
 
 const form = ref(emptyForm())
 
-const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
-const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name || c.city_name, value: String(c.city_id || c.code || c.id || '') })))
+const provinceOptions = computed(() => provinces.value.map((p: any) => ({
+  label: p.name || p.province_name,
+  value: String(p.province_id || p.code || p.id || ''),
+})))
+const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name || b.barangay_name, value: String(b.code || b.id || '') })))
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase()
 
 const applyDefaultProvince = () => {
-  const cavite = provinces.value.find((p: any) => normalize(p.name) === 'cavite')
+  const cavite = provinces.value.find((p: any) => normalize(p.name || p.province_name) === 'cavite')
   if (cavite) {
-    form.value.provinceId = cavite.province_id
-    form.value.province = cavite.name
+    form.value.provinceId = String(cavite.province_id || cavite.code || cavite.id || '')
+    form.value.province = cavite.name || cavite.province_name
   }
 }
 
 const fetchProvinces = async () => {
   const response = await ecommerceService.getProvinces()
-  provinces.value = response.data || []
-  applyDefaultProvince()
+  const data = response.data?.data ?? response.data ?? []
+  provinces.value = Array.isArray(data) ? data : []
+  if (form.value.branch_type !== 'warehouse') applyDefaultProvince()
 }
 
 const fetchCities = async (provinceId: string) => {
@@ -197,7 +226,8 @@ const fetchCities = async (provinceId: string) => {
   try {
     isCitiesLoading.value = true
     const response = await ecommerceService.getCities(provinceId)
-    cities.value = response.data || []
+    const data = response.data?.data ?? response.data ?? []
+    cities.value = Array.isArray(data) ? data : []
   } finally {
     isCitiesLoading.value = false
   }
@@ -211,20 +241,21 @@ const fetchBarangays = async (cityId: string) => {
   try {
     isBarangaysLoading.value = true
     const response = await ecommerceService.getBarangays(cityId)
-    barangays.value = response.data || []
+    const data = response.data?.data ?? response.data ?? []
+    barangays.value = Array.isArray(data) ? data : []
   } finally {
     isBarangaysLoading.value = false
   }
 }
 
 const resolveSelectedCityName = () => {
-  const match = cities.value.find((c: any) => String(c.city_id) === String(form.value.cityId))
-  return match?.name || ''
+  const match = cities.value.find((c: any) => String(c.city_id || c.code || c.id || '') === String(form.value.cityId))
+  return match?.name || match?.city_name || ''
 }
 
 const resolveSelectedBarangayName = () => {
-  const match = barangays.value.find((b: any) => String(b.code) === String(form.value.barangayCode))
-  return match?.name || ''
+  const match = barangays.value.find((b: any) => String(b.code || b.id || '') === String(form.value.barangayCode))
+  return match?.name || match?.barangay_name || ''
 }
 
 const onCityChange = async () => {
@@ -232,6 +263,31 @@ const onCityChange = async () => {
   form.value.barangay = ''
   await fetchBarangays(String(form.value.cityId || ''))
 }
+
+const onProvinceChange = () => {
+  const selected = provinces.value.find((p: any) =>
+    String(p.province_id || p.code || p.id || '') === String(form.value.provinceId))
+  form.value.province = selected?.name || selected?.province_name || ''
+  form.value.cityId = ''
+  form.value.city = ''
+  form.value.barangayCode = ''
+  form.value.barangay = ''
+  cities.value = []
+  barangays.value = []
+}
+
+watch(() => form.value.branch_type, (type, previous) => {
+  if (type === previous) return
+  form.value.provinceId = ''
+  form.value.province = ''
+  form.value.cityId = ''
+  form.value.city = ''
+  form.value.barangayCode = ''
+  form.value.barangay = ''
+  cities.value = []
+  barangays.value = []
+  if (type !== 'warehouse') applyDefaultProvince()
+})
 
 watch(
   () => form.value.provinceId,
@@ -261,6 +317,7 @@ const loadBranches = async () => {
     const res = await inventoryService.getBranches()
     const payload = res?.data ?? res ?? {}
     branches.value = payload.data ?? payload ?? []
+    registeredStoreLocation.value = payload.store_location ?? null
   } finally {
     loading.value = false
   }
@@ -292,16 +349,41 @@ const openCreateDialog = async () => {
   if (form.value.provinceId) {
     await fetchCities(String(form.value.provinceId))
   }
+
+  const storeLocation = registeredStoreLocation.value
+  if (storeLocation && normalize(storeLocation.province) === 'cavite') {
+    form.value.province = storeLocation.province || form.value.province
+    const matchingCity = cities.value.find(
+      (city: any) => normalize(city.name || city.city_name) === normalize(storeLocation.city),
+    )
+    if (matchingCity) {
+      form.value.cityId = String(matchingCity.city_id || matchingCity.id || matchingCity.code || '')
+      form.value.city = matchingCity.name || matchingCity.city_name || storeLocation.city || ''
+      await fetchBarangays(form.value.cityId)
+
+      const matchingBarangay = barangays.value.find(
+        (barangay: any) => normalize(barangay.name || barangay.barangay_name) === normalize(storeLocation.barangay),
+      )
+      if (matchingBarangay) {
+        form.value.barangayCode = String(matchingBarangay.code || matchingBarangay.id || '')
+        form.value.barangay = matchingBarangay.name || matchingBarangay.barangay_name || storeLocation.barangay || ''
+      } else {
+        // Keep the registered value even if the external location API is unavailable.
+        form.value.barangay = storeLocation.barangay || ''
+      }
+    }
+  }
 }
 
 const createBranch = async () => {
   validationErrors.value = {}
   form.value.city = resolveSelectedCityName()
-  form.value.barangay = resolveSelectedBarangayName()
+  form.value.barangay = resolveSelectedBarangayName() || form.value.barangay
 
   const errors: Record<string, string> = {}
   if (!form.value.name.trim()) errors.name = 'Branch name is required.'
   if (!form.value.address.trim()) errors.address = 'Address is required.'
+  if (!form.value.provinceId || !form.value.province) errors.province = 'Province is required.'
   if (!form.value.city) errors.city = 'City is required.'
   if (!form.value.barangay) errors.barangay = 'Barangay is required.'
 

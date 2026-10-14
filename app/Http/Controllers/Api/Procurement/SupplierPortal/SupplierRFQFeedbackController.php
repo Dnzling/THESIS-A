@@ -9,6 +9,10 @@ use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierRFQFeedbackController extends Controller
@@ -32,8 +36,13 @@ class SupplierRFQFeedbackController extends Controller
             }
 
             // Get all active RFQs (exclude drafts/cancelled)
+            $relations = ['items.product', 'store'];
+            if (Schema::hasTable('rfq_attachments')) {
+                $relations[] = 'attachments';
+            }
+
             $query = RequestForQuotation::whereNotIn('status', ['draft', 'cancelled'])
-                ->with(['items.product', 'attachments', 'store'])
+                ->with($relations)
                 ->orderBy('created_at', 'desc');
 
             // Filter by search
@@ -98,7 +107,7 @@ class SupplierRFQFeedbackController extends Controller
                 }
                 if (!empty($arr['attachments']) && is_array($arr['attachments'])) {
                     foreach ($arr['attachments'] as &$att) {
-                        if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                        if (isset($att['file_path'])) unset($att['file_path']);
                     }
                 }
                 return $arr;
@@ -109,6 +118,11 @@ class SupplierRFQFeedbackController extends Controller
                 'data' => $rfqs,
             ]);
         } catch (\Exception $e) {
+            Log::error('Supplier RFQ index failed.', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching RFQs: ' . $e->getMessage(),
@@ -124,7 +138,13 @@ class SupplierRFQFeedbackController extends Controller
     {
         try {
             $user = auth()->user();
-            $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
+            $portal = SupplierPortal::where('user_id', $user->id)->first();
+            if (!$portal) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier portal not found.',
+                ], 404);
+            }
 
             if (!$portal->isVerified()) {
                 return response()->json([
@@ -133,8 +153,17 @@ class SupplierRFQFeedbackController extends Controller
                 ], 409);
             }
 
-            $rfq = RequestForQuotation::with(['items.product', 'attachments', 'store'])
-                ->findOrFail($id);
+            // Only expose public variant attributes to suppliers; never serialize cost_price.
+            $relations = [
+                'items.product',
+                'items.variation:id,product_id,variation_name,variation_sku,color,size,material,texture,finish',
+                'store',
+            ];
+            if (Schema::hasTable('rfq_attachments')) {
+                $relations[] = 'attachments';
+            }
+
+            $rfq = RequestForQuotation::with($relations)->findOrFail($id);
 
             // Mark RFQ as viewed for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $id)
@@ -153,6 +182,7 @@ class SupplierRFQFeedbackController extends Controller
 
             // Hide payment_terms and attachment_path from supplier-facing detail
             $rfqArr = $rfq->toArray();
+            $rfqArr['attachments'] = $rfqArr['attachments'] ?? [];
             if ($rfq->relationLoaded('store') && $rfq->store) {
                 $rfqArr['store'] = [
                     'id' => $rfq->store->id ?? null,
@@ -173,7 +203,7 @@ class SupplierRFQFeedbackController extends Controller
             }
             if (!empty($rfqArr['attachments']) && is_array($rfqArr['attachments'])) {
                 foreach ($rfqArr['attachments'] as &$att) {
-                    if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                    if (isset($att['file_path'])) unset($att['file_path']);
                 }
             }
 
@@ -184,10 +214,21 @@ class SupplierRFQFeedbackController extends Controller
                     'supplier_feedback' => $feedback,
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching RFQ: ' . $e->getMessage(),
+                'message' => 'RFQ not found.',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Supplier RFQ detail failed.', [
+                'user_id' => auth()->id(),
+                'rfq_id' => $id,
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching RFQ details.',
             ], 500);
         }
     }
@@ -202,6 +243,36 @@ class SupplierRFQFeedbackController extends Controller
             'rfq_id' => 'required|exists:request_for_quotations,id',
             'rfq_item_id' => 'required|exists:rfq_items,id',
             'quoted_price' => 'required|numeric|min:0.01',
+            'available_quantity' => 'required|numeric|min:0',
+            'has_variant' => 'nullable|boolean',
+            'variant_name' => 'required_if:has_variant,1|nullable|string|max:200',
+            'supplier_sku' => 'nullable|string|max:100',
+            'variant_size' => 'nullable|string|max:100',
+            'variant_color' => 'nullable|string|max:100',
+            'variant_texture' => 'nullable|string|max:100',
+            'variant_finish' => 'nullable|string|max:100',
+            'variant_material' => 'nullable|string|max:100',
+            'unit_of_measurement' => 'nullable|string|max:50',
+            'variant_images' => 'nullable|array|max:5',
+            'variant_images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+            'additional_variants' => 'nullable|array|max:20',
+            'additional_variants.*.variant_name' => 'required|string|max:200',
+            'additional_variants.*.supplier_sku' => 'nullable|string|max:100',
+            'additional_variants.*.unit_of_measurement' => 'nullable|string|max:50',
+            'additional_variants.*.variant_size' => 'nullable|string|max:100',
+            'additional_variants.*.variant_color' => 'nullable|string|max:100',
+            'additional_variants.*.variant_material' => 'nullable|string|max:100',
+            'additional_variants.*.variant_texture' => 'nullable|string|max:100',
+            'additional_variants.*.variant_finish' => 'nullable|string|max:100',
+            'length_cm' => 'required|numeric|min:0.01',
+            'width_cm' => 'required|numeric|min:0.01',
+            'height_cm' => 'required|numeric|min:0.01',
+            'weight_kg' => 'required|numeric|min:0.001',
+            'estimated_delivery_date' => 'required|date',
+            'quotation_valid_until' => 'required|date|after_or_equal:today',
+            'attachment' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx|max:5120',
+            'product_specifications' => 'nullable|string|max:2000',
+            'additional_notes' => 'nullable|string|max:2000',
             'description' => 'nullable|string|max:1000',
         ]);
 
@@ -257,6 +328,14 @@ class SupplierRFQFeedbackController extends Controller
             $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
 
             // Create or update feedback (use contract tax rate)
+            $attachmentPath = $request->hasFile('attachment')
+                ? $request->file('attachment')->store('supplier/rfq-attachments', 'public')
+                : null;
+            $variantImagePaths = collect($request->file('variant_images', []))
+                ->map(fn ($image) => $image->store('supplier/rfq-variant-images', 'public'))
+                ->values()
+                ->all();
+
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
                     'supplier_portal_id' => $portal->id,
@@ -265,6 +344,28 @@ class SupplierRFQFeedbackController extends Controller
                 [
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
+                    'available_quantity' => $request->available_quantity,
+                    'has_variant' => $request->boolean('has_variant'),
+                    'variant_name' => $request->boolean('has_variant') ? $request->variant_name : null,
+                    'supplier_sku' => $request->boolean('has_variant') ? $request->supplier_sku : null,
+                    'variant_size' => $request->boolean('has_variant') ? $request->variant_size : null,
+                    'variant_color' => $request->boolean('has_variant') ? $request->variant_color : null,
+                    'variant_texture' => $request->boolean('has_variant') ? $request->variant_texture : null,
+                    'variant_finish' => $request->boolean('has_variant') ? $request->variant_finish : null,
+                    'variant_material' => $request->boolean('has_variant') ? $request->variant_material : null,
+                    'unit_of_measurement' => $request->boolean('has_variant') ? $request->unit_of_measurement : null,
+                    'length_cm' => $request->length_cm,
+                    'width_cm' => $request->width_cm,
+                    'height_cm' => $request->height_cm,
+                    'weight_kg' => $request->weight_kg,
+                    'estimated_delivery_date' => $request->estimated_delivery_date,
+                    'quotation_valid_until' => $request->quotation_valid_until,
+                    'attachment_path' => $attachmentPath,
+                    'variant_image_paths' => $variantImagePaths ?: null,
+                    'additional_variants' => $request->boolean('has_variant') ? $request->input('additional_variants', []) : [],
+                    'merchandising_status' => $request->boolean('has_variant') ? 'awaiting_procurement_approval' : null,
+                    'product_specifications' => $request->product_specifications,
+                    'additional_notes' => $request->additional_notes,
                     'tax_rate' => $contractTaxRate,
                     'description' => $request->description,
                     'status' => 'pending',
@@ -303,17 +404,21 @@ class SupplierRFQFeedbackController extends Controller
                             $subtotal = \App\Models\Procurement\RFQ\SupplierQuotationItem::where('quotation_id', $quotation->id)
                                 ->sum('line_total');
 
+                            $discountPercent = (float) ($contract?->discount_percentage ?? 0);
+                            $discountAmount = round((float) $subtotal * ($discountPercent / 100), 2);
+                            $taxableAmount = max(0, (float) $subtotal - $discountAmount);
                             $taxAmount = 0;
                             if (!empty($contractTaxRate)) {
-                                $taxAmount = bcmul((string)$subtotal, bcdiv((string)$contractTaxRate, '100', 4), 2);
+                                $taxAmount = bcmul((string)$taxableAmount, bcdiv((string)$contractTaxRate, '100', 4), 2);
                             }
 
-                            $total = bcadd($subtotal, $taxAmount, 2);
+                            $total = bcadd((string) $taxableAmount, $taxAmount, 2);
 
                             // Update columns if they exist
                             $updateData = [];
                             $cols = array_map(fn($c) => is_object($c) ? $c->Field : $c['Field'], DB::select("SHOW COLUMNS FROM supplier_quotations"));
                             if (in_array('subtotal', $cols, true)) $updateData['subtotal'] = $subtotal;
+                            if (in_array('discount_amount', $cols, true)) $updateData['discount_amount'] = $discountAmount;
                             if (in_array('tax_amount', $cols, true)) $updateData['tax_amount'] = $taxAmount;
                             if (in_array('total_amount', $cols, true)) $updateData['total_amount'] = $total;
 

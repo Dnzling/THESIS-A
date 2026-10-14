@@ -1,53 +1,44 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="grid grid-cols-2 items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Request for Quotations</h1>
+        <h1 class="text-xl font-semibold text-gray-900 tracking-tight">Request for Quotations</h1>
       </div>
+     
     </div>
   
     <!-- Filters -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <template #header>
-        <div class="px-6 pt-6 flex items-center gap-2">
-  
-          <h2 class="text-lg font-semibold text-gray-900">Filters</h2>
-        </div>
-      </template>
-      <template #content>
-        <div class="p-6 pt-2 grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div class="md:col-span-2 space-y-2">
-            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
-            <div class="relative">
-              <InputText v-model="searchQuery" size="small" fluid placeholder="Search RFQ number" class="w-full pl-9"
-                @input="onSearch" />
-            </div>
-          </div>
-  
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
-            <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" size="small" fluid
-              optionValue="value" placeholder="All statuses" @change="onFilterChange" />
-          </div>
-  
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Date Range</label>
-            <DatePicker v-model="dateRange" selectionMode="range" size="small" fluid dateFormat="yy-mm-dd" showIcon @update:modelValue="onFilterChange" />
-          </div>
-  
-          <div class="flex items-end">
-            <Button label="Reset" icon="pi pi-times" size="small" fluid outlined rounded  @click="resetFilters" />
-          </div>
-        </div>
-      </template>
-    </Card>
   
     <!-- Table -->
     <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <template #header>
         <div class="px-6 pt-6 flex items-center gap-2">
-
+   <div class="p-6 pt-2 grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="md:col-span-2 space-y-2">
+              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
+              <div class="relative">
+                <InputText v-model="searchQuery" size="small" fluid placeholder="Search RFQ number" class="w-full pl-9"
+                  @input="onSearch" />
+              </div>
+            </div>
+  
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
+              <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" size="small" fluid
+                optionValue="value" placeholder="All statuses" @change="onFilterChange" />
+            </div>
+  
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Date Range</label>
+              <DatePicker v-model="dateRange" selectionMode="range" size="small" fluid dateFormat="yy-mm-dd" showIcon
+                @update:modelValue="onFilterChange" />
+            </div>
+  
+            <div class="flex items-end">
+              <Button label="Reset" icon="pi pi-times" size="small" fluid outlined rounded @click="resetFilters" />
+            </div>
+          </div>
         </div>
       </template>
       <template #content>
@@ -55,25 +46,11 @@
           <div v-if="loading" class="space-y-3">
             <Skeleton v-for="i in 5" :key="i" height="64px" class="rounded-xl" />
           </div>
-          <DataTable
-            v-else
-            :value="rfqs"
-            :paginator="true"
-            :rows="rows"
-            :first="first"
-            :totalRecords="totalRecords"
-            :lazy="true"
-            dataKey="id"
-            stripedRows
-            sortMode="single"
-            :sortField="sortField"
-            :sortOrder="sortOrder"
-            @sort="onSort"
-            @page="onPageChange"
-            class="p-datatable-sm"
+          <DataTable v-else :value="rfqs" :paginator="true" :rows="rows" :first="first" :totalRecords="totalRecords"
+            :lazy="true" dataKey="id" sortMode="single" :sortField="sortField" :sortOrder="sortOrder"
+            @sort="onSort" @page="onPageChange" class="p-datatable-sm" rowHover
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
-            :rowsPerPageOptions="[5,10,20,50]"
-          >
+            :rowsPerPageOptions="[10,20,50]">
             <template #empty>
               <div class="text-center text-sm text-gray-500 py-6">No RFQs found.</div>
             </template>
@@ -83,13 +60,11 @@
                 <span class="text-sm text-gray-700">{{ formatDate(data.created_at) }}</span>
               </template>
             </Column>
-
+  
             <Column header="RFQ" field="rfq_number" style="min-width: 200px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i class="pi pi-file text-blue-600 text-xs"></i>
-                  </div>
+              
                   <div>
                     <div class="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer"
                       @click="viewDetail(data.id)">
@@ -99,7 +74,8 @@
                       <span>{{ data.items?.length || 0 }} items</span>
                       <span class="text-[11px] text-gray-400">
                         Store:
-                        {{ data.store?.store_name || data.store?.name || data.store_name || data.store?.store_code || 'N/A' }}
+                        {{ data.store?.store_name || data.store?.name || data.store_name || data.store?.store_code ||
+                        'N/A' }}
                       </span>
                     </div>
                   </div>
@@ -115,14 +91,14 @@
   
             <Column header="Status" field="status" style="min-width: 140px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)"
+                <Badge :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)"
                   class="rounded-full text-xs px-3 py-1 font-medium" />
               </template>
             </Column>
   
             <Column header="Action" style="width: 110px">
               <template #body="{ data }">
-                <Button label="View" icon="pi pi-arrow-right" text @click.stop="viewDetail(data.id)" />
+                <Button size="small" icon="pi pi-eye" text @click.stop="viewDetail(data.id)" />
               </template>
             </Column>
           </DataTable>
@@ -281,19 +257,6 @@ onMounted(() => {
 
   @media (max-width: 768px) {
     padding: 16px;
-  }
-}
-
-.ios-card {
-  background: white;
-  border-radius: 20px;
-  border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-  transition: all 0.2s ease;
-
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 }
 

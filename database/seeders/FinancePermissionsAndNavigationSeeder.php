@@ -22,8 +22,9 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'cashflow',
             'invoices',
             'purchase-orders',
-            'price-approvals',
             'refunds',
+            'liquidations',
+            'tax-vat',
         ];
 
         // Standardize finance permissions to a minimal, predictable set
@@ -76,7 +77,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             );
         }
 
-        $roleNames = ['super_admin', 'store_admin', 'owner', 'accountant'];
+        $roleNames = ['super_admin', 'owner', 'accountant'];
         $roleIds = DB::table('roles')->whereIn('name', $roleNames)->pluck('id');
         $financePermissionIds = DB::table('permissions')->where('name', 'like', 'finance.%')->pluck('id');
 
@@ -118,14 +119,24 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'display_order' => 9,
             ],
             [
-                'name' => 'finance.price-approvals',
-                'display_name' => 'Price Approvals',
+                'name' => 'finance.liquidations',
+                'display_name' => 'Liquidations',
                 'module' => 'finance',
-                'section' => 'pricing',
-                'route_name' => 'finance.price-approvals',
-                'route_path' => '/finance/price-approvals',
-                'icon' => 'pi pi-sliders-h',
-                'display_order' => 10,
+                'section' => 'liquidations',
+                'route_name' => 'finance.liquidations',
+                'route_path' => '/finance/liquidations',
+                'icon' => 'pi pi-receipt',
+                'display_order' => 9,
+            ],
+            [
+                'name' => 'finance.tax-vat',
+                'display_name' => 'Tax / VAT Report',
+                'module' => 'finance',
+                'section' => 'tax',
+                'route_name' => 'finance.tax-vat',
+                'route_path' => '/finance/tax-vat',
+                'icon' => 'pi pi-percentage',
+                'display_order' => 11,
             ],
         ];
 
@@ -156,9 +167,10 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'finance.budgets' => 'finance.budgets.view',
             'finance.reports' => 'finance.reports.view',
             'finance.purchase-orders' => 'finance.purchase-orders.view',
-            'finance.price-approvals' => 'finance.price-approvals.view',
             'finance.cashflow' => 'finance.cashflow.view',
             'finance.refunds' => 'finance.refunds.view',
+            'finance.liquidations' => 'finance.liquidations.view',
+            'finance.tax-vat' => 'finance.tax-vat.view',
         ];
 
         foreach ($navPermissionMap as $navName => $permissionName) {

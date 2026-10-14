@@ -9,10 +9,10 @@
         <router-link to="/" class="nav-link" :class="{ 'nav-link-active': route.path === '/' }">
           Home
         </router-link>
-        <router-link to="/about" class="nav-link" :class="{ 'nav-link-active': route.path === '/about' }">
+        <router-link to="/business/about" class="nav-link" :class="{ 'nav-link-active': route.path === '/business/about' }">
           About
         </router-link>
-        <router-link to="/pricing" class="nav-link" :class="{ 'nav-link-active': route.path === '/pricing' }">
+        <router-link to="/business/pricing" class="nav-link" :class="{ 'nav-link-active': route.path === '/business/pricing' }">
           Pricing
         </router-link>
       </div>
@@ -47,10 +47,10 @@
         <router-link to="/" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/' }" @click="closeMobileMenu">
           Home
         </router-link>
-        <router-link to="/about" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/about' }" @click="closeMobileMenu">
+        <router-link to="/business/about" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/business/about' }" @click="closeMobileMenu">
           About
         </router-link>
-        <router-link to="/pricing" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/pricing' }" @click="closeMobileMenu">
+        <router-link to="/business/pricing" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/business/pricing' }" @click="closeMobileMenu">
           Pricing
         </router-link>
         <router-link to="/login" class="mobile-link" @click="closeMobileMenu">Sign In</router-link>

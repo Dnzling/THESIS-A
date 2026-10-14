@@ -32,7 +32,7 @@ class RecruitmentPermissionsSeeder extends Seeder
             ->whereIn('name', array_column($permissions, 'name'))
             ->pluck('id');
 
-        $roleNames = ['HR Manager', 'hr_manager', 'store_admin', 'owner', 'super_admin'];
+        $roleNames = ['HR Manager', 'hr_manager', 'owner', 'super_admin'];
         $roles = DB::table('roles')->whereIn('name', $roleNames)->get();
 
         foreach ($roles as $role) {

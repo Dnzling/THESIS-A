@@ -25,12 +25,15 @@ class Store extends Model
         'phone',
         'email',
         'city',
+        'barangay',
         'address',
         'status',
         'subscription_tier',
+        'subscription_status',
         'subscription_ends_at',
         'trial_started_at',
         'trial_ends_at',
+        'position_setup_completed_at',
         'longitude',
         'latitude',
         'deactivation_reason',
@@ -51,6 +54,7 @@ class Store extends Model
         'subscription_ends_at' => 'date',
         'trial_started_at' => 'datetime',
         'trial_ends_at' => 'datetime',
+        'position_setup_completed_at' => 'datetime',
         'deactivated_at' => 'datetime',
         'settings' => 'array',
     ];
@@ -68,7 +72,12 @@ class Store extends Model
     // Check if store is verified
     public function isVerified(): bool
     {
-        return $this->status === 'verified';
+        if ($this->verified_at !== null) {
+            return true;
+        }
+
+        $verification = $this->verification;
+        return $verification?->reviewed_at !== null && $verification?->rejection_reason === null;
     }
 
     // Check if store has submitted documents
@@ -94,6 +103,14 @@ class Store extends Model
     public function branches()
     {
         return $this->hasMany(Branch::class, 'store_id', 'id');
+    }
+
+    public function logoBranch(): HasOne
+    {
+        return $this->hasOne(Branch::class, 'store_id', 'id')
+            ->whereNotNull('logo_path')
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id');
     }
 
     public function products()
@@ -264,7 +281,7 @@ class Store extends Model
      */
     public function deactivate()
     {
-        $this->update(['status' => 'inactive']);
+        $this->update(['status' => 'deactivated']);
         return $this;
     }
 

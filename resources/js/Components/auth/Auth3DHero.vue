@@ -11,9 +11,9 @@
     <div class="relative z-10 space-y-6">
 
       <div>
-        <h1 class="text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
+        <Link href="/" class="inline-flex text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
           FURNISYNC
-        </h1>
+        </Link>
         <p class="mt-4 max-w-md text-sm leading-relaxed opacity-90 lg:text-base">
           {{ subtitle }}
         </p>
@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { Link } from '@inertiajs/vue3'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
@@ -43,19 +44,21 @@ const props = withDefaults(defineProps<{
   subtitle?: string
   brand?: string
   footer?: string
+  visual?: 'abstract' | 'furniture'
 }>(), {
   theme: 'light',
   title: 'Furnisync',
   subtitle: 'Showcase your catalog in 3D and create immersive product stories in minutes.',
   brand: 'Furnisync',
   footer: 'Interactive 3D model preview',
+  visual: 'abstract',
 })
 
 const host = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer | null = null
 let scene: THREE.Scene | null = null
 let camera: THREE.PerspectiveCamera | null = null
-let mesh: THREE.Mesh | null = null
+let model: THREE.Object3D | null = null
 let controls: OrbitControls | null = null
 let animationId: number | null = null
 
@@ -73,7 +76,42 @@ const cleanup = () => {
   renderer = null
   scene = null
   camera = null
-  mesh = null
+  model?.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return
+    child.geometry.dispose()
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    materials.forEach((material) => material.dispose())
+  })
+  model = null
+}
+
+const createFurnitureModel = () => {
+  const chair = new THREE.Group()
+  const walnut = new THREE.MeshStandardMaterial({ color: 0x694028, roughness: 0.55, metalness: 0.08 })
+  const edge = new THREE.MeshStandardMaterial({ color: 0x472b20, roughness: 0.58 })
+  const fabric = new THREE.MeshStandardMaterial({ color: 0xf4eee4, roughness: 0.95 })
+  const accent = new THREE.MeshStandardMaterial({ color: 0xd5b69d, roughness: 0.9 })
+  const addBox = (size: [number, number, number], position: [number, number, number], material: THREE.Material) => {
+    const part = new THREE.Mesh(new THREE.BoxGeometry(...size), material)
+    part.position.set(...position)
+    chair.add(part)
+    return part
+  }
+
+  // A compact upholstered accent chair keeps the hero relevant without depending on uploaded assets.
+  addBox([2.05, 0.17, 1.65], [0, -0.35, 0], walnut)
+  addBox([1.75, 0.28, 1.46], [0, -0.18, 0.02], fabric)
+  addBox([2.05, 1.65, 0.18], [0, 0.53, -0.74], walnut)
+  addBox([1.73, 1.23, 0.16], [0, 0.51, -0.61], fabric)
+  for (const x of [-0.93, 0.93]) {
+    addBox([0.16, 0.94, 0.16], [x, -0.91, -0.62], edge)
+    addBox([0.16, 0.94, 0.16], [x, -0.91, 0.62], edge)
+    addBox([0.14, 0.12, 1.44], [x, 0.19, 0], walnut)
+    addBox([0.19, 0.26, 0.2], [x, 0.04, 0.58], walnut)
+  }
+  addBox([1.69, 0.1, 0.12], [0, -1.06, 0.59], accent)
+  chair.rotation.y = -0.38
+  return chair
 }
 
 const animate = () => {
@@ -91,7 +129,7 @@ const initScene = () => {
 
   scene = new THREE.Scene()
   camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
-  camera.position.set(0, 0.6, 4)
+  camera.position.set(0, 0.6, props.visual === 'furniture' ? 4.7 : 4)
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setSize(width, height)
@@ -106,17 +144,20 @@ const initScene = () => {
   rim.position.set(-4, 2, -3)
   scene.add(rim)
 
-  const geometry = new THREE.TorusKnotGeometry(1, 0.35, 140, 24)
-  const material = new THREE.MeshStandardMaterial({
-    color: props.theme === 'dark' ? 0x38bdf8 : 0xf8fafc,
-    metalness: 0.35,
-    roughness: 0.25,
-  })
-  mesh = new THREE.Mesh(geometry, material)
-  const box = new THREE.Box3().setFromObject(mesh)
+  model = props.visual === 'furniture'
+    ? createFurnitureModel()
+    : new THREE.Mesh(
+      new THREE.TorusKnotGeometry(1, 0.35, 140, 24),
+      new THREE.MeshStandardMaterial({
+        color: props.theme === 'dark' ? 0x38bdf8 : 0xf8fafc,
+        metalness: 0.35,
+        roughness: 0.25,
+      }),
+    )
+  const box = new THREE.Box3().setFromObject(model)
   const center = box.getCenter(new THREE.Vector3())
-  mesh.position.sub(center)
-  scene.add(mesh)
+  model.position.sub(center)
+  scene.add(model)
 
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true

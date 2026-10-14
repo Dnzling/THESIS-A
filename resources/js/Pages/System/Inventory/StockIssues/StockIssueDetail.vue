@@ -1,19 +1,20 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
+  <div class=" min-h-screen p-6">
     <div class="max-w-6xl mx-auto">
       <div class="mb-6">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Stock Issue Details</h1>
+            <h1 class="text-2xl font-bold text-gray-800">Stock Issue Details</h1>
             <p class="text-gray-600 mt-1">Reference: {{ stockIssue?.issue_number }}</p>
           </div>
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-2">
             <Button
               label="Print"
               icon="pi pi-print"
               severity="info"
               @click="printStockIssue"
               :disabled="loading"
+              size="small"
             />
             <Button
               v-if="stockIssue?.status === 'draft'"
@@ -22,6 +23,7 @@
               severity="secondary"
               @click="editStockIssue"
               :disabled="loading"
+              size="small"
             />
             <Button
               v-if="stockIssue?.status === 'draft'"
@@ -30,13 +32,16 @@
               severity="danger"
               @click="confirmCancel"
               :disabled="loading"
+              size="small"
             />
             <Button
-              label="Back to List"
-              icon="pi pi-arrow-left"
-              severity="secondary"
-              @click="goBack"
-              :disabled="loading"
+              v-if="stockIssue?.status === 'submitted' && canApprove"
+              label="Approve"
+              icon="pi pi-check"
+              severity="success"
+              size="small"
+              @click="approveStockIssue"
+              :loading="actionLoading"
             />
           </div>
         </div>
@@ -64,9 +69,16 @@
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
                       <Tag
-                        :value="stockIssue.issue_type"
+                        :value="formatReason(stockIssue.issue_type)"
                         :severity="getTypeSeverity(stockIssue.issue_type)"
                         class="capitalize"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Movement</label>
+                      <Tag
+                        :value="stockIssue.movement_type === 'add' ? 'Add Stock' : 'Deduct Stock'"
+                        :severity="stockIssue.movement_type === 'add' ? 'success' : 'danger'"
                       />
                     </div>
                     <div>
@@ -77,10 +89,7 @@
                         class="capitalize"
                       />
                     </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
-                      <p class="text-gray-900">{{ formatDate(stockIssue.issue_date) }}</p>
-                    </div>
+                  
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                       <p class="text-gray-900">{{ stockIssue.branch?.name || 'N/A' }}</p>
@@ -174,19 +183,16 @@
                     {{ slotProps.data.inventory_item?.product?.product_name || 'N/A' }}
                   </template>
                 </Column>
-                <Column header="Location" style="width: 150px">
-                  <template #body="slotProps">
-                    <span v-if="slotProps.data.inventory_item">
-                      {{ formatLocation(slotProps.data.inventory_item) }}
-                    </span>
-                    <span v-else>N/A</span>
-                  </template>
-                </Column>
                 <Column field="quantity" header="Quantity" style="width: 100px">
                   <template #body="slotProps">
                     <span class="font-medium text-red-600">
                       -{{ slotProps.data.quantity }}
                     </span>
+                  </template>
+                </Column>
+                <Column header="Unit" style="width: 100px">
+                  <template #body="slotProps">
+                    {{ slotProps.data.inventory_item?.product?.unit_of_measurement || '—' }}
                   </template>
                 </Column>
                 <Column field="unit_cost" header="Unit Cost" style="width: 120px">
@@ -197,20 +203,6 @@
                 <Column field="total_value" header="Total Value" style="width: 120px">
                   <template #body="slotProps">
                     ₱{{ formatNumber(slotProps.data.total_value) }}
-                  </template>
-                </Column>
-                <Column field="reason" header="Reason" style="min-width: 150px">
-                  <template #body="slotProps">
-                    <Tag
-                      :value="formatReason(slotProps.data.reason)"
-                      :severity="getReasonSeverity(slotProps.data.reason)"
-                      class="capitalize"
-                    />
-                  </template>
-                </Column>
-                <Column field="remarks" header="Remarks" style="min-width: 150px">
-                  <template #body="slotProps">
-                    {{ slotProps.data.remarks || 'N/A' }}
                   </template>
                 </Column>
               </DataTable>
@@ -469,6 +461,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '../../../../stores/auth'
 import inventoryService from '../../../../services/inventory.service'
 
 const loading = ref(true)
@@ -482,6 +475,9 @@ const serialNumbers = ref<any[]>([])
 const toast = useToast()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+const actionLoading = ref(false)
+const canApprove = computed(() => authStore.hasPermission('stock_issues.approve'))
 
 const totalQuantity = computed(() => {
   if (!stockIssue.value?.items) return 0
@@ -834,6 +830,24 @@ const editStockIssue = () => {
 
 const confirmCancel = () => {
   cancelDialog.value = true
+}
+
+const approveStockIssue = async () => {
+  if (!stockIssue.value || !canApprove.value) return
+  actionLoading.value = true
+  try {
+    const response = await inventoryService.approveStockIssue(stockIssue.value.id)
+    if (response.success) {
+      toast.add({ severity: 'success', summary: 'Approved', detail: 'Stock issuance approved and inventory updated.', life: 3000 })
+      await loadStockIssue()
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response.message || 'Failed to approve stock issuance', life: 3000 })
+    }
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to approve stock issuance', life: 3000 })
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 const cancelStockIssue = async () => {

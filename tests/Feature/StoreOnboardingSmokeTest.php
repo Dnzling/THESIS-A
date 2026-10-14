@@ -13,12 +13,12 @@ beforeEach(function () {
 
 function createAuthUser(): User
 {
-    $storeAdminRole = Role::query()->firstOrCreate(
-        ['name' => 'store_admin'],
+    $ownerRole = Role::query()->firstOrCreate(
+        ['name' => 'owner'],
         [
-            'display_name' => 'Store Admin',
-            'code' => 'STORE_ADMIN',
-            'description' => 'Store admin role for smoke tests.',
+            'display_name' => 'Store Owner',
+            'code' => 'OWNER',
+            'description' => 'Store owner role for smoke tests.',
             'is_active' => true,
         ]
     );
@@ -27,7 +27,7 @@ function createAuthUser(): User
         'fname' => 'Test',
         'lname' => 'Owner',
         'email' => 'owner+' . uniqid() . '@example.com',
-        'role_id' => $storeAdminRole->id,
+        'role_id' => $ownerRole->id,
         'is_active' => true,
         'registered_by' => null,
     ]);

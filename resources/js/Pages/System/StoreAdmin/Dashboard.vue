@@ -1,10 +1,16 @@
 <template>
   <div class="space-y-6">
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
+    <div class="">
       <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900">Store Admin Dashboard</h1>
-        <p class="text-sm text-slate-600">Operational overview for your store.</p>
+        <h1 class="text-2xl font-semibold text-slate-900">Store Dashboard</h1>
       </div>
+    </div>
+    <div v-if="dashboard?.store?.subscription_status === 'trial'" class="rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-sm text-orange-900">
+      <span class="font-semibold">Free Trial</span> · {{ dashboard.store.trial_days_remaining }} days remaining
+    </div>
+    <div v-if="dashboard?.store && !dashboard.store.verified" class="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div><div class="font-semibold text-slate-900">Verify Your Store</div><p class="mt-1 text-sm text-slate-600">Complete business verification to establish your store’s verified status.</p></div>
+      <a href="/system/store/verification" class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Verify Store</a>
     </div>
 
     <div v-if="loading" class="rounded-xl border border-slate-200 bg-white p-6">
@@ -73,11 +79,15 @@
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
-                <h3 class="text-base font-semibold text-slate-800">Sales Trend (Last 7 Days)</h3>
-                <p class="text-xs text-slate-500">Daily sales performance.</p>
+                <h3 class="text-base font-semibold text-slate-800">Sales Trend</h3>
+                <p class="text-xs text-slate-500">In-store sales performance.</p>
               </div>
+              <Select v-model="ownerSalesTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Sales trend period" />
             </div>
-            <Chart type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <Skeleton v-if="ownerSalesTrend.loading.value" height="18rem" class="rounded-xl" />
+            <div v-else-if="ownerSalesTrend.error.value" class="flex h-72 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ ownerSalesTrend.error.value }}<Button text label="Try again" @click="ownerSalesTrend.reload" /></div>
+            <Chart v-else-if="ownerSalesTrend.points.value.some((point) => point.value)" type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p>
           </template>
         </Card>
         <Card>
@@ -182,10 +192,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeService } from '@/services/store.service'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import Button from 'primevue/button'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
 const loading = ref(true)
 const error = ref('')
 const dashboard = ref<any>(null)
+const ownerSalesTrend = useDashboardTrend('/api/store/dashboard/trend')
 
 const kpis = computed(() => dashboard.value?.kpis || {
   sales_today: 0,
@@ -199,11 +214,11 @@ const kpis = computed(() => dashboard.value?.kpis || {
 })
 
 const salesTrendData = computed(() => ({
-  labels: dashboard.value?.charts?.sales_trend?.labels || [],
+  labels: ownerSalesTrend.points.value.map((point: any) => point.label),
   datasets: [
     {
       label: 'Sales',
-      data: dashboard.value?.charts?.sales_trend?.values || [],
+      data: ownerSalesTrend.points.value.map((point: any) => Number(point.value)),
       borderColor: '#2563eb',
       backgroundColor: 'rgba(37, 99, 235, 0.15)',
       tension: 0.3,

@@ -6,12 +6,13 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\StockAlert;
 use Illuminate\Support\Str;
+use App\Models\ProductCatalog\Product;
 
 class BranchInventoryObserver
 {
     /**
      * Handle the BranchInventory "saving" event.
-     * Auto-calculate stock_status and total_value before every save.
+     * Auto-calculate quantity availability and stock status before every save.
      */
     public function saving(BranchInventory $inventory): void
     {
@@ -37,9 +38,6 @@ class BranchInventoryObserver
             $inventory->stock_status = 'in_stock';
         }
 
-        // Auto-calculate total_value
-        $avgCost = (float) ($inventory->average_cost ?? 0);
-        $inventory->total_value = round($onHand * $avgCost, 2);
     }
 
     /**
@@ -134,8 +132,12 @@ class BranchInventoryObserver
                 'quantity_change'    => $change,
                 'quantity_after'     => $after,
                 'notes'              => 'Auto-logged by system on quantity change',
-                'unit_cost'          => $inventory->average_cost ?? 0,
-                'total_value'        => abs($change) * (float) ($inventory->average_cost ?? 0),
+                'unit_cost'          => (float) Product::query()
+                    ->whereKey($inventory->product_id)
+                    ->value('cost_price'),
+                'total_value'        => abs($change) * (float) (Product::query()
+                    ->whereKey($inventory->product_id)
+                    ->value('cost_price') ?? 0),
                 'requires_approval'  => false,
                 'approval_status'    => 'not_required',
                 // Map the authenticated user to an Employee.id when possible.

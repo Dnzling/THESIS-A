@@ -3,15 +3,20 @@
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage store roles and module access</p>
       </div>
       <Button
         label="Add Role"
         icon="pi pi-plus"
         size="small"
+        severity="warn"
         :disabled="!hasStore"
         @click="openCreateRoleDialog"
       />
+    </div>
+
+    <div v-if="loadError" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+      {{ loadError }}
+      <Button label="Retry" text size="small" severity="danger" @click="reloadRoleData" />
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -19,7 +24,8 @@
       <Card class="lg:col-span-4">
         <template #title>Roles</template>
         <template #content>
-          <div v-if="!hasStore" class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <div v-if="loadingRoles && !hasStore" class="py-6 text-sm text-slate-500">Loading roles...</div>
+          <div v-else-if="!hasStore && !loadError" class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
             This account is not assigned to a store yet. Please complete store verification to manage roles.
             <div class="mt-3">
               <Button label="Go to Verification" size="small" severity="warning" @click="goToVerification" />
@@ -27,25 +33,39 @@
           </div>
 
           <DataTable
-            v-else
+            v-else-if="hasStore"
             :value="roles"
-            class="p-datatable-sm"
+            class="p-datatable-sm "
             selectionMode="single"
             dataKey="id"
             v-model:selection="selectedRole"
             :loading="loadingRoles"
+            
           >
             <template #empty>
               <div class="py-6 text-center text-sm text-gray-500">No roles found.</div>
             </template>
             <Column field="display_name" header="Role">
               <template #body="{ data }">
-                <div class="text-sm">
+                <div class="text-sm ">
                   <div class="font-semibold text-gray-900">{{ data.display_name || data.name }}</div>
                 </div>
               </template>
             </Column>
             <Column field="users_count" header="Users" style="width: 90px" />
+            <Column header="Actions" style="width: 70px">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-ellipsis-v"
+                  text
+                  rounded
+                  size="small"
+                  severity="secondary"
+                  @click="openRoleActions($event, data)"
+                  aria-label="Role actions"
+                />
+              </template>
+            </Column>
           </DataTable>
         </template>
       </Card>
@@ -59,6 +79,7 @@
               label="Save Permissions"
               icon="pi pi-check"
               size="small"
+              severity="warn"
               :disabled="!selectedRole"
               :loading="savingPermissions"
               @click="savePermissions"
@@ -66,7 +87,8 @@
           </div>
         </template>
         <template #content>
-          <div v-if="!hasStore" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+          <div v-if="loadingRoles && !hasStore" class="py-6 text-sm text-slate-500">Loading permissions...</div>
+          <div v-else-if="!hasStore && !loadError" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
             Assign a store first to manage permissions.
           </div>
           <div v-else>
@@ -118,7 +140,7 @@
                   class="border border-gray-100 rounded-md"
                 >
                   <div class="flex items-center justify-between px-3 py-2 bg-white">
-                    <div class="text-sm font-medium text-gray-800">
+                    <div class="text-sm font-medium uppercase text-orange-500 text-gray-800">
                       {{ formatLabel(submodule.name) }}
                     </div>
                     <Checkbox
@@ -136,7 +158,6 @@
                     >
                       <div class="text-sm">
                         <div class="font-medium text-gray-900">{{ permission.display_name }}</div>
-                        <div class="text-xs text-gray-500">{{ permission.name }}</div>
                       </div>
                       <Checkbox
                         :modelValue="selectedRolePermissions.includes(permission.id)"
@@ -155,7 +176,14 @@
     </div>
 
     <!-- Create Role Dialog -->
-    <Dialog v-model:visible="createRoleDialog" header="Create Role" :modal="true" :style="{ width: '480px' }">
+    <Popover ref="roleActionsPopover">
+      <div class="flex min-w-32 flex-col gap-1">
+        <Button label="Edit" icon="pi pi-pencil" text severity="secondary" class="!justify-start" @click="openEditRoleDialog" />
+        <Button label="Delete" icon="pi pi-trash" text severity="danger" class="!justify-start" @click="confirmDeleteRole" />
+      </div>
+    </Popover>
+
+    <Dialog v-model:visible="createRoleDialog" :header="editingRole ? 'Edit Role' : 'Create Role'" :modal="true" :style="{ width: '480px' }">
       <div class="space-y-4">
         <div class="flex flex-col gap-2">
           <label class="text-sm font-semibold text-gray-700">Display Name *</label>
@@ -172,7 +200,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" text @click="createRoleDialog = false" />
-        <Button label="Create Role" icon="pi pi-check" :loading="savingRole" @click="createRole" />
+        <Button :label="editingRole ? 'Save Changes' : 'Create Role'" icon="pi pi-check" :loading="savingRole" @click="saveRole" />
       </template>
     </Dialog>
   </div>
@@ -180,14 +208,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import axios from 'axios'
+import axios from '@/axios'
 import { useToast } from 'primevue/usetoast'
 import { router } from '@inertiajs/vue3'
 import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
+import Popover from 'primevue/popover'
 import { useAuthStore } from '@/stores/auth'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 
 const roles = ref<any[]>([])
 const permissions = ref<any[]>([])
@@ -195,12 +225,20 @@ const selectedRole = ref<any | null>(null)
 const selectedRolePermissions = ref<number[]>([])
 const toast = useToast()
 const authStore = useAuthStore()
-const hasStore = computed(() => Boolean(authStore.user?.store_id || authStore.user?.store?.id))
+const confirmedStoreId = ref<number | null>(null)
+const storeScopeLoaded = ref(false)
+const hasStore = computed(() => storeScopeLoaded.value
+  ? Boolean(confirmedStoreId.value)
+  : Boolean(authStore.user?.store_id || authStore.user?.store?.id))
+const loadError = ref('')
 
 const loadingRoles = ref(false)
 const loadingPermissions = ref(false)
 const savingPermissions = ref(false)
 const createRoleDialog = ref(false)
+const editingRole = ref<any | null>(null)
+const roleActionsPopover = ref()
+const roleForAction = ref<any | null>(null)
 const savingRole = ref(false)
 const roleForm = ref({
   display_name: '',
@@ -258,13 +296,9 @@ const filteredPermissions = computed(() => {
 })
 
 const allowedPermissionIds = computed(() => {
-  if (enabledModules.value.length === 0) return new Set<number>()
-  const enabledSet = new Set(enabledModules.value)
-  return new Set(
-    permissions.value
-      .filter((p: any) => enabledSet.has(p.module))
-      .map((p: any) => p.id)
-  )
+  // The API already returns only permissions allowed by the store's enabled modules.
+  // Using that response avoids dropping newly enabled module permissions from stale UI state.
+  return new Set(permissions.value.map((permission: any) => Number(permission.id)))
 })
 
 const groupedPermissions = computed(() => {
@@ -315,11 +349,15 @@ const groupedPermissions = computed(() => {
 const loadRoles = async () => {
   loadingRoles.value = true
   try {
-  const response = await axios.get('/api/store/roles/store-specific')
+    const response = await axios.get('/api/store/roles/store-specific')
+    confirmedStoreId.value = Number(response.data?.store_id) || null
+    storeScopeLoaded.value = true
     roles.value = response.data?.data || []
     if (!selectedRole.value && roles.value.length > 0) {
       selectedRole.value = roles.value[0]
     }
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load roles.'
   } finally {
     loadingRoles.value = false
   }
@@ -330,6 +368,8 @@ const loadPermissions = async () => {
   try {
     const response = await axios.get('/api/store/permissions')
     permissions.value = response.data?.data || []
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load permissions.'
   } finally {
     loadingPermissions.value = false
   }
@@ -341,6 +381,8 @@ const loadModules = async () => {
     const response = await axios.get('/api/store/modules')
     enabledModules.value = response.data?.data?.enabled_modules || []
     availableModules.value = response.data?.data?.available_modules || []
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load modules.'
   } finally {
     loadingModules.value = false
   }
@@ -424,8 +466,21 @@ const savePermissions = async () => {
       })
     }
 
-    await axios.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
+    const response = await axios.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
       permissions: selectedRolePermissions.value
+    })
+    selectedRolePermissions.value = (response.data?.permissions || []).map((permission: any) => Number(permission.id))
+    await authStore.fetchNavigation()
+    showResponseDialog({
+      severity: 'success',
+      title: 'Permissions Saved',
+      message: response.data?.message || 'Role permissions were updated successfully.',
+    })
+  } catch (error: any) {
+    showResponseDialog({
+      severity: 'error',
+      title: 'Unable to Save',
+      message: error?.response?.data?.message || 'The role permissions could not be saved.',
     })
   } finally {
     savingPermissions.value = false
@@ -453,13 +508,19 @@ watch(
   { deep: true }
 )
 
-onMounted(async () => {
-  await authStore.fetchCurrentUser()
-  if (!hasStore.value) return
+const reloadRoleData = async () => {
+  loadError.value = ''
   await Promise.all([loadModules(), loadPermissions(), loadRoles()])
+}
+
+onMounted(async () => {
+  // The API is the source of truth for store scope; profile hydration must not block these lists.
+  void authStore.fetchCurrentUser().catch(() => undefined)
+  await reloadRoleData()
 })
 
 const openCreateRoleDialog = () => {
+  editingRole.value = null
   roleForm.value = {
     display_name: '',
     description: '',
@@ -468,7 +529,49 @@ const openCreateRoleDialog = () => {
   createRoleDialog.value = true
 }
 
-const createRole = async () => {
+const openRoleActions = (event: Event, role: any) => {
+  roleForAction.value = role
+  roleActionsPopover.value?.toggle(event)
+}
+
+const openEditRoleDialog = () => {
+  const role = roleForAction.value
+  if (!role) return
+  editingRole.value = role
+  roleForm.value = {
+    display_name: role.display_name || role.name || '',
+    description: role.description || '',
+    is_active: Boolean(role.is_active),
+  }
+  roleActionsPopover.value?.hide()
+  createRoleDialog.value = true
+}
+
+const confirmDeleteRole = () => {
+  const role = roleForAction.value
+  if (!role) return
+  roleActionsPopover.value?.hide()
+  const employeeCount = Number(role.employees_count || role.users_count || 0)
+  const message = employeeCount > 0
+    ? `This role is assigned to ${employeeCount} employee(s). Deleting it may affect their access. Continue?`
+    : `Are you sure you want to delete "${role.display_name || role.name}"?`
+
+  if (!window.confirm(message)) return
+  deleteRole(role)
+}
+
+const deleteRole = async (role: any) => {
+  try {
+    await axios.delete(`/api/store/roles/${role.id}`)
+    if (selectedRole.value?.id === role.id) selectedRole.value = null
+    await loadRoles()
+    toast.add({ severity: 'success', summary: 'Role Deleted', detail: 'The role was deleted successfully.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Delete Failed', detail: error.response?.data?.message || 'Unable to delete role.', life: 4000 })
+  }
+}
+
+const saveRole = async () => {
   if (!hasStore.value) {
     toast.add({
       severity: 'warn',
@@ -480,15 +583,22 @@ const createRole = async () => {
   }
   savingRole.value = true
   try {
+    const wasEditing = Boolean(editingRole.value)
     const payload = {
-      name: generatedRoleName.value,
+      name: editingRole.value?.name || generatedRoleName.value,
       display_name: roleForm.value.display_name,
       description: roleForm.value.description || null,
       is_active: roleForm.value.is_active,
     }
-    await axios.post('/api/store/roles', payload)
+    if (editingRole.value) {
+      await axios.put(`/api/store/roles/${editingRole.value.id}`, payload)
+    } else {
+      await axios.post('/api/store/roles', payload)
+    }
     createRoleDialog.value = false
+    editingRole.value = null
     await loadRoles()
+    toast.add({ severity: 'success', summary: wasEditing ? 'Role Updated' : 'Role Created', detail: 'Role saved successfully.', life: 3000 })
   } finally {
     savingRole.value = false
   }

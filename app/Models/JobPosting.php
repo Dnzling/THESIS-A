@@ -19,6 +19,7 @@ class JobPosting extends Model
         'role_id',
         'title',
         'department',
+        'employment_type',
         'description',
         'requirements',
         'salary_min',
@@ -34,6 +35,15 @@ class JobPosting extends Model
         'requirements' => 'array',
         'benefits' => 'array'
     ];
+
+    protected $appends = ['company_logo_url'];
+
+    public function getCompanyLogoUrlAttribute(): ?string
+    {
+        $path = $this->store?->logoBranch?->logo_path;
+
+        return $path ? asset('storage/' . ltrim($path, '/')) : null;
+    }
 
     public function store(): BelongsTo
     {

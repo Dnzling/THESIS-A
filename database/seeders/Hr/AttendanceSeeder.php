@@ -14,7 +14,7 @@ class AttendanceSeeder extends Seeder
     public function run(): void
     {
         // Get the 3 specific employees
-        $employee1 = Employee::where('user_id', 2)->first(); // Ahbram Carra - Store Admin
+        $employee1 = Employee::where('user_id', 2)->first(); // Ahbram Carra - Store Owner
         $employee2 = Employee::where('user_id', 3)->first(); // Adrian Lacea - Store Manager
         $employee3 = Employee::where('user_id', 6)->first(); // Cash Gshock - Cashier
         
@@ -23,7 +23,7 @@ class AttendanceSeeder extends Seeder
         
         // Get approvers
         $hrManager = User::find(4); // Edwin Vasquez
-        $storeAdmin = User::find(2); // Ahbram Carra
+        $storeOwner = User::find(2); // Ahbram Carra
         
         $attendances = [];
         
@@ -166,7 +166,7 @@ class AttendanceSeeder extends Seeder
         $baseTime = clone $shiftStart;
         
         switch ($employee->user_id) {
-            case 2: // Ahbram Carra - Store Admin
+            case 2: // Ahbram Carra - Store Owner
                 if ($dayOfMonth == 4) return $baseTime->addMinutes(20); // 20 mins late
                 if ($dayOfMonth == 15) return $baseTime->addMinutes(45); // 45 mins late
                 return $baseTime->subMinutes(5); // 5 mins early
@@ -197,7 +197,7 @@ class AttendanceSeeder extends Seeder
         $isFriday = $dayOfWeek == Carbon::FRIDAY;
         
         switch ($employee->user_id) {
-            case 2: // Ahbram Carra - Store Admin
+            case 2: // Ahbram Carra - Store Owner
                 if ($dayOfMonth == 10) return $baseTime->addMinutes(150); // 2.5 hrs OT
                 if ($dayOfMonth == 20) return $baseTime->addMinutes(105); // 1.75 hrs OT
                 if ($isFriday) return $baseTime->subMinutes(30); // Half day on Fridays
@@ -226,7 +226,7 @@ class AttendanceSeeder extends Seeder
         $baseTime = Carbon::parse($date->format('Y-m-d') . ' 12:00:00');
         
         switch ($employee->user_id) {
-            case 2: // Ahbram Carra - Store Admin
+            case 2: // Ahbram Carra - Store Owner
                 return clone $baseTime;
                 
             case 3: // Adrian Lacea - Store Manager
@@ -252,7 +252,7 @@ class AttendanceSeeder extends Seeder
         $dayOfMonth = $date->day;
         
         switch ($employee->user_id) {
-            case 2: // Ahbram Carra - Store Admin
+            case 2: // Ahbram Carra - Store Owner
                 return (clone $breakStart)->addHour();
                 
             case 3: // Adrian Lacea - Store Manager
@@ -340,7 +340,7 @@ class AttendanceSeeder extends Seeder
     private function getApprover($employee): ?int
     {
         $hrManager = User::where('email', 'hr.manager@example.com')->first();
-        $storeAdmin = User::where('email', 'store.admin@example.com')->first();
+        $storeOwner = User::where('email', 'store.admin@example.com')->first();
         
         switch ($employee->user_id) {
             case 2: // Ahbram Carra
@@ -348,7 +348,7 @@ class AttendanceSeeder extends Seeder
             case 3: // Adrian Lacea
                 return $hrManager->id ?? 4;
             case 6: // Cash Gshock
-                return $storeAdmin->id ?? 2;
+                return $storeOwner->id ?? 2;
             default:
                 return null;
         }

@@ -123,8 +123,11 @@
           <div v-if="detail" class="mt-4 grid grid-cols-1 gap-2 text-sm md:ml-auto md:max-w-sm">
             <div class="flex items-center justify-between"><span class="text-gray-500">Subtotal</span><span>₱ {{ formatMoney(detail.amounts?.subtotal) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Discount</span><span>₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
-            <div class="flex items-center justify-between"><span class="text-gray-500">Tax</span><span>₱ {{ formatMoney(detail.amounts?.tax) }}</span></div>
+            <div class="flex items-center justify-between"><span class="text-gray-500">VATable Sales</span><span>₱ {{ formatMoney(vatableSales) }}</span></div>
+            <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (Included)</span><span>₱ {{ formatMoney(detail.amounts?.tax) }}</span></div>
+            <div class="flex items-center justify-between"><span class="text-gray-500">Platform Commission ({{ formatDecimal(detail.amounts?.commission_percentage) }}%)</span><span>- ₱ {{ formatMoney(detail.amounts?.commission) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Order Total</span><span>₱ {{ formatMoney(detail.amounts?.total) }}</span></div>
+            <div class="flex items-center justify-between font-medium"><span class="text-gray-600">Store Net Proceeds</span><span>₱ {{ formatMoney(detail.amounts?.store_net) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Delivery Fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
             <div class="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-semibold"><span>Grand Total</span><span>₱ {{ formatMoney(grandTotal) }}</span></div>
           </div>
@@ -149,6 +152,13 @@ const router = useRouter()
 
 const loading = ref(false)
 const detail = ref<any>(null)
+
+const vatableSales = computed(() => Math.max(
+  0,
+  Number(detail.value?.amounts?.subtotal || 0)
+    - Number(detail.value?.amounts?.discount || 0)
+    - Number(detail.value?.amounts?.tax || 0),
+))
 
 const displayDistanceKm = computed(() => {
   const rawDistance = Number(detail.value?.delivery?.distance_km || 0)
@@ -304,10 +314,13 @@ const printInvoice = () => {
           <div class="totals">
             <div class="row"><span>Subtotal</span><strong>PHP ${formatMoney(d.amounts?.subtotal || 0)}</strong></div>
             <div class="row"><span>Discount</span><strong>PHP ${formatMoney(d.amounts?.discount || 0)}</strong></div>
-            <div class="row"><span>Tax</span><strong>PHP ${formatMoney(d.amounts?.tax || 0)}</strong></div>
+            <div class="row"><span>VATable Sales</span><strong>PHP ${formatMoney(Math.max(0, Number(d.amounts?.subtotal || 0) - Number(d.amounts?.discount || 0) - Number(d.amounts?.tax || 0)))}</strong></div>
+            <div class="row"><span>Output VAT (Included)</span><strong>PHP ${formatMoney(d.amounts?.tax || 0)}</strong></div>
+            <div class="row"><span>Platform Commission (${formatDecimal(d.amounts?.commission_percentage || 0)}%)</span><strong>- PHP ${formatMoney(d.amounts?.commission || 0)}</strong></div>
             <div class="row"><span>Shipping Fee</span><strong>PHP ${formatMoney(d.amounts?.shipping_fee || 0)}</strong></div>
             <div class="row"><span>Delivery Fee</span><strong>PHP ${formatMoney(deliveryFee)}</strong></div>
             <div class="row"><span>Order Total</span><strong>PHP ${formatMoney(orderTotal)}</strong></div>
+            <div class="row"><span>Store Net Proceeds</span><strong>PHP ${formatMoney(d.amounts?.store_net || 0)}</strong></div>
             <div class="row grand"><span>Grand Total</span><strong>PHP ${formatMoney(printGrandTotal)}</strong></div>
           </div>
 

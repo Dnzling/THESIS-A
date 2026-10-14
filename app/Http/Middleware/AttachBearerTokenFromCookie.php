@@ -12,7 +12,7 @@ class AttachBearerTokenFromCookie
         if (!$request->headers->has('Authorization')) {
             $token = $request->cookie('auth_token');
             if ($token) {
-                $request->headers->set('Authorization', 'Bearer ' . $token);
+                $request->headers->set('Authorization', 'Bearer ' . rawurldecode((string) $token));
             }
         }
 

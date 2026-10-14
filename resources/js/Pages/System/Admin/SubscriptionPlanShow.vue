@@ -9,28 +9,25 @@
             <p class="text-sm text-slate-500">Configure pricing, included modules, and submodule permissions.</p>
           </div>
           <div class="flex items-center gap-2">
-            <Button label="Back" icon="pi pi-arrow-left" text @click="goBack" />
-            <Button label="Delete" icon="pi pi-trash" severity="danger" :loading="deleting" @click="confirmDelete" />
-            <Button label="Save Changes" icon="pi pi-check" severity="info" :loading="saving" @click="confirmSave" />
+            <!-- <Button label="Back" icon="pi pi-arrow-left" text @click="goBack" /> -->
+            <!-- <Button label="Delete" icon="pi pi-trash" severity="danger" :loading="deleting" @click="confirmDelete" /> -->
+            <Button label="Save Changes" icon="pi pi-check" :loading="saving" @click="confirmSave" />
           </div>
         </div>
       </template>
     </Card>
 
-    <div class="grid gap-4 md:grid-cols-2">
-      <Card class="border border-slate-200 shadow-none">
+    <div class="grid gap-4 md:grid-cols-3">
+      <Card class="border border-slate-200 shadow-none col-span-2">
         <template #title>Plan Details</template>
         <template #content>
-          <div class="space-y-3">
+          <div class="space-y-3 ">
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label class="text-sm font-medium text-slate-700">Name</label>
                 <InputText v-model="form.name" fluid />
               </div>
-              <div>
-                <label class="text-sm font-medium text-slate-700">Key</label>
-                <InputText v-model="form.plan_key" fluid disabled />
-              </div>
+          
               <div>
                 <label class="text-sm font-medium text-slate-700">Monthly Price</label>
                 <InputNumber v-model="form.monthly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
@@ -38,6 +35,28 @@
               <div>
                 <label class="text-sm font-medium text-slate-700">Yearly Price</label>
                 <InputNumber v-model="form.yearly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Online Store Commission (%)</label>
+                <InputNumber v-model="form.commission_percentage" :min="0" :max="5" :minFractionDigits="2" suffix="%" fluid />
+                <small class="text-xs text-slate-500">Applied only to completed customer purchases through the online store.</small>
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Total Accounts (Admin + Employees)</label>
+                <InputNumber v-model="form.max_user_accounts" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Store Branches</label>
+                <InputNumber v-model="form.max_branches" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Products</label>
+                <InputNumber v-model="form.max_products" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">3D Model Requests per Month</label>
+                <InputNumber v-model="form.max_3d_model_requests_per_month" :min="0" fluid />
+                <small class="text-xs text-slate-500">Requires 3D manage permission. Set 0 to disable requests.</small>
               </div>
               <div>
                 <label class="text-sm font-medium text-slate-700">Sort Order</label>
@@ -68,7 +87,7 @@
         <template #title>Modules Included</template>
         <template #content>
           <div class="mb-3 text-sm text-slate-500">Toggle modules for this plan. Submodules/permissions can be tuned below.</div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3">
             <div v-for="mod in modules" :key="mod.key" class="flex items-center justify-between rounded border border-slate-200 px-3 py-2">
               <div>
                 <p class="font-semibold text-sm text-slate-900">{{ mod.name }}</p>
@@ -161,6 +180,11 @@ const form = reactive({
   description: '',
   monthly_price: 0,
   yearly_price: 0,
+  commission_percentage: 0,
+  max_user_accounts: null as number | null,
+  max_branches: null as number | null,
+  max_products: null as number | null,
+  max_3d_model_requests_per_month: 0,
   is_featured: false,
   is_active: true,
   sort_order: 0,
@@ -174,8 +198,6 @@ const permissionsByModule = computed(() => {
   permissions.value.forEach((p) => {
     const parts = (p.name || '').split('.')
     const module = parts[0] || p.module || 'general'
-    // Hide supplier module permissions (legacy/unused)
-    if (module === 'supplier') return
     const subKey = parts[1] || 'general'
     if (!grouped[module]) grouped[module] = {}
     if (!grouped[module][subKey]) grouped[module][subKey] = []
@@ -296,6 +318,11 @@ const loadData = async () => {
     form.description = plan.description || ''
     form.monthly_price = Number(plan.monthly_price || 0)
     form.yearly_price = Number(plan.yearly_price || 0)
+    form.commission_percentage = Number(plan.commission_percentage || 0)
+    form.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
+    form.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
+    form.max_products = plan.max_products == null ? null : Number(plan.max_products)
+    form.max_3d_model_requests_per_month = Number(plan.max_3d_model_requests_per_month || 0)
     form.is_featured = !!plan.is_featured
     form.is_active = plan.is_active !== false
     form.sort_order = Number(plan.sort_order || 0)
@@ -346,6 +373,11 @@ const save = async () => {
       description: form.description || null,
       monthly_price: form.monthly_price,
       yearly_price: form.yearly_price,
+      commission_percentage: form.commission_percentage,
+      max_user_accounts: form.max_user_accounts,
+      max_branches: form.max_branches,
+      max_products: form.max_products,
+      max_3d_model_requests_per_month: form.max_3d_model_requests_per_month,
       features,
       is_featured: form.is_featured,
       is_active: form.is_active,

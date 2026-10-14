@@ -11,9 +11,15 @@ importers:
       '@capacitor/core':
         specifier: ^8.3.0
         version: 8.3.0
+      '@primeicons/vue':
+        specifier: ^8.0.0
+        version: 8.0.0(vue@3.5.29)
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
+      mapbox-gl:
+        specifier: 3.30.0
+        version: 3.30.0
       quill:
         specifier: ^2.0.3
         version: 2.0.3
@@ -40,7 +46,7 @@ importers:
         specifier: ^4.0.0
         version: 4.2.1(vite@7.3.1(@types/node@25.5.0)(jiti@1.21.7)(lightningcss@1.31.1)(sass-embedded@1.98.0)(sass@1.98.0))
       '@vitejs/plugin-vue':
-        specifier: ^5.0.0
+        specifier: ^5.2.4
         version: 5.2.4(vite@7.3.1(@types/node@25.5.0)(jiti@1.21.7)(lightningcss@1.31.1)(sass-embedded@1.98.0)(sass@1.98.0))(vue@3.5.29)
       autoprefixer:
         specifier: ^10.4.12
@@ -440,6 +446,14 @@ packages:
     resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
     engines: {node: '>= 10.0.0'}
 
+  '@primeicons/core@8.0.0':
+    resolution: {integrity: sha512-vPif+sXxajXCSL2bmNBP0QYliJONVRgFVpCg9e7hGn7IG18JkMAm4fF5HVld1N4sDATkZQM7jKVxdZ8EK09Giw==}
+
+  '@primeicons/vue@8.0.0':
+    resolution: {integrity: sha512-sIqk+kZB9Bn0FqODjDAnNvRXY4Ypky2TInY/oIC3aAJOud1A3FoKruMC8IwiRDz1uHzxYnQqWwtFsfZAgC7qXQ==}
+    peerDependencies:
+      vue: ^3
+
   '@primeuix/styled@0.7.4':
     resolution: {integrity: sha512-QSO/NpOQg8e9BONWRBx9y8VGMCMYz0J/uKfNJEya/RGEu7ARx0oYW0ugI1N3/KB1AAvyGxzKBzGImbwg0KUiOQ==}
     engines: {node: '>=12.11.0'}
@@ -452,6 +466,10 @@ packages:
 
   '@primeuix/utils@0.6.4':
     resolution: {integrity: sha512-pZ5f+vj7wSzRhC7KoEQRU5fvYAe+RP9+m39CTscZ3UywCD1Y2o6Fe1rRgklMPSkzUcty2jzkA0zMYkiJBD1hgg==}
+    engines: {node: '>=12.11.0'}
+
+  '@primeuix/utils@0.8.1':
+    resolution: {integrity: sha512-tMtdkSUEl8/6Lc5iNOp7zXMFKJGLyf7mxvS/Hf5GzHVfa2dvsnVmEn0I/i3+80oEmnsVlHhr9+8aM5cKw7vbHA==}
     engines: {node: '>=12.11.0'}
 
   '@primevue/core@4.5.4':
@@ -1265,6 +1283,9 @@ packages:
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
+
+  mapbox-gl@3.30.0:
+    resolution: {integrity: sha512-26m0CSBszLkvbdVWf2oIZ3SjqCuResxJKEbupwwSyNwbwJAcgnMhDy2Yl5cSgtUxeamUJ1UeXRqpBmGEUVaAeQ==}
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -2223,6 +2244,16 @@ snapshots:
       '@parcel/watcher-win32-x64': 2.5.6
     optional: true
 
+  '@primeicons/core@8.0.0':
+    dependencies:
+      '@primeuix/utils': 0.8.1
+
+  '@primeicons/vue@8.0.0(vue@3.5.29)':
+    dependencies:
+      '@primeicons/core': 8.0.0
+      '@primeuix/utils': 0.8.1
+      vue: 3.5.29
+
   '@primeuix/styled@0.7.4':
     dependencies:
       '@primeuix/utils': 0.6.4
@@ -2236,6 +2267,8 @@ snapshots:
       '@primeuix/styled': 0.7.4
 
   '@primeuix/utils@0.6.4': {}
+
+  '@primeuix/utils@0.8.1': {}
 
   '@primevue/core@4.5.4(vue@3.5.29)':
     dependencies:
@@ -2952,6 +2985,8 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  mapbox-gl@3.30.0: {}
 
   math-intrinsics@1.1.0: {}
 

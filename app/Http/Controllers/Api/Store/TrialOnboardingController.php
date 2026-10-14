@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
+use App\Models\Hr\Employee;
+use App\Models\Core\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
 
 class TrialOnboardingController extends Controller
 {
@@ -45,7 +48,7 @@ class TrialOnboardingController extends Controller
 
         $profile = null;
 
-        DB::transaction(function () use ($request, $validated, $employeeRange, $fixedModules, &$profile): void {
+        DB::transaction(function () use ($request, $validated, $employeeRange, $fixedModules, $selectedPlan, $setupMode, &$profile): void {
             $profile = TrialOnboardingProfile::updateOrCreate(
                 ['user_id' => $request->user()->id],
                 [
@@ -60,6 +63,15 @@ class TrialOnboardingController extends Controller
             );
 
             $user = $request->user();
+            $ownerRoleId = (int) (Role::query()
+                ->whereNull('store_id')
+                ->where('name', 'owner')
+                ->orderByRaw("CASE WHEN name = 'owner' THEN 0 ELSE 1 END")
+                ->value('id') ?? 0);
+
+            if ($ownerRoleId <= 0) {
+                throw new \RuntimeException('The global owner role is not configured.');
+            }
 
             if (!$user->store_id) {
                 $storeCode = 'TRIAL-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
@@ -71,19 +83,20 @@ class TrialOnboardingController extends Controller
                     'name' => $storeName,
                     'store_code' => $storeCode,
                     'type' => $storeType,
-                    'status' => 'pending',
+                    'status' => 'unverified',
                     'subscription_tier' => $subscriptionTier,
                 ]);
+                app(DefaultFurnitureCategoryService::class)->populateForStore((int) $store->id);
 
                 if ($setupMode === 'free') {
                     $trialFields = [
-                        'subscription_ends_at' => now()->addDays(7)->toDateString(),
+                        'subscription_ends_at' => null,
                     ];
                     if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $trialFields['trial_started_at'] = now();
+                        $trialFields['trial_started_at'] = null;
                     }
                     if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $trialFields['trial_ends_at'] = now()->addDays(7);
+                        $trialFields['trial_ends_at'] = null;
                     }
                     $store->forceFill($trialFields)->save();
                 }
@@ -96,25 +109,68 @@ class TrialOnboardingController extends Controller
                     'branch_code' => $branchCode,
                     'is_main_branch' => true,
                     'status' => 'active',
+                    'geofence_enabled' => false,
                 ]);
 
                 $user->update([
                     'store_id' => $store->id,
                     'branch_id' => $branch->id,
+                    'role_id' => $ownerRoleId,
                 ]);
+
+                Employee::query()->updateOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'store_id' => $store->id,
+                        'branch_id' => $branch->id,
+                    'role_id' => $ownerRoleId,
+                    'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
+                        'fname' => (string) $user->fname,
+                        'lname' => (string) $user->lname,
+                        'department' => 'Management',
+                        'employment_type' => 'full_time',
+                        'status' => 'active',
+                        'hire_date' => now()->toDateString(),
+                    ]
+                );
 
                 app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
             } else {
                 $store = $user->store;
                 if ($store) {
+                $existingBranch = Branch::query()
+                    ->where('store_id', $store->id)
+                    ->orderByDesc('is_main_branch')
+                    ->orderBy('id')
+                    ->first();
+                $user->update(['role_id' => $ownerRoleId]);
+
+                if ($existingBranch) {
+                    Employee::query()->updateOrCreate(
+                        ['user_id' => $user->id],
+                        [
+                            'store_id' => $store->id,
+                            'branch_id' => $existingBranch->id,
+                            'role_id' => $ownerRoleId,
+                            'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
+                            'fname' => (string) $user->fname,
+                            'lname' => (string) $user->lname,
+                            'department' => 'Management',
+                            'employment_type' => 'full_time',
+                            'status' => 'active',
+                            'hire_date' => now()->toDateString(),
+                        ]
+                    );
+                }
+
                 if ($setupMode === 'free') {
                     $store->subscription_tier = 'free';
-                    $store->subscription_ends_at = now()->addDays(7)->toDateString();
+                    $store->subscription_ends_at = null;
                     if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $store->trial_started_at = $store->trial_started_at ?? now();
+                        $store->trial_started_at = null;
                     }
                     if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $store->trial_ends_at = now()->addDays(7);
+                        $store->trial_ends_at = null;
                     }
                 } else {
                     $store->subscription_tier = $selectedPlan;

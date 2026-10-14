@@ -236,8 +236,35 @@
             <InputNumber v-model="planForm.yearly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
           </div>
           <div class="md:col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">Sales Commission Rate (optional)</label>
+            <InputNumber v-model="planForm.commission_rate" suffix="%" :min="0" :max="5" :minFractionDigits="0" :maxFractionDigits="2" fluid />
+            <p class="mt-1 text-xs text-slate-500">Maximum commission rate is 5%. Leave empty or set to 0 when this plan does not charge a sales commission.</p>
+          </div>
+          <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Description</label>
             <InputText v-model="planForm.description" fluid />
+          </div>
+          <div class="md:col-span-2">
+            <label class="mb-2 block text-sm font-medium text-slate-700">Plan Limits (leave blank for unlimited)</label>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label class="mb-1 block text-xs text-slate-600">User Accounts</label>
+                <InputNumber v-model="planForm.max_user_accounts" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-slate-600">Store Branches</label>
+                <InputNumber v-model="planForm.max_branches" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-slate-600">Products</label>
+                <InputNumber v-model="planForm.max_products" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">3D Model Requests per Month</label>
+                <InputNumber v-model="planForm.max_3d_model_requests_per_month" :min="0" fluid />
+                <small class="text-xs text-slate-500">Requires 3D manage permission. 0 disables requests.</small>
+              </div>
+            </div>
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Features (one per line)</label>
@@ -384,6 +411,11 @@ const planForm = reactive({
   description: '',
   monthly_price: 0,
   yearly_price: 0,
+  commission_rate: null as number | null,
+  max_user_accounts: null as number | null,
+  max_branches: null as number | null,
+  max_products: null as number | null,
+  max_3d_model_requests_per_month: 0,
   features: '',
   is_featured: false,
   is_active: true,
@@ -434,7 +466,7 @@ const toTitle = (value: string | null | undefined) =>
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
 const formatDate = (value: string | null | undefined) => {
-  if (!value) return 'No expiry'
+  if (!value) return 'Unlimited'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -506,7 +538,7 @@ const subscriptionStatusLabel = (subscriptionStatus: string, daysRemaining: numb
   }
   if (normalized === 'unpaid') return 'Unpaid / Free'
   if (tier === 'free') return 'Free plan'
-  if (daysRemaining === null || daysRemaining === undefined) return 'No end date'
+  if (daysRemaining === null || daysRemaining === undefined) return 'Unlimited'
   if (daysRemaining < 0) return `Expired ${Math.abs(daysRemaining)} day(s) ago`
   if (daysRemaining === 0) return 'Expires today'
   return `${daysRemaining} day(s) left`
@@ -592,6 +624,11 @@ const openPlanDialog = async (plan: any) => {
   planForm.description = String(plan.description || '')
   planForm.monthly_price = Number(plan.monthly_price || 0)
   planForm.yearly_price = Number(plan.yearly_price || 0)
+  planForm.commission_rate = Number(plan.commission_rate || 0) || null
+  planForm.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
+  planForm.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
+  planForm.max_products = plan.max_products == null ? null : Number(plan.max_products)
+  planForm.max_3d_model_requests_per_month = Number(plan.max_3d_model_requests_per_month || 0)
   planForm.features = Array.isArray(plan.features) ? plan.features.join('\n') : ''
   planForm.is_featured = !!plan.is_featured
   planForm.is_active = plan.is_active !== false
@@ -617,6 +654,11 @@ const openCreatePlanDialog = () => {
   planForm.description = ''
   planForm.monthly_price = 0
   planForm.yearly_price = 0
+  planForm.commission_rate = null
+  planForm.max_user_accounts = null
+  planForm.max_branches = null
+  planForm.max_products = null
+  planForm.max_3d_model_requests_per_month = 0
   planForm.features = ''
   planForm.is_featured = false
   planForm.is_active = true
@@ -644,6 +686,11 @@ const savePlan = async () => {
           description: planForm.description || null,
           monthly_price: planForm.monthly_price,
           yearly_price: planForm.yearly_price,
+          commission_rate: planForm.commission_rate || null,
+          max_user_accounts: planForm.max_user_accounts,
+          max_branches: planForm.max_branches,
+          max_products: planForm.max_products,
+          max_3d_model_requests_per_month: planForm.max_3d_model_requests_per_month,
           features,
           is_featured: planForm.is_featured,
           is_active: planForm.is_active,

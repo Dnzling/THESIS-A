@@ -31,8 +31,8 @@ class UserSeeder extends Seeder
         // // Create HR managers
         // User::factory()->count(3)->hrManager()->create();
 
-        // // Create store admins
-        // User::factory()->count(5)->storeAdmin()->create();
+        // // Create store owners
+        // User::factory()->count(5)->storeOwner()->create();
 
         // // Create regular users/employees (without employee records yet)
         // User::factory()->count(20)->employee()->create();
@@ -50,7 +50,7 @@ class UserSeeder extends Seeder
             'email' => 'store.admin@example.com',
             'email_verified_at' => now(),
             'password' => Hash::make('password123'),
-            'role_id' => 2, // Store admin role
+            'role_id' => 2, // Store owner role
             'store_id' => 1,
             'branch_id' => 1,
             'is_active' => 1,

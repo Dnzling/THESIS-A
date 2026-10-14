@@ -11,7 +11,7 @@ class InventoryConfigurationRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->user()->hasRole(['super_admin', 'store_admin']);
+        return auth()->user()->hasRole(['super_admin', 'owner']);
     }
 
     /**

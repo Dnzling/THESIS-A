@@ -9,6 +9,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { router } from '@inertiajs/vue3'
 import Toast from 'primevue/toast'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
@@ -53,7 +54,7 @@ const loadVerificationData = async () => {
 }
 
 const handleVerificationSubmitted = async (_data: boolean) => {
-  await loadVerificationData()
+  router.visit('/store/settings')
 }
 
 const handleResubmit = async () => {
