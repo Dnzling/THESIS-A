@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 use App\Http\Controllers\Api\Merchandising\Model3dRequestController;
+use App\Http\Controllers\Api\Ecommerce\EcommerceFeedbackController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 
@@ -81,6 +82,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/stores/{storeId}/reviews', [EcommerceController::class, 'storeReviews']);
     Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
     Route::get('/dss/trending-movement', [EcommerceController::class, 'dssTrendingByMovement']);
+    Route::post('/feedback', [EcommerceFeedbackController::class, 'store'])->middleware('throttle:10,1');
 });
 
 // Public 3D/image asset serve route (must stay outside auth middleware)
@@ -129,6 +131,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     });
 
     Route::middleware('role:super_admin')->prefix('admin')->group(function () {
+        Route::get('/ecommerce-feedback', [EcommerceFeedbackController::class, 'index']);
+        Route::put('/ecommerce-feedback/{feedback}', [EcommerceFeedbackController::class, 'update']);
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
         Route::get('/roles/primary', [RolePermissionController::class, 'primaryRolesAdmin']);
         Route::delete('/roles/{id}', [RolePermissionController::class, 'deleteRole']);

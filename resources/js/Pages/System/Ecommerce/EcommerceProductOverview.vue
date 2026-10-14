@@ -474,6 +474,7 @@
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRecentlyViewedProducts } from '@/composables/useRecentlyViewedProducts'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import { useAuthStore } from '@/stores/auth'
@@ -496,6 +497,7 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const { addRecentlyViewed } = useRecentlyViewedProducts()
 const authStore = useAuthStore()
 const loading = ref(false)
 const quantity = ref(1)
@@ -857,6 +859,7 @@ async function loadProduct() {
   try {
     const response = await ecommerceService.getProduct(String(route.params.id))
     product.value = response.data?.data || response.data
+    if (product.value?.id) addRecentlyViewed({ id: Number(product.value.id), product_name: String(product.value.product_name || 'Product'), image: product.value.image || product.value.images?.[0] || null, price: Number(product.value.discounted_price ?? product.value.price ?? product.value.base_price ?? 0), category: product.value.category || null })
     selectedImage.value = null
     selectedVariationId.value = null
   } catch {

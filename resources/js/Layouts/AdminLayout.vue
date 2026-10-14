@@ -220,6 +220,12 @@ const adminMenu = [
     icon: "pi pi-th-large text-gray-500 w-5"
   },
   {
+    to: "/admin/ecommerce-feedback",
+    name: 'admin.ecommerce-feedback',
+    label: "Ecommerce Feedback",
+    icon: "pi pi-comments text-gray-500 w-5"
+  },
+  {
     to: "/admin/3d-model-requests",
     name: 'admin.3d-model-requests',
     label: "3D Model Requests",

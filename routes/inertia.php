@@ -68,6 +68,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
         $inertia('/admin/home-content', 'System/Admin/HomeContent', 'admin.home-content', 'Home Content');
         $inertia('/admin/ecommerce-categories', 'System/Admin/EcommerceCategories', 'admin.ecommerce-categories', 'Ecommerce Categories');
+        $inertia('/admin/ecommerce-feedback', 'System/Admin/EcommerceFeedback', 'admin.ecommerce-feedback', 'Ecommerce Feedback');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
