@@ -10,7 +10,7 @@ interface User {
     last_name: string
     role: string
     email: string
-    store?: { id: number; name: string } | null
+    store?: { id: number; name: string; subscription_name?: string; subscription_key?: string } | null
     abilities?: string[]
 }
 

@@ -27,19 +27,12 @@ class EnsureAccountOperational
             if ($store && $store->status === 'suspended') {
                 return response()->json(['success' => false, 'message' => 'Your store account is suspended. Please contact platform admin.'], 403);
             }
-            if ($store && $store->subscription_status === 'expired') {
-                if ($request->is('api/auth/*', 'api/payments/*', 'api/public/subscription-plans*', 'api/stores/*/verification/*', 'api/store-verification/*', 'api/user/navigation')) {
-                    return $next($request);
-                }
-                if (!$request->is('api/*') && $request->is('store/billing', 'subscription-plans', 'subscription-checkout', 'store/positions/setup')) {
-                    return $next($request);
-                }
-
-                return $request->is('api/*')
-                    ? response()->json(['success' => false, 'code' => 'TRIAL_EXPIRED', 'message' => 'Your free trial has ended. Upgrade to continue.'], 403)
-                    : redirect('/store/billing');
-            }
-            if ($store && in_array((string) $store->status, ['suspended', 'inactive'], true)) {
+            $legacyExpiredTrial = $store
+                && $store->status === 'inactive'
+                && $store->subscription_status === 'expired'
+                && !$store->deactivated_at
+                && !$store->deactivation_reason;
+            if ($store && in_array((string) $store->status, ['suspended', 'inactive'], true) && !$legacyExpiredTrial) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Your store account is currently suspended. Please contact platform admin.',

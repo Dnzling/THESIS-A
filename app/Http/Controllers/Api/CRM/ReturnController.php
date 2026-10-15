@@ -10,6 +10,7 @@ use App\Models\Logistics\ReturnPickup;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Finance\FinanceRefund;
+use App\Services\Logistics\ReturnChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -416,6 +417,8 @@ class ReturnController extends Controller
         $validated = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
             'return_type' => ['nullable', 'required_if:status,approved', 'in:refund,replacement'],
+            'charge_responsibility' => ['nullable', 'required_if:status,approved', 'in:store,customer'],
+            'refund_exception_reason' => ['nullable', 'required_if:return_type,refund', 'string', 'max:255'],
             'review_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -488,6 +491,13 @@ class ReturnController extends Controller
             }
             if ($newStatus === 'approved') {
                 $return->return_type = $validated['return_type'];
+                $return->charge_responsibility = $validated['charge_responsibility'];
+                $return->refund_exception_reason = $validated['return_type'] === 'refund'
+                    ? trim((string) $validated['refund_exception_reason'])
+                    : null;
+                $charge = app(ReturnChargeService::class)->calculate($return, $validated['charge_responsibility']);
+                $return->return_fee = $charge['fee'];
+                $return->return_fee_breakdown = $charge['breakdown'];
             }
 
             $return->reviewed_by = auth()->id();
@@ -507,6 +517,8 @@ class ReturnController extends Controller
                         'pickup_phone' => $return->order?->shipping_phone,
                         'pickup_address' => $return->order?->shipping_address,
                         'notes' => 'Created from approved return.',
+                        'distance_km' => data_get($return->return_fee_breakdown, 'distance_km'),
+                        'estimated_fee' => (float) $return->return_fee,
                         'created_by' => auth()->id(),
                         'updated_by' => auth()->id(),
                     ]
@@ -520,7 +532,7 @@ class ReturnController extends Controller
                             'order_number' => $return->order?->order_number,
                             'customer_name' => $return->order?->shipping_name,
                             'reason' => 'Approved customer return ' . ($return->return_number ?: ('#' . $return->id)),
-                            'amount' => round((float) ($return->orderItem?->unit_price ?? 0) * (int) ($return->requested_quantity ?: 1), 2),
+                            'amount' => max(0, round((float) ($return->orderItem?->unit_price ?? 0) * (int) ($return->requested_quantity ?: 1) - (float) $return->return_fee, 2)),
                             'status' => 'pending_inspection',
                             'requested_by' => auth()->id(),
                             'notes' => 'Approved by CRM. Awaiting return delivery and inventory inspection.',
@@ -786,7 +798,7 @@ class ReturnController extends Controller
             $inventory->save();
 
             if ($return->return_type === 'refund') {
-                $amount = round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty, 2);
+                $amount = max(0, round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty - (float) $return->return_fee, 2));
                 $refund = FinanceRefund::query()->updateOrCreate(
                     [
                         'store_id' => (int) $return->store_id,

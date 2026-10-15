@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Admin\SubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,6 +24,9 @@ class UserResource extends JsonResource
         // Users should always see their own store/branch assignment (needed by branch-scoped modules).
         $canViewOwnStoreBranch = ($request->user()?->id && $request->user()->id === $this->id);
         $canViewStoreBranch = $canViewSensitive || $canViewOwnStoreBranch;
+        $subscriptionPlan = $this->store
+            ? SubscriptionPlan::query()->find((int) $this->store->getRawOriginal('subscription_tier'))
+            : null;
         
         return [
             'id' => $this->id,
@@ -50,11 +54,13 @@ class UserResource extends JsonResource
             // }),
             
             // Store info - only show if allowed
-            'store' => $this->when($canViewStoreBranch && $this->relationLoaded('store'), function () {
+            'store' => $this->when($canViewStoreBranch && $this->relationLoaded('store'), function () use ($subscriptionPlan) {
                 return $this->store ? [
                     'id' => $this->store->id,
                     'name' => $this->store->store_name ?? $this->store->name ?? 'N/A',
                     'code' => $this->store->store_code,
+                    'subscription_name' => $subscriptionPlan?->name ?? 'Free',
+                    'subscription_key' => $subscriptionPlan?->plan_key ?? 'free',
                 ] : null;
             }),
             

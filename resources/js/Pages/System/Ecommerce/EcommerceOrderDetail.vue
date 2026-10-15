@@ -173,6 +173,12 @@
               <div v-if="item.return_request || item.review"
                 class="w-full space-y-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
                 <p v-if="item.review">Your review: {{ item.review.rating }}/5</p>
+                <div v-if="item.return_request?.return_type"
+                  class="rounded-xl border border-orange-100 bg-orange-50 p-3 text-sm text-orange-950">
+                  <p class="font-semibold">{{ formatStatus(item.return_request.return_type) }} approved</p>
+                  <p class="mt-1">Return pickup charge: <strong>{{ Number(item.return_request.return_fee || 0) > 0 ? formatMoney(item.return_request.return_fee) : 'Waived by store' }}</strong></p>
+                  <p v-if="item.return_request.refund_exception_reason" class="mt-1">Refund reason: {{ item.return_request.refund_exception_reason }}</p>
+                </div>
                 <div v-if="item.return_request?.refund?.refund_method"
                   class="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                   <p class="font-semibold">Refund Account</p>

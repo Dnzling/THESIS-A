@@ -13,7 +13,6 @@ class StoreTrialService
         }
 
         $store->forceFill([
-            'status' => $store->status === 'active' ? 'inactive' : $store->status,
             'subscription_status' => 'expired',
         ])->save();
 

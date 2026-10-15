@@ -823,7 +823,35 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         try {
-            $user = $request->user()->load(['role', 'store', 'branch']);
+            $user = $request->user()->load(['role', 'store.subscriptionPlan', 'branch']);
+
+            // Match the store resolution used by the Billing page. Some staff
+            // are associated to a store through their employee or branch record
+            // instead of users.store_id.
+            $resolvedStore = $user->store;
+            if (!$resolvedStore) {
+                $employee = Employee::query()
+                    ->where('user_id', $user->id)
+                    ->first(['store_id', 'branch_id']);
+
+                $resolvedStoreId = $employee?->store_id;
+                if (!$resolvedStoreId && $employee?->branch_id) {
+                    $resolvedStoreId = Branch::query()
+                        ->where('id', (int) $employee->branch_id)
+                        ->value('store_id');
+                }
+
+                if ($resolvedStoreId) {
+                    $resolvedStore = Store::query()
+                        ->with('subscriptionPlan')
+                        ->find((int) $resolvedStoreId);
+                }
+            }
+
+            if ($resolvedStore) {
+                $resolvedStore->loadMissing('subscriptionPlan');
+                $user->setRelation('store', $resolvedStore);
+            }
 
             return response()->json([
                 'success' => true,

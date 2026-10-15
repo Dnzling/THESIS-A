@@ -134,6 +134,11 @@ class Store extends Model
         return $query->where('status', 'active');
     }
 
+    public function scopeAcceptingNewSales($query)
+    {
+        return app(\App\Services\Store\StoreSalesAccess::class)->scopeEligible($query);
+    }
+
     public function scopeWithCategory($query, $categoryId)
     {
         return $query->whereHas('products', function ($q) use ($categoryId) {

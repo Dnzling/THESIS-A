@@ -9,6 +9,7 @@ use App\Models\PaymongoIntent;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Hr\Employee;
+use App\Models\Merchandising\Model3dRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,12 +25,20 @@ class BillingController extends Controller
         }
 
         $plan = SubscriptionPlan::query()->find((int) $store->getRawOriginal('subscription_tier'));
+        $nextPlanKey = match (strtolower((string) ($plan?->plan_key ?? 'free'))) {
+            'free' => 'simple',
+            'simple' => 'growth',
+            'growth' => 'enterprise',
+            default => null,
+        };
+        $nextPlan = $nextPlanKey
+            ? SubscriptionPlan::query()->where('plan_key', $nextPlanKey)->where('is_active', true)->first(['name', 'plan_key'])
+            : null;
         app(\App\Services\Store\StoreTrialService::class)->expireIfNeeded($store);
         $endsAt = $store->subscription_status === 'trial' || $store->subscription_status === 'expired'
             ? $store->trial_ends_at
             : ($store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null);
         $today = now()->startOfDay();
-        $daysRemaining = $endsAt ? $today->diffInDays($endsAt->copy()->startOfDay(), false) : null;
         $enabledModuleRows = $plan
             ? DB::table('plan_modules')
             ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
@@ -108,15 +117,18 @@ class BillingController extends Controller
             'subscription' => [
                 'plan_key' => $plan?->plan_key ?? 'free',
                 'plan_name' => $plan?->name ?? 'Free',
+                'next_plan_name' => $nextPlan?->name,
                 'status' => $store->subscription_status,
                 'monthly_price' => (float) ($plan?->monthly_price ?? 0),
                 'yearly_price' => (float) ($plan?->yearly_price ?? 0),
                 'ends_at' => $endsAt?->toDateString(),
-                'days_remaining' => $daysRemaining,
                 'is_expired' => $store->subscription_status === 'expired' || ($endsAt ? $endsAt->lt($today) : false),
+                'sales_paused' => !app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store),
+                'in_grace' => $store->subscription_status === 'paid' && $store->subscription_ends_at
+                    && $store->subscription_ends_at->lt($today)
+                    && app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store),
                 'module_count' => count($enabledModuleRows),
                 'enabled_modules' => $enabledModuleRows,
-                'plan_features' => is_array($plan?->features) ? $plan->features : [],
                 'limits' => [
                     [
                         'key' => 'user_accounts',
@@ -136,6 +148,16 @@ class BillingController extends Controller
                         'limit' => $plan?->max_products,
                         'used' => $store->products()->count(),
                     ],
+                    ...((int) ($plan?->max_3d_model_requests_per_month ?? 0) > 0 ? [[
+                        'key' => '3d_requests',
+                        'label' => '3D requests this month',
+                        'limit' => (int) $plan->max_3d_model_requests_per_month,
+                        'used' => Model3dRequest::query()
+                            ->where('owner_store_id', $store->id)
+                            ->where('created_at', '>=', now()->startOfMonth())
+                            ->where('created_at', '<', now()->startOfMonth()->addMonth())
+                            ->count(),
+                    ]] : []),
                 ],
             ],
             'billing_records' => $records,

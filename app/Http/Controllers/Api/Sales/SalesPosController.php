@@ -230,6 +230,11 @@ class SalesPosController extends Controller
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
         }
 
+        $store = Store::query()->find($storeId);
+        if (!$store || !app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store)) {
+            return response()->json(['success' => false, 'code' => 'SUBSCRIPTION_REQUIRED', 'message' => 'New sales are paused. Renew or choose a paid plan to continue.'], 403);
+        }
+
         $deliveryRequired = (bool) ($validated['delivery_required'] ?? false);
         if ($deliveryRequired && $branchId < 1) {
             return response()->json(['success' => false, 'message' => 'Select a branch before creating a delivery order.'], 422);

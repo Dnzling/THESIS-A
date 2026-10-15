@@ -44,7 +44,7 @@
               v-for="plan in visiblePlans"
               :key="plan.id"
               class="relative rounded-3xl border bg-white p-8 shadow-lg shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-xl"
-              :class="plan.is_featured ? 'border-orange-200 ring-1 ring-orange-200' : 'border-slate-200'"
+              :class="plan.is_featured ? 'border-2 border-orange-500 ring-1 ring-orange-100' : 'border-slate-200'"
             >
               <div v-if="plan.is_featured" class="absolute right-6 top-6 rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white">
                 Most Popular
@@ -130,21 +130,7 @@ const visiblePlans = computed(() =>
   plans.value
     .filter((plan) => plan.is_active !== false)
     .slice()
-    .sort((a, b) => {
-      const order = ['free', 'simple']
-      const aKey = String(a.plan_key || a.name || '').toLowerCase()
-      const bKey = String(b.plan_key || b.name || '').toLowerCase()
-      const aIndex = order.findIndex((key) => aKey.includes(key))
-      const bIndex = order.findIndex((key) => bKey.includes(key))
-
-      if (aIndex !== -1 || bIndex !== -1) {
-        const safeA = aIndex === -1 ? order.length : aIndex
-        const safeB = bIndex === -1 ? order.length : bIndex
-        if (safeA !== safeB) return safeA - safeB
-      }
-
-      return String(a.name || '').localeCompare(String(b.name || ''))
-    })
+    .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || Number(a.id ?? 0) - Number(b.id ?? 0))
 )
 const billingPeriod = computed(() => (isYearly.value ? 'year' : 'month'))
 const planComparison = computed(() => {

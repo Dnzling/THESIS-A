@@ -1,39 +1,32 @@
 <template>
   <div class="space-y-6">
-    <Dialog :visible="subscription.status === 'expired'" modal :closable="false" :dismissableMask="false" :draggable="false" class="w-[min(92vw,480px)]">
-      <div class="py-3 text-center"><i class="pi pi-clock text-4xl text-orange-500"></i><h2 class="mt-4 text-xl font-semibold">Your Free Trial Has Ended</h2><p class="mt-2 text-sm text-slate-600">Upgrade your subscription to continue accessing your store’s management features.</p><Button label="View Plans & Upgrade" severity="warn" class="mt-5" @click="goToUpgrade" /><div><Button label="Log Out" text severity="secondary" class="mt-2" @click="logOut" /></div></div>
-    </Dialog>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Billing</h1>
       </div>
-      <Button label="Upgrade Plan" icon="pi pi-arrow-up-right" severity="warn" @click="goToUpgrade" size="small" />
     </div>
 
     <div class="grid gap-4 ">
       <Card class="border border-slate-200 shadow-sm">
         <template #title>Subscription Plan</template>
         <template #content>
-          <div class="grid gap-3 md:grid-cols-3">
-            <div class="rounded-lg border border-slate-200 bg-white p-4">
+          <div class="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4 sm:divide-x sm:divide-slate-200">
+            <div class="sm:pr-4">
               <div class="text-xs font-semibold uppercase text-slate-400">Current Plan</div>
               <div class="mt-2 text-lg font-semibold text-slate-950">{{ subscription.plan_name }}</div>
-              <div class="mt-1 text-sm text-slate-500">{{ subscription.module_count }} enabled module(s)</div>
             </div>
-            <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <div class="sm:px-4">
               <div class="text-xs font-semibold uppercase text-slate-400">{{ subscription.status === 'trial' ? 'Trial Ends' : 'Ends On' }}</div>
               <div class="mt-2 text-lg font-semibold text-slate-950">{{ endsAtLabel }}</div>
-              <div class="mt-1 text-sm" :class="subscription.is_expired ? 'text-red-600' : 'text-slate-500'">
-                {{ remainingLabel }}
-              </div>
             </div>
-            <div class="rounded-lg border border-slate-200 bg-white p-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div><Tag :value="statusLabel(subscription.status || 'active')" :severity="subscription.is_expired ? 'danger' : 'success'" class="mt-2" /></div>
+            <div class="sm:pl-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div></div>
+               <Button v-if="subscription.next_plan_name" :label="`Upgrade to ${subscription.next_plan_name}`" rounded @click="goToUpgrade" size="small" />
           </div>
 
-          <div class="mt-5 rounded-lg border p-4" :class="subscription.is_expired ? 'border-red-100 bg-red-50 text-red-700' : 'border-green-100 bg-green-50 text-green-700'">
-            <div class="font-semibold">{{ subscription.is_expired ? 'Subscription expired' : subscription.status === 'trial' ? 'Free Trial' : 'Subscription active' }}</div>
+          <div class="mt-5 rounded-lg border p-4" :class="subscription.sales_paused ? 'border-red-100 bg-red-50 text-red-700' : subscription.in_grace ? 'border-orange-100 bg-orange-50 text-orange-700' : 'border-green-100 bg-green-50 text-green-700'">
+            <div class="font-semibold">{{ subscription.sales_paused ? 'New sales paused' : subscription.in_grace ? 'Renewal grace period' : subscription.status === 'trial' ? 'Free Trial' : 'Subscription active' }}</div>
             <p class="mt-1 text-sm">
-              {{ subscription.is_expired ? 'Renew your plan to keep paid modules available.' : 'Your store can continue using the modules included in this plan.' }}
+              {{ subscription.sales_paused ? 'Subscribe to accept new ecommerce and POS orders. Existing records and orders remain available.' : subscription.in_grace ? 'Your plan has ended, but new sales remain available during the 7-day renewal grace period.' : 'Your store can continue using the modules included in this plan.' }}
             </p>
           </div>
 
@@ -70,27 +63,16 @@
               <p class="text-xs text-slate-500">Configured subscription caps and current usage for this store.</p>
             </div>
 
-            <div v-if="planLimits.length" class="mt-4 grid gap-3 md:grid-cols-3">
-              <div v-for="limit in planLimits" :key="limit.key" class="rounded-lg border border-slate-200 bg-white p-3">
-                <div class="flex items-start justify-between gap-2">
-                  <span class="text-sm font-medium text-slate-700">{{ limit.label }}</span>
-                  <Tag :value="limit.limit == null ? 'Unlimited' : `${formatCount(limit.limit)} max`" :severity="limit.limit == null ? 'secondary' : 'info'" />
+            <div v-if="planLimits.length" class="mt-4 divide-y divide-slate-100">
+              <div v-for="limit in planLimits" :key="limit.key" class="py-3 first:pt-0 last:pb-0">
+                <div class="flex items-center justify-between gap-3 text-sm">
+                  <span class="font-medium text-slate-700">{{ limit.label }}</span>
+                  <span class="font-semibold text-slate-900">{{ formatCount(limit.used) }} <span class="font-normal text-slate-500">{{ limit.limit == null ? 'used' : `of ${formatCount(limit.limit)} used` }}</span></span>
                 </div>
-                <div class="mt-3 text-lg font-semibold text-slate-950">
-                  {{ formatCount(limit.used) }}
-                  <span class="text-xs font-normal text-slate-500">{{ limit.limit == null ? 'currently used' : `of ${formatCount(limit.limit)} used` }}</span>
-                </div>
-                <ProgressBar v-if="limit.limit != null" :value="usagePercent(limit.used, limit.limit)" :showValue="false" class="mt-2 h-2" />
+                <ProgressBar v-if="limit.limit != null" :value="usagePercent(limit.used, limit.limit)" :showValue="false" class="mt-2 overflow-hidden" style="height: 8px" />
               </div>
             </div>
             <div v-else class="mt-3 text-sm text-slate-500">No account, branch, or product caps are configured for this plan.</div>
-
-            <div v-if="planFeatures.length" class="mt-4 border-t border-slate-100 pt-3">
-              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Other configured plan features</div>
-              <div class="flex flex-wrap gap-2">
-                <Tag v-for="(feature, index) in planFeatures" :key="`${index}-${feature}`" :value="feature" severity="secondary" />
-              </div>
-            </div>
           </div>
         </template>
       </Card>
@@ -106,38 +88,33 @@
           :paginator="billingRecords.length > 10"
           :rows="10"
           size="small"
-          stripedRows
+          rowHover
           dataKey="id"
-          class="p-datatable-sm"
+          class="p-datatable-sm text-xs"
         >
-          <Column field="created_at" header="Date" sortable>
+          <Column field="created_at" header="Date">
             <template #body="{ data }">
-              <div class="font-medium text-slate-900">{{ formatDate(data.created_at) }}</div>
-              <div class="text-xs text-slate-500">{{ data.reference }}</div>
+              <div class="text-sm font-medium text-slate-900">{{ formatDate(data.created_at) }}</div>
             </template>
           </Column>
-          <Column field="plan" header="Plan" sortable>
+          <Column field="plan" header="Plan">
             <template #body="{ data }">
-              <div class="font-semibold capitalize text-slate-900">{{ data.plan }}</div>
+              <div class="text-xs font-semibold capitalize text-slate-900">{{ data.plan }}</div>
               <div class="text-xs capitalize text-slate-500">{{ data.billing_cycle }} · {{ data.months }} month(s)</div>
             </template>
           </Column>
           <Column field="payment_method" header="Method" />
-          <Column field="amount" header="Amount" sortable>
+          <Column field="amount" header="Amount">
             <template #body="{ data }">
-              <span class="font-semibold">{{ formatMoney(data.amount, data.currency) }}</span>
+              <span class="text-xs font-semibold">{{ formatMoney(data.amount, data.currency) }}</span>
             </template>
           </Column>
-          <Column field="status" header="Status" sortable>
+          <Column field="status" header="Status">
             <template #body="{ data }">
-              <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
+              <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" class="text-xs" />
             </template>
           </Column>
-          <Column field="paid_at" header="Paid On">
-            <template #body="{ data }">
-              {{ data.paid_at ? formatDate(data.paid_at) : 'Not paid' }}
-            </template>
-          </Column>
+          <Column header=""><template #body="{ data }"><Button label="View" size="small" text severity="warn" @click="selectedRecord = data" /></template></Column>
         </DataTable>
 
         <div v-if="billingRecords.length === 0" class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
@@ -145,11 +122,18 @@
         </div>
       </template>
     </Card>
+    <Dialog :visible="!!selectedRecord" modal header="Payment details" class="w-[min(92vw,520px)]" @update:visible="selectedRecord = null">
+      <div v-if="selectedRecord" class="space-y-3 text-sm">
+        <div class="rounded-lg bg-slate-50 p-4"><div class="text-xs uppercase tracking-wide text-slate-500">Amount</div><div class="mt-1 text-xl font-semibold text-slate-950">{{ formatMoney(selectedRecord.amount, selectedRecord.currency) }}</div></div>
+        <div v-for="detail in recordDetails" :key="detail.label" class="flex justify-between gap-4 border-b border-slate-100 pb-2 last:border-0"><span class="shrink-0 text-slate-500">{{ detail.label }}</span><span class="break-all text-right font-medium text-slate-900">{{ detail.value }}</span></div>
+      </div>
+      <template #footer><Button label="Close" size="small" severity="secondary" outlined @click="selectedRecord = null" /></template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -158,24 +142,17 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import ProgressBar from 'primevue/progressbar'
 import Dialog from 'primevue/dialog'
-import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   store: any
   subscription: any
   billing_records: any[]
 }>()
-const authStore = useAuthStore()
-const logOut = async () => {
-  if (window.confirm('Log out of FurniSync?')) {
-    await authStore.logout({ redirect: false })
-    window.location.href = '/login'
-  }
-}
 
 const store = computed(() => props.store || {})
 const subscription = computed(() => props.subscription || {})
 const billingRecords = computed(() => Array.isArray(props.billing_records) ? props.billing_records : [])
+const selectedRecord = ref<any | null>(null)
 const enabledModules = computed(() => {
   const modules = subscription.value.enabled_modules
   return Array.isArray(modules) ? modules : []
@@ -183,10 +160,6 @@ const enabledModules = computed(() => {
 const planLimits = computed(() => {
   const limits = subscription.value.limits
   return Array.isArray(limits) ? limits : []
-})
-const planFeatures = computed(() => {
-  const features = subscription.value.plan_features
-  return Array.isArray(features) ? features.filter((feature) => typeof feature === 'string' && feature.trim()) : []
 })
 
 const formatCount = (value: number | string | null | undefined) => {
@@ -221,15 +194,6 @@ const formatDate = (value?: string | null) => {
 
 const endsAtLabel = computed(() => formatDate(subscription.value.ends_at))
 
-const remainingLabel = computed(() => {
-  const days = Number(subscription.value.days_remaining)
-  if (!subscription.value.ends_at) return 'No expiration'
-  if (Number.isNaN(days)) return 'No expiration'
-  if (days < 0) return `Expired ${Math.abs(days)} day(s) ago`
-  if (days === 0) return 'Ends today'
-  return `${days} day(s) remaining`
-})
-
 const statusLabel = (status: string) => {
   const normalized = String(status || 'unknown').replace(/_/g, ' ')
   return normalized.replace(/\b\w/g, (c) => c.toUpperCase())
@@ -242,6 +206,20 @@ const statusSeverity = (status: string) => {
   if (normalized === 'failed' || normalized === 'cancelled' || normalized === 'canceled') return 'danger'
   return 'secondary'
 }
+
+const recordDetails = computed(() => {
+  const record = selectedRecord.value
+  if (!record) return []
+  return [
+    { label: 'Reference', value: record.reference || 'Not available' },
+    { label: 'Plan', value: record.plan },
+    { label: 'Billing cycle', value: `${statusLabel(record.billing_cycle)} (${record.months} month${record.months === 1 ? '' : 's'})` },
+    { label: 'Payment method', value: record.payment_method || 'Not available' },
+    { label: 'Status', value: statusLabel(record.status) },
+    { label: 'Created on', value: formatDate(record.created_at) },
+    { label: 'Paid on', value: record.paid_at ? formatDate(record.paid_at) : 'Not paid' },
+  ]
+})
 
 const goToUpgrade = () => {
   const storeId = Number(store.value?.id || subscription.value?.store_id || 0)

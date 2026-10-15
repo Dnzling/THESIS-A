@@ -55,7 +55,7 @@ class EcommerceController extends Controller
     {
         $query = Store::query()
             ->select(['id', 'name', 'phone as contact_number', 'city', 'address', 'status', 'created_at'])
-            ->whereIn('status', ['active', 'verified'])
+            ->acceptingNewSales()
             // Hide stores with no active products available in ecommerce.
             ->whereHas('products', function ($productQuery) {
                 $productQuery->where('product_type', 'finished_good')
@@ -127,7 +127,7 @@ class EcommerceController extends Controller
     {
         $store = Store::query()
             ->select(['id', 'name', 'type', 'phone as contact_number', 'email', 'province', 'city', 'barangay', 'address', 'status', 'created_at', 'settings'])
-            ->whereIn('status', ['active', 'verified'])
+            ->acceptingNewSales()
             ->findOrFail($storeId);
 
         $statsMap = $this->buildStoreStatsMap(collect([$storeId]));
@@ -237,7 +237,7 @@ class EcommerceController extends Controller
 
         Store::query()
             ->where('id', $storeId)
-            ->whereIn('status', ['active', 'verified'])
+            ->acceptingNewSales()
             ->firstOrFail();
 
         $query = Product::query()
@@ -466,7 +466,7 @@ class EcommerceController extends Controller
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified']);
+                $storeQuery->acceptingNewSales();
             });
 
         // Optimized inventory filter using EXISTS instead of WHERE HAS (faster)
@@ -705,7 +705,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified']);
+                $storeQuery->acceptingNewSales();
             })
             ->when($request->filled('store_id'), function ($query) use ($request) {
                 $query->where('store_id', (int) $request->input('store_id'));
@@ -1068,7 +1068,7 @@ class EcommerceController extends Controller
 
         $isStoreVisibleInEcommerce = Store::query()
             ->where('id', $storeId)
-            ->whereIn('status', ['active', 'verified'])
+            ->acceptingNewSales()
             ->exists();
 
         if (!$isStoreVisibleInEcommerce) {
@@ -1335,6 +1335,11 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $store = Store::query()->find((int) $cart->store_id);
+        if (!$store || !app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store)) {
+            return response()->json(['success' => false, 'code' => 'SUBSCRIPTION_REQUIRED', 'message' => 'This store is not accepting new orders right now.'], 403);
+        }
+
         $this->applyCurrentCartPrices($itemsForCheckout);
 
         $hasDeliveryVehicle = EcommerceDeliveryVehicle::query()
@@ -1555,6 +1560,11 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->where('status', 'active')
             ->exists();
+        $store = Store::query()->find((int) $cart->store_id);
+        if (!$store || !app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store)) {
+            return response()->json(['success' => false, 'code' => 'SUBSCRIPTION_REQUIRED', 'message' => 'This store is not accepting new orders right now.'], 403);
+        }
+
         $fulfillmentMethod = $hasDeliveryVehicle
             ? (string) ($validated['fulfillment_method'] ?? 'delivery')
             : 'pickup';
@@ -2410,7 +2420,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified']);
+                $storeQuery->acceptingNewSales();
             })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                 $inventoryQuery->sellableInEcommerce();
@@ -2449,7 +2459,7 @@ class EcommerceController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('store', function ($storeQuery) {
-                        $storeQuery->whereIn('status', ['active', 'verified']);
+                        $storeQuery->acceptingNewSales();
                     })
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                         $inventoryQuery->sellableInEcommerce();
@@ -2532,7 +2542,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified']);
+                $storeQuery->acceptingNewSales();
             })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                 $inventoryQuery->sellableInEcommerce();
@@ -3336,6 +3346,9 @@ class EcommerceController extends Controller
                         'review_notes' => $latestReturn->review_notes,
                         'requested_quantity' => (int) $latestReturn->requested_quantity,
                         'return_type' => $latestReturn->return_type,
+                        'charge_responsibility' => $latestReturn->charge_responsibility,
+                        'return_fee' => (float) ($latestReturn->return_fee ?? 0),
+                        'refund_exception_reason' => $latestReturn->refund_exception_reason,
                         'refund_eta' => $latestReturn->return_type === 'refund' ? 'less than 30 days after Finance sends the refund' : null,
                         'refund_method_required' => $latestReturn->return_type === 'refund'
                             && !$latestReturn->financeRefund?->refund_method,

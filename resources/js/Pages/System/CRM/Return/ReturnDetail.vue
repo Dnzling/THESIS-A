@@ -221,6 +221,18 @@
                   <dd class="font-semibold text-slate-900">{{ prettyStatus(returnRequest.return_type) }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
+                  <dt class="text-slate-500">Return charge</dt>
+                  <dd class="text-right font-semibold text-slate-900">{{ Number(returnRequest.return_fee || 0) > 0 ? formatMoney(returnRequest.return_fee) : 'Waived' }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-slate-500">Responsibility</dt>
+                  <dd class="font-semibold text-slate-900">{{ prettyStatus(returnRequest.charge_responsibility || 'store') }}</dd>
+                </div>
+                <div v-if="returnRequest.refund_exception_reason" class="flex justify-between gap-3">
+                  <dt class="text-slate-500">Refund exception</dt>
+                  <dd class="max-w-[65%] text-right font-semibold text-slate-900">{{ returnRequest.refund_exception_reason }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
                   <dt class="text-slate-500">Condition</dt>
                   <dd class="font-semibold text-slate-900">{{ returnRequest.product_condition ?
                     prettyStatus(returnRequest.product_condition) : 'Pending inspection' }}</dd>
@@ -497,9 +509,21 @@
           Add a short note for the customer/internal team. Notes are required when rejecting.
         </p>
         <div v-if="pendingStatus === 'approved'" class="space-y-2">
-          <label class="block text-sm text-gray-600">Return Type</label>
+          <label class="block text-sm text-gray-600">Resolution</label>
           <Select v-model="pendingReturnType" :options="returnTypeOptions" optionLabel="label" optionValue="value"
             placeholder="Select refund or replacement" class="w-full" />
+          <small class="text-slate-500">Replacement is standard. Select refund only when replacement cannot reasonably be completed.</small>
+        </div>
+        <div v-if="pendingStatus === 'approved' && pendingReturnType === 'refund'" class="space-y-2">
+          <label class="block text-sm text-gray-600">Refund exception reason</label>
+          <Select v-model="pendingRefundExceptionReason" :options="refundExceptionOptions"
+            placeholder="Why is replacement unavailable?" class="w-full" />
+        </div>
+        <div v-if="pendingStatus === 'approved'" class="space-y-2">
+          <label class="block text-sm text-gray-600">Return pickup charge</label>
+          <Select v-model="pendingChargeResponsibility" :options="chargeResponsibilityOptions" optionLabel="label"
+            optionValue="value" class="w-full" />
+          <small class="text-slate-500">Store fault waives the fee. Customer responsibility uses distance, weight, and bulky-item settings.</small>
         </div>
         <div v-if="pendingStatus === 'rejected'" class="space-y-2">
           <label class="block text-sm text-gray-600">Reject Reason</label>
@@ -876,8 +900,20 @@ const pendingStatus = ref<'approved' | 'rejected'>('approved')
 const pendingReviewNotes = ref('')
 const pendingReturnType = ref<'refund' | 'replacement' | null>(null)
 const returnTypeOptions = [
-  { label: 'Refund (send to Finance after inspection)', value: 'refund' },
-  { label: 'Replacement (Inventory issues replacement stock)', value: 'replacement' },
+  { label: 'Replacement (recommended)', value: 'replacement' },
+  { label: 'Refund (exception only)', value: 'refund' },
+]
+const pendingChargeResponsibility = ref<'store' | 'customer'>('store')
+const pendingRefundExceptionReason = ref<string | null>(null)
+const chargeResponsibilityOptions = [
+  { label: 'Store pays — damaged, defective, incomplete, or wrong item', value: 'store' },
+  { label: 'Customer pays — customer-caused or policy exception', value: 'customer' },
+]
+const refundExceptionOptions = [
+  'Replacement stock unavailable',
+  'Replacement repeatedly failed',
+  'Order can no longer be fulfilled',
+  'Refund required by consumer policy',
 ]
 const pendingRejectReason = ref<string | null>(null)
 const rejectReasonOptions = [
@@ -891,6 +927,8 @@ const rejectReasonOptions = [
 
 const notesContinueDisabled = computed(() => {
   if (pendingStatus.value === 'approved') return !pendingReturnType.value
+    || !pendingChargeResponsibility.value
+    || (pendingReturnType.value === 'refund' && !pendingRefundExceptionReason.value)
   if (pendingStatus.value !== 'rejected') return false
   const hasReason = !!String(pendingRejectReason.value || '').trim().length
   const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
@@ -908,7 +946,9 @@ const openApproval = () => {
   pendingStatus.value = 'approved'
   const recommendation = String(investigationTicket.value?.recommended_resolution || '')
   pendingReturnType.value = returnRequest.value?.return_type
-    || (['refund', 'replacement'].includes(recommendation) ? recommendation as 'refund' | 'replacement' : null)
+    || (recommendation === 'refund' ? 'refund' : 'replacement')
+  pendingChargeResponsibility.value = returnRequest.value?.charge_responsibility || 'store'
+  pendingRefundExceptionReason.value = returnRequest.value?.refund_exception_reason || null
   pendingReviewNotes.value = returnRequest.value?.review_notes || ''
   notesDialogVisible.value = true
 }
@@ -966,6 +1006,8 @@ const updateStatus = async (nextStatus: 'approved' | 'rejected') => {
     const res = await crmService.updateReturnStatus(id.value, {
       status: nextStatus,
       return_type: nextStatus === 'approved' ? pendingReturnType.value || undefined : undefined,
+      charge_responsibility: nextStatus === 'approved' ? pendingChargeResponsibility.value : undefined,
+      refund_exception_reason: nextStatus === 'approved' && pendingReturnType.value === 'refund' ? pendingRefundExceptionReason.value || undefined : undefined,
       review_notes: nextStatus === 'rejected' ? combinedRejectNotes : (pendingReviewNotes.value || undefined),
     })
     returnRequest.value = res?.data || returnRequest.value

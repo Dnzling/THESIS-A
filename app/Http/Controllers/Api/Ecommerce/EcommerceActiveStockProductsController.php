@@ -69,7 +69,7 @@ class EcommerceActiveStockProductsController extends Controller
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified']);
+                $storeQuery->acceptingNewSales();
             })
             ->whereHas('inventory', function ($inventoryQuery) {
                 $inventoryQuery->sellableInEcommerce();
@@ -225,7 +225,7 @@ class EcommerceActiveStockProductsController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('store', function ($storeQuery) {
-                        $storeQuery->whereIn('status', ['active', 'verified']);
+                        $storeQuery->acceptingNewSales();
                     })
                     ->whereHas('inventory', function ($inventoryQuery) {
                         $inventoryQuery->sellableInEcommerce();
@@ -240,7 +240,7 @@ class EcommerceActiveStockProductsController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('store', function ($storeQuery) {
-                        $storeQuery->whereIn('status', ['active', 'verified']);
+                        $storeQuery->acceptingNewSales();
                     })
                     ->whereHas('inventory', function ($inventoryQuery) {
                         $inventoryQuery->sellableInEcommerce();
@@ -333,7 +333,7 @@ class EcommerceActiveStockProductsController extends Controller
         $stores = Store::query()
             ->select(['id', 'name', 'city', 'settings'])
             ->whereIn('id', $rankedStores->keys())
-            ->whereIn('status', ['active', 'verified'])
+            ->acceptingNewSales()
             ->get()
             ->sortBy(function (Store $store) use ($rankedStores) {
                 $rank = $rankedStores->get($store->id);

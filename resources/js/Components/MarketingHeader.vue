@@ -1,12 +1,12 @@
 <template>
   <nav class="border-b border-slate-200/70 bg-white/95 backdrop-blur">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-      <router-link to="/" class="flex items-center gap-3" @click="closeMobileMenu">
+      <router-link to="/business" class="flex items-center gap-3" @click="closeMobileMenu">
            <span class="portal-brand text-orange-500 text-xl">FURNISYNC</span>
       </router-link>
 
       <div class="hidden items-center gap-6 md:flex">
-        <router-link to="/" class="nav-link" :class="{ 'nav-link-active': route.path === '/' }">
+        <router-link to="/business" class="nav-link" :class="{ 'nav-link-active': route.path === '/business' }">
           Home
         </router-link>
         <router-link to="/business/about" class="nav-link" :class="{ 'nav-link-active': route.path === '/business/about' }">
@@ -44,7 +44,7 @@
 
     <div v-if="isMobileMenuOpen" class="border-t border-slate-200/70 bg-white px-6 py-5 md:hidden animate-fadeIn">
       <div class="flex flex-col gap-2">
-        <router-link to="/" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/' }" @click="closeMobileMenu">
+        <router-link to="/business" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/business' }" @click="closeMobileMenu">
           Home
         </router-link>
         <router-link to="/business/about" class="mobile-link" :class="{ 'mobile-link-active': route.path === '/business/about' }" @click="closeMobileMenu">

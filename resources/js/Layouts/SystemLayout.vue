@@ -6,34 +6,17 @@
     <aside class="sidebar bg-white flex flex-col z-30 overflow-y-auto shadow-lg"
       :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
       <!-- Logo section -->
-      <div class="px-5 py-4">
-        <div class="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            class="flex items-center gap-3 min-w-0 rounded-2xl bg-transparent"
-            :class="!sidebarOpen ? 'hover:bg-orange-400' : ''"
-            :disabled="sidebarOpen"
-            @click="!sidebarOpen && (sidebarOpen = true)"
-          
-          >
+      <div class="px-4 py-4">
+        <div class="flex items-center gap-3" :class="sidebarOpen ? '' : 'justify-center'">
+          <div class="flex min-w-0 items-center gap-3">
           <div class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0">
             <img src="/F.svg" alt="Furnisync" class="w-20 h-20" />
           </div>
           <div v-if="sidebarOpen" class="leading-tight">
             <span class="portal-brand text-orange-400">FURNISYNC</span>
+            <p class="mt-1 text-xs font-semibold text-slate-500">{{ subscriptionName }}</p>
           </div>
-          </button>
-          <Button
-            v-if="sidebarOpen"
-            icon="pi pi-caret-left"
-            size="small"
-            text
-            rounded
-            class="hidden lg:inline-flex shrink-0"
-            aria-label="Collapse sidebar"
-            @click="sidebarOpen = false"
-            v-tooltip="'Collapse sidebar'"
-          />
+          </div>
         </div>
       </div>
   
@@ -51,7 +34,7 @@
           <div v-if="groupedNavigation.length > 0" class="px-1">
             <Accordion multiple :value="expandedModuleValues" class="system-navigation-accordion">
               <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
-                :value="moduleGroup.module">
+                :value="moduleGroup.module" @mouseenter="expandModule(moduleGroup.module)">
                 <AccordionHeader size="small">
                   <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
                     {{ formatModuleName(moduleGroup.module) }}
@@ -91,16 +74,45 @@
           </div>
         </template>
       </nav>
+
+      <!-- Icon navigation when collapsed -->
+      <nav v-else class="flex-1 overflow-y-auto px-2 py-3">
+        <div v-if="loadingNavigation" class="space-y-3 px-1">
+          <Skeleton v-for="n in 5" :key="n" width="2.5rem" height="2.5rem" class="mx-auto rounded-xl" />
+        </div>
+        <div v-else class="space-y-3">
+          <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="space-y-1 border-b border-slate-100 pb-3 last:border-0">
+            <Link
+              v-for="item in moduleGroup.items"
+              :key="item.id"
+              :href="item.route_path"
+              class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600"
+              :class="{ 'bg-orange-100 text-orange-600': isActive(item.route_path) }"
+              v-tooltip.right="item.display_name"
+            >
+              <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
+            </Link>
+          </div>
+        </div>
+      </nav>
     </aside>
   
     <!-- Main Content -->
     <div class="flex-1 flex flex-col h-screen overflow-hidden">
       <!-- Top Header -->
       <header
-        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between lg:justify-end sticky top-0 z-20 shadow-sm">
-        <div class="flex items-center gap-3 lg:hidden">
-          <Button icon="pi pi-bars" size="small" text rounded severity="secondary" @click="sidebarOpen = !sidebarOpen" />
-          <div class="text-sm font-semibold text-gray-700">Menu</div>
+        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+          <Button
+            :icon="sidebarOpen ? 'pi pi-angle-left' : 'pi pi-bars'"
+            size="small"
+            text
+            rounded
+            severity="secondary"
+            :aria-label="sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            @click="toggleSidebar"
+          />
+          <div class="hidden text-sm font-semibold text-gray-700 sm:block">{{ pageTitle || 'Workspace' }}</div>
         </div>
   
   
@@ -291,6 +303,11 @@ const userDialogRef = ref(null)
 const loadingNavigation = ref(false)
 const enabledModules = ref<string[] | null>(null)
 const sidebarOpen = ref(true)
+const subscriptionName = computed(() => {
+  if (String(authStore.userRole || '').toLowerCase() === 'super_admin') return 'Platform Administration'
+  const name = authStore.user?.store?.subscription_name
+  return name || 'Free'
+})
 const notificationPanel = ref()
 const staffChatPanel = ref()
 const staffChatConversations = ref<any[]>([])
@@ -328,6 +345,10 @@ const expandedModuleValues = computed<string[]>({
 
 // Load the user and their navigation on mount.
 onMounted(async () => {
+  sidebarOpen.value = window.innerWidth >= 1024
+    ? localStorage.getItem('sidebarOpen') !== 'false'
+    : false
+
   const storedToken = localStorage.getItem('auth_token')
   if (!storedToken) {
     router.visit('/login')
@@ -427,6 +448,16 @@ const toggleModule = (module: string) => {
   expandedModules.value[module] = !expandedModules.value[module]
 }
 
+const expandModule = (module: string) => {
+  if (!sidebarOpen.value || expandedModules.value[module]) return
+  expandedModules.value = { ...expandedModules.value, [module]: true }
+}
+
+const toggleSidebar = () => {
+  sidebarOpen.value = !sidebarOpen.value
+  localStorage.setItem('sidebarOpen', sidebarOpen.value.toString())
+}
+
 const loadStaffChats = async () => {
   staffChatsLoading.value = true
   try {
@@ -460,8 +491,7 @@ watch(currentPath, () => {
 const handleKeyboardShortcut = (event: KeyboardEvent) => {
   if (event.ctrlKey && event.key === 'b') {
     event.preventDefault()
-    sidebarOpen.value = !sidebarOpen.value
-    localStorage.setItem('sidebarOpen', sidebarOpen.value.toString())
+    toggleSidebar()
   }
 }
 
@@ -658,16 +688,24 @@ const groupedNavigation = computed(() => {
   return grouped
 })
 
-// Start with the first module the user can actually see; the rest stay collapsed.
+const routeMatches = (routePath: string): boolean => {
+  const target = String(routePath || '').replace(/\/$/, '') || '/'
+  return currentPath.value === target || (target !== '/' && currentPath.value.startsWith(`${target}/`))
+}
+
+// Preserve the user's open modules and always reveal the module for the active page.
 watch(
-  () => groupedNavigation.value.map((group) => group.module).join('|'),
-  (moduleKeys) => {
-    const modules = moduleKeys ? moduleKeys.split('|') : []
-    expandedModules.value = Object.fromEntries(
-      modules.map((module, index) => [module, index === 0])
-    )
+  [() => groupedNavigation.value, currentPath, sidebarOpen],
+  ([groups]) => {
+    const navigationGroups = groups as Array<{ module: string; items: any[] }>
+    const nextState: Record<string, boolean> = {}
+    navigationGroups.forEach((group, index) => {
+      const containsActivePage = group.items.some((item) => routeMatches(item.route_path))
+      nextState[group.module] = containsActivePage || expandedModules.value[group.module] || (index === 0 && !navigationGroups.some(candidate => candidate.items.some((item) => routeMatches(item.route_path))))
+    })
+    expandedModules.value = nextState
   },
-  { immediate: true }
+  { immediate: true, deep: false }
 )
 
 
@@ -689,7 +727,7 @@ const formatModuleName = (module: string): string => {
 
 // Check if route is active
 const isActive = (routePath: string): boolean => {
-  return currentPath.value === routePath
+  return routeMatches(routePath)
 }
 
 // User data
