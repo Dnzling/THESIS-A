@@ -13,7 +13,7 @@ Schedule::command('inventory:reorder-suggestions:auto-run')->everyMinute();
 Schedule::call(function () {
     \App\Models\Ecommerce\EcommerceOrder::query()
         ->whereIn('payment_method', ['card', 'e_wallet'])
-        ->where('payment_status', 'unpaid')
+        ->whereIn('payment_status', ['unpaid', 'failed'])
         ->whereNotNull('pending_snapshot')
         ->where('created_at', '<=', now()->subMinutes(30))
         ->chunkById(50, function ($orders) {
@@ -46,7 +46,7 @@ Schedule::call(function () {
                 try {
                     \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
                         $fresh = \App\Models\Ecommerce\EcommerceOrder::query()->lockForUpdate()->find($order->id);
-                        if (!$fresh || $fresh->payment_status !== 'unpaid' || empty(((array) ($fresh->pending_snapshot ?? []))['stock_reserved'])) {
+                        if (!$fresh || !in_array($fresh->payment_status, ['unpaid', 'failed'], true) || empty(((array) ($fresh->pending_snapshot ?? []))['stock_reserved'])) {
                             return;
                         }
                         app(\App\Services\Ecommerce\EcommerceStockReservationService::class)->release($fresh);

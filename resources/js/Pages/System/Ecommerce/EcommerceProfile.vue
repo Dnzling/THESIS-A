@@ -304,7 +304,7 @@
             <div v-else class="space-y-4">
               <div>
                 <h3 class="text-2xl font-semibold text-slate-900">Cancellations</h3>
-                <p class="mt-1 text-sm text-slate-500">Cancellation requests and their latest decisions appear here.</p>
+                <p class="mt-1 text-sm text-slate-500">Your cancelled orders appear here.</p>
               </div>
               <div v-if="!cancellationOrders.length" class="rounded-2xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
                 No cancellation records yet.
@@ -317,7 +317,7 @@
                     <p v-if="order.cancellation_request?.reason" class="mt-2 text-sm text-slate-600">{{ order.cancellation_request.reason }}</p>
                   </div>
                   <span class="rounded-full px-3 py-1 text-xs font-semibold capitalize" :class="orderStatusClass(order.cancellation_request?.status || order.primary_status || order.status)">
-                    {{ formatOrderStatus(order.cancellation_request?.status || order.primary_status || order.status) }}
+                    {{ formatOrderStatus(order.primary_status || order.status) }}
                   </span>
                 </div>
                 <p v-if="order.cancellation_request?.review_notes" class="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">

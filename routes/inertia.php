@@ -422,7 +422,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/supplier-portal/pos/{id}/invoice-view', 'System/Supplier/SupplierInvoiceDetail', 'supplier.pos.invoice-view', 'Invoice Details');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
     $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
-    $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details');
+    $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details'); 
     $inertia('/supplier-portal/contracts/create', 'System/Supplier/SupplierContractCreate', 'supplier.contracts.create', 'Create Contract');
     $inertia('/supplier-portal/contracts/{id}', 'System/Supplier/SupplierContractShow', 'supplier.contracts.show', 'Contract Details');
     $inertia('/supplier-portal/profile', 'Profile/SupplierProfile', 'supplier.profile', 'Supplier Profile');
@@ -439,7 +439,6 @@ $inertia('/job-portal/postings/{id}/apply', 'System/HR/Applicant/ApplicantApplic
 $inertia('/job-portal/applications', 'System/HR/Applicant/ApplicantDashboard', 'job-portal.dashboard', 'My Applications');
 $inertia('/job-portal/applications/{id}', 'System/HR/Applicant/ApplicantApplicationDetail', 'job-portal.applications.detail', 'Application Details');
 $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-portal.profile', 'Applicant Profile');
-
 
 // Ecommerce storefront
 $inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');

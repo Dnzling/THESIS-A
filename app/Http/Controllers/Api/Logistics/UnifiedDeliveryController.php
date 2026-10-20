@@ -18,7 +18,6 @@ use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
-use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -33,11 +32,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UnifiedDeliveryController extends Controller
 {
-    public function __construct(
-        private readonly OrderCommissionService $commissionService
-    ) {
-    }
-
     private const DELIVERY_STATUSES = [
         'assigned',
         'packed',
@@ -1196,11 +1190,6 @@ class UnifiedDeliveryController extends Controller
 
             $order->save();
 
-            if ($validated['status'] === 'delivered'
-                && $order->payment_method === 'cod'
-                && $order->payment_status === 'paid') {
-                $this->commissionService->record($order, false);
-            }
 
             return response()->json(['success' => true, 'message' => 'Delivery status updated.']);
         }
@@ -1381,9 +1370,6 @@ class UnifiedDeliveryController extends Controller
                 $order->payment_status = 'paid';
             }
             $order->save();
-            if ($order->payment_method === 'cod' && $order->payment_status === 'paid') {
-                $this->commissionService->record($order, false);
-            }
 
             EcommerceDeliveryLog::query()->create([
                 'delivery_id' => $delivery->id,

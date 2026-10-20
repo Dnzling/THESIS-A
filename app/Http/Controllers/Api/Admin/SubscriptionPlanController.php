@@ -104,7 +104,6 @@ class SubscriptionPlanController extends Controller
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
             'commission_rate' => 'nullable|numeric|min:0|max:5',
-            'commission_percentage' => 'nullable|numeric|min:0|max:5',
             'max_user_accounts' => 'nullable|integer|min:1',
             'max_branches' => 'nullable|integer|min:1',
             'max_products' => 'nullable|integer|min:1',
@@ -123,7 +122,6 @@ class SubscriptionPlanController extends Controller
             'monthly_price' => $validated['monthly_price'],
             'yearly_price' => $validated['yearly_price'],
             'commission_rate' => $validated['commission_rate'] ?? null,
-            'commission_percentage' => $validated['commission_percentage'] ?? 0,
             'max_user_accounts' => $validated['max_user_accounts'] ?? null,
             'max_branches' => $validated['max_branches'] ?? null,
             'max_products' => $validated['max_products'] ?? null,
@@ -153,7 +151,6 @@ class SubscriptionPlanController extends Controller
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
             'commission_rate' => 'nullable|numeric|min:0|max:5',
-            'commission_percentage' => 'nullable|numeric|min:0|max:5',
             'max_user_accounts' => 'nullable|integer|min:1',
             'max_branches' => 'nullable|integer|min:1',
             'max_products' => 'nullable|integer|min:1',
@@ -177,9 +174,6 @@ class SubscriptionPlanController extends Controller
             'commission_rate' => array_key_exists('commission_rate', $validated)
                 ? $validated['commission_rate']
                 : $subscriptionPlan->commission_rate,
-            'commission_percentage' => array_key_exists('commission_percentage', $validated)
-                ? ($validated['commission_percentage'] ?? 0)
-                : $subscriptionPlan->commission_percentage,
             'max_user_accounts' => $validated['max_user_accounts'] ?? null,
             'max_branches' => $validated['max_branches'] ?? null,
             'max_products' => $validated['max_products'] ?? null,

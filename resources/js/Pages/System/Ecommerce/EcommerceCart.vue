@@ -51,7 +51,30 @@
                 </div>
               </div>
 
-              <div class="mt-3 overflow-x-auto">
+              <div class="mt-3 md:hidden">
+                <div v-for="item in group.items" :key="item.id" class="border-b border-slate-200 px-1 py-4 last:border-b-0">
+                  <div class="flex items-start gap-3">
+                    <Checkbox :modelValue="selectedIdsForStore(group.store_id).includes(item.id)" binary @update:modelValue="(checked) => toggleSelected(group.store_id, item.id, checked)" />
+                    <img :src="item.image || '/F.svg'" :alt="item.product_name" class="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
+                      <p class="text-xs text-slate-500">{{ item.variation_name || item.variation_sku || 'Standard' }}</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatMoney(item.unit_price) }}</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                    <InputNumber :modelValue="Number(item.quantity)" showButtons buttonLayout="horizontal" :step="1" :min="1" class="!w-28 max-w-full" inputClass="!w-10 min-w-0 text-center" @update:modelValue="(value) => updateQty(group.store_id, item, Number(value || 1))">
+                      <template #incrementbuttonicon><span class="pi pi-plus" /></template>
+                      <template #decrementbuttonicon><span class="pi pi-minus" /></template>
+                    </InputNumber>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <Button :icon="item.is_favorite ? 'pi pi-heart-fill' : 'pi pi-heart'" text size="small" :severity="item.is_favorite ? 'danger' : 'secondary'" aria-label="Toggle favorite" @click="toggleFavorite(item)" />
+                      <Button icon="pi pi-trash" text size="small" severity="danger" aria-label="Remove item" @click="removeItem(group.store_id, item.id)" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 hidden overflow-x-auto md:block">
                 <DataTable :value="group.items" class="p-datatable-sm" responsiveLayout="scroll" tableStyle="min-width: 44rem">
                   <Column header="" style="width: 56px">
                     <template #body="{ data }">
@@ -126,22 +149,16 @@
                     <span class="text-slate-600">Subtotal ({{ selectedCountForStore(group.store_id) }} item{{ selectedCountForStore(group.store_id) === 1 ? '' : 's' }})</span>
                     <span class="font-medium text-slate-900">{{ formatMoney(selectedTotalForStore(group.store_id)) }}</span>
                   </div>
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-slate-600">Shipping Fee</span>
-                    <Skeleton v-if="group.shipping_loading" width="5rem" height="1rem" />
-                    <span v-else-if="group.shipping_fee !== null" class="font-medium text-slate-900">{{ formatMoney(group.shipping_fee) }}</span>
-                    <span v-else class="text-right text-xs font-medium text-slate-500">Calculated at checkout</span>
-                  </div>
                 </div>
 
                 <Divider />
 
                 <div class="flex items-end justify-between gap-3">
-                  <span class="font-semibold text-slate-900">Estimated Total</span>
-                  <span class="text-xl font-bold text-slate-900">{{ formatMoney(estimatedTotalForStore(group.store_id)) }}</span>
+                  <span class="font-semibold text-slate-900">Selected subtotal</span>
+                  <span class="text-xl font-bold text-slate-900">{{ formatMoney(selectedTotalForStore(group.store_id)) }}</span>
                 </div>
                 <p class="mt-2 text-xs leading-5 text-slate-500">
-                  Shipping is based on your default address and is confirmed during checkout.
+                  Delivery options and any fee are confirmed at checkout.
                 </p>
 
                 <Button
@@ -184,19 +201,15 @@ type CartGroup = {
   store_name: string
   items: any[]
   summary: any
-  shipping_fee: number | null
-  shipping_loading: boolean
 }
 
 const cartGroups = ref<CartGroup[]>([])
-const defaultShippingAddress = ref<any>(null)
 const selectedItemIdsByStore = reactive<Record<number, number[]>>({})
 const savedQuantities = reactive<Record<number, number>>({})
 const dirtyItemIds = reactive(new Set<number>())
 const quantityVersions = new Map<number, number>()
 const quantitySaveTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const activeQuantitySaves = new Map<number, { version: number; promise: Promise<boolean> }>()
-const shippingEstimateVersions = new Map<number, number>()
 
 const formatMoney = (value: number | string | null | undefined) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -210,13 +223,8 @@ const formatUom = (value: unknown) => String(value || 'unit').replaceAll('_', ' 
 async function loadCartGroups() {
   loading.value = true
   try {
-    const [cartsRes, addressesRes] = await Promise.all([
-      ecommerceService.getCarts(),
-      ecommerceService.getAddressTemplates().catch(() => null),
-    ])
+    const cartsRes = await ecommerceService.getCarts()
     const carts = cartsRes.data?.data || []
-    const addresses = Array.isArray(addressesRes?.data?.data) ? addressesRes.data.data : []
-    defaultShippingAddress.value = addresses.find((address: any) => Boolean(address.is_default)) || addresses[0] || null
 
     const details = await Promise.all(
       carts.map(async (c: any) => {
@@ -228,8 +236,6 @@ async function loadCartGroups() {
           store_name: String(c.store_name || data?.store_name || 'Store'),
           items: Array.isArray(data.items) ? data.items : [],
           summary: data.summary || {},
-          shipping_fee: null,
-          shipping_loading: false,
         } as CartGroup
       }),
     )
@@ -246,7 +252,6 @@ async function loadCartGroups() {
       }
     }
 
-    await Promise.all(cartGroups.value.map((group) => loadShippingFeeForStore(group.store_id)))
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load cart' })
   } finally {
@@ -278,57 +283,14 @@ const allSelectedForStore = (storeId: number) => {
   return group.items.every((item) => selectedIds.has(Number(item.id)))
 }
 
-const estimatedTotalForStore = (storeId: number) => {
-  const group = cartGroups.value.find((candidate) => candidate.store_id === storeId)
-  return selectedTotalForStore(storeId) + Number(group?.shipping_fee || 0)
-}
-
-async function loadShippingFeeForStore(storeId: number) {
-  const group = cartGroups.value.find((candidate) => candidate.store_id === storeId)
-  if (!group) return
-
-  const itemIds = selectedIdsForStore(storeId).map(Number)
-  const address = defaultShippingAddress.value
-  if (!itemIds.length || !address) {
-    group.shipping_fee = null
-    group.shipping_loading = false
-    return
-  }
-
-  const version = (shippingEstimateVersions.get(storeId) || 0) + 1
-  shippingEstimateVersions.set(storeId, version)
-  group.shipping_loading = true
-
-  const shippingAddress = [address.province, address.city, address.barangay, address.address_line]
-    .filter(Boolean)
-    .join(', ')
-
-  try {
-    const response = await ecommerceService.estimateShippingFee({
-      item_ids: itemIds,
-      shipping_address: shippingAddress || undefined,
-      customer_latitude: address.latitude == null ? undefined : Number(address.latitude),
-      customer_longitude: address.longitude == null ? undefined : Number(address.longitude),
-    })
-    if (shippingEstimateVersions.get(storeId) !== version) return
-    group.shipping_fee = Number(response.data?.data?.shipping_fee || 0)
-  } catch {
-    if (shippingEstimateVersions.get(storeId) === version) group.shipping_fee = null
-  } finally {
-    if (shippingEstimateVersions.get(storeId) === version) group.shipping_loading = false
-  }
-}
-
 function toggleSelected(storeId: number, itemId: number, checked: boolean) {
   const current = selectedItemIdsByStore[storeId] || []
   if (checked) {
     if (!current.includes(itemId)) current.push(itemId)
     selectedItemIdsByStore[storeId] = current
-    void loadShippingFeeForStore(storeId)
     return
   }
   selectedItemIdsByStore[storeId] = current.filter((id) => id !== itemId)
-  void loadShippingFeeForStore(storeId)
 }
 
 function toggleSelectAll(storeId: number) {
@@ -338,7 +300,6 @@ function toggleSelectAll(storeId: number) {
   selectedItemIdsByStore[storeId] = allSelectedForStore(storeId)
     ? []
     : group.items.map((item) => Number(item.id))
-  void loadShippingFeeForStore(storeId)
 }
 
 function recalculateGroup(group: CartGroup) {
@@ -378,7 +339,6 @@ async function persistQuantity(storeId: number, item: any, version: number): Pro
     }
     savedQuantities[itemId] = quantity
     dirtyItemIds.delete(itemId)
-    void loadShippingFeeForStore(storeId)
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
     return true
   } catch (error: any) {

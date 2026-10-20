@@ -56,11 +56,6 @@
                 <label class="mb-1 block text-xs font-medium text-slate-700">Yearly Price</label>
                 <InputNumber v-model="form.yearly_price" mode="currency" currency="PHP" locale="en-PH" :min="0" size="small" fluid />
               </div>
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-xs font-medium text-slate-700">Online Store Commission (%)</label>
-                <InputNumber v-model="form.commission_percentage" :min="0" :max="5" :minFractionDigits="2" suffix="%" size="small" fluid />
-                <small class="text-xs text-slate-500">Applied only to completed customer purchases through the online store.</small>
-              </div>
               <div class="md:col-span-2 border-t border-slate-100 pt-4"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Plan limits</p><p class="mt-1 text-xs text-slate-500">Leave blank for unlimited usage.</p></div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-700">Total Accounts (Admin + Employees)</label>
@@ -193,7 +188,6 @@ const form = reactive({
   description: '',
   monthly_price: 0,
   yearly_price: 0,
-  commission_percentage: 0,
   max_user_accounts: null as number | null,
   max_branches: null as number | null,
   max_products: null as number | null,
@@ -330,7 +324,6 @@ const loadData = async () => {
     form.description = plan.description || ''
     form.monthly_price = Number(plan.monthly_price || 0)
     form.yearly_price = Number(plan.yearly_price || 0)
-    form.commission_percentage = Number(plan.commission_percentage || 0)
     form.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
     form.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
     form.max_products = plan.max_products == null ? null : Number(plan.max_products)
@@ -386,7 +379,6 @@ const save = async () => {
       description: form.description || null,
       monthly_price: form.monthly_price,
       yearly_price: form.yearly_price,
-      commission_percentage: form.commission_percentage,
       max_user_accounts: form.max_user_accounts,
       max_branches: form.max_branches,
       max_products: form.max_products,

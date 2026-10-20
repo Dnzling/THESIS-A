@@ -125,7 +125,7 @@
             <div class="flex items-center justify-between"><span class="text-gray-500">Discount</span><span>₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">VATable Sales</span><span>₱ {{ formatMoney(vatableSales) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (Included)</span><span>₱ {{ formatMoney(detail.amounts?.tax) }}</span></div>
-            <div class="flex items-center justify-between"><span class="text-gray-500">Platform Commission ({{ formatDecimal(detail.amounts?.commission_percentage) }}%)</span><span>- ₱ {{ formatMoney(detail.amounts?.commission) }}</span></div>
+            <div v-if="detail.source_type !== 'ecommerce'" class="flex items-center justify-between"><span class="text-gray-500">Platform Commission ({{ formatDecimal(detail.amounts?.commission_percentage) }}%)</span><span>- ₱ {{ formatMoney(detail.amounts?.commission) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Order Total</span><span>₱ {{ formatMoney(detail.amounts?.total) }}</span></div>
             <div class="flex items-center justify-between font-medium"><span class="text-gray-600">Store Net Proceeds</span><span>₱ {{ formatMoney(detail.amounts?.store_net) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Delivery Fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
@@ -316,7 +316,7 @@ const printInvoice = () => {
             <div class="row"><span>Discount</span><strong>PHP ${formatMoney(d.amounts?.discount || 0)}</strong></div>
             <div class="row"><span>VATable Sales</span><strong>PHP ${formatMoney(Math.max(0, Number(d.amounts?.subtotal || 0) - Number(d.amounts?.discount || 0) - Number(d.amounts?.tax || 0)))}</strong></div>
             <div class="row"><span>Output VAT (Included)</span><strong>PHP ${formatMoney(d.amounts?.tax || 0)}</strong></div>
-            <div class="row"><span>Platform Commission (${formatDecimal(d.amounts?.commission_percentage || 0)}%)</span><strong>- PHP ${formatMoney(d.amounts?.commission || 0)}</strong></div>
+            ${d.source_type === 'ecommerce' ? '' : `<div class="row"><span>Platform Commission (${formatDecimal(d.amounts?.commission_percentage || 0)}%)</span><strong>- PHP ${formatMoney(d.amounts?.commission || 0)}</strong></div>`}
             <div class="row"><span>Shipping Fee</span><strong>PHP ${formatMoney(d.amounts?.shipping_fee || 0)}</strong></div>
             <div class="row"><span>Delivery Fee</span><strong>PHP ${formatMoney(deliveryFee)}</strong></div>
             <div class="row"><span>Order Total</span><strong>PHP ${formatMoney(orderTotal)}</strong></div>

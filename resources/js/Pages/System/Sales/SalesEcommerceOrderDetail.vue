@@ -97,34 +97,13 @@
         </Card>
 
         <Card v-if="latestCancellation" class="rounded-2xl border border-gray-100 shadow-sm">
-          <template #title>Cancellation Request</template>
+          <template #title>Cancellation Details</template>
           <template #content>
             <div class="space-y-3 text-sm">
-              <div><span class="text-gray-500">Status:</span> <Tag :value="formatStatus(latestCancellation.status)" severity="warning" /></div>
+              <div><span class="text-gray-500">Status:</span> <Tag :value="latestCancellation.status === 'approved' ? 'Cancelled' : formatStatus(latestCancellation.status)" :severity="latestCancellation.status === 'approved' ? 'danger' : 'warning'" /></div>
               <div><span class="text-gray-500">Reason:</span> <span class="font-medium text-gray-900">{{ latestCancellation.reason || '-' }}</span></div>
               <div><span class="text-gray-500">Details:</span> <span class="font-medium text-gray-900">{{ latestCancellation.details || '-' }}</span></div>
-              <div v-if="latestCancellation.review_notes"><span class="text-gray-500">Review Notes:</span> <span class="font-medium text-gray-900">{{ latestCancellation.review_notes }}</span></div>
-
-              <div v-if="latestCancellation.status === 'pending_verification'" class="space-y-2">
-                <label class="text-xs font-semibold text-gray-600">Review Notes (optional)</label>
-                <Textarea v-model="reviewNotes" rows="3" autoResize class="w-full" placeholder="Add notes for this decision" />
-              </div>
-
-              <div class="flex flex-wrap gap-2" v-if="latestCancellation.status === 'pending_verification'">
-                <Button
-                  label="Approve Cancellation"
-                  severity="danger"
-                  :loading="reviewingCancellation"
-                  @click="confirmReviewCancellation('approved')"
-                />
-                <Button
-                  label="Reject"
-                  severity="secondary"
-                  outlined
-                  :loading="reviewingCancellation"
-                  @click="openRejectDialog"
-                />
-              </div>
+              <div v-if="latestCancellation.review_notes"><span class="text-gray-500">Notes:</span> <span class="font-medium text-gray-900">{{ latestCancellation.review_notes }}</span></div>
             </div>
           </template>
         </Card>
@@ -224,34 +203,6 @@
 
     <ConfirmDialog />
 
-    <Dialog v-model:visible="rejectDialogVisible" header="Reject Cancellation" modal class="w-full max-w-xl">
-      <div class="space-y-3">
-        <p class="text-sm text-gray-600">Select a reason and optionally add notes. This will reject the customer cancellation request.</p>
-        <div class="space-y-2">
-          <label class="text-sm text-gray-600">Reject Reason</label>
-          <Select
-            v-model="rejectDialog.reason"
-            :options="rejectReasonOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Select a reason"
-            fluid
-            showClear
-          />
-          <small v-if="rejectDialogAttempted && !String(rejectDialog.reason || '').trim()" class="text-xs text-red-600">
-            Reject reason is required.
-          </small>
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm text-gray-600">Notes (optional)</label>
-          <Textarea v-model="rejectDialog.notes" rows="4" autoResize class="w-full" placeholder="Add notes (optional)" />
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined size="small" @click="rejectDialogVisible = false" />
-        <Button label="Reject" severity="danger" size="small" :loading="reviewingCancellation" @click="submitReject" />
-      </template>
-    </Dialog>
     <Dialog v-model:visible="pickupDateDialogVisible" header="Select Pickup Date" modal class="w-full max-w-md">
       <div class="space-y-2">
         <label class="text-sm font-medium text-slate-700">Pickup date</label>
@@ -290,7 +241,6 @@ import Skeleton from 'primevue/skeleton'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
-import Select from 'primevue/select'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
@@ -306,7 +256,6 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const order = ref<any>(null)
 const sendingToLogistics = ref(false)
-const reviewingCancellation = ref(false)
 const reviewingCustomization = ref(false)
 const customizationDialog = ref<{ visible: boolean; status: 'approved' | 'rejected'; item: any | null; response: string }>({
   visible: false,
@@ -314,31 +263,10 @@ const customizationDialog = ref<{ visible: boolean; status: 'approved' | 'reject
   item: null,
   response: '',
 })
-const reviewNotes = ref('')
-const rejectDialogVisible = ref(false)
 const pickupDateDialogVisible = ref(false)
 const pickupDate = ref<Date | null>(null)
 const savingPickupDate = ref(false)
 const todayDate = new Date()
-const rejectDialogAttempted = ref(false)
-const rejectDialog = ref<{ reason: string | null; notes: string }>({
-  reason: null,
-  notes: '',
-})
-const rejectReasonOptions = [
-  { label: 'Changed mind', value: 'Changed mind' },
-  { label: 'Found better price elsewhere', value: 'Found better price elsewhere' },
-  { label: 'Incorrect order details', value: 'Incorrect order details' },
-  { label: 'Cannot cancel (already in transit)', value: 'Cannot cancel (already in transit)' },
-  { label: 'Other', value: 'Other' },
-]
-
-const openRejectDialog = () => {
-  rejectDialogAttempted.value = false
-  rejectDialog.value = { reason: null, notes: '' }
-  rejectDialogVisible.value = true
-}
-
 const latestCancellation = computed(() => {
   const requests = order.value?.cancellation_requests || order.value?.cancellationRequests || []
   if (!Array.isArray(requests) || requests.length === 0) return null
@@ -508,71 +436,6 @@ const sendToLogistics = async () => {
 const printReceipt = () => {
   if (!order.value) return
   window.open(`/api/sales/ecommerce-orders/${order.value.id}/receipt`, '_blank')
-}
-
-const submitReject = async () => {
-  if (!order.value || !latestCancellation.value) return
-  rejectDialogAttempted.value = true
-  const reason = String(rejectDialog.value.reason || '').trim()
-  if (!reason) {
-    toast.add({ severity: 'warn', summary: 'Required', detail: 'Please select a reject reason.', life: 2500 })
-    return
-  }
-
-  rejectDialogVisible.value = false
-  await confirmReviewCancellation('rejected', { reason, notes: String(rejectDialog.value.notes || '').trim() })
-}
-
-const confirmReviewCancellation = (status: 'approved' | 'rejected', rejectPayload?: { reason: string; notes?: string }) => {
-  if (!order.value || !latestCancellation.value) return
-
-  const label = status === 'approved' ? 'Approve cancellation?' : 'Reject cancellation?'
-  const message = status === 'approved'
-    ? 'This will approve the customer cancellation request.'
-    : 'This will reject the customer cancellation request.'
-
-  confirm.require({
-    header: label,
-    message,
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
-    acceptProps: { label: 'Confirm', size: 'small', severity: status === 'rejected' ? 'danger' : 'success' },
-    accept: async () => {
-      reviewingCancellation.value = true
-      try {
-        const notes = String(reviewNotes.value || '').trim()
-        const rejectReason = String(rejectPayload?.reason || '').trim()
-        const rejectNotes = String(rejectPayload?.notes || '').trim()
-        const combined = status === 'rejected'
-          ? (rejectReason && rejectNotes ? `${rejectReason}\n\n${rejectNotes}` : (rejectReason || rejectNotes))
-          : (notes || undefined)
-
-        const response = await salesService.reviewEcommerceOrderCancellation(
-          String(order.value.id),
-          String(latestCancellation.value.id),
-          { status, review_notes: combined }
-        )
-        order.value = response?.data || order.value
-        reviewNotes.value = ''
-        rejectDialogAttempted.value = false
-        toast.add({
-          severity: 'success',
-          summary: 'Updated',
-          detail: `Cancellation request ${status}.`,
-          life: 3000,
-        })
-      } catch (error: any) {
-        toast.add({
-          severity: 'error',
-          summary: 'Failed',
-          detail: error?.response?.data?.message || 'Unable to review cancellation request.',
-          life: 3000,
-        })
-      } finally {
-        reviewingCancellation.value = false
-      }
-    },
-  })
 }
 
 const formatStatus = (status: string) => String(status || '—').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

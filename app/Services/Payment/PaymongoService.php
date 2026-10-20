@@ -221,6 +221,31 @@ class PaymongoService
         }
     }
 
+    public function expireCheckoutSession(string $sessionId): array
+    {
+        try {
+            $response = $this->client->post("checkout_sessions/{$sessionId}/expire");
+            $payload = json_decode((string) $response->getBody(), true) ?: [];
+
+            if ($response->getStatusCode() >= 400) {
+                Log::warning('PaymongoService: checkout session could not be expired', [
+                    'session_id' => $sessionId,
+                    'http_status' => $response->getStatusCode(),
+                    'errors' => data_get($payload, 'errors', []),
+                ]);
+            }
+
+            return $payload;
+        } catch (\Throwable $e) {
+            Log::warning('PaymongoService: expireCheckoutSession exception', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['errors' => [['detail' => 'Unable to verify the previous payment attempt.']]];
+        }
+    }
+
     public function activePaymentMethods(): array
     {
         try {
@@ -236,9 +261,14 @@ class PaymongoService
                 ?? data_get($payload, 'payment_methods')
                 ?? data_get($payload, 'data')
                 ?? $payload;
-            return is_array($methods)
-                ? array_values(array_filter($methods, fn ($method) => is_string($method) && $method !== ''))
-                : [];
+            if (!is_array($methods)) {
+                return [];
+            }
+
+            return array_values(array_unique(array_filter(array_map(
+                fn ($method) => is_string($method) ? strtolower(trim($method)) : '',
+                $methods
+            ))));
         } catch (\Throwable $e) {
             Log::warning('PaymongoService: payment capabilities request failed', ['error' => $e->getMessage()]);
             return [];

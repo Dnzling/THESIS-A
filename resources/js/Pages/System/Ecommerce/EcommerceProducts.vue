@@ -107,10 +107,6 @@
               <InputNumber v-model="dss.widthCm" :min="0" size="small" fluid placeholder="W cm" />
               <InputNumber v-model="dss.heightCm" :min="0" size="small" fluid placeholder="H cm" />
             </div>
-            <div class="flex gap-2">
-              <Button label="Reset" size="small" severity="secondary" outlined fluid @click="resetDss" />
-              <Button label="Recommend" size="small" severity="warn" :loading="dssLoading" fluid @click="runDssFromMobile" />
-            </div>
           </section>
         </div>
         <template #footer>
@@ -149,124 +145,84 @@
           </div>
         </div>
 
-        <div class="mt-3 mb-4 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
-          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
-            <IconField iconPosition="left">
-              <InputIcon class="pi pi-search" />
-              <InputText v-model="search" placeholder="Search furniture..."
-                class="w-full md:w-64 rounded-xl! border-slate-200" />
-            </IconField>
-          </div>
-          <div v-if="activeFilters.length" class="mt-3 flex flex-wrap gap-2">
-            <Chip v-for="filterItem in activeFilters" :key="filterItem.key" :label="filterItem.label" removable
-              @remove="clearActiveFilter(filterItem.key)" />
-          </div>
+        <div v-if="activeFilters.length" class="mb-4 flex flex-wrap gap-2">
+          <Chip v-for="filterItem in activeFilters" :key="filterItem.key" :label="filterItem.label" removable
+            @remove="clearActiveFilter(filterItem.key)" />
         </div>
   
-        <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-          <div v-for="idx in 6" :key="idx" class="bg-white p-4 rounded-2xl border border-slate-100">
-            <Skeleton height="200px" border-radius="1rem" class="mb-4" />
-            <Skeleton width="60%" height="1.5rem" class="mb-2" />
-            <Skeleton width="40%" height="1rem" />
+        <div v-if="loading" class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <div v-for="idx in 6" :key="idx" class="flex gap-4 rounded-2xl border border-slate-200 bg-white p-3 lg:block">
+            <Skeleton width="96px" height="96px" borderRadius="0.75rem" class="lg:!h-52 lg:!w-full" />
+            <div class="min-w-0 flex-1 space-y-3 py-2">
+              <Skeleton width="65%" height="1.2rem" />
+              <Skeleton width="40%" height="1rem" />
+              <Skeleton width="25%" height="1rem" />
+            </div>
           </div>
         </div>
   
         <div v-if="dssResults.length" class="mb-8">
           <h3 class="mb-3 text-lg font-semibold text-slate-900">Result Recommended For You</h3>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <div v-for="item in dssResults" :key="`dss-${item.id}`"
-                class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
-              @click="goProduct(item.id)">
-              <label class="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-slate-600" @click.stop>
-                <Checkbox :modelValue="isCompared(item.id)" binary :disabled="comparisonFull && !isCompared(item.id)"
-                  @update:modelValue="toggleComparison(item)" />
-                Compare
+          <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            <article v-for="item in dssResults" :key="`dss-${item.id}`" class="relative flex flex-col rounded-2xl border border-slate-200 bg-white p-3 transition-all duration-300 sm:p-4 lg:hover:z-10 lg:hover:scale-[1.03] lg:hover:border-orange-300 lg:hover:shadow-xl">
+              <label class="mb-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-600">
+                <Checkbox :modelValue="isCompared(item.id)" binary :disabled="comparisonFull && !isCompared(item.id)" @update:modelValue="toggleComparison(item)" /> Compare
               </label>
-              <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
-                <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name"
-                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  @error="onImageError" />
-                <div
-                  class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
-                  Match {{ Math.round((item.score || 0) * 100) }}%
-                </div>
-                <button type="button"
-                  class="absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm transition hover:scale-105 hover:border-rose-200 hover:text-rose-500"
-                  :class="isFavorite(item.id) ? '!border-rose-200 !bg-rose-50 !text-rose-500' : ''"
-                  :aria-label="isFavorite(item.id) ? 'Remove from favorites' : 'Add to favorites'"
-                  @click.stop="toggleProductFavorite(item.id)">
-                  <i :class="isFavorite(item.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" class="text-lg" />
+              <div class="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6 lg:block lg:flex-1">
+                <button type="button" class="aspect-square overflow-hidden rounded-xl bg-slate-50 lg:block lg:w-full" @click="goProduct(item.id)">
+                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-full w-full object-contain" @error="onImageError" />
                 </button>
-              </div>
-  
-              <div class="px-2 pb-2">
-                <h3 class="font-semibold text-slate-800 truncate mb-2 group-hover:text-sky-600 transition-colors">
-                  {{ item.product_name }}
-                </h3>
-                <div class="flex items-center justify-between">
-                  <div>
-                    <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(item.price) }}</span>
-                    <p class="text-[10px] text-slate-400"></p>
+                <div class="flex min-w-0 flex-col items-start lg:mt-3">
+                  <span class="text-[11px] font-semibold text-orange-600">{{ Math.round((item.score || 0) * 100) }}% match</span>
+                  <button type="button" class="mt-1 text-left text-sm font-bold text-slate-900 hover:underline sm:text-lg" @click="goProduct(item.id)">{{ item.product_name }}</button>
+                  <p v-if="plainDescription(item.description)" class="mt-1 line-clamp-3 text-xs leading-5 text-slate-600 sm:text-sm">{{ plainDescription(item.description) }}</p>
+                  <p class="mt-3 text-lg font-bold text-slate-900 sm:text-xl">₱{{ formatMoney(item.price) }}</p>
+                  <div class="mt-2 flex items-center gap-2">
+                    <Button icon="pi pi-shopping-cart" severity="warn" rounded class="!h-9 !w-9" :loading="addingCartProductId === Number(item.id)" aria-label="Add to cart" @click="addListingProductToCart(item)" />
+                    <Button :icon="isFavorite(item.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" text rounded :severity="isFavorite(item.id) ? 'danger' : 'secondary'" class="!h-9 !w-9" :aria-label="isFavorite(item.id) ? 'Remove from favorites' : 'Add to favorites'" @click="toggleProductFavorite(item.id)" />
                   </div>
                 </div>
               </div>
-            </div>
+              <p v-if="item.quantity_available != null" class="mt-3 flex items-center gap-2 text-xs text-slate-600"><span class="h-2.5 w-2.5 rounded-full" :class="Number(item.quantity_available) > 0 ? 'bg-green-600' : 'bg-rose-500'" />{{ Number(item.quantity_available) > 0 ? 'Available for delivery' : 'Out of stock' }}</p>
+            </article>
           </div>
         </div>
   
-        <div v-else-if="filteredProducts.length" class="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-          <div v-for="product in filteredProducts" :key="product.id"
-            class="group relative cursor-pointer bg-white rounded-2xl border border-slate-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
-            @click="goProduct(product.id)">
-            <label class="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-slate-600" @click.stop>
-              <Checkbox :modelValue="isCompared(product.id)" binary :disabled="comparisonFull && !isCompared(product.id)"
-                @update:modelValue="toggleComparison(product)" />
-              Compare
+        <div v-else-if="filteredProducts.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <article v-for="product in filteredProducts" :key="product.id" class="relative flex flex-col rounded-2xl border border-slate-200 bg-white p-3 transition-all duration-300 sm:p-4 lg:hover:z-10 lg:hover:scale-[1.03] lg:hover:border-orange-300 lg:hover:shadow-xl">
+            <label class="mb-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-600">
+              <Checkbox :modelValue="isCompared(product.id)" binary :disabled="comparisonFull && !isCompared(product.id)" @update:modelValue="toggleComparison(product)" /> Compare
             </label>
-            <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
-              <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
-                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                @error="onImageError" />
-              <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
-              <button type="button"
-                class="absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm transition hover:scale-105 hover:border-rose-200 hover:text-rose-500"
-                :class="isFavorite(product.id) ? '!border-rose-200 !bg-rose-50 !text-rose-500' : ''"
-                :aria-label="isFavorite(product.id) ? 'Remove from favorites' : 'Add to favorites'"
-                @click.stop="toggleProductFavorite(product.id)">
-                <i :class="isFavorite(product.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" class="text-lg" />
+            <div class="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6 lg:block lg:flex-1">
+              <button type="button" class="relative aspect-square overflow-hidden rounded-xl bg-slate-50 lg:block lg:w-full" @click="goProduct(product.id)">
+                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" class="h-full w-full object-contain" @error="onImageError" />
+                <Badge v-if="product.discounted_price && Number(product.discounted_price) < Number(product.base_price)" :value="`${Math.round((1 - Number(product.discounted_price) / Number(product.base_price)) * 100)}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
               </button>
-  
-            </div>
-  
-            <div class="px-2 pb-2">
-              <div class="mb-1 flex justify-end">
-                <div class="flex items-center gap-1 text-xs font-medium text-slate-600">
-                  <i class="pi pi-star-fill text-amber-400 text-[10px]" />
-                  {{ Number(product.rating_avg || 0).toFixed(1) }}
+              <div class="flex min-w-0 flex-col items-start lg:mt-3">
+                <span v-if="product.is_new_arrival || pageMode === 'new'" class="text-[11px] font-semibold text-orange-600">New</span>
+                <button type="button" class="text-left text-sm font-bold text-slate-900 hover:underline sm:text-lg" @click="goProduct(product.id)">{{ product.product_name }}</button>
+                <p v-if="plainDescription(product.description)" class="mt-1 line-clamp-3 text-xs leading-5 text-slate-600 sm:text-sm">{{ plainDescription(product.description) }}</p>
+                <div class="mt-3 flex flex-wrap items-baseline gap-2">
+                  <span class="text-lg font-bold text-slate-900 sm:text-xl">₱{{ formatMoney(product.price ?? product.discounted_price ?? product.base_price) }}</span>
+                  <span v-if="product.discounted_price && Number(product.discounted_price) < Number(product.base_price)" class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <Button icon="pi pi-shopping-cart" severity="warn" rounded class="!h-9 !w-9" :loading="addingCartProductId === Number(product.id)" aria-label="Add to cart" @click="addListingProductToCart(product)" />
+                  <Button :icon="isFavorite(product.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" text rounded :severity="isFavorite(product.id) ? 'danger' : 'secondary'" class="!h-9 !w-9" :aria-label="isFavorite(product.id) ? 'Remove from favorites' : 'Add to favorites'" @click="toggleProductFavorite(product.id)" />
                 </div>
               </div>
-              <h3 class="font-semibold text-slate-800 truncate mb-2 group-hover:text-sky-600 transition-colors">
-                {{ product.product_name }}
-              </h3>
-              <div class="flex items-center justify-between">
-                <div>
-                  <div v-if="product.has_discount" class="flex flex-wrap items-baseline gap-2">
-                    <span class="text-md font-semibold text-rose-600">₱{{ formatMoney(product.discounted_price) }}</span>
-                    <span class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
-                  </div>
-                  <span v-else class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.base_price) }}</span>
-                  <p class="text-[10px] text-slate-400"></p>
-                </div>
-                <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} reviews</span>
-              </div>
             </div>
-          </div>
+            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+              <span class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" :class="Number(product.quantity_available) > 0 ? 'bg-green-600' : 'bg-rose-500'" />{{ Number(product.quantity_available) > 0 ? 'Available for delivery' : 'Out of stock' }}</span>
+              <span v-if="Number(product.rating_count || 0) > 0"><i class="pi pi-star-fill mr-1 text-amber-400" />{{ Number(product.rating_avg || 0).toFixed(1) }} ({{ product.rating_count }})</span>
+            </div>
+          </article>
         </div>
   
         <div v-else-if="!loading" class="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
           <i class="pi pi-search text-4xl text-slate-300 mb-4" />
           <p class="text-slate-500 font-medium">We couldn't find any matches for your search.</p>
-          <Button label="Clear Filters" link @click="search = ''; selectedColor = ''; sort = 'match'" />
+          <Button label="Clear Filters" link @click="clearListFilters" />
         </div>
 
         <Paginator
@@ -312,7 +268,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
-import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
@@ -375,6 +330,7 @@ const dssLoading = ref(false)
 const dssResults = ref<any[]>([])
 const favoriteProductIds = ref<number[]>([])
 const favoriteRequests = ref<number[]>([])
+const addingCartProductId = ref<number | null>(null)
 const dss = ref({
   budgetMin: 0,
   budgetMax: 50000,
@@ -391,7 +347,6 @@ const sortOptions = [
   { label: 'Price: High to Low', value: 'price_desc' },
   { label: 'Newest', value: 'latest' },
   { label: 'Customer Rating', value: 'rating' },
-  { label: 'Name', value: 'name' },
   { label: 'Most Popular', value: 'popular' },
 ]
 
@@ -412,7 +367,12 @@ const activeFilters = computed(() => [
   ...(route.query.room ? [{ key: 'room', label: String(route.query.room) }] : []),
 ])
 function clearActiveFilter(key: string) {
-  if (key === 'search') search.value = ''
+  if (key === 'search') {
+    search.value = ''
+    const query = { ...route.query }
+    delete query.search
+    router.replace({ query })
+  }
   if (key === 'color') selectedColor.value = ''
   if (key === 'sort') sort.value = 'match'
   if (key === 'category' || key === 'room') {
@@ -422,12 +382,25 @@ function clearActiveFilter(key: string) {
   }
 }
 
+function clearListFilters() {
+  search.value = ''
+  selectedColor.value = ''
+  sort.value = 'match'
+  const query = { ...route.query }
+  delete query.search
+  router.replace({ query })
+}
+
 function normalizeImageUrl(raw: string) {
   if (!raw) return ''
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
   if (raw.startsWith('/storage/')) return raw
   if (raw.startsWith('storage/')) return `/${raw}`
   return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function plainDescription(value: unknown): string {
+  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function onImageError(event: Event) {
@@ -488,10 +461,35 @@ async function toggleProductFavorite(productId: number | string) {
   }
 }
 
+async function addListingProductToCart(product: any) {
+  const productId = Number(product.id)
+  if (!productId || addingCartProductId.value !== null) return
+  if (!authStore.isAuthenticated) {
+    router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
+    return
+  }
+
+  addingCartProductId.value = productId
+  try {
+    const response = await ecommerceService.getProduct(productId)
+    const details = response.data?.data
+    if (Array.isArray(details?.variations) && details.variations.length) {
+      goProduct(productId)
+      return
+    }
+    await ecommerceService.addToCart({ product_id: productId, quantity: 1, store_id: Number(details?.store_id || product.store_id) || undefined })
+    window.dispatchEvent(new Event('ecommerce-cart-updated'))
+    toast.add({ severity: 'success', summary: 'Added to cart', detail: product.product_name, life: 2200 })
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Cart', detail: error?.response?.data?.message || 'Unable to add this product to your cart.' })
+  } finally {
+    addingCartProductId.value = null
+  }
+}
+
 function toggleComparison(product: any) {
   if (isCompared(product.id)) {
     removeComparison(product.id)
-    toast.add({ severity: 'info', summary: 'Removed from comparison', detail: `${product.product_name} was removed.`, life: 2200 })
     return
   }
   const result = addComparison({
@@ -505,7 +503,6 @@ function toggleComparison(product: any) {
     toast.add({ severity: 'warn', summary: 'Comparison is full', detail: 'You can compare up to 5 products only.', life: 2800 })
     return
   }
-  toast.add({ severity: 'success', summary: 'Added to comparison', detail: `${comparisonCount.value}/5 products selected.`, life: 2200 })
 }
 
 const categoryOptions = computed(() => {
@@ -546,7 +543,6 @@ const filteredProducts = computed(() => {
   else if (sort.value === 'price_desc') rows.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
   else if (sort.value === 'latest') rows.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
   else if (sort.value === 'rating') rows.sort((a, b) => Number(b.rating_avg || 0) - Number(a.rating_avg || 0))
-  else if (sort.value === 'name') rows.sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)))
   else rows.sort((a, b) => Number(b.monthly_sales || 0) - Number(a.monthly_sales || 0))
 
   return rows
@@ -598,11 +594,6 @@ async function runDss() {
   } finally {
     dssLoading.value = false
   }
-}
-
-async function runDssFromMobile() {
-  await runDss()
-  mobileFiltersVisible.value = false
 }
 
 function resetDss() {

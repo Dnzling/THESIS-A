@@ -166,11 +166,6 @@ class SalesService {
     return res.data
   }
 
-  async reviewEcommerceOrderCancellation(orderId: number | string, requestId: number | string, payload: { status: 'approved' | 'rejected'; review_notes?: string }) {
-    const res = await axiosClient.put(`/api/sales/ecommerce-orders/${orderId}/cancellation-requests/${requestId}/review`, payload)
-    return res.data
-  }
-
   async reviewEcommerceCustomizationRequest(orderId: number | string, itemId: number | string, payload: { status: 'approved' | 'rejected'; response?: string }) {
     const res = await axiosClient.put(`/api/sales/ecommerce-orders/${orderId}/items/${itemId}/customization-request`, payload)
     return res.data

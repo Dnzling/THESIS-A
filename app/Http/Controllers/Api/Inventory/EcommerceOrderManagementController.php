@@ -9,9 +9,7 @@ use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
-use App\Models\Ecommerce\EcommerceOrderCancellation;
 use App\Models\CRM\EcommerceOrderReturn;
-use App\Models\Sales\SalesRefund;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
@@ -346,124 +344,6 @@ class EcommerceOrderManagementController extends Controller
             'success' => true,
             'message' => 'Order status updated successfully.',
             'data' => EcommerceOrder::query()->with(['delivery.vehicle'])->find($order->id),
-        ]);
-    }
-
-    public function reviewCancellationRequest(Request $request, int $id, int $requestId): JsonResponse
-    {
-        $validated = $request->validate([
-            'status' => ['required', Rule::in(['approved', 'rejected'])],
-            'review_notes' => ['nullable', 'string', 'max:2000'],
-        ]);
-
-        $query = EcommerceOrder::query()
-            ->with(['delivery', 'cancellationRequests'])
-            ->whereKey($id);
-
-        $this->applyStoreScope($request, $query);
-        $order = $query->firstOrFail();
-
-        $cancellation = $order->cancellationRequests->firstWhere('id', $requestId);
-        if (!$cancellation) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cancellation request not found for this order.',
-            ], 404);
-        }
-
-        if ($cancellation->status !== 'pending_verification') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only pending cancellation requests can be reviewed.',
-            ], 422);
-        }
-
-        $reviewer = $request->user();
-        $reviewerId = (int) $reviewer->id;
-        $newStatus = (string) $validated['status'];
-        $reviewNotes = $validated['review_notes'] ?? null;
-
-        DB::transaction(function () use ($order, $cancellation, $newStatus, $reviewNotes, $reviewerId, $reviewer) {
-            $cancellation->update([
-                'status' => $newStatus,
-                'reviewed_by' => $reviewerId,
-                'reviewed_at' => now(),
-                'review_notes' => $reviewNotes,
-            ]);
-
-            if ($newStatus === 'approved') {
-                app(\App\Services\Ecommerce\EcommerceStockReservationService::class)->release($order);
-                $previousOrderStatus = (string) $order->status;
-                $order->status = 'cancelled';
-                $order->save();
-
-                if ($order->payment_status === 'paid') {
-                    $existingRefund = SalesRefund::query()
-                        ->where('order_type', 'ecommerce_order')
-                        ->where('order_id', $order->id)
-                        ->first();
-
-                    if (!$existingRefund) {
-                        SalesRefund::create([
-                            'store_id' => $reviewer?->store_id,
-                            'branch_id' => $reviewer?->branch_id,
-                            'order_type' => 'ecommerce_order',
-                            'order_id' => $order->id,
-                            'order_number' => (string) $order->order_number,
-                            'customer_name' => (string) $order->shipping_name,
-                            'reason' => (string) ($cancellation->reason ?: 'Order cancellation approved'),
-                            'amount' => (float) $order->total_amount,
-                            'status' => 'pending',
-                            'requested_by' => $reviewerId,
-                        ]);
-                    }
-                }
-
-                if ($order->delivery) {
-                    $previousDeliveryStatus = (string) ($order->delivery->status ?: 'assigned');
-                    $order->delivery->status = 'cancelled';
-                    $order->delivery->save();
-
-                    if ($previousDeliveryStatus !== 'cancelled') {
-                        EcommerceDeliveryLog::query()->create([
-                            'delivery_id' => $order->delivery->id,
-                            'order_id' => $order->id,
-                            'store_id' => $order->store_id,
-                            'event_type' => 'status_updated',
-                            'status_from' => $previousDeliveryStatus,
-                            'status_to' => 'cancelled',
-                            'message' => 'Delivery status updated to cancelled after cancellation approval.',
-                            'created_by' => $reviewerId,
-                        ]);
-                    }
-                }
-
-                if ($previousOrderStatus !== 'cancelled' && $order->delivery) {
-                    EcommerceDeliveryLog::query()->create([
-                        'delivery_id' => $order->delivery->id,
-                        'order_id' => $order->id,
-                        'store_id' => $order->store_id,
-                        'event_type' => 'status_updated',
-                        'status_from' => $previousOrderStatus,
-                        'status_to' => 'cancelled',
-                        'message' => 'Order status updated to cancelled after cancellation approval.',
-                        'created_by' => $reviewerId,
-                    ]);
-                }
-            }
-        });
-
-        $fresh = EcommerceOrder::query()
-            ->with(['delivery.vehicle', 'cancellationRequests', 'items.returnRequests'])
-            ->findOrFail($order->id);
-
-        $payload = $fresh->toArray();
-        $payload['primary_status'] = $this->resolvePrimaryStatus($fresh);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cancellation request reviewed successfully.',
-            'data' => $payload,
         ]);
     }
 

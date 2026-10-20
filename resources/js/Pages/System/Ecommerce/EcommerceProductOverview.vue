@@ -39,14 +39,14 @@
               <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" rounded :icon="show3DViewer ? 'pi pi-image' : 'pi pi-arrows-alt'" />
             </div>
   
-            <div v-if="show3DViewer && selectedModel3D" class="relative w-full aspect-square">
+            <div v-if="hasOpened3DViewer && selectedModel3D" v-show="show3DViewer" class="relative w-full aspect-square">
               <Model3DPreview :model-url="selectedModel3D.url" :model-format="selectedModel3D.model_format"
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
                 :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" allow-bottom-view />
             </div>
   
-            <div v-else-if="primaryImage" class="group relative w-full aspect-square cursor-zoom-in"
+            <div v-if="!show3DViewer && primaryImage" class="group relative w-full aspect-square cursor-zoom-in"
               @mouseenter="startHoverZoom" @mousemove="updateHoverZoom"
               @mouseleave="stopHoverZoom">
               <img :src="primaryImage" :alt="product.product_name" class="absolute inset-0 h-full w-full object-cover"
@@ -64,7 +64,7 @@
                 <div class="h-full w-full bg-no-repeat" :style="hoverZoomStyle" />
               </div>
             </div>
-            <div v-else class="flex aspect-square items-center justify-center text-slate-400">
+            <div v-if="!show3DViewer && !primaryImage" class="flex aspect-square items-center justify-center text-slate-400">
               <i class="pi pi-image text-5xl opacity-30" />
             </div>
   
@@ -81,7 +81,7 @@
           </div>
   
           <div class="space-y-4">
-            <Tag :value="stockLabel" :severity="stockSeverity" />
+            <Tag v-if="!product?.variations?.length" :value="stockLabel" :severity="stockSeverity" />
             <div class="space-y-2">
               <h1 class="text-2xl md:text-3xl font-semibold text-slate-900">{{ product.product_name }}</h1>
               <div class="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
@@ -113,8 +113,8 @@
               </div>
               <p class="text-xs font-medium text-slate-500"></p>
               <p class="text-sm text-slate-500">
-                {{ product.quantity_available || 0 }} stocks available
-                <span v-if="product.assembly_required" class="mx-2 text-slate-300">•</span>
+                <span v-if="!product?.variations?.length">{{ product.quantity_available || 0 }} stocks available</span>
+                <span v-if="!product?.variations?.length && product.assembly_required" class="mx-2 text-slate-300">•</span>
                 <span v-if="product.assembly_required">Assembly required</span>
               </p>
             </div>
@@ -170,12 +170,8 @@
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm font-semibold text-slate-900">{{ variationLabel(variation) }}</span>
                     <span class="mt-0.5 block text-xs font-medium text-orange-600">{{ formatCurrency(variation.final_price || product.price) }}</span>
-                    <span class="mt-1 flex items-center gap-1.5 text-[11px]"
-                      :class="isVariationSelectable(variation) ? 'text-emerald-600' : 'text-rose-500'">
-                      <span class="h-1.5 w-1.5 rounded-full"
-                        :class="isVariationSelectable(variation) ? 'bg-emerald-500' : 'bg-rose-400'" />
-                      {{ isVariationSelectable(variation) ? `${variation.quantity_available || 0} available` : 'Out of stock' }}
-                    </span>
+                    <Tag class="mt-1 !text-[10px]" :value="variationStockLabel(variation)"
+                      :severity="variationStockSeverity(variation)" />
                   </span>
                 </button>
               </div>
@@ -211,7 +207,7 @@
     <Card v-if="product" class="mt-6 plain-card">
       <template #content>
         <button type="button"
-          class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-slate-300"
+          class="flex w-full items-center justify-between gap-3 text-left transition"
           @click="goStorePage">
           <div class="flex min-w-0 items-center gap-3">
             <img v-if="storeInfo?.logo" :src="storeInfo.logo" :alt="storeInfo.name"
@@ -222,12 +218,11 @@
   
             </div>
             <div class="min-w-0">
-              <p class="truncate text-base font-semibold text-slate-900">{{ storeInfo?.name || product.store_name || 'Store' }}</p>
+              <p class="truncate text-xs font-semibold text-slate-900">{{ storeInfo?.name || product.store_name || 'Store' }}</p>
   
             </div>
             <div class="shrink-0 text-left">
               <p class="text-sm font-semibold text-amber-500">★ {{ storeRating.toFixed(2) }}</p>
-              <p class="text-xs text-slate-500">{{ storeRatingCount }} reviews</p>
             </div>
           </div>
   
@@ -242,14 +237,13 @@
     </Card>
   
     <div v-if="product" class="mt-6 rounded-2xl border border-slate-200 bg-white">
-      <div class="flex flex-wrap gap-2 border-b border-slate-200 p-3">
-        <Button label="Product Description" size="small" :severity="activeTab === 'description' ? 'warn' : 'secondary'"
-          :outlined="activeTab !== 'description'" @click="activeTab = 'description'" />
-        <Button label="Reviews" size="small" :severity="activeTab === 'reviews' ? 'warn' : 'secondary'"
-          :outlined="activeTab !== 'reviews'" @click="activeTab = 'reviews'" />
-        <Button label="Recommended" size="small" :severity="activeTab === 'recommended' ? 'warn' : 'secondary'"
-          :outlined="activeTab !== 'recommended'" @click="activeTab = 'recommended'" />
-      </div>
+      <Tabs v-model:value="activeTab" scrollable>
+        <TabList>
+          <Tab value="description" class="!whitespace-nowrap !text-xs sm:!text-sm">Product Description</Tab>
+          <Tab value="reviews" class="!whitespace-nowrap !text-xs sm:!text-sm">Reviews</Tab>
+          <Tab value="recommended" class="!whitespace-nowrap !text-xs sm:!text-sm">Recommended</Tab>
+        </TabList>
+      </Tabs>
   
       <div v-if="activeTab === 'description'" class="p-5">
         <h3 class="text-lg font-semibold text-slate-900">Product Description</h3>
@@ -481,6 +475,9 @@ import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import Tabs from 'primevue/tabs'
 import InputNumber from 'primevue/inputnumber'
 import Skeleton from 'primevue/skeleton'
 import Carousel from 'primevue/carousel'
@@ -513,6 +510,7 @@ const addingToCart = ref(false)
 const addedItem = ref<{ name: string; description: string; image: string | null; price: number; quantity: number; storeId: number } | null>(null)
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
 const show3DViewer = ref(false)
+const hasOpened3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
 const brokenImages = ref<string[]>([])
 const brokenReviewAttachments = ref<number[]>([])
@@ -689,6 +687,7 @@ const ratingBreakdown = computed(() => {
 
 async function toggle3DViewer() {
   show3DViewer.value = !show3DViewer.value
+  if (show3DViewer.value) hasOpened3DViewer.value = true
 }
 
 const stockLabel = computed(() => {
@@ -704,6 +703,16 @@ const stockSeverity = computed(() => {
   if (status === 'low_stock') return 'warning'
   return 'danger'
 })
+
+function variationStockLabel(variation: any): string {
+  if (!isVariationSelectable(variation)) return 'Out of Stock'
+  return String(variation.stock_status).toLowerCase() === 'low_stock' ? 'Low Stock' : 'In Stock'
+}
+
+function variationStockSeverity(variation: any): 'success' | 'warning' | 'danger' {
+  if (!isVariationSelectable(variation)) return 'danger'
+  return String(variation.stock_status).toLowerCase() === 'low_stock' ? 'warning' : 'success'
+}
 
 const formatCurrency = (val: any) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(val || 0))
@@ -849,6 +858,7 @@ function selectVariation(variationId: number) {
 watch(selectedVariationId, () => {
   selectedImage.value = null
   show3DViewer.value = false
+  hasOpened3DViewer.value = false
   if (Number(quantity.value || 1) > maxPurchasableQty.value) {
     quantity.value = maxPurchasableQty.value
   }
@@ -1052,6 +1062,7 @@ onMounted(async () => {
 })
 watch(() => route.params.id, async () => {
   show3DViewer.value = false
+  hasOpened3DViewer.value = false
   allReviewsDialog.value = false
   allReviews.value = []
   selectedReviewRating.value = null

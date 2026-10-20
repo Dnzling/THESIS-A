@@ -1,11 +1,20 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 pb-8">
+  <div class="min-h-screen bg-slate-50 px-3 pb-8 sm:px-5">
+    <div class="mx-auto max-w-7xl space-y-5">
+    <header class="flex items-center justify-between border-b border-slate-200 bg-white py-3 sm:px-4">
+      <button type="button" class="flex items-center gap-2" aria-label="FurniSync home" @click="router.push({ name: 'ecommerce.home' })">
+        <span class="portal-brand text-sm font-bold text-orange-500 uppercase">FurniSync</span>
+      </button>
+    </header>
+      <div class="lg:hidden">
+        <Button :label="`Show summary · ₱ ${formatNumber(totalAmount, 2)}`" icon="pi pi-chevron-down" iconPos="right" size="small" text severity="secondary" fluid @click="mobileSummaryVisible = true" />
+      </div>
     <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">Review and place your order</h1>
         <p class="mt-1 text-sm text-slate-500">Confirm your fulfillment option, items, and payment method.</p>
       </div>
-      <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" outlined class="w-full sm:w-auto" @click="goCart" />
+     
     </div>
 
     <Card v-if="completedPaymongoOrderId" class="border border-emerald-200 bg-emerald-50/60 shadow-none">
@@ -54,6 +63,7 @@
 
     <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div class="space-y-4 lg:col-span-2">
+      
         <div class="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-6">
           <button v-for="(step, index) in checkoutSteps" :key="step" type="button" :disabled="index + 1 > checkoutStep"
             class="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-semibold sm:text-sm"
@@ -98,17 +108,18 @@
                 <span class="mt-2 block text-xs text-slate-600">Collect from the store after confirmation.</span>
               </button>
               <button type="button" class="rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50" :class="serviceMethod === 'delivery' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'" :disabled="pickupOnly" @click="serviceMethod = 'delivery'">
-                <span class="block text-sm font-semibold text-slate-900">Truck delivery <span class="float-right">{{ estimatedShippingFee <= 0 ? 'Free' : `₱ ${formatNumber(estimatedShippingFee, 2)}` }}</span></span>
+                <span class="block text-sm font-semibold text-slate-900">Truck delivery <span class="float-right">{{ shippingFeeLoading ? 'Calculating...' : shippingFeeError ? 'Unavailable' : estimatedShippingFee <= 0 ? 'Free' : `₱ ${formatNumber(estimatedShippingFee, 2)}` }}</span></span>
                 <span class="mt-2 block text-xs text-slate-600">{{ pickupOnly ? 'Delivery is unavailable for this order.' : 'Delivered to your selected address.' }}</span>
               </button>
             </div>
+            <p v-if="serviceMethod === 'delivery' && shippingFeeError" class="mt-3 text-xs text-red-600">{{ shippingFeeError }}</p>
             <div v-if="serviceMethod === 'pickup'" class="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
               <p class="font-semibold">{{ pickupBranch?.name || 'Pickup branch confirmed after ordering' }}</p>
               <p class="mt-1 text-xs">{{ pickupBranchAddress }}</p>
             </div>
             <div class="mt-5 border-t border-slate-200 pt-4">
               <label class="mb-2 block text-xs font-semibold text-slate-700">Preferred {{ serviceMethod }} date *</label>
-              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="new Date()" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon iconDisplay="input" size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid />
+              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="new Date()" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon  size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate />
               <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
               <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
               <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
@@ -119,25 +130,26 @@
           <template #content>
             <h2 class="text-lg font-semibold text-slate-900">How would you like to pay?</h2>
             <div class="mt-5 grid gap-3">
-              <button v-for="method in allPaymentMethods" :key="method.value" type="button" class="flex items-center gap-4 rounded-xl border p-4 text-left transition disabled:opacity-50"
+              <button v-for="method in availablePaymentMethods" :key="method.value" type="button" class="flex items-center gap-4 rounded-xl border p-4 text-left transition disabled:opacity-50"
                 :class="selectedPaymentMethod === method.value ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'"
-                :disabled="method.value === 'cod' && codBlocked && serviceMethod === 'delivery'" @click="selectPaymentMethod(method.value)">
+                @click="selectPaymentMethod(method.value)">
                 <i :class="[method.icon, 'text-lg text-slate-800']" />
                 <span><span class="block text-sm font-semibold text-slate-900">{{ paymentMethodLabel(method.value) }}</span><span class="block text-xs text-slate-500">{{ paymentMethodDescription(method.value) }}</span></span>
                 <i v-if="selectedPaymentMethod === method.value" class="pi pi-check-circle ml-auto text-orange-600" />
               </button>
+              <p v-if="paymentMethodsError" class="text-xs text-red-600">{{ paymentMethodsError }}</p>
             </div>
           </template>
         </Card>
-        <Card v-if="checkoutStep === 3 && selectedPaymentMethod === 'online'" class="border border-slate-200 shadow-none">
+        <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
           <template #content>
             <h2 class="text-base font-semibold text-slate-900">Billing address</h2>
             <p class="mt-1 text-xs text-slate-500">Used for your payment receipt, not for delivery.</p>
             <label class="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
               <input v-model="useDifferentBillingAddress" type="checkbox" class="h-4 w-4 accent-orange-500" />
-              {{ pickupOnly ? 'Add a billing address for my receipt' : 'Use a different billing address' }}
+              Use a different billing address
             </label>
-            <p v-if="!useDifferentBillingAddress && !pickupOnly" class="mt-3 text-xs text-slate-500">Same as shipping address: {{ selectedAddressSummary }}</p>
+            <p v-if="!useDifferentBillingAddress" class="mt-3 text-xs text-slate-500">Same as saved address: {{ selectedAddressSummary }}</p>
             <div v-if="useDifferentBillingAddress" class="mt-4 grid gap-3 sm:grid-cols-2">
               <div class="sm:col-span-2">
                 <label class="mb-1 block text-xs font-medium text-slate-600">Billing name *</label>
@@ -168,89 +180,30 @@
           </template>
         </Card>
 
-        <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
-        <template #content>
-          <div class="mb-4 flex items-center justify-between">
-            <div>
-              <h2 class="text-base font-semibold text-slate-900">Order items</h2>
-              <p class="text-xs text-slate-500">{{ formatNumber(itemsCount) }} item{{ itemsCount === 1 ? '' : 's' }} in this order</p>
-            </div>
-          </div>
-          <div class="space-y-3">
-            <div
-              v-for="item in checkoutItems"
-              :key="item.id"
-              class="flex items-start justify-between gap-3 border-t border-b border-slate-200 bg-white p-3 transition hover:border-slate-300 sm:p-4"
-            >
-              <div class="flex min-w-0 items-start gap-3">
-                <img
-                  :src="normalizeImageUrl(item.image) || '/F.svg'"
-                  :alt="item.product_name"
-                  class="h-16 w-16 rounded-xl border border-slate-200 object-cover sm:h-20 sm:w-20"
-                  @error="onImageError"
-                />
-                <div class="min-w-0">
-                  <p class="text-xs font-medium text-slate-500">{{ item.store_name }}</p>
-                  <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
-                  <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <p class="mt-2 text-xs text-slate-500">{{ serviceMethod === 'pickup' ? 'Store pickup' : `Delivery fee: ${shippingFeePerItem <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeePerItem, 2)}`}` }}</p>
-                  <div v-if="item.is_customizable" class="mt-3">
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-3 rounded-xl border p-3 text-left transition"
-                      :class="customizationEnabled[item.id] ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/40'"
-                      @click="toggleCustomization(item.id)"
-                    >
-                      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" :class="customizationEnabled[item.id] ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'">
-                        <i class="pi pi-palette" />
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="block text-xs font-bold text-slate-800">Want to customize this product?</span>
-                        <span class="mt-0.5 block text-[11px] text-slate-500">Add your preferred color, material, size, or other request.</span>
-                      </span>
-                      <span class="flex h-5 w-5 items-center justify-center rounded-full border" :class="customizationEnabled[item.id] ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-white'">
-                        <i v-if="customizationEnabled[item.id]" class="pi pi-check text-[10px]" />
-                      </span>
-                    </button>
-                    <div v-if="customizationEnabled[item.id]" class="mt-2 rounded-xl border border-orange-200 bg-orange-50/60 p-3">
-                      <label :for="`customization-${item.id}`" class="text-xs font-semibold text-orange-900">Tell us your customization request <span class="font-normal text-orange-700">(optional)</span></label>
-                      <Textarea
-                        :id="`customization-${item.id}`"
-                        v-model="customizationRequests[item.id]"
-                        rows="2"
-                        autoResize
-                        fluid
-                        class="mt-2"
-                        placeholder="e.g. Black fabric, walnut finish, or add name engraving"
-                      />
-                      <p class="mt-1 text-[11px] text-orange-700">The store will confirm whether your request is available.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="text-right">
-                <p class="text-sm font-semibold text-slate-900">₱ {{ formatNumber(item.unit_price, 2) }}</p>
-                <p class="text-xs text-slate-500">Qty {{ formatNumber(item.quantity) }}</p>
-              </div>
-            </div>
-          </div>
-        </template>
-        </Card>
-        <div class="flex justify-between gap-3">
+        <div v-if="checkoutStep < 3" class="flex justify-between gap-3">
           <Button v-if="checkoutStep > 1" label="Back" icon="pi pi-arrow-left" text severity="secondary" @click="checkoutStep--" />
           <span v-else />
-          <Button v-if="checkoutStep < 3" label="Continue" icon="pi pi-arrow-right" iconPos="right" severity="warn" :disabled="(checkoutStep === 1 && !selectedAddress) || (checkoutStep === 2 && (!fulfillmentDates.includes(fulfillmentDateString) || availabilityLoading))" @click="checkoutStep++" />
+          <Button label="Continue" icon="pi pi-arrow-right" iconPos="right" severity="warn" :disabled="(checkoutStep === 1 && !selectedAddress) || (checkoutStep === 2 && (!fulfillmentDates.includes(fulfillmentDateString) || availabilityLoading || (serviceMethod === 'delivery' && !!shippingFeeError)))" @click="checkoutStep++" />
+        </div>
+        <div v-else class="space-y-3">
+          <div class="grid grid-cols-1 gap-2 lg:hidden">
+            <Button label="Back" icon="pi pi-arrow-left" text severity="secondary" fluid @click="checkoutStep--" />
+            <Button :label="retryOrderId ? 'Continue Payment' : 'Place Order'" severity="warn" fluid :disabled="!retryOrderId && (!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString) || !!paymentMethodsError || paymentMethodsLoading)" :loading="placing || paymongoCreating" @click="placeOrder" />
+          </div>
+          <div class="hidden lg:block">
+            <Button label="Back" icon="pi pi-arrow-left" text severity="secondary" @click="checkoutStep--" />
+          </div>
         </div>
       </div>
 
-      <Card class="h-fit border border-slate-200 shadow-none lg:sticky lg:top-4">
+      <aside class="hidden lg:sticky lg:top-4 lg:block">
+      <Card class="h-fit border border-slate-200 shadow-none">
         <template #content>
           <div class="space-y-3 text-sm">
             <div>
               <h2 class="text-base font-semibold text-slate-900">Order summary</h2>
               <p class="text-xs text-slate-500">Final charges before placing your order</p>
             </div>
-            <Divider />
             <div v-if="checkoutStep === 3">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Method</p>
               <div class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
@@ -340,12 +293,27 @@
               <span class="font-semibold text-slate-900">Total</span>
               <span class="text-xl font-bold text-slate-900">₱ {{ formatNumber(totalAmount, 2) }}</span>
             </div>
-          <Button v-if="checkoutStep === 3" label="Place Order" class="mt-2" fluid :disabled="!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString)" :loading="placing || paymongoCreating" @click="placeOrder" />
+          <Button v-if="checkoutStep === 3" :label="retryOrderId ? 'Continue Payment' : 'Place Order'" class="mt-2" fluid :disabled="!retryOrderId && (!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString) || !!paymentMethodsError || paymentMethodsLoading)" :loading="placing || paymongoCreating" @click="placeOrder" />
             <p class="text-center text-xs text-slate-500">Your payment information is securely processed.</p>
           </div>
         </template>
       </Card>
+      </aside>
     </div>
+
+    <Drawer v-model:visible="mobileSummaryVisible" position="top" header="Order summary" class="!h-auto max-h-[85vh] lg:hidden">
+      <div class="max-h-[65vh] space-y-4 overflow-y-auto text-sm">
+        <div v-for="item in checkoutItems" :key="`mobile-summary-${item.id}`" class="flex gap-3 border-b border-slate-100 pb-3">
+          <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-14 w-14 rounded-lg object-cover" @error="onImageError" />
+          <div class="min-w-0 flex-1"><p class="truncate font-semibold">{{ item.product_name }}</p><p class="text-xs text-slate-500">Qty {{ item.quantity }}</p></div>
+          <span class="font-semibold">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
+        </div>
+        <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
+        <div class="flex justify-between"><span>{{ serviceMethod === 'pickup' ? 'Pickup' : 'Delivery' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
+        <div v-if="fulfillmentDateString" class="flex justify-between"><span>Preferred date</span><span>{{ fulfillmentDate?.toLocaleDateString('en-PH', { dateStyle: 'medium' }) }}</span></div>
+        <div class="flex justify-between border-t border-slate-200 pt-3 text-base font-bold"><span>Total</span><span>₱ {{ formatNumber(totalAmount, 2) }}</span></div>
+      </div>
+    </Drawer>
 
     <Dialog
       v-model:visible="addressDialogVisible"
@@ -407,11 +375,13 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Full name</label>
-            <InputText v-model="newAddress.full_name" fluid placeholder="Recipient's full name" />
+            <InputText v-model="newAddress.full_name" fluid placeholder="Recipient's full name" :invalid="addressTouched.name && !validRecipientName(newAddress.full_name)" @blur="addressTouched.name = true" />
+            <p v-if="addressTouched.name && !validRecipientName(newAddress.full_name)" class="mt-1 text-xs text-red-600">Enter a valid full name with at least two letters.</p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Contact number</label>
-            <InputMask mask="+63 999-999-9999" v-model="newAddress.contact_number" fluid placeholder="+63 999-999-9999" />
+            <InputMask mask="+63 999-999-9999" v-model="newAddress.contact_number" fluid placeholder="+63 999-999-9999" :invalid="addressTouched.phone && !validPhilippineMobile(newAddress.contact_number)" @blur="addressTouched.phone = true" />
+            <p v-if="addressTouched.phone && !validPhilippineMobile(newAddress.contact_number)" class="mt-1 text-xs text-red-600">Enter a complete Philippine mobile number.</p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Province</label>
@@ -499,11 +469,11 @@
       </template>
     </Dialog>
 
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import RadioButton from 'primevue/radiobutton'
@@ -512,6 +482,7 @@ import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
+import Drawer from 'primevue/drawer'
 import InputSwitch from 'primevue/inputswitch'
 import Badge from 'primevue/badge'
 import ecommerceService from '@/services/ecommerce.service'
@@ -523,7 +494,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 defineOptions({
-  layout: EcommerceMobileWrapper,
+  layout: null,
 })
 
 
@@ -559,6 +530,7 @@ const completedPaymongoOrderId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
 const checkoutSteps = ['Address', 'Service', 'Payment']
 const checkoutStep = ref(1)
+const mobileSummaryVisible = ref(false)
 const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
 const fulfillmentDates = ref<string[]>([])
 const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
@@ -633,6 +605,7 @@ const billingAddressIncomplete = computed(() => useDifferentBillingAddress.value
   ![billingForm.name, billingForm.street, billingForm.city, billingForm.province].every((value) => value.trim().length > 0))
 
 const PAYMONGO_PENDING_ORDER_STORAGE_KEY = 'paymongo_pending_order_id'
+const retryOrderId = ref<number | null>(null)
 const DEFAULT_DASM_LAT = 14.3294
 const DEFAULT_DASM_LNG = 120.9367
 
@@ -748,6 +721,7 @@ const estimatedShippingFee = ref(0)
 const shippingFeeTotal = computed(() => serviceMethod.value === 'pickup' ? 0 : estimatedShippingFee.value)
 const shippingFeeLoading = ref(false)
 const shippingFeeNotice = ref<string | null>(null)
+const shippingFeeError = ref<string | null>(null)
 const shippingDistanceKm = ref<number | null>(null)
 const shippingFeeBreakdown = ref<any | null>(null)
 const showBreakdown = ref(false)
@@ -767,6 +741,9 @@ const newAddress = reactive<AddressTemplate>({
   latitude: null,
   longitude: null,
 })
+const addressTouched = reactive({ name: false, phone: false })
+const validRecipientName = (name: string) => /^[\p{L}][\p{L}\s.'-]*[\p{L}]$/u.test(String(name || '').trim()) && String(name || '').trim().length <= 120
+const validPhilippineMobile = (phone: string) => /^(?:639\d{9}|09\d{9})$/.test(String(phone || '').replace(/\D/g, ''))
 const newAddressSelection = reactive({
   provinceId: '',
   cityId: '',
@@ -774,6 +751,8 @@ const newAddressSelection = reactive({
 })
 
 const resetAddressForm = () => {
+  addressTouched.name = false
+  addressTouched.phone = false
   newAddress.id = 0
   newAddress.full_name = ''
   newAddress.contact_number = ''
@@ -810,22 +789,38 @@ const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
 
-const selectedPaymentMethod = ref<'cod' | 'online'>('cod')
-const COD_LIMIT = 20000
+const selectedPaymentMethod = ref<'gcash' | 'card' | 'paymaya'>('gcash')
 const allPaymentMethods = [
-  {
-    label: 'Cash on Delivery (COD)',
-    value: 'cod' as const,
-    icon: 'pi pi-truck',
-    description: 'Pay in cash when your furniture arrives.',
-  },
-  {
-    label: 'Online Payment',
-    value: 'online' as const,
-    icon: 'pi pi-credit-card',
-    description: 'Choose a card, e-wallet, QR, or bank option securely.',
-  },
+  { label: 'GCash', value: 'gcash' as const, icon: 'pi pi-wallet', description: 'Pay securely with your GCash account.' },
+  { label: 'Credit or Debit Card', value: 'card' as const, icon: 'pi pi-credit-card', description: 'Enter your card details on the secure payment page.' },
+  { label: 'Maya', value: 'paymaya' as const, icon: 'pi pi-wallet', description: 'Pay securely with your Maya account.' },
 ]
+const allowedPaymentMethods = ref<string[]>([])
+const paymentMethodsLoading = ref(false)
+const paymentMethodsError = ref('')
+const availablePaymentMethods = computed(() => allPaymentMethods.filter((method) => allowedPaymentMethods.value.includes(method.value)))
+
+async function loadAvailablePaymentMethods() {
+  const storeId = Number(checkoutItems.value[0]?.store_id || 0)
+  if (!storeId) return
+
+  paymentMethodsLoading.value = true
+  paymentMethodsError.value = ''
+  try {
+    const response = await paymongoService.getAvailableCheckoutMethods(storeId)
+    allowedPaymentMethods.value = Array.isArray(response?.data?.methods) ? response.data.methods : []
+    if (!availablePaymentMethods.value.length) {
+      paymentMethodsError.value = 'No online payment methods are available for this store right now.'
+    } else if (!allowedPaymentMethods.value.includes(selectedPaymentMethod.value)) {
+      selectedPaymentMethod.value = availablePaymentMethods.value[0].value
+    }
+  } catch (error: any) {
+    allowedPaymentMethods.value = []
+    paymentMethodsError.value = error?.response?.data?.message || 'Unable to load payment methods. Please try again later.'
+  } finally {
+    paymentMethodsLoading.value = false
+  }
+}
 
 const voucherCode = ref('')
 const appliedVoucher = ref<AppliedVoucher | null>(null)
@@ -861,20 +856,17 @@ const vatAmount = computed(() => vatInclusiveProductTotal.value > 0
   : 0)
 const vatableSales = computed(() => vatInclusiveProductTotal.value - vatAmount.value)
 const totalAmount = computed(() => Math.max(0, subtotal.value + shippingFeeTotal.value - discountAmount.value))
-const codBlocked = computed(() => totalAmount.value > COD_LIMIT)
 const checkoutItemIds = computed(() =>
   checkoutItems.value
     .map((item: any) => Number(item?.id))
     .filter((id: number) => Number.isInteger(id) && id > 0),
 )
 
-function paymentMethodLabel(method: 'cod' | 'online') {
-  if (method === 'cod' && serviceMethod.value === 'pickup') return 'Pay Upon Pickup'
-  return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
+function paymentMethodLabel(method: 'gcash' | 'card' | 'paymaya') {
+  return allPaymentMethods.find((m) => m.value === method)?.label || 'Online payment'
 }
 
-function paymentMethodDescription(method: 'cod' | 'online') {
-  if (method === 'cod' && serviceMethod.value === 'pickup') return 'Pay in cash when you collect your order from the store.'
+function paymentMethodDescription(method: 'gcash' | 'card' | 'paymaya') {
   return allPaymentMethods.find((m) => m.value === method)?.description || ''
 }
 
@@ -886,8 +878,7 @@ const selectedPaymentMethodOption = computed(() =>
   }),
 )
 
-function selectPaymentMethod(method: 'cod' | 'online') {
-  if (method === 'cod' && codBlocked.value && serviceMethod.value === 'delivery') return
+function selectPaymentMethod(method: 'gcash' | 'card' | 'paymaya') {
   selectedPaymentMethod.value = method
 }
 
@@ -909,11 +900,6 @@ function formatServiceTime(value: string): string {
   return new Date(2020, 0, 1, hours, minutes).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-watch(codBlocked, (blocked) => {
-  if (blocked && serviceMethod.value === 'delivery' && selectedPaymentMethod.value === 'cod') {
-    selectedPaymentMethod.value = 'online'
-  }
-})
 
 watch(selectedAddressId, () => {
   const selected = selectedAddress.value
@@ -957,9 +943,11 @@ async function loadAddressTemplates() {
 
 
 async function saveNewAddress() {
+  addressTouched.name = true
+  addressTouched.phone = true
   if (
-    !newAddress.full_name ||
-    !newAddress.contact_number ||
+    !validRecipientName(newAddress.full_name) ||
+    !validPhilippineMobile(newAddress.contact_number) ||
     !newAddressSelection.provinceId ||
     !newAddressSelection.cityId ||
     !newAddressSelection.barangayCode ||
@@ -1076,6 +1064,7 @@ async function estimateShippingFee() {
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
     : ''
   shippingFeeLoading.value = true
+  shippingFeeError.value = null
   try {
     const latitude = customerLatitude.value ?? (selectedAddress.value?.latitude ?? undefined)
     const longitude = customerLongitude.value ?? (selectedAddress.value?.longitude ?? undefined)
@@ -1111,16 +1100,14 @@ async function estimateShippingFee() {
     shippingDistanceKm.value = null
     shippingFeeNotice.value = null
     shippingFeeBreakdown.value = null
-    const message = error?.response?.data?.message || 'Unable to calculate shipping fee for your address.'
-    showAlert({ severity: 'warn', summary: 'Shipping Fee', detail: message })
+    shippingFeeError.value = error?.response?.data?.message || 'Delivery fee is unavailable. Please check your address or choose pickup.'
   } finally {
     shippingFeeLoading.value = false
   }
 }
 
-function toBackendPaymentMethod(method: 'cod' | 'online') {
-  if (method === 'online') return 'card'
-  return 'cod'
+function toBackendPaymentMethod(method: 'gcash' | 'card' | 'paymaya') {
+  return method === 'card' ? 'card' : 'e_wallet'
 }
 
 async function fetchProvinces() {
@@ -1257,6 +1244,53 @@ async function startEditAddress(address: AddressTemplate) {
 // Coordinates are picked via the interactive Mapbox dialog.
 
 async function placeOrder() {
+  if (placing.value || paymongoCreating.value) return
+  if (retryOrderId.value) {
+    placing.value = true
+    try {
+      const orderResponse = await ecommerceService.getOrder(retryOrderId.value)
+      const order = orderResponse?.data?.data
+      if (!order || ['paid'].includes(String(order.payment_status)) || ['cancelled', 'canceled'].includes(String(order.status))) {
+        retryOrderId.value = null
+        window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
+        throw new Error('This order can no longer be paid. Please start a new checkout.')
+      }
+      const orderId = Number(order.id)
+      const successUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_success: '1' } }).href, window.location.origin).toString()
+      const cancelUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_cancel: '1' } }).href, window.location.origin).toString()
+      paymongoCreating.value = true
+      const sessionResponse = await paymongoService.createCheckoutSession({
+        amount: Math.max(Math.round(Number(order.total_amount) * 100), 1),
+        currency: 'PHP',
+        description: `Order #${orderId}`,
+        store_id: Number(order.store_id),
+        payable_type: 'ecommerce_order',
+        payable_id: orderId,
+        payment_method_allowed: [selectedPaymentMethod.value],
+        metadata: { order_id: orderId },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      })
+      const checkoutUrl = String(sessionResponse?.data?.checkout_url || '')
+      if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) throw new Error('PayMongo did not return a valid checkout page.')
+      window.location.assign(checkoutUrl)
+    } catch (error: any) {
+      const paymentInProgress = Number(error?.response?.status) === 409
+      showAlert({ severity: paymentInProgress ? 'warn' : 'error', summary: paymentInProgress ? 'Payment in Progress' : 'Payment Unavailable', detail: error?.response?.data?.message || error?.message || 'Please try again.' })
+    } finally {
+      placing.value = false
+      paymongoCreating.value = false
+    }
+    return
+  }
+  if (paymentMethodsLoading.value || paymentMethodsError.value || !allowedPaymentMethods.value.includes(selectedPaymentMethod.value)) {
+    checkoutStep.value = 3
+    return
+  }
+  if (serviceMethod.value === 'delivery' && shippingFeeError.value) {
+    checkoutStep.value = 2
+    return
+  }
   if (!fulfillmentDates.value.includes(fulfillmentDateString.value)) {
     showAlert({ severity: 'warn', summary: 'Date Required', detail: 'Please select an available pickup or delivery date.' })
     checkoutStep.value = 2
@@ -1267,16 +1301,7 @@ async function placeOrder() {
     return
   }
 
-  if (selectedPaymentMethod.value === 'cod' && codBlocked.value && serviceMethod.value === 'delivery') {
-    showAlert({
-      severity: 'warn',
-      summary: 'COD Not Available',
-      detail: `COD is only allowed for totals up to ₱ ${COD_LIMIT.toLocaleString()}. Please use Online Payment.`,
-    })
-    return
-  }
-
-  if (selectedPaymentMethod.value === 'online' && billingAddressIncomplete.value) {
+  if (billingAddressIncomplete.value) {
     showAlert({ severity: 'warn', summary: 'Billing Address', detail: 'Complete the required billing address fields.' })
     return
   }
@@ -1301,9 +1326,9 @@ async function placeOrder() {
       shipping_phone: selectedAddress.value?.contact_number || undefined,
       shipping_email: authStore.user?.email || undefined,
       shipping_address: serviceMethod.value === 'pickup' ? 'Store pickup' : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
-      billing_name: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
+      billing_name: useDifferentBillingAddress.value
         ? billingForm.name.trim() : selectedAddress.value?.full_name,
-      billing_address: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
+      billing_address: useDifferentBillingAddress.value
         ? [billingForm.street, billingForm.barangay, billingForm.city, billingForm.province, billingForm.postalCode].map((part) => part.trim()).filter(Boolean).join(', ')
         : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value) as 'cod' | 'bank_transfer' | 'card' | 'e_wallet',
@@ -1327,8 +1352,12 @@ async function placeOrder() {
     const response = await ecommerceService.checkout(payload)
     const orderId = response.data?.data?.id
     const orderStoreId = Number(response.data?.data?.store_id || checkoutItems.value?.[0]?.store_id || 0)
+    if (orderId) {
+      retryOrderId.value = Number(orderId)
+      window.sessionStorage.setItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY, String(orderId))
+    }
 
-    if (selectedPaymentMethod.value === 'online') {
+    if (selectedPaymentMethod.value) {
       if (!orderId || !orderStoreId) {
         throw new Error('Order ID or store ID is missing for Online Payment checkout.')
       }
@@ -1344,6 +1373,7 @@ async function placeOrder() {
         store_id: orderStoreId,
         payable_type: 'ecommerce_order',
         payable_id: Number(orderId),
+        payment_method_allowed: [selectedPaymentMethod.value],
         metadata: { order_id: orderId },
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -1401,7 +1431,7 @@ async function checkPaymongoResult(orderId: number): Promise<string> {
       return status
     }
 
-    if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
+    if (status === 'failed' || status === 'cancelled' || status === 'canceled' || status === 'expired') {
       showAlert({ severity: 'error', summary: 'Payment Failed', detail: 'Your payment was not completed. You can try again.' })
       return status
     }
@@ -1439,17 +1469,13 @@ onMounted(async () => {
     } catch {}
   }
   if (paymongoOrderId > 0) {
-    if (String(route.query?.paymongo_cancel || '') === '1') {
-      showAlert({ severity: 'info', summary: 'Payment Cancelled', detail: 'You cancelled the Online Payment checkout. No payment was made.' })
-      paymongoResultStatus = 'cancelled'
-    } else {
-      paymongoResultStatus = await checkPaymongoResult(paymongoOrderId)
-    }
+    paymongoResultStatus = await checkPaymongoResult(paymongoOrderId)
     if (paymongoResultStatus === 'succeeded') {
       loading.value = false
       router.replace({ name: 'ecommerce.order-detail', params: { id: paymongoOrderId } })
       return
     }
+    retryOrderId.value = paymongoOrderId
 
     // Remove the query so refresh doesn't keep firing the result alert.
     const nextQuery = { ...route.query }
@@ -1480,9 +1506,26 @@ onMounted(async () => {
     await fetchProvinces()
     await loadAddressTemplates()
     await loadCheckoutItems()
+    await loadAvailablePaymentMethods()
     await estimateShippingFee()
   } finally {
     loading.value = false
   }
 })
 </script>
+
+
+<style scoped>
+@font-face {
+  font-family: 'Barabara';
+  src: url('/fonts/BARABARA-final.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.portal-brand {
+  font-family: 'Barabara', sans-serif;
+}
+
+</style>

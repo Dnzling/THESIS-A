@@ -12,7 +12,11 @@ use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Models\Core\SystemNotification;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
+use App\Models\Ecommerce\EcommerceDeliveryLog;
+use App\Models\PaymongoIntent;
+use App\Models\Sales\SalesRefund;
 use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\CRM\EcommerceProductReview;
 use App\Models\Ecommerce\EcommerceStoreFollow;
@@ -30,8 +34,9 @@ use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
 use App\Models\CRM\SalesReview;
-use App\Services\Sales\OrderCommissionService;
 use App\Services\Ecommerce\PromotionPricingService;
+use App\Services\Ecommerce\EcommerceStockReservationService;
+use App\Services\Payment\PaymongoService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -46,7 +51,6 @@ class EcommerceController extends Controller
     private const VAT_RATE = 12.0;
 
     public function __construct(
-        private readonly OrderCommissionService $commissionService,
         private readonly PromotionPricingService $promotionPricing
     ) {
     }
@@ -1783,6 +1787,9 @@ class EcommerceController extends Controller
                 'order_id' => $order->id,
                 'store_id' => $order->store_id,
                 'status' => 'pending',
+                'estimated_delivery_at' => $fulfillmentMethod === 'delivery'
+                    ? \Carbon\Carbon::parse($validated['requested_fulfillment_date'].' '.explode('-', $validated['requested_fulfillment_window'])[1], 'Asia/Manila')
+                    : null,
                 'notes' => 'Awaiting Sales approval for dispatch.',
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
@@ -1832,23 +1839,18 @@ class EcommerceController extends Controller
 
                 $taxAmount = $this->extractIncludedVat(max(0, $subtotal - $discountAmount));
                 $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
-                $commission = $this->commissionService->calculate(
-                    (int) $cart->store_id,
-                    $subtotal,
-                    $discountAmount,
-                    $totalAmount
-                );
-                $order->update(array_merge([
+                $order->update([
                     'subtotal' => round($subtotal, 2),
                     'tax_amount' => round($taxAmount, 2),
                     'shipping_fee' => round($shippingFee, 2),
                     'discount_amount' => round($discountAmount, 2),
                     'total_amount' => $totalAmount,
+                    'store_net_amount' => $totalAmount,
                     'pending_snapshot' => [
                         'items' => $snapshotItems,
                         'stock_reserved' => true,
                     ],
-                ], $commission));
+                ]);
 
                 return $order->fresh();
             }
@@ -1908,19 +1910,14 @@ class EcommerceController extends Controller
 
             $taxAmount = $this->extractIncludedVat(max(0, $subtotal - $discountAmount));
             $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
-            $commission = $this->commissionService->calculate(
-                (int) $cart->store_id,
-                $subtotal,
-                $discountAmount,
-                $totalAmount
-            );
-            $order->update(array_merge([
+            $order->update([
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => round($taxAmount, 2),
                 'shipping_fee' => round($shippingFee, 2),
                 'discount_amount' => round($discountAmount, 2),
                 'total_amount' => $totalAmount,
-            ], $commission));
+                'store_net_amount' => $totalAmount,
+            ]);
 
             EcommerceCartItem::query()
                 ->where('cart_id', $cart->id)
@@ -1932,7 +1929,21 @@ class EcommerceController extends Controller
 
         try {
             $customerItems = $order->relationLoaded('items') ? $order->items : collect();
-            $this->notify((int) $user->id, [
+            $notifyOrderOnce = function (int $recipientId, string $module, array $payload) use ($order): void {
+                $alreadyNotified = SystemNotification::query()
+                    ->where('user_id', $recipientId)
+                    ->where('module', $module)
+                    ->where('entity_type', 'ecommerce_order')
+                    ->where('entity_id', $order->id)
+                    ->where('action', 'created')
+                    ->exists();
+
+                if (! $alreadyNotified) {
+                    $this->notify($recipientId, $payload);
+                }
+            };
+
+            $notifyOrderOnce((int) $user->id, 'ecommerce', [
                 'store_id' => (int) $order->store_id,
                 'branch_id' => (int) ($order->assigned_branch_id ?? 0) ?: null,
                 'module' => 'ecommerce',
@@ -1955,10 +1966,16 @@ class EcommerceController extends Controller
                 ],
             ]);
 
-            $this->notifyUsersByPermissions(
+            $salesRecipients = $this->userIdsWithAnyPermission(
                 (int) $order->store_id,
-                ['sales.ecommerce-orders.view', 'sales.ecommerce-orders.manage', 'sales.orders.view'],
-                [
+                ['sales.ecommerce-orders.view', 'sales.ecommerce-orders.manage', 'sales.orders.view']
+            );
+            foreach ($salesRecipients as $salesRecipientId) {
+                if ((int) $salesRecipientId === (int) $user->id) {
+                    continue;
+                }
+
+                $notifyOrderOnce((int) $salesRecipientId, 'sales', [
                     'store_id' => (int) $order->store_id,
                     'branch_id' => (int) ($order->assigned_branch_id ?? 0) ?: null,
                     'module' => 'sales',
@@ -1969,9 +1986,8 @@ class EcommerceController extends Controller
                     'message' => "Ecommerce order {$order->order_number} has been placed.",
                     'severity' => 'info',
                     'link' => "/sales/ecommerce-orders/{$order->id}",
-                ],
-                [(int) $user->id]
-            );
+                ]);
+            }
         } catch (\Throwable $exception) {
             report($exception);
         }
@@ -2096,39 +2112,132 @@ class EcommerceController extends Controller
             ->where('user_id', $user->id)
             ->findOrFail($id);
 
-        if (strtolower((string) $order->status) !== 'pending') {
+        if (!in_array(strtolower((string) $order->status), ['pending', 'pending_cancellation'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only pending orders can request cancellation.',
+                'message' => 'Only pending orders can be cancelled.',
             ], 422);
         }
 
-        $hasActiveRequest = EcommerceOrderCancellation::query()
-            ->where('order_id', $order->id)
-            ->whereIn('status', ['pending_verification', 'approved'])
-            ->exists();
+        if ($order->payment_status !== 'paid') {
+            $latestIntent = PaymongoIntent::query()
+                ->where('payable_type', 'ecommerce_order')
+                ->where('payable_id', $order->id)
+                ->latest('id')
+                ->first();
 
-        if ($hasActiveRequest) {
-            return response()->json([
-                'success' => false,
-                'message' => 'A cancellation request already exists for this order.',
-            ], 422);
+            if ($latestIntent) {
+                if (!str_starts_with((string) $latestIntent->payment_intent_id, 'cs_')) {
+                    return response()->json(['message' => 'Payment status is still being verified. Please try again shortly.'], 409);
+                }
+
+                $paymongo = app(PaymongoService::class);
+                $session = $paymongo->retrieveCheckoutSession((string) $latestIntent->payment_intent_id);
+                if (data_get($session, 'errors.0.detail') || !data_get($session, 'data.id')) {
+                    return response()->json(['message' => 'Unable to verify the payment status. Please try again shortly.'], 502);
+                }
+                $paid = collect((array) data_get($session, 'data.attributes.payments', []))
+                    ->contains(fn ($payment) => strtolower((string) data_get($payment, 'attributes.status', '')) === 'paid');
+                if ($paid) {
+                    return response()->json(['message' => 'Payment was completed. Refresh the order before cancelling.'], 409);
+                }
+
+                if (strtolower((string) data_get($session, 'data.attributes.status', '')) !== 'expired') {
+                    $expired = $paymongo->expireCheckoutSession((string) $latestIntent->payment_intent_id);
+                    if (strtolower((string) data_get($expired, 'data.attributes.status', '')) !== 'expired') {
+                        $verified = $paymongo->retrieveCheckoutSession((string) $latestIntent->payment_intent_id);
+                        if (strtolower((string) data_get($verified, 'data.attributes.status', '')) !== 'expired') {
+                            return response()->json(['message' => 'Payment is still in progress. Please wait before cancelling this order.'], 409);
+                        }
+                    }
+                }
+
+                $latestIntent->update(['status' => 'expired']);
+            }
         }
 
-        $requestRecord = EcommerceOrderCancellation::query()->create([
-            'order_id' => $order->id,
-            'store_id' => $order->store_id,
-            'user_id' => $user->id,
-            'reason' => $validated['reason'],
-            'details' => $validated['details'] ?? null,
-            'status' => 'pending_verification',
-        ]);
+        try {
+            $requestRecord = DB::transaction(function () use ($order, $user, $validated) {
+                $fresh = EcommerceOrder::query()->lockForUpdate()->findOrFail($order->id);
+                $delivery = EcommerceOrderDelivery::query()->where('order_id', $fresh->id)->lockForUpdate()->first();
+                if (!in_array((string) $fresh->status, ['pending', 'pending_cancellation'], true)
+                    || ($delivery && !in_array((string) $delivery->status, ['pending', 'cancelled'], true))) {
+                    throw new \DomainException('This order can no longer be cancelled.');
+                }
 
-        $order->update(['status' => 'pending_cancellation']);
+                $stockWasReserved = !empty(((array) ($fresh->pending_snapshot ?? []))['stock_reserved']);
+                app(EcommerceStockReservationService::class)->release($fresh);
+                if (!$stockWasReserved) {
+                    foreach ($fresh->items as $item) {
+                        $inventory = BranchInventory::query()
+                            ->where('store_id', $fresh->store_id)
+                            ->whereKey($item->branch_inventory_id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+                        $inventory->quantity_on_hand += (int) $item->quantity;
+                        $inventory->quantity_available += (int) $item->quantity;
+                        $inventory->updateStockStatus();
+                    }
+                }
+
+                $requestRecord = EcommerceOrderCancellation::query()
+                    ->where('order_id', $fresh->id)
+                    ->where('status', 'pending_verification')
+                    ->latest('id')
+                    ->first() ?? new EcommerceOrderCancellation();
+                $requestRecord->fill([
+                    'order_id' => $fresh->id,
+                    'store_id' => $fresh->store_id,
+                    'user_id' => $user->id,
+                    'reason' => $validated['reason'],
+                    'details' => $validated['details'] ?? null,
+                    'status' => 'approved',
+                ]);
+                $requestRecord->save();
+
+                $fresh->status = 'cancelled';
+                $fresh->save();
+
+                if ($fresh->payment_status === 'paid') {
+                    SalesRefund::query()->firstOrCreate(
+                        ['order_type' => 'ecommerce_order', 'order_id' => $fresh->id],
+                        [
+                            'store_id' => $fresh->store_id,
+                            'branch_id' => $fresh->assigned_branch_id,
+                            'order_number' => (string) $fresh->order_number,
+                            'customer_name' => (string) $fresh->shipping_name,
+                            'reason' => (string) $validated['reason'],
+                            'amount' => (float) $fresh->total_amount,
+                            'status' => 'pending',
+                            'requested_by' => $user->id,
+                        ]
+                    );
+                }
+
+                if ($delivery && $delivery->status !== 'cancelled') {
+                    $previousDeliveryStatus = (string) $delivery->status;
+                    $delivery->update(['status' => 'cancelled']);
+                    EcommerceDeliveryLog::query()->create([
+                        'delivery_id' => $delivery->id,
+                        'order_id' => $fresh->id,
+                        'store_id' => $fresh->store_id,
+                        'event_type' => 'status_updated',
+                        'status_from' => $previousDeliveryStatus,
+                        'status_to' => 'cancelled',
+                        'message' => 'Customer cancelled the order.',
+                        'created_by' => $user->id,
+                    ]);
+                }
+
+                return $requestRecord;
+            });
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cancellation request submitted. Store verification is pending.',
+            'message' => 'Order cancelled successfully.',
             'data' => $requestRecord,
         ], 201);
     }
@@ -3298,7 +3407,7 @@ class EcommerceController extends Controller
             'order_number' => $order->order_number,
             'status' => $order->status,
             'primary_status' => $primaryStatus,
-            'can_cancel' => $orderStatus === 'pending' && (!$latestCancellation || $latestCancellation->status === 'rejected'),
+            'can_cancel' => in_array($orderStatus, ['pending', 'pending_cancellation'], true),
             'cancellation_request' => $latestCancellation ? [
                 'id' => $latestCancellation->id,
                 'status' => $latestCancellation->status,
