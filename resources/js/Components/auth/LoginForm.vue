@@ -14,7 +14,7 @@
         <div class="flex flex-col justify-center p-8 lg:p-12">
           <div class="flex items-center justify-left mb-6">
             <div>
-              <p class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-600">Business &amp; Supplier Portal</p>
+              <p class="mb-2 text-sm font-semibold uppercase text-orange-600">Business Login</p>
               <h1 class="text-3xl font-bold text-orange-500">Welcome Back</h1>
               <p class="text-gray-500 mt-1 text-sm font-medium">Sign in to manage your store or supplier account</p>
             </div>

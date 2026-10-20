@@ -477,11 +477,11 @@
                         </div>
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Opens at</label>
-                            <DatePicker :v-model="operatingHours.opens_at" timeOnly hourFormat="12" fluid />
+                            <DatePicker v-model="openingTime" timeOnly hourFormat="12" size="small" fluid />
                         </div>
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Closes at</label>
-                            <DatePicker :v-model="operatingHours.closes_at" timeOnly hourFormat="12" fluid />
+                            <DatePicker v-model="closingTime" timeOnly hourFormat="12" size="small" fluid />
                         </div>
                     </div>
                     <p class="mt-2 text-xs text-slate-500">
@@ -495,7 +495,38 @@
                 </template>
             </Card>
 
-            <Card v-if="attendance_geolocation_available">
+            <Card class="border border-slate-200 shadow-sm">
+                <template #title>Pickup and delivery windows</template>
+                <template #content>
+                    <p class="mb-4 text-xs text-slate-500">Set broad service windows. Customers choose a date; your team confirms the exact time after ordering.</p>
+                    <div class="grid gap-5 lg:grid-cols-2">
+                        <div v-for="method in ['pickup', 'delivery'] as const" :key="method" class="rounded-xl border border-slate-200 p-4">
+                            <h3 class="mb-3 text-sm font-semibold capitalize text-slate-900">{{ method }}</h3>
+                            <label class="mb-1 block text-xs font-medium text-slate-700">Available days</label>
+                            <MultiSelect v-model="fulfillmentWindows[method].days" :options="operatingDayOptions" optionLabel="label" optionValue="value" display="chip" size="small" fluid />
+                            <div class="mt-3 grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-slate-700">From</label>
+                                    <DatePicker v-model="fulfillmentTimeModels[method].start.value" timeOnly hourFormat="12" size="small" fluid />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-slate-700">Until</label>
+                                    <DatePicker v-model="fulfillmentTimeModels[method].end.value" timeOnly hourFormat="12" size="small" fluid />
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <label class="mb-1 block text-xs font-medium text-slate-700">Days needed before booking</label>
+                                <InputNumber v-model="fulfillmentWindows[method].lead_days" :min="0" :max="14" size="small" fluid />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                        <Button label="Save service windows" size="small" severity="warn" :loading="savingFulfillmentWindows" @click="saveFulfillmentWindows" />
+                    </div>
+                </template>
+            </Card>
+
+            <Card>
                 <template #title>Attendance Geolocation</template>
                 <template #content>
                     <p class="text-sm text-slate-600 mb-4">
@@ -504,17 +535,9 @@
                         log in.
                     </p>
                     <div class="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+                        
                         <div class="space-y-3 text-sm text-slate-700">
                             <div>
-                                <div class="text-xs uppercase text-slate-400">
-                                    Address
-                                </div>
-                                <div class="font-semibold">
-                                    {{ attendance.address || "Not set" }}
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                                <div>
                                     <div class="text-xs uppercase text-slate-400">
                                         Geofence
                                     </div>
@@ -526,14 +549,15 @@
                                         }}
                                     </div>
                                 </div>
-                                <Tag :value="attendance.geofence_enabled
-                                        ? 'Enabled'
-                                        : 'Disabled'
-                                    " :severity="attendance.geofence_enabled
-                                            ? 'success'
-                                            : 'secondary'
-                                        " />
+                            <div>
+                                <div class="text-xs uppercase text-slate-400">
+                                    Address
+                                </div>
+                                <div class="font-semibold">
+                                    {{ attendance.address || "Not set" }}
+                                </div>
                             </div>
+                       
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <div class="text-xs uppercase text-slate-400">
@@ -691,15 +715,7 @@
                                     {{ attendanceDraft.province || "Not set" }}
                                 </div>
                             </div>
-                            <div>
-                                <div class="text-xs uppercase text-slate-400">
-                                    Coordinates
-                                </div>
-                                <div class="font-semibold">
-                                    {{ attendanceDraft.latitude ?? "—" }},
-                                    {{ attendanceDraft.longitude ?? "—" }}
-                                </div>
-                            </div>
+                          
                         </div>
                     </div>
                 </div>
@@ -733,6 +749,7 @@ import Button from "primevue/button";
 import Badge from "primevue/badge";
 import Card from "primevue/card";
 import Dialog from "primevue/dialog";
+import DatePicker from "primevue/datepicker";
 import MultiSelect from "primevue/multiselect";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
@@ -778,6 +795,7 @@ const props = defineProps<{
         opens_at?: string;
         closes_at?: string;
     } | null;
+    fulfillment_windows?: Record<'pickup' | 'delivery', { days: string[]; start: string; end: string; lead_days: number }> | null;
     subscription: any;
     available_plans: any[];
     verification: any;
@@ -795,10 +813,56 @@ const operatingDayOptions = [
     "saturday",
     "sunday",
 ].map((value) => ({ label: value[0].toUpperCase() + value.slice(1), value }));
+const savingFulfillmentWindows = ref(false);
+const fulfillmentWindows = reactive({
+    pickup: { days: [...(props.fulfillment_windows?.pickup?.days || operatingDayOptions.slice(0, 6).map((day) => day.value))], start: props.fulfillment_windows?.pickup?.start || '09:00', end: props.fulfillment_windows?.pickup?.end || '18:00', lead_days: props.fulfillment_windows?.pickup?.lead_days ?? 1 },
+    delivery: { days: [...(props.fulfillment_windows?.delivery?.days || operatingDayOptions.slice(0, 6).map((day) => day.value))], start: props.fulfillment_windows?.delivery?.start || '08:00', end: props.fulfillment_windows?.delivery?.end || '20:00', lead_days: props.fulfillment_windows?.delivery?.lead_days ?? 2 },
+});
+const fulfillmentTimeModels = {
+    pickup: {
+        start: computed({ get: () => timeAsDate(fulfillmentWindows.pickup.start), set: (value: Date | null) => { fulfillmentWindows.pickup.start = timeAsString(value); } }),
+        end: computed({ get: () => timeAsDate(fulfillmentWindows.pickup.end), set: (value: Date | null) => { fulfillmentWindows.pickup.end = timeAsString(value); } }),
+    },
+    delivery: {
+        start: computed({ get: () => timeAsDate(fulfillmentWindows.delivery.start), set: (value: Date | null) => { fulfillmentWindows.delivery.start = timeAsString(value); } }),
+        end: computed({ get: () => timeAsDate(fulfillmentWindows.delivery.end), set: (value: Date | null) => { fulfillmentWindows.delivery.end = timeAsString(value); } }),
+    },
+};
+const saveFulfillmentWindows = () => {
+    if (Object.values(fulfillmentWindows).some((window) => !window.days.length || !window.start || !window.end || window.end <= window.start)) {
+        toast.add({ severity: 'warn', summary: 'Check service windows', detail: 'Select days and ensure each end time is after its start time.', life: 3500 });
+        return;
+    }
+    savingFulfillmentWindows.value = true;
+    router.put('/store/settings/fulfillment-windows', fulfillmentWindows, {
+        preserveScroll: true,
+        onSuccess: () => toast.add({ severity: 'success', summary: 'Service windows saved', life: 2500 }),
+        onError: (errors) => toast.add({ severity: 'error', summary: 'Unable to save service windows', detail: Object.values(errors)[0] || 'Please check the fields.', life: 3500 }),
+        onFinish: () => { savingFulfillmentWindows.value = false; },
+    });
+};
 const operatingHours = reactive({
     days: [...(props.operating_hours?.days || [])],
     opens_at: props.operating_hours?.opens_at || "09:00",
     closes_at: props.operating_hours?.closes_at || "18:00",
+});
+const timeAsDate = (value: string) => {
+    const [hours, minutes] = value.split(":").map(Number);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    return date;
+};
+const timeAsString = (value: Date | null) => value instanceof Date && !Number.isNaN(value.getTime())
+    ? `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`
+    : "";
+const openingTime = computed({
+    get: () => timeAsDate(operatingHours.opens_at),
+    set: (value: Date | null) => { operatingHours.opens_at = timeAsString(value); },
+});
+const closingTime = computed({
+    get: () => timeAsDate(operatingHours.closes_at),
+    set: (value: Date | null) => { operatingHours.closes_at = timeAsString(value); },
 });
 const saveOperatingHours = () => {
     if (

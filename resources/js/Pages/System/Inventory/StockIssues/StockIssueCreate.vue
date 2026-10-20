@@ -5,7 +5,7 @@
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-issues' })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Stock Issuance' : 'Create Stock Issuance' }}</h2>
-        <p class="text-sm text-gray-500 mt-1">{{ isEditMode ? 'Update the movement, reason, and listed items.' : 'Record an addition or deduction for supplies, raw materials, and other inventory items.' }}</p>
+        <p class="text-sm text-gray-500 mt-1">Record items deliberately used or released from this branch. Use Stock Adjustment for count differences.</p>
       </div>
     </div>
 
@@ -14,19 +14,6 @@
         <form class="space-y-6" @submit.prevent="confirmSubmit">
           <!-- Header Section -->
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Movement <span class="text-red-500">*</span>
-              </label>
-              <Select v-model="form.movement_type"
-                :options="movementOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select movement"
-                fluid
-              />
-            </div>
-
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
                 Reason <span class="text-red-500">*</span>
@@ -48,6 +35,13 @@
                 </template>
               </Select>
               <small v-if="errors.issue_type" class="text-red-500">{{ errors.issue_type[0] }}</small>
+            </div>
+
+            <div v-if="form.issue_type === 'other'" class="flex flex-col gap-2 md:col-span-2">
+              <label class="text-sm font-semibold text-gray-700">Specify reason <span class="text-red-500">*</span></label>
+              <Textarea v-model="form.description" rows="3" maxlength="1000" fluid
+                placeholder="Describe why these items are being issued" :invalid="Boolean(errors.description)" />
+              <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
             </div>
 
           </div>
@@ -102,7 +96,7 @@
                 <InputNumber 
                   v-model="newItem.quantity" 
                   :min="1" 
-                  :max="form.movement_type === 'deduct' ? selectedProductStock : undefined"
+                  :max="selectedProductStock"
                   showButtons 
                   buttonLayout="horizontal"
                   fluid
@@ -144,9 +138,9 @@
                   </span>
                 </div>
               </div>
-              <div v-if="form.movement_type === 'deduct' && selectedProduct.stock < newItem.quantity" class="mt-2 text-amber-600 text-xs">
+              <div v-if="selectedProduct.stock < newItem.quantity" class="mt-2 text-amber-600 text-xs">
                 <i class="pi pi-exclamation-triangle mr-1"></i>
-                Warning: Issuing more than available stock will result in negative inventory
+                Quantity cannot exceed available stock.
               </div>
             </div>
 
@@ -223,25 +217,14 @@
 
           <!-- Summary Section -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Description & Remarks -->
+            <!-- Optional recipient and context -->
             <div class="space-y-4">
               <div class="flex flex-col gap-2">
-                <label class="text-sm font-semibold text-gray-700">Description</label>
-                <Textarea 
-                  v-model="form.description" 
-                  rows="3" 
-                  placeholder="Overall description of the stock issue"
-                  :class="{ 'p-invalid': errors.description }"
-                  fluid
-                />
-                <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
-              </div>
-              <div class="flex flex-col gap-2">
-                <label class="text-sm font-semibold text-gray-700">Remarks</label>
+                <label class="text-sm font-semibold text-gray-700">Issued to / additional notes</label>
                 <Textarea 
                   v-model="form.remarks" 
                   rows="3" 
-                  placeholder="Any additional remarks"
+                  placeholder="Optional recipient or context"
                   fluid
                 />
               </div>
@@ -354,31 +337,12 @@ const newItem = reactive({
 // Validation errors
 const errors = ref<any>({})
 
-// Type options
-const movementOptions = [
-  { label: 'Add Stock', value: 'add' },
-  { label: 'Deduct Stock', value: 'deduct' },
+const transactionReasonOptions = [
+  { label: 'Used for Production', value: 'production_use' },
+  { label: 'Office Consumption', value: 'office_consumption' },
+  { label: 'Store Usage / Sample or Demo', value: 'store_usage' },
+  { label: 'Other', value: 'other' },
 ]
-
-const transactionReasonOptions = computed(() => form.movement_type === 'add'
-  ? [
-      { label: 'Goods Received', value: 'goods_received' },
-      { label: 'Stock Return', value: 'stock_return' },
-      { label: 'Inventory Correction', value: 'inventory_correction' },
-      { label: 'Opening Balance', value: 'opening_balance' },
-      { label: 'Transfer In', value: 'transfer_in' },
-      { label: 'Other', value: 'other' },
-    ]
-  : [
-      { label: 'Used for Production', value: 'production_use' },
-      { label: 'Office Consumption', value: 'office_consumption' },
-      { label: 'Store Usage', value: 'store_usage' },
-      { label: 'Damaged', value: 'damaged' },
-      { label: 'Lost', value: 'lost' },
-      { label: 'Expired', value: 'expired' },
-      { label: 'Stock Correction', value: 'stock_correction' },
-      { label: 'Other', value: 'other' },
-    ])
 
 // Get type icon
 const getTypeIcon = (type: string) => {
@@ -401,7 +365,7 @@ const availableProducts = computed(() => {
   const addedIds = form.items.map(item => item.inventory_item_id)
 
   return inventoryItems.value
-    .filter(item => !addedIds.includes(item.id) && (form.movement_type === 'add' || item.quantity_available > 0))
+    .filter(item => !addedIds.includes(item.id) && item.quantity_available > 0)
     .map(item => ({
       id: item.id,
       productId: item.product_id,
@@ -432,12 +396,13 @@ const selectedProductStock = computed(() => {
 const canAddItem = computed(() => {
   return newItem.inventory_item_id &&
          newItem.quantity > 0 &&
-         (form.movement_type === 'add' || newItem.quantity <= selectedProductStock.value)
+         newItem.quantity <= selectedProductStock.value
 })
 
 // Form validity
 const isFormValid = computed(() => {
-  return form.issue_type && form.items.length > 0
+  return Boolean(form.issue_type && form.items.length > 0
+    && (form.issue_type !== 'other' || form.description.trim()))
 })
 
 // Totals
@@ -533,7 +498,7 @@ const loadInventoryItems = async () => {
     }
 
     // Show message if no items with stock
-    const itemsWithStock = inventoryItems.value.filter(item => form.movement_type === 'add' || item.quantity_available > 0)
+    const itemsWithStock = inventoryItems.value.filter(item => item.quantity_available > 0)
     if (itemsWithStock.length === 0) {
       toast.add({
         severity: 'info',
@@ -605,7 +570,7 @@ const confirmSubmit = () => {
   if (!isFormValid.value) return
   confirm.require({
     header: isEditMode.value ? 'Update Stock Issuance' : 'Create Stock Issuance',
-    message: `Confirm ${isEditMode.value ? 'updating this issuance with' : (form.movement_type === 'add' ? 'adding' : 'deducting')} ${totalQuantity.value} item(s)?`,
+    message: `Confirm ${isEditMode.value ? 'updating this issuance with' : 'deducting'} ${totalQuantity.value} item(s)?`,
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'No',
     acceptLabel: isEditMode.value ? 'Update' : 'Create',
@@ -629,7 +594,7 @@ const submitIssue = async () => {
   // Validate quantities don't exceed available stock
   const exceededItems = form.items.some(item => {
     const inventoryItem = inventoryItems.value.find(i => i.id === item.inventory_item_id)
-    return form.movement_type === 'deduct' && inventoryItem && item.quantity > inventoryItem.quantity_available
+    return inventoryItem && item.quantity > inventoryItem.quantity_available
   })
 
   if (exceededItems) {
@@ -649,7 +614,7 @@ const submitIssue = async () => {
   const submitData = {
     issue_type: form.issue_type,
     movement_type: form.movement_type,
-    description: form.description || null,
+    description: form.issue_type === 'other' ? form.description.trim() : null,
     remarks: form.remarks || null,
     items: form.items
   }
@@ -723,14 +688,6 @@ watch(() => newItem.inventory_item_id, (newVal) => {
   }
 })
 
-watch(() => form.movement_type, (movement) => {
-  if (!transactionReasonOptions.value.some(option => option.value === form.issue_type)) {
-    form.issue_type = movement === 'add' ? 'goods_received' : 'production_use'
-  }
-  newItem.inventory_item_id = null
-  newItem.quantity = 1
-})
-
 // Lifecycle
 const loadIssueForEdit = async () => {
   if (!isEditMode.value) return
@@ -738,7 +695,11 @@ const loadIssueForEdit = async () => {
     const response = await axios.get(`/api/inventory/issues/${route.params.id}`)
     const issue = response.data?.data
     if (!issue) return
-    form.movement_type = issue.movement_type || 'deduct'
+    if (issue.movement_type !== 'deduct') {
+      toast.add({ severity: 'warn', summary: 'Historical record', detail: 'Add-stock records cannot be edited as issuances.', life: 4000 })
+      router.push({ name: 'inventory.stock-issues.detail', params: { id: route.params.id } })
+      return
+    }
     form.issue_type = issue.issue_type || 'other'
     form.description = issue.description || ''
     form.remarks = issue.remarks || ''

@@ -5,30 +5,37 @@
   
   
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-8">
-      <aside class="lg:col-span-3 space-y-5 md:space-y-8">
-        <div>
-          <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Categories</h3>
-          <nav class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-            <button @click="setCategory('all')"
-              :class="[selectedCategory === 'all' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
-              class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
-              <span>All Collection</span>
-              <Badge :value="products.length" :severity="selectedCategory === 'all' ? 'secondary' : 'secondary'" />
-            </button>
-            <button v-for="category in categoryOptions" :key="category" @click="setCategory(category)"
-              :class="[selectedCategory === category ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
-              class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
-              <span class="capitalize">{{ category }}</span>
-              <Badge :value="categoryCount(category)" :severity="selectedCategory === category ? 'secondary' : 'secondary'" />
-            </button>
-          </nav>
-        </div>
-  
-        <Card class="border border-blue-100 bg-blue-50/60 shadow-none">
-          <template #content>
+      <aside class="hidden space-y-3 lg:col-span-3 lg:block">
+        <Accordion :value="[]" multiple class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <AccordionPanel value="sort">
+            <AccordionHeader>Sort by</AccordionHeader>
+            <AccordionContent>
+              <div class="grid gap-1">
+                <button v-for="option in sortOptions" :key="option.value" type="button"
+                  class="rounded-lg px-3 py-2 text-left text-xs hover:bg-orange-50"
+                  :class="sort === option.value ? 'bg-orange-50 font-semibold text-orange-700' : 'text-slate-700'"
+                  @click="sort = option.value">{{ option.label }}</button>
+              </div>
+            </AccordionContent>
+          </AccordionPanel>
+          <AccordionPanel value="color">
+            <AccordionHeader>Color</AccordionHeader>
+            <AccordionContent>
+              <p v-if="!availableColors.length" class="text-xs text-slate-500">No colors recorded for these products.</p>
+              <div v-else class="flex flex-wrap gap-2">
+                <button v-for="color in availableColors" :key="color.name" type="button"
+                  class="flex items-center gap-2 rounded-full border px-2 py-1 text-xs"
+                  :class="selectedColor === color.name ? 'border-orange-500 text-orange-700' : 'border-slate-200'"
+                  @click="selectedColor = selectedColor === color.name ? '' : color.name">
+                  <span class="h-4 w-4 rounded-full border border-slate-300" :style="{ backgroundColor: color.hex }" />{{ color.name }}
+                </button>
+              </div>
+            </AccordionContent>
+          </AccordionPanel>
+          <AccordionPanel value="recommend">
+            <AccordionHeader>Recommendations</AccordionHeader>
+            <AccordionContent>
             <div class="space-y-3">
-  
-              <p class="text-xs font-bold uppercase tracking-wider text-orange-700">Recommendation</p>
               <div class="grid grid-cols-2 gap-2">
                 <div>
                   <label for="budget-min" class="block mb-1">Min Price</label>
@@ -42,8 +49,6 @@
                 </div>
               </div>
               <Slider v-model="dss.budgetRange" range class="mx-1" :min="0" :max="300000" @slideend="syncBudgetRange" />
-              <Select v-model="dss.categoryId" :options="dssCategoryOptions" optionLabel="label" optionValue="value" fluid
-                placeholder="Category" showClear />
               <div class="grid grid-cols-3 gap-2">
                 <InputNumber v-model="dss.lengthCm" :min="0" inputClass="text-sm" fluid placeholder="L cm" />
                 <InputNumber v-model="dss.widthCm" :min="0" inputClass="text-sm" fluid placeholder="W cm" />
@@ -55,9 +60,63 @@
                   @click="runDss" />
               </div>
             </div>
-          </template>
-        </Card>
+            </AccordionContent>
+          </AccordionPanel>
+        </Accordion>
       </aside>
+      <div class="lg:hidden">
+        <Button label="Filters" icon="pi pi-sliders-h" severity="warn" outlined size="small"
+          :badge="activeFilters.length ? String(activeFilters.length) : undefined" @click="mobileFiltersVisible = true" />
+      </div>
+
+      <Dialog v-model:visible="mobileFiltersVisible" modal header="Filter products" class="w-[calc(100vw-2rem)] max-w-md"
+        :breakpoints="{ '640px': 'calc(100vw - 1rem)' }">
+        <div class="max-h-[65vh] space-y-6 overflow-y-auto pr-1 text-sm">
+          <section>
+            <h3 class="mb-2 font-semibold text-slate-900">Sort by</h3>
+            <div class="grid grid-cols-2 gap-2">
+              <button v-for="option in sortOptions" :key="option.value" type="button"
+                class="rounded-xl border px-3 py-2 text-left text-xs"
+                :class="sort === option.value ? 'border-orange-500 bg-orange-50 font-semibold text-orange-700' : 'border-slate-200 text-slate-700'"
+                @click="sort = option.value">{{ option.label }}</button>
+            </div>
+          </section>
+          <section class="border-t border-slate-200 pt-4">
+            <h3 class="mb-2 font-semibold text-slate-900">Color</h3>
+            <p v-if="!availableColors.length" class="text-xs text-slate-500">No colors recorded for these products.</p>
+            <div v-else class="flex flex-wrap gap-2">
+              <button v-for="color in availableColors" :key="color.name" type="button"
+                class="flex items-center gap-2 rounded-full border px-3 py-2 text-xs"
+                :class="selectedColor === color.name ? 'border-orange-500 text-orange-700' : 'border-slate-200'"
+                @click="selectedColor = selectedColor === color.name ? '' : color.name">
+                <span class="h-4 w-4 rounded-full border border-slate-300" :style="{ backgroundColor: color.hex }" />{{ color.name }}
+              </button>
+            </div>
+          </section>
+          <section class="space-y-3 border-t border-slate-200 pt-4">
+            <h3 class="font-semibold text-slate-900">Recommendations</h3>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label for="mobile-budget-min" class="mb-1 block text-xs">Min Price</label>
+                <InputNumber id="mobile-budget-min" v-model="dss.budgetMin" size="small" fluid @blur="syncBudgetInputs" /></div>
+              <div><label for="mobile-budget-max" class="mb-1 block text-xs">Max Price</label>
+                <InputNumber id="mobile-budget-max" v-model="dss.budgetMax" size="small" fluid @blur="syncBudgetInputs" /></div>
+            </div>
+            <Slider v-model="dss.budgetRange" range class="mx-1" :min="0" :max="300000" @slideend="syncBudgetRange" />
+            <div class="grid grid-cols-3 gap-2">
+              <InputNumber v-model="dss.lengthCm" :min="0" size="small" fluid placeholder="L cm" />
+              <InputNumber v-model="dss.widthCm" :min="0" size="small" fluid placeholder="W cm" />
+              <InputNumber v-model="dss.heightCm" :min="0" size="small" fluid placeholder="H cm" />
+            </div>
+            <div class="flex gap-2">
+              <Button label="Reset" size="small" severity="secondary" outlined fluid @click="resetDss" />
+              <Button label="Recommend" size="small" severity="warn" :loading="dssLoading" fluid @click="runDssFromMobile" />
+            </div>
+          </section>
+        </div>
+        <template #footer>
+          <Button label="Show products" size="small" severity="warn" @click="mobileFiltersVisible = false" />
+        </template>
+      </Dialog>
   
       <main class="lg:col-span-9">
         <section v-if="activeCategoryId" class="mb-8">
@@ -88,11 +147,6 @@
             <h2 class="text-xl md:text-2xl font-bold text-slate-900">{{ activeCategoryId ? `${activeCategoryName || 'Category'} products` : pageHeading }}</h2>
             <p class="text-slate-500 text-sm">{{ activeCategoryId ? `${totalProducts} available items` : pageDescription }}</p>
           </div>
-          <div class="flex items-center gap-1">
-            <Button label="Shop" severity="secondary" text size="small" @click="router.push({ name: 'ecommerce.products' })" />
-            <Button label="New Products" severity="warning" text size="small" @click="router.push({ name: 'ecommerce.new-products' })" />
-            <Button label="Trending" severity="warning" text size="small" @click="goTrending" />
-          </div>
         </div>
 
         <div class="mt-3 mb-4 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
@@ -102,8 +156,10 @@
               <InputText v-model="search" placeholder="Search furniture..."
                 class="w-full md:w-64 rounded-xl! border-slate-200" />
             </IconField>
-            <Select v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value"
-              class="w-full sm:w-48 rounded-xl! border-slate-200" />
+          </div>
+          <div v-if="activeFilters.length" class="mt-3 flex flex-wrap gap-2">
+            <Chip v-for="filterItem in activeFilters" :key="filterItem.key" :label="filterItem.label" removable
+              @remove="clearActiveFilter(filterItem.key)" />
           </div>
         </div>
   
@@ -144,8 +200,6 @@
               </div>
   
               <div class="px-2 pb-2">
-                <div class="mb-1 text-[10px] font-bold uppercase tracking-widest text-sky-600">{{ item.category || 'Home'
-                  }}</div>
                 <h3 class="font-semibold text-slate-800 truncate mb-2 group-hover:text-sky-600 transition-colors">
                   {{ item.product_name }}
                 </h3>
@@ -185,9 +239,7 @@
             </div>
   
             <div class="px-2 pb-2">
-              <div class="flex justify-between items-start mb-1">
-                <span class="text-[10px] font-bold uppercase tracking-widest text-sky-600">{{ product.category || 'Home'
-                  }}</span>
+              <div class="mb-1 flex justify-end">
                 <div class="flex items-center gap-1 text-xs font-medium text-slate-600">
                   <i class="pi pi-star-fill text-amber-400 text-[10px]" />
                   {{ Number(product.rating_avg || 0).toFixed(1) }}
@@ -211,14 +263,14 @@
           </div>
         </div>
   
-        <div v-else class="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+        <div v-else-if="!loading" class="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
           <i class="pi pi-search text-4xl text-slate-300 mb-4" />
           <p class="text-slate-500 font-medium">We couldn't find any matches for your search.</p>
-          <Button label="Clear Filters" link @click="search = ''; selectedCategory = 'all'" />
+          <Button label="Clear Filters" link @click="search = ''; selectedColor = ''; sort = 'match'" />
         </div>
 
         <Paginator
-          v-if="activeCategoryId && totalProducts > perPage"
+          v-if="(activeCategoryId || route.query.room) && totalProducts > perPage"
           :first="(currentPage - 1) * perPage"
           :rows="perPage"
           :totalRecords="totalProducts"
@@ -232,7 +284,7 @@
     </div>
   </div>
   <Transition name="compare-tray">
-    <div v-if="comparisonProducts.length" class="fixed inset-x-0 bottom-[73px] z-40 px-3 md:bottom-4">
+    <div v-if="comparisonProducts.length" class="fixed inset-x-0 bottom-4 z-40 px-3">
       <div class="mx-auto flex max-w-4xl items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
         <div class="min-w-0 flex-1">
           <div class="mb-2 flex items-center justify-between">
@@ -262,6 +314,12 @@ import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import Accordion from 'primevue/accordion'
+import AccordionPanel from 'primevue/accordionpanel'
+import AccordionHeader from 'primevue/accordionheader'
+import AccordionContent from 'primevue/accordioncontent'
+import Chip from 'primevue/chip'
+import Dialog from 'primevue/dialog'
 import Slider from 'primevue/slider'
 import InputNumber from 'primevue/inputnumber'
 import Carousel from '@/Components/Ecommerce/carousel.vue'
@@ -302,11 +360,17 @@ const perPage = 12
 const totalProducts = ref(0)
 const activeCategoryId = computed(() => Number(route.query.category_id || 0))
 const pageMode = computed(() => route.name === 'ecommerce.new-products' ? 'new' : route.name === 'ecommerce.trending.view' ? 'trending' : 'shop')
-const pageHeading = computed(() => pageMode.value === 'new' ? 'New Products This Month' : pageMode.value === 'trending' ? 'Trending Products' : 'Featured Products')
-const pageDescription = computed(() => pageMode.value === 'new' ? `${filteredProducts.value.length} products added this month` : pageMode.value === 'trending' ? 'Popular products ranked by monthly sales' : `Showing ${filteredProducts.value.length} items`)
+const pageHeading = computed(() => route.query.room
+  ? `Shop ${String(route.query.room).replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}`
+  : pageMode.value === 'new' ? 'New Products This Month' : pageMode.value === 'trending' ? 'Trending Products' : 'Featured Products')
+const pageDescription = computed(() => route.query.room
+  ? `${totalProducts.value} available products`
+  : pageMode.value === 'new' ? `${filteredProducts.value.length} products added this month` : pageMode.value === 'trending' ? 'Popular products ranked by monthly sales' : `Showing ${filteredProducts.value.length} items`)
 const search = ref(String(route.query.search || ''))
 const selectedCategory = ref<string>('all')
-const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>(route.name === 'ecommerce.new-products' ? 'latest' : 'popular')
+const selectedColor = ref('')
+const mobileFiltersVisible = ref(false)
+const sort = ref(route.name === 'ecommerce.new-products' ? 'latest' : 'match')
 const dssLoading = ref(false)
 const dssResults = ref<any[]>([])
 const favoriteProductIds = ref<number[]>([])
@@ -322,11 +386,41 @@ const dss = ref({
 })
 
 const sortOptions = [
-  { label: 'Featured', value: 'popular' },
-  { label: 'Latest', value: 'latest' },
+  { label: 'Best Match', value: 'match' },
   { label: 'Price: Low to High', value: 'price_asc' },
   { label: 'Price: High to Low', value: 'price_desc' },
+  { label: 'Newest', value: 'latest' },
+  { label: 'Customer Rating', value: 'rating' },
+  { label: 'Name', value: 'name' },
+  { label: 'Most Popular', value: 'popular' },
 ]
+
+const availableColors = computed(() => {
+  const colors = new Map<string, string>()
+  for (const product of products.value) {
+    for (const color of product.colors || []) {
+      if (color.name && color.hex) colors.set(color.name, color.hex)
+    }
+  }
+  return [...colors].map(([name, hex]) => ({ name, hex })).sort((a, b) => a.name.localeCompare(b.name))
+})
+const activeFilters = computed(() => [
+  ...(search.value.trim() ? [{ key: 'search', label: `Search: ${search.value.trim()}` }] : []),
+  ...(selectedColor.value ? [{ key: 'color', label: `Color: ${selectedColor.value}` }] : []),
+  ...(sort.value !== 'match' ? [{ key: 'sort', label: sortOptions.find(option => option.value === sort.value)?.label || 'Sort' }] : []),
+  ...(route.query.category_id ? [{ key: 'category', label: activeCategoryName.value || 'Category' }] : []),
+  ...(route.query.room ? [{ key: 'room', label: String(route.query.room) }] : []),
+])
+function clearActiveFilter(key: string) {
+  if (key === 'search') search.value = ''
+  if (key === 'color') selectedColor.value = ''
+  if (key === 'sort') sort.value = 'match'
+  if (key === 'category' || key === 'room') {
+    const query = { ...route.query }
+    delete query[key === 'category' ? 'category_id' : 'room']
+    router.replace({ name: 'ecommerce.products', query })
+  }
+}
 
 function normalizeImageUrl(raw: string) {
   if (!raw) return ''
@@ -451,6 +545,8 @@ const filteredProducts = computed(() => {
   if (sort.value === 'price_asc') rows.sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
   else if (sort.value === 'price_desc') rows.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
   else if (sort.value === 'latest') rows.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+  else if (sort.value === 'rating') rows.sort((a, b) => Number(b.rating_avg || 0) - Number(a.rating_avg || 0))
+  else if (sort.value === 'name') rows.sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)))
   else rows.sort((a, b) => Number(b.monthly_sales || 0) - Number(a.monthly_sales || 0))
 
   return rows
@@ -502,6 +598,11 @@ async function runDss() {
   } finally {
     dssLoading.value = false
   }
+}
+
+async function runDssFromMobile() {
+  await runDss()
+  mobileFiltersVisible.value = false
 }
 
 function resetDss() {
@@ -560,11 +661,13 @@ async function loadProducts() {
   loading.value = true
   try {
     const response = await ecommerceService.getActiveStockProducts({
-      per_page: activeCategoryId.value ? perPage : 80,
-      page: activeCategoryId.value ? currentPage.value : 1,
+      per_page: activeCategoryId.value || route.query.room ? perPage : 80,
+      page: activeCategoryId.value || route.query.room ? currentPage.value : 1,
       search: search.value.trim() || undefined,
       sort: sort.value,
+      color: selectedColor.value || undefined,
       category_id: route.query.category_id || undefined,
+      room: route.query.room || undefined,
       discounted_only: route.query.deals ? true : undefined,
       new_this_month: pageMode.value === 'new' ? true : undefined,
     })
@@ -587,7 +690,7 @@ onMounted(() => {
 
 watch(() => route.query.search, (value) => {
   search.value = String(value || '')
-  sort.value = 'popular'
+  sort.value = 'match'
   selectedCategory.value = 'all'
   dssResults.value = []
   loadProducts()
@@ -601,6 +704,11 @@ watch(() => route.query.category_id, () => {
   loadTopStores()
 })
 
+watch(() => route.query.room, () => {
+  currentPage.value = 1
+  loadProducts()
+})
+
 watch(() => route.query.deals, () => {
   currentPage.value = 1
   loadProducts()
@@ -609,7 +717,12 @@ watch(() => route.query.deals, () => {
 watch(() => route.name, () => {
   currentPage.value = 1
   selectedCategory.value = 'all'
-  sort.value = pageMode.value === 'new' ? 'latest' : 'popular'
+  sort.value = pageMode.value === 'new' ? 'latest' : 'match'
+  loadProducts()
+})
+watch([sort, selectedColor], () => {
+  currentPage.value = 1
+  dssResults.value = []
   loadProducts()
 })
 </script>

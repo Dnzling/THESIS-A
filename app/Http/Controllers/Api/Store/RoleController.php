@@ -339,7 +339,18 @@ class RoleController extends Controller
         }
 
         // Global roles are shared across stores and must not be rewritten by one tenant.
-        $role = Role::query()->where('store_id', $storeId)->findOrFail($roleId);
+        $role = Role::query()->where('store_id', $storeId)->find($roleId);
+        if (! $role) {
+            $sharedRole = Role::query()->whereNull('store_id')
+                ->whereIn('name', ['owner', 'driver'])->find($roleId);
+            if ($sharedRole) {
+                return response()->json([
+                    'message' => 'This is a shared system role. Create a store-specific role to customize its permissions.',
+                ], 422);
+            }
+
+            abort(404);
+        }
         $enabledModules = $this->getEffectiveEnabledModules($storeId);
 
         $request->validate([
@@ -407,10 +418,15 @@ class RoleController extends Controller
         return DB::table('stores')
             ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
             ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->join('role_permissions as owner_permissions', 'owner_permissions.permission_id', '=', 'permissions.id')
+            ->join('roles as owner_role', 'owner_role.id', '=', 'owner_permissions.role_id')
             ->where('stores.id', $storeId)
+            ->where('owner_role.name', 'owner')
+            ->whereNull('owner_role.store_id')
             ->where('plan_permissions.included', true)
             ->where('permissions.is_active', true)
             ->whereNull('permissions.deleted_at')
+            ->distinct()
             ->pluck('permissions.id')
             ->map(fn ($id) => (int) $id)
             ->all();

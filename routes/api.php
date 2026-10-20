@@ -65,6 +65,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
+Route::get('/public/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'publicIndex']);
 
 require __DIR__ . '/job_portal_routes.php';
 
@@ -72,6 +73,7 @@ require __DIR__ . '/job_portal_routes.php';
 Route::prefix('ecommerce')->group(function () {
     Route::get('/products', [EcommerceController::class, 'products']);
     Route::get('/products/active-stock', [EcommerceActiveStockProductsController::class, 'index']);
+    Route::get('/products/suggestions', [EcommerceActiveStockProductsController::class, 'suggestions']);
     Route::get('/categories/active-stock', [EcommerceActiveStockProductsController::class, 'categories']);
     Route::get('/categories/{categoryId}/top-stores', [EcommerceActiveStockProductsController::class, 'topStores']);
     Route::get('/reviews/{review}/attachment', [EcommerceController::class, 'reviewAttachment']);
@@ -179,6 +181,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::post('/home-content/furniture/{furniture}', [HomepageContentController::class, 'updateFurniture']);
         Route::get('/ecommerce-categories', [EcommerceCategoryController::class, 'index']);
         Route::post('/ecommerce-categories/{category}', [EcommerceCategoryController::class, 'update']);
+        Route::get('/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'index']);
+        Route::post('/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'store']);
+        Route::post('/shopping-rooms/{room}', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'update']);
         Route::get('/subscriptions', [SubscriptionManagementController::class, 'index']);
         Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
         Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
@@ -240,6 +245,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
 
     // Branch-scoped Store module
     Route::prefix('store-module')->controller(StoreModuleController::class)->group(function () {
+        Route::get('/team', 'team');
         Route::get('/dashboard', 'dashboard');
         Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'branchSales']);
         Route::get('/settings', 'settings');
@@ -301,12 +307,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('employees/{employeeId}', [SimpleStaffController::class, 'showEmployee']);
         Route::put('employees/{employeeId}', [SimpleStaffController::class, 'updateEmployee']);
         Route::get('attendances', [SimpleStaffController::class, 'attendances']);
-        Route::put('attendances', [SimpleStaffController::class, 'saveAttendance']);
         Route::get('payments', [SimpleStaffController::class, 'payments']);
         Route::post('payments', [SimpleStaffController::class, 'savePayment']);
     });
-    Route::get('/simple-staff/my-clock', [SimpleStaffController::class, 'myClockStatus']);
-    Route::post('/simple-staff/my-clock', [SimpleStaffController::class, 'stageClock']);
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');
@@ -448,6 +451,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::prefix('branches')->controller(BranchController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('subscription.capacity:branches');
+        Route::get('{branch}/performance', 'performance');
+        Route::get('{branch}/employees', 'employees');
         Route::get('{branch}', 'show');
         Route::put('{branch}', 'update')->middleware('subscription.capacity:branch_update');
         Route::delete('{branch}', 'destroy');

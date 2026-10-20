@@ -1,51 +1,24 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between gap-4">
+  <div class="min-h-screen space-y-4 p-4 text-xs">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Reviews</h1>
-        <p class="text-sm text-gray-500">Track ratings, feedback, and customer replies.</p>
+        <h1 class="text-xl font-bold text-slate-900">Reviews</h1>
+        <p class="text-xs text-slate-500">Track ratings, feedback, and customer replies.</p>
       </div>
-      <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadReviews" />
+      <Button severity="warn" outlined icon="pi pi-refresh" label="Refresh" size="small" :loading="loading" @click="loadReviews" />
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #content><div class="p-4"><p class="text-xs uppercase text-gray-500">Total Reviews</p><p class="mt-2 text-2xl font-semibold text-gray-900">{{ summary.total_reviews }}</p></div></template>
-      </Card>
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #content><div class="p-4"><p class="text-xs uppercase text-gray-500">Pending</p><p class="mt-2 text-2xl font-semibold text-amber-600">{{ summary.pending_reviews }}</p></div></template>
-      </Card>
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #content><div class="p-4"><p class="text-xs uppercase text-gray-500">Replied</p><p class="mt-2 text-2xl font-semibold text-emerald-600">{{ summary.replied_reviews }}</p></div></template>
-      </Card>
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #content>
-          <div class="p-4">
-            <p class="text-xs uppercase text-gray-500">Average Rating</p>
-            <div class="mt-2 flex items-center gap-2 text-amber-500">
-              <i v-for="n in 5" :key="n" class="pi" :class="n <= Math.round(summary.average_rating || 0) ? 'pi-star-fill' : 'pi-star'" />
-              <span class="text-sm font-semibold text-gray-900">{{ Number(summary.average_rating || 0).toFixed(2) }}</span>
-            </div>
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
-        <div class="grid grid-cols-1 gap-3 p-4 md:grid-cols-4">
-          <InputText v-model="filters.search" placeholder="Search customer / order / review..." @keyup.enter="loadReviews" />
-          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="All Status" />
-          <Select v-model="filters.rating" :options="ratingOptions" optionLabel="label" optionValue="value" placeholder="All Ratings" />
-          <Button icon="pi pi-filter" label="Apply Filters" @click="loadReviews" />
+        <div class="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto_auto]">
+          <IconField><InputIcon class="pi pi-search" /><InputText v-model="filters.search" placeholder="Search reviews" class="w-full text-sm" size="small" @keyup.enter="loadReviews" /></IconField>
+          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="All Status" class="w-full text-sm" size="small" />
+          <Select v-model="filters.rating" :options="ratingOptions" optionLabel="label" optionValue="value" placeholder="All Ratings" class="w-full text-sm" size="small" />
+          <Button label="Apply" severity="warn" size="small" @click="loadReviews" />
+          <Button v-if="hasActiveFilters" label="Reset" icon="pi pi-filter-slash" outlined severity="secondary" size="small" @click="resetFilters" />
         </div>
-      </template>
-    </Card>
-
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
-      <template #content>
-        <div class="p-4">
-          <DataTable :value="reviews" :loading="loading" stripedRows responsiveLayout="scroll">
+        <div v-if="loading" class="space-y-3 py-3" aria-label="Loading reviews"><Skeleton v-for="row in 6" :key="row" height="2.5rem" /></div>
+        <DataTable v-else :value="reviews" size="small" class="text-xs" rowHover paginator :rows="15" :rowsPerPageOptions="[15, 25, 50]" scrollable @row-click="openDetail($event.data)">
             <Column header="Product" style="min-width: 220px">
               <template #body="{ data }">
                 <div>
@@ -65,8 +38,8 @@
             <Column header="Actions" style="width: 180px">
               <template #body="{ data }">
                 <div class="flex items-center gap-1">
-                  <Button text severity="info" icon="pi pi-eye" label="Detail" @click="openDetail(data)" />
-                  <Button text severity="success" icon="pi pi-reply" label="Reply" :disabled="!canManageReviews" @click="openReply(data)" />
+                  <Button text severity="warn" icon="pi pi-eye" label="Detail" size="small" @click.stop="openDetail(data)" />
+                  <Button text severity="secondary" icon="pi pi-reply" label="Reply" size="small" :disabled="!canManageReviews" @click.stop="openReply(data)" />
                 </div>
               </template>
             </Column>
@@ -74,7 +47,6 @@
               <div class="py-8 text-center text-sm text-gray-500">No reviews found.</div>
             </template>
           </DataTable>
-        </div>
       </template>
     </Card>
 
@@ -92,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
@@ -105,6 +77,9 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import Skeleton from 'primevue/skeleton'
 
 const authStore = useAuthStore()
 const canManageReviews = authStore.hasPermission('sales.reviews.manage')
@@ -112,20 +87,18 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
-const loading = ref(false)
+const loading = ref(true)
 const reviews = ref<any[]>([])
-const summary = ref<any>({
-  total_reviews: 0,
-  pending_reviews: 0,
-  replied_reviews: 0,
-  average_rating: 0,
-})
-
 const filters = ref<any>({
   search: '',
   status: '',
   rating: null,
 })
+const hasActiveFilters = computed(() => Boolean(filters.value.search.trim() || filters.value.status || filters.value.rating))
+const resetFilters = () => {
+  filters.value = { search: '', status: '', rating: null }
+  loadReviews()
+}
 
 const statusOptions = [
   { label: 'All Status', value: '' },
@@ -168,7 +141,6 @@ const loadReviews = async () => {
       per_page: 50,
     })
     reviews.value = Array.isArray(res?.data?.data) ? res.data.data : (Array.isArray(res?.data) ? res.data : [])
-    summary.value = res?.summary || summary.value
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load reviews', life: 3000 })
   } finally {

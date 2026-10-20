@@ -126,6 +126,7 @@ class StoreSettingsController extends Controller
             'attendance' => $this->resolveAttendanceSettings($store?->id),
             'attendance_geolocation_available' => $store && $this->planIncludesAttendanceRecording($store),
             'operating_hours' => is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null,
+            'fulfillment_windows' => $store ? app(\App\Services\Ecommerce\FulfillmentWindowService::class)->settings($store) : null,
             'subscription' => [
                 'tier' => $subscriptionPlan?->plan_key ?? 'free',
                 'plan_label' => $subscriptionPlan?->name ?? 'Free',
@@ -169,6 +170,32 @@ class StoreSettingsController extends Controller
         $store->save();
 
         return back()->with('success', 'Operating hours updated.');
+    }
+
+    public function updateFulfillmentWindows(Request $request)
+    {
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+
+        $validated = $request->validate([
+            'pickup.days' => ['required', 'array', 'min:1'],
+            'pickup.days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])],
+            'pickup.start' => ['required', 'date_format:H:i'],
+            'pickup.end' => ['required', 'date_format:H:i', 'after:pickup.start'],
+            'pickup.lead_days' => ['required', 'integer', 'between:0,14'],
+            'delivery.days' => ['required', 'array', 'min:1'],
+            'delivery.days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])],
+            'delivery.start' => ['required', 'date_format:H:i'],
+            'delivery.end' => ['required', 'date_format:H:i', 'after:delivery.start'],
+            'delivery.lead_days' => ['required', 'integer', 'between:0,14'],
+        ]);
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $settings['fulfillment_windows'] = $validated;
+        $store->settings = $settings;
+        $store->save();
+
+        return back()->with('success', 'Pickup and delivery windows updated.');
     }
 
     public function updatePaymentSettings(Request $request)
@@ -421,7 +448,6 @@ class StoreSettingsController extends Controller
         if (!$store) {
             abort(404, 'Store not found for this user.');
         }
-        abort_unless($this->planIncludesAttendanceRecording($store), 403);
 
         $validated = $request->validate($this->attendanceUpdateRules());
 

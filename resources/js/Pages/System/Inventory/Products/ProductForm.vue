@@ -38,8 +38,6 @@
                 <Button type="button" label="Remove Photo" icon="pi pi-trash" severity="danger" outlined size="small"
                   @click="openRemovePhotoPopover" />
               </div>
-              <p class="mt-2 text-xs text-gray-500">Square preview only for now. Image storage can be connected next.
-              </p>
               <Popover ref="removePhotoPopover">
                 <div class="max-w-xs space-y-3">
                   <p class="text-sm font-medium text-gray-800">Remove this selected photo?</p>
@@ -55,6 +53,7 @@
 
           <div class="space-y-4">
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <p class="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-orange-700">Item details</p>
               <div class="md:col-span-2">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Item Name <span
                     class="text-red-500">*</span></label>
@@ -88,17 +87,16 @@
                   <small v-if="errors.brand" class="text-red-500">{{ errors.brand }}</small>
                 </div>
                 <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">Selling Price</label>
-                  <InputNumber v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
-                    class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
-                  <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
-                </div>
-                <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">Category <span
                       class="text-red-500">*</span></label>
-                  <Select v-model="form.category_id" :options="parentCategories" optionLabel="category_name"
+                  <Select :modelValue="form.category_id" @update:modelValue="selectCategory" :options="parentCategories" optionLabel="category_name"
                     optionValue="id" class="w-full text-sm" placeholder="Select Main category" showClear filter
-                    size="small" />
+                    size="small">
+                    <template #value="slotProps">
+                      <span v-if="form.category_id">{{ parentCategoryName(form.category_id) }}</span>
+                      <span v-else class="text-gray-400">{{ slotProps.placeholder }}</span>
+                    </template>
+                  </Select>
                   <small v-if="errors.category_id" class="text-red-500">{{ errors.category_id }}</small>
                   <small v-else-if="parentCategories.length === 0" class="text-amber-600">
                     No categories are available. Create a category before adding a finished good.
@@ -107,76 +105,33 @@
 
                 <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">Subcategory</label>
-                  <Select v-model="form.subcategory_id" :options="filteredSubcategories" optionLabel="category_name"
+                  <Select :modelValue="form.subcategory_id" @update:modelValue="selectSubcategory" :options="filteredSubcategories" optionLabel="category_name"
                     optionValue="id" class="w-full text-sm"
-                    :placeholder="form.category_id ? 'Select subcategory' : 'Select main category first'"
-                    :disabled="!form.category_id" showClear filter size="small" />
+                    placeholder="Search subcategories" showClear filter size="small">
+                    <template #option="slotProps">
+                      <div class="flex flex-col">
+                        <span>{{ slotProps.option.category_name }}</span>
+                        <small class="text-gray-500">{{ parentCategoryName(slotProps.option.parent_category_id) }}</small>
+                      </div>
+                    </template>
+                  </Select>
                   <small v-if="errors.subcategory_id" class="text-red-500">{{ errors.subcategory_id }}</small>
-                </div>
-                <div class="md:col-span-2">
-                  <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
-                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <InputNumber v-model="form.length_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Length" suffix=" cm" />
-                    <InputNumber v-model="form.width_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Width" suffix=" cm" />
-                    <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
-                  </div>
-                  <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
-                </div>
-                <div class="md:col-span-2">
-                  <label class="mb-1 block text-sm font-medium text-gray-700">Bulky delivery handling</label>
-                  <Select v-model="form.is_bulky" :options="bulkyOptions" optionLabel="label" optionValue="value" class="w-full text-sm" size="small" />
-                  <small class="text-gray-500">Auto uses the store's delivery size and weight thresholds. Override when special handling is needed.</small>
                 </div>
               </template>
 
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Supplier</label>
-                <Select v-model="form.supplier_id" :options="suppliers" optionLabel="supplier_name"
-                  optionValue="id" :filterFields="['supplier_name', 'company_name', 'supplier_code']"
-                  class="w-full text-sm" placeholder="Search and select a supplier" filter showClear
-                  :loading="loadingSuppliers" size="small">
-                  <template #option="slotProps">
-                    <div class="flex min-w-0 items-center gap-3 py-1">
-                      <img v-if="slotProps.option.logo_url" :src="slotProps.option.logo_url"
-                        :alt="`${supplierDisplayName(slotProps.option)} logo`"
-                        class="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
-                      <div v-else
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
-                        {{ supplierInitial(slotProps.option) }}
-                      </div>
-                      <div class="min-w-0">
-                        <p class="truncate text-sm font-medium text-gray-800">
-                          {{ supplierDisplayName(slotProps.option) }}
-                        </p>
-                        <p class="text-xs text-gray-500">
-                          Supplier No. {{ slotProps.option.supplier_code || `#${slotProps.option.id}` }}
-                        </p>
-                      </div>
-                    </div>
-                  </template>
-                </Select>
-                <small v-if="errors.supplier_id" class="text-red-500">{{ errors.supplier_id }}</small>
-                <div v-else-if="selectedSupplier"
-                  class="mt-2 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                  <img v-if="selectedSupplier.logo_url" :src="selectedSupplier.logo_url"
-                    :alt="`${supplierDisplayName(selectedSupplier)} logo`"
-                    class="h-10 w-10 rounded-lg border border-gray-200 object-cover" />
-                  <div v-else
-                    class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
-                    {{ supplierInitial(selectedSupplier) }}
-                  </div>
-                  <div>
-                    <p class="text-sm font-medium text-gray-800">{{ supplierDisplayName(selectedSupplier) }}</p>
-                    <p class="text-xs text-gray-500">
-                      Supplier No. {{ selectedSupplier.supplier_code || `#${selectedSupplier.id}` }}
-  
-                    </p>
-                  </div>
-                </div>
-                <small v-else-if="!loadingSuppliers && suppliers.length === 0" class="text-amber-600">
-                  No active suppliers are available. Add a supplier from Inventory first.
-                </small>
+              <p v-if="showFinishedGoodFields" class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Selling</p>
+              <div v-if="showFinishedGoodFields">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Selling Price</label>
+                <InputNumber v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
+                  class="w-full text-sm" fluid size="small" placeholder="0.00" />
+                <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
               </div>
+              <div class="flex items-end gap-2 pb-2">
+                <Checkbox v-model="form.is_active" :binary="true" inputId="product_active" />
+                <label for="product_active" class="text-sm text-gray-700">Active</label>
+              </div>
+
+              <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Stock and sourcing</p>
 
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Unit Measure <span
@@ -202,10 +157,59 @@
                 <InputNumber v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
                   class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
               </div>
+              <div class="md:col-span-2">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Supplier</label>
+                <Select v-model="form.supplier_id" :options="suppliers" optionLabel="supplier_name"
+                  optionValue="id" :filterFields="['supplier_name', 'company_name', 'supplier_code']"
+                  class="w-full text-sm" placeholder="Search and select a supplier" filter showClear
+                  :loading="loadingSuppliers" size="small">
+                  <template #option="slotProps">
+                    <div class="flex min-w-0 items-center gap-3 py-1">
+                      <img v-if="slotProps.option.logo_url" :src="slotProps.option.logo_url"
+                        :alt="`${supplierDisplayName(slotProps.option)} logo`"
+                        class="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
+                      <div v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
+                        {{ supplierInitial(slotProps.option) }}
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-gray-800">{{ supplierDisplayName(slotProps.option) }}</p>
+                        <p class="text-xs text-gray-500">Supplier No. {{ slotProps.option.supplier_code || `#${slotProps.option.id}` }}</p>
+                      </div>
+                    </div>
+                  </template>
+                </Select>
+                <small v-if="errors.supplier_id" class="text-red-500">{{ errors.supplier_id }}</small>
+                <div v-else-if="selectedSupplier" class="mt-2 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                  <img v-if="selectedSupplier.logo_url" :src="selectedSupplier.logo_url"
+                    :alt="`${supplierDisplayName(selectedSupplier)} logo`" class="h-10 w-10 rounded-lg border border-gray-200 object-cover" />
+                  <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
+                    {{ supplierInitial(selectedSupplier) }}
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">{{ supplierDisplayName(selectedSupplier) }}</p>
+                    <p class="text-xs text-gray-500">Supplier No. {{ selectedSupplier.supplier_code || `#${selectedSupplier.id}` }}</p>
+                  </div>
+                </div>
+                <small v-else-if="!loadingSuppliers && suppliers.length === 0" class="text-amber-600">
+                  No active suppliers are available. Add a supplier from Inventory first.
+                </small>
+              </div>
 
-              <div class="md:col-span-2 flex items-center gap-2">
-                <Checkbox v-model="form.is_active" :binary="true" inputId="product_active" />
-                <label for="product_active" class="text-sm text-gray-700">Active</label>
+              <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Shipping details</p>
+                <div class="md:col-span-2">
+                  <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <InputNumber v-model="form.length_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Length" suffix=" cm" />
+                    <InputNumber v-model="form.width_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Width" suffix=" cm" />
+                    <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
+                  </div>
+                  <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
+                </div>
+
+              <div v-if="showFinishedGoodFields" class="md:col-span-2">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Bulky delivery handling</label>
+                <Select v-model="form.is_bulky" :options="bulkyOptions" optionLabel="label" optionValue="value" class="w-full text-sm" size="small" />
+                <small class="text-gray-500">Auto uses the store's delivery size and weight thresholds. Override when special handling is needed.</small>
               </div>
             </div>
 
@@ -313,12 +317,17 @@ const canManageFinishedGoods = computed(() => authStore.hasPermission('merchandi
 const showFinishedGoodFields = computed(() => form.product_type === 'finished_good' && canManageFinishedGoods.value)
 const suppliers = ref<SupplierOption[]>([])
 const loadingSuppliers = ref(false)
-const parentCategories = computed(() =>
-  categories.value.filter(category => category.parent_category_id == null)
-)
+const parentCategories = computed(() => {
+  const parentIds = new Set(categories.value.filter(category => category.is_active !== false && category.parent_category_id != null)
+    .map(category => Number(category.parent_category_id)))
+  return categories.value.filter(category => (category.parent_category_id == null && category.is_active !== false)
+    || parentIds.has(Number(category.id)))
+})
 const filteredSubcategories = computed(() =>
-  categories.value.filter(category => Number(category.parent_category_id) === Number(form.category_id))
+  categories.value.filter(category => category.parent_category_id != null && category.is_active !== false)
 )
+const parentCategoryName = (parentId: number | null) =>
+  categories.value.find(category => Number(category.id) === Number(parentId))?.category_name || 'Main category'
 const selectedSupplier = computed(() =>
   suppliers.value.find(supplier => Number(supplier.id) === Number(form.supplier_id)) || null
 )
@@ -331,7 +340,7 @@ const supplierInitial = (supplier: SupplierOption) =>
 
 const loadCategories = async () => {
   try {
-    const response = await inventoryService.getCategories({ active_only: true })
+    const response = await inventoryService.getCategories()
     categories.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load categories', life: 3000 })
@@ -381,23 +390,22 @@ const loadProduct = async (id: number) => {
   }
 }
 
-watch(() => form.category_id, (categoryId, previousCategoryId) => {
-  if (categoryId === previousCategoryId || !form.subcategory_id) return
-
-  const selectedSubcategory = categories.value.find(category => category.id === form.subcategory_id)
-  if (!selectedSubcategory || Number(selectedSubcategory.parent_category_id) !== Number(categoryId)) {
+const selectCategory = (categoryId: number | null) => {
+  form.category_id = categoryId == null ? null : Number(categoryId)
+  const selectedSubcategory = categories.value.find(category => Number(category.id) === Number(form.subcategory_id))
+  if (selectedSubcategory && Number(selectedSubcategory.parent_category_id) !== Number(form.category_id)) {
     form.subcategory_id = null
   }
-})
+}
 
-watch(() => form.subcategory_id, subcategoryId => {
-  if (!subcategoryId) return
-
-  const selectedSubcategory = categories.value.find(category => category.id === subcategoryId)
-  if (selectedSubcategory?.parent_category_id) {
+const selectSubcategory = (subcategoryId: number | null) => {
+  form.subcategory_id = subcategoryId == null ? null : Number(subcategoryId)
+  if (!form.subcategory_id) return
+  const selectedSubcategory = categories.value.find(category => Number(category.id) === form.subcategory_id)
+  if (selectedSubcategory?.parent_category_id != null) {
     form.category_id = Number(selectedSubcategory.parent_category_id)
   }
-})
+}
 
 watch(() => form.product_type, productType => {
   if (productType !== 'finished_good' && canManageFinishedGoods.value) {

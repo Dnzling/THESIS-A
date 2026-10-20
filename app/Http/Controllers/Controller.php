@@ -36,7 +36,7 @@ abstract class Controller
 
         $creatorName = trim(collect([$user?->fname, $user?->lname])->filter()->implode(' '));
         $notificationData = is_array($payload['data'] ?? null) ? $payload['data'] : [];
-        if ($user) {
+        if ($user && ! $user->isSuperAdmin()) {
             $notificationData['created_by'] = [
                 'id' => $user->id,
                 'name' => $creatorName !== '' ? $creatorName : ($user->name ?? "User #{$user->id}"),

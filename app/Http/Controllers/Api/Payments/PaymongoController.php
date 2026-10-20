@@ -963,6 +963,8 @@ class PaymongoController extends Controller
                     'customization_status' => !empty($row['customization_request']) ? 'pending' : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
+                    'original_unit_price' => isset($row['original_unit_price'])
+                        ? (float) $row['original_unit_price'] : null,
                     'tax_rate' => $taxRate,
                     'line_subtotal' => round($lineSubtotal, 2),
                     'line_tax' => $lineTax,

@@ -35,6 +35,7 @@ const props = withDefaults(defineProps<{
   screenOffsetX?: number
   height?: string
   transparentBackground?: boolean
+  allowBottomView?: boolean
 }>(), {
   modelFormat: 'glb',
   cameraX: 0,
@@ -44,6 +45,7 @@ const props = withDefaults(defineProps<{
   screenOffsetX: 0,
   height: '320px',
   transparentBackground: false,
+  allowBottomView: false,
 })
 
 const authStore = useAuthStore()
@@ -150,13 +152,18 @@ const loadModel = async () => {
     const keyLight = new THREE.DirectionalLight(0xffffff, 0.9)
     keyLight.position.set(4, 8, 6)
     scene.add(keyLight)
+    if (props.allowBottomView) {
+      const undersideLight = new THREE.DirectionalLight(0xffffff, 0.45)
+      undersideLight.position.set(-3, -6, 4)
+      scene.add(undersideLight)
+    }
 
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.minDistance = 1
     controls.maxDistance = 20
-    controls.maxPolarAngle = Math.PI / 2
+    controls.maxPolarAngle = props.allowBottomView ? Math.PI - 0.05 : Math.PI / 2
 
     setCameraFromProps()
 

@@ -20,7 +20,8 @@
               <div class="mt-2 text-lg font-semibold text-slate-950">{{ endsAtLabel }}</div>
             </div>
             <div class="sm:pl-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div></div>
-               <Button v-if="subscription.next_plan_name" :label="`Upgrade to ${subscription.next_plan_name}`" rounded @click="goToUpgrade" size="small" />
+            <Button v-if="canRenew" label="Renew Plan" rounded severity="warn" size="small" @click="goToRenew" />
+            <Button v-else-if="subscription.next_plan_name" :label="`Upgrade to ${subscription.next_plan_name}`" rounded size="small" @click="goToUpgrade" />
           </div>
 
           <div class="mt-5 rounded-lg border p-4" :class="subscription.sales_paused ? 'border-red-100 bg-red-50 text-red-700' : subscription.in_grace ? 'border-orange-100 bg-orange-50 text-orange-700' : 'border-green-100 bg-green-50 text-green-700'">
@@ -152,6 +153,9 @@ const props = defineProps<{
 const store = computed(() => props.store || {})
 const subscription = computed(() => props.subscription || {})
 const billingRecords = computed(() => Array.isArray(props.billing_records) ? props.billing_records : [])
+const canRenew = computed(() => subscription.value.sales_paused
+  && String(subscription.value.plan_key || '').toLowerCase() !== 'free'
+  && (Number(subscription.value.monthly_price || 0) > 0 || Number(subscription.value.yearly_price || 0) > 0))
 const selectedRecord = ref<any | null>(null)
 const enabledModules = computed(() => {
   const modules = subscription.value.enabled_modules
@@ -224,5 +228,16 @@ const recordDetails = computed(() => {
 const goToUpgrade = () => {
   const storeId = Number(store.value?.id || subscription.value?.store_id || 0)
   router.visit(`/subscription-plans${storeId ? `?store_id=${storeId}` : ''}`)
+}
+
+const goToRenew = () => {
+  const storeId = Number(store.value?.id || subscription.value?.store_id || 0)
+  const planKey = String(subscription.value.plan_key || '').toLowerCase()
+  if (!storeId || !planKey) return
+  const lastPaidRecord = billingRecords.value.find((record) =>
+    ['paid', 'succeeded'].includes(String(record.status || '').toLowerCase())
+    && [planKey, String(subscription.value.plan_name || '').toLowerCase()].includes(String(record.plan || '').toLowerCase()))
+  const cycle = lastPaidRecord?.billing_cycle === 'yearly' || Number(subscription.value.monthly_price || 0) <= 0 ? 'yearly' : 'monthly'
+  router.visit(`/subscription-checkout?plan=${encodeURIComponent(planKey)}&cycle=${cycle}&store_id=${storeId}`)
 }
 </script>

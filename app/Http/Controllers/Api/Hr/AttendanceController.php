@@ -509,6 +509,8 @@ class AttendanceController extends Controller
             ], 422);
         }
 
+        abort_if($request->input('method') === 'web' && (int) $request->input('user_id') !== (int) $user->id, 403);
+
         // Find employee
         $employee = Employee::where('user_id', $request->user_id)
             ->where('store_id', $storeId)
@@ -566,6 +568,8 @@ class AttendanceController extends Controller
                     'clock_in_formatted' => $attendance->clock_in->format('h:i A'),
                     'status' => $attendance->status,
                     'late_minutes' => $attendance->late_minutes,
+                    'late_seconds' => max(0, (int) $attendance->late_minutes * 60),
+                    'clock_out' => $attendance->clock_out?->format('Y-m-d H:i:s'),
                     'employee_name' => $employee->fname . ' ' . $employee->lname
                 ]
             ], 200); // ✅ 200 status, not 422
@@ -584,6 +588,16 @@ class AttendanceController extends Controller
             $resolved = $attendanceClockIn->resolveSchedule($employee, $today, $clockInAt, Auth::id());
             $schedule = $resolved['schedule'];
             $calculated = $attendanceClockIn->calculateStatus($resolved, $clockInAt, $today, $timezone, $attendanceRules);
+            $lateSeconds = 0;
+            if (!$resolved['is_rest_day'] && $resolved['shift'] && $resolved['start_time']) {
+                $startTime = $resolved['start_time'] instanceof \Carbon\CarbonInterface
+                    ? $resolved['start_time']->format('H:i:s') : (string) $resolved['start_time'];
+                $shiftStart = Carbon::parse($today . ' ' . $startTime, $timezone);
+                $graceMinutes = array_key_exists('gracePeriod', $attendanceRules)
+                    ? max(0, (int) $attendanceRules['gracePeriod'])
+                    : max(0, (int) ($resolved['shift']->grace_period_minutes ?? 15));
+                $lateSeconds = max(0, (int) $shiftStart->addMinutes($graceMinutes)->diffInSeconds($clockInAt, false));
+            }
 
             if ($attendance) {
                 $attendance->update([
@@ -630,6 +644,7 @@ class AttendanceController extends Controller
                     'clock_in_formatted' => $attendance->clock_in->format('h:i A'),
                     'status' => $attendance->status,
                     'late_minutes' => $attendance->late_minutes,
+                    'late_seconds' => $lateSeconds,
                     'shift_name' => $attendance->shift?->name ?? 'No Shift',
                     'employee_name' => $employee->fname . ' ' . $employee->lname
                 ]

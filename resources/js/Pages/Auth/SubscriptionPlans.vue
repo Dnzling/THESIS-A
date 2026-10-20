@@ -29,7 +29,7 @@
               <p class="text-sm leading-6 text-slate-600">{{ plan.description || 'Flexible plan for growing furniture teams.' }}</p>
             </div>
             <div class="mt-6 flex items-end gap-2">
-              <span class="text-4xl font-bold tracking-tight text-slate-900">{{ formatPrice(plan) }}</span>
+              <span class="text-4xl font-bold text-slate-900">{{ formatPrice(plan) }}</span>
               <span class="pb-1 text-sm text-slate-500">/ {{ billingPeriod }}</span>
             </div>
             <p class="mt-2 text-sm text-slate-500">
@@ -50,40 +50,20 @@
       </div>
     </section>
 
-    <Dialog v-model:visible="confirmVisible" modal header="Confirm Subscription" class="w-full max-w-lg">
-      <div class="space-y-4">
-        <p class="text-sm text-slate-600">You selected <strong>{{ selectedPlan?.name }}</strong>. You will choose your payment method on PayMongo's secure checkout page.</p>
-        <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-          <p><span class="font-semibold">Plan:</span> {{ selectedPlan?.name }}</p>
-          <p><span class="font-semibold">Amount:</span> {{ selectedPlan ? formatPrice(selectedPlan) : formatMoney(0) }}</p>
-        </div>
-        <div class="flex justify-end gap-3">
-          <Button label="Cancel" severity="secondary" outlined @click="confirmVisible = false" />
-          <Button label="Continue to PayMongo" severity="warning" :loading="paymentInitializing" @click="openPaymentDialog" />
-        </div>
-      </div>
-    </Dialog>
-
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
 import ToggleSwitch from 'primevue/toggleswitch'
 import axiosClient from '@/axios'
-import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
 const plans = ref<any[]>([])
 const loadingPlans = ref(false)
 const isYearly = ref(false)
-const confirmVisible = ref(false)
-const paymentInitializing = ref(false)
-const selectedPlan = ref<any | null>(null)
 const storeIdFromQuery = ref<string>(new URLSearchParams(window.location.search).get('store_id') || '')
 
 const billingPeriod = computed(() => (isYearly.value ? 'year' : 'month'))
@@ -114,14 +94,6 @@ const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', {
   maximumFractionDigits: 2,
 }).format(amount)
 
-const selectedBillingCycle = computed(() => (isYearly.value ? 'yearly' : 'monthly'))
-
-const getPlanAmount = (plan: any) => {
-  return isYearly.value ? Number(plan.yearly_price || 0) : Number(plan.monthly_price || 0)
-}
-
-const getPlanMonths = () => isYearly.value ? 12 : 1
-
 const loadPlans = async () => {
   loadingPlans.value = true
   try {
@@ -149,104 +121,17 @@ const chooseFreeTrial = async (plan: any) => {
 }
 
 const openConfirmation = (plan: any) => {
-  selectedPlan.value = plan
-  confirmVisible.value = true
-}
-
-const openPaymentDialog = async () => {
-  if (!selectedPlan.value) return
   const storeId = Number(storeIdFromQuery.value || (authStore.currentUser as any)?.store_id || 0)
   if (!storeId) {
     router.visit('/store/registration')
     return
   }
 
-  paymentInitializing.value = true
-  try {
-    const planAmount = getPlanAmount(selectedPlan.value)
-    const successUrl = new URL('/subscription-checkout', window.location.origin)
-    successUrl.searchParams.set('payment', 'success')
-    successUrl.searchParams.set('store_id', String(storeId))
-    const cancelUrl = new URL(window.location.href)
-    const response = await paymongoService.createCheckoutSession({
-      amount: Math.max(Math.round(planAmount * 100), 1),
-      currency: 'PHP',
-      description: `${isYearly.value ? 'Yearly' : 'Monthly'} subscription for ${selectedPlan.value.name}`,
-      metadata: {
-        plan_key: selectedPlan.value.plan_key,
-        subscription_tier: selectedPlan.value.plan_key,
-        months: getPlanMonths(),
-        billing_cycle: selectedBillingCycle.value,
-        amount_php: planAmount,
-        setup_mode: 'paid',
-        store_id: storeId,
-      },
-      store_id: storeId,
-      payable_type: 'subscription_upgrade',
-      payable_id: storeId,
-      success_url: successUrl.toString(),
-      cancel_url: cancelUrl.toString(),
-    })
-    const checkoutUrl = String(response?.data?.checkout_url || '')
-    if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
-      throw new Error('PayMongo did not return a valid checkout page.')
-    }
-    localStorage.setItem('pending_subscription_plan', JSON.stringify({
-      plan_key: selectedPlan.value.plan_key,
-      billing_cycle: selectedBillingCycle.value,
-    }))
-    confirmVisible.value = false
-    window.location.assign(checkoutUrl)
-  } catch (error: any) {
-    alert(error?.response?.data?.message || error?.message || 'Unable to start payment.')
-  } finally {
-    paymentInitializing.value = false
-  }
+  router.visit(`/subscription-checkout?plan=${encodeURIComponent(plan.plan_key)}&cycle=${isYearly.value ? 'yearly' : 'monthly'}&store_id=${storeId}`)
 }
 
 onMounted(async () => {
   await authStore.fetchCurrentUser()
   await loadPlans()
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('payment') === 'success') {
-    const storeId = Number(params.get('store_id') || (authStore.currentUser as any)?.store_id || 0)
-    const pendingPlan = JSON.parse(localStorage.getItem('pending_subscription_plan') || 'null')
-
-    try {
-      if (storeId > 0) {
-        await paymongoService.getLatestIntentByPayable('subscription_upgrade', storeId, { sync: true })
-
-        if (pendingPlan?.plan_key === 'free') {
-          await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-            subscription_tier: 'free',
-            setup_mode: 'free',
-          })
-        }
-
-        await authStore.fetchCurrentUser({ reloadPermissions: true })
-
-        if (pendingPlan?.plan_key) {
-          localStorage.removeItem('pending_subscription_plan')
-        }
-      }
-    } catch (_error) {
-      if (storeId > 0 && pendingPlan?.plan_key === 'free') {
-        try {
-          await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-            subscription_tier: 'free',
-            setup_mode: 'free',
-          })
-          await authStore.fetchCurrentUser({ reloadPermissions: true })
-        } catch (_fallbackError) {
-          // Leave the user on the page rather than falsely claiming success.
-          return
-        } finally {
-          localStorage.removeItem('pending_subscription_plan')
-        }
-      }
-    }
-
-    router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
-  }
 })
 </script>

@@ -135,9 +135,9 @@ class StockIssueController extends Controller
             $context = $this->getUserContext();
 
             $validated = $request->validate([
-                'issue_type' => 'required|string|max:50',
-                'movement_type' => 'required|in:add,deduct',
-                'description' => 'nullable|string',
+                'issue_type' => 'required|in:production_use,office_consumption,store_usage,other',
+                'movement_type' => 'required|in:deduct',
+                'description' => 'required_if:issue_type,other|nullable|string|max:1000',
                 'remarks' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.inventory_item_id' => 'required|exists:branch_inventory,id',
@@ -168,14 +168,17 @@ class StockIssueController extends Controller
 
             // Create issue items
             foreach ($validated['items'] as $itemData) {
-                $inventoryItem = BranchInventory::findOrFail($itemData['inventory_item_id']);
+                $inventoryItem = BranchInventory::query()
+                    ->where('store_id', $context['store_id'])
+                    ->where('branch_id', $context['branch_id'])
+                    ->findOrFail($itemData['inventory_item_id']);
 
                 // Validate quantity doesn't exceed available stock
-                if (($validated['movement_type'] ?? 'deduct') === 'deduct' && $itemData['quantity'] > $inventoryItem->quantity_on_hand) {
+                if ($itemData['quantity'] > min((int) $inventoryItem->quantity_on_hand, (int) $inventoryItem->quantity_available)) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
-                        'message' => "Insufficient stock for {$inventoryItem->product->product_name}. Available: {$inventoryItem->quantity_on_hand}",
+                        'message' => "Insufficient stock for {$inventoryItem->product->product_name}. Available: {$inventoryItem->quantity_available}",
                     ], 422);
                 }
 
@@ -221,7 +224,7 @@ class StockIssueController extends Controller
                     $quantity = (int) $issueItem->quantity;
                     $isDeduction = $issue->movement_type === 'deduct';
 
-                    if ($isDeduction && $quantity > (int) $inventoryItem->quantity_on_hand) {
+                    if ($isDeduction && $quantity > min((int) $inventoryItem->quantity_on_hand, (int) $inventoryItem->quantity_available)) {
                         DB::rollBack();
                         return response()->json([
                             'success' => false,
@@ -279,9 +282,9 @@ class StockIssueController extends Controller
             }
 
             $validated = $request->validate([
-                'issue_type' => 'required|string|max:50',
-                'movement_type' => 'required|in:add,deduct',
-                'description' => 'nullable|string',
+                'issue_type' => 'required|in:production_use,office_consumption,store_usage,other',
+                'movement_type' => 'required|in:deduct',
+                'description' => 'required_if:issue_type,other|nullable|string|max:1000',
                 'remarks' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.inventory_item_id' => 'required|exists:branch_inventory,id',
@@ -299,7 +302,7 @@ class StockIssueController extends Controller
                     ->where('branch_id', $context['branch_id'])
                     ->findOrFail($itemData['inventory_item_id']);
 
-                if ($validated['movement_type'] === 'deduct' && $itemData['quantity'] > $inventoryItem->quantity_on_hand) {
+                if ($itemData['quantity'] > min((int) $inventoryItem->quantity_on_hand, (int) $inventoryItem->quantity_available)) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
@@ -385,7 +388,7 @@ class StockIssueController extends Controller
                 $quantity = (int) $issueItem->quantity;
                 $isDeduction = $issue->movement_type === 'deduct';
 
-                if ($isDeduction && $quantity > (int) $inventoryItem->quantity_on_hand) {
+                if ($isDeduction && $quantity > min((int) $inventoryItem->quantity_on_hand, (int) $inventoryItem->quantity_available)) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
@@ -432,10 +435,9 @@ class StockIssueController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                ['value' => 'damaged', 'label' => 'Damaged Goods'],
-                ['value' => 'lost', 'label' => 'Lost Items'],
-                ['value' => 'expired', 'label' => 'Expired Items'],
-                ['value' => 'theft', 'label' => 'Theft/Shoplifting'],
+                ['value' => 'production_use', 'label' => 'Used for Production'],
+                ['value' => 'office_consumption', 'label' => 'Office Consumption'],
+                ['value' => 'store_usage', 'label' => 'Store Usage / Sample or Demo'],
                 ['value' => 'other', 'label' => 'Other'],
             ],
         ]);

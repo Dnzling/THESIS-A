@@ -18,6 +18,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::put('/address-templates/{id}', [EcommerceController::class, 'updateAddressTemplate']);
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
     Route::post('/shipping/estimate', [EcommerceController::class, 'estimateShippingFee']);
+    Route::get('/checkout/availability', [EcommerceController::class, 'checkoutAvailability']);
 
     Route::get('/favorites', [EcommerceController::class, 'favorites']);
     Route::post('/favorites/toggle', [EcommerceController::class, 'toggleFavorite']);

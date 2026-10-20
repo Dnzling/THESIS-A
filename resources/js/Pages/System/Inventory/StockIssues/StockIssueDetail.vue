@@ -67,12 +67,13 @@
                       <p class="text-gray-900 font-mono">{{ stockIssue.issue_number }}</p>
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
                       <Tag
                         :value="formatReason(stockIssue.issue_type)"
                         :severity="getTypeSeverity(stockIssue.issue_type)"
                         class="capitalize"
                       />
+                      <p v-if="stockIssue.issue_type === 'other' && stockIssue.description" class="mt-1 text-sm text-gray-900">{{ stockIssue.description }}</p>
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Movement</label>
@@ -106,9 +107,9 @@
                       <label class="block text-sm font-medium text-gray-700 mb-1">Created At</label>
                       <p class="text-gray-900">{{ formatDate(stockIssue.created_at) }}</p>
                     </div>
-                    <div class="md:col-span-2">
+                    <div v-if="stockIssue.description && stockIssue.issue_type !== 'other'" class="md:col-span-2">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                      <p class="text-gray-900">{{ stockIssue.description || 'No description provided' }}</p>
+                      <p class="text-gray-900">{{ stockIssue.description }}</p>
                     </div>
                     <div class="md:col-span-2" v-if="stockIssue.remarks">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
@@ -323,7 +324,7 @@
                     'text-red-600': stockIssue.status === 'cancelled'
                   }">{{ stockIssue.status?.toUpperCase() }}</span>
                 </h3>
-                <p>Issue Type: {{ stockIssue.issue_type?.toUpperCase() }}</p>
+                <p>Reason: {{ stockIssue.issue_type === 'other' && stockIssue.description ? stockIssue.description : formatReason(stockIssue.issue_type) }}</p>
                 <p>Issue Date: {{ formatDate(stockIssue.issue_date) }}</p>
               </div>
             </div>
@@ -338,8 +339,8 @@
                 <p><strong>Created At:</strong> {{ formatDate(stockIssue.created_at) }}</p>
               </div>
               <div>
-                <p><strong>Description:</strong> {{ stockIssue.description || 'N/A' }}</p>
-                <p><strong>Remarks:</strong> {{ stockIssue.remarks || 'N/A' }}</p>
+                <p v-if="stockIssue.description && stockIssue.issue_type !== 'other'"><strong>Description:</strong> {{ stockIssue.description }}</p>
+                <p v-if="stockIssue.remarks"><strong>Remarks:</strong> {{ stockIssue.remarks }}</p>
                 <p v-if="stockIssue.approval_notes"><strong>Approval Notes:</strong> {{ stockIssue.approval_notes }}</p>
               </div>
             </div>

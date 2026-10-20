@@ -310,7 +310,8 @@ class ProductController extends BaseController
                                  'variations' => function($query) {
                                      $query->active()->with('custom3dModel');
                                  },
-                                 'tags'
+                                 'tags',
+                                 'shoppingRooms:id,name'
             ])
             ->withCount(['variations', 'assets'])
             ->findOrFail($id);
@@ -434,6 +435,8 @@ class ProductController extends BaseController
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
+                'room_ids' => 'sometimes|array|max:5',
+                'room_ids.*' => 'integer|distinct|exists:shopping_rooms,id',
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
@@ -470,6 +473,7 @@ class ProductController extends BaseController
 
             try {
                 $data = $validated;
+                unset($data['room_ids']);
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
                 if ($isPriceUpdateRequested) {
                     $data['base_price'] = $validated['base_price'] ?? $product->pending_base_price ?? $product->base_price;
@@ -485,10 +489,21 @@ class ProductController extends BaseController
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
+                if (array_key_exists('room_ids', $validated)) {
+                    if ($product->product_type !== 'finished_good' && $validated['room_ids']) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['room_ids' => 'Rooms are only available for finished goods.']);
+                    }
+                    $roomIds = \App\Models\ProductCatalog\ShoppingRoom::where('is_active', true)
+                        ->whereIn('id', $validated['room_ids'])->pluck('id')->all();
+                    if (count($roomIds) !== count($validated['room_ids'])) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['room_ids' => 'Select only active rooms.']);
+                    }
+                    $product->shoppingRooms()->sync($roomIds);
+                }
 
                 DB::commit();
 
-                $fresh = $product->fresh(['category', 'subcategory']);
+                $fresh = $product->fresh(['category', 'subcategory', 'shoppingRooms']);
                 $message = 'Product updated successfully';
 
                 return $this->successResponse(

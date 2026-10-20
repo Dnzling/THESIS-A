@@ -1,22 +1,22 @@
 <template>
-  <div class="min-h-screen p-4 max-w-7xl mx-auto space-y-4">
+  <div class="min-h-screen space-y-4 p-4 text-xs">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Returns</h1>
-        <p class="text-sm text-gray-500">Review and track customer return requests.</p>
+        <h1 class="text-xl font-bold text-slate-900">Returns</h1>
+        <p class="text-xs text-slate-500">Review and track customer return requests.</p>
       </div>
-      <Button icon="pi pi-refresh" label="Refresh" outlined size="small" @click="loadReturns" />
+      <Button icon="pi pi-refresh" label="Refresh" severity="warn" outlined size="small" :loading="loading" @click="loadReturns" />
     </div>
 
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
-        <div class="grid grid-cols-1 gap-3 items-end md:grid-cols-2 xl:grid-cols-6">
+        <div class="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,2fr)_repeat(4,minmax(130px,1fr))_auto]">
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText
               v-model="filters.search"
               placeholder="Search return ID, order #, customer, product"
-              class="w-full"
+              class="w-full text-sm"
               size="small"
             />
           </IconField>
@@ -27,7 +27,7 @@
             optionLabel="label"
             optionValue="value"
             placeholder="Workflow"
-            class="w-full"
+            class="w-full text-sm"
             size="small"
             showClear
           />
@@ -38,7 +38,7 @@
             optionLabel="label"
             optionValue="value"
             placeholder="Status"
-            class="w-full"
+            class="w-full text-sm"
             size="small"
             showClear
           />
@@ -50,7 +50,7 @@
             optionLabel="label"
             optionValue="value"
             placeholder="Investigation"
-            class="w-full"
+            class="w-full text-sm"
             size="small"
             showClear
           />
@@ -61,20 +61,15 @@
             selectionMode="range"
             placeholder="Date range"
             :maxDate="new Date()"
-            class="w-full"
+            class="w-full text-sm"
             size="small"
             showIcon
           />
 
           <div class="flex justify-end">
-            <Button v-if="hasActiveFilters" icon="pi pi-filter-slash" label="Reset" outlined size="small" @click="resetFilters" />
+            <Button v-if="hasActiveFilters" icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined size="small" @click="resetFilters" />
           </div>
         </div>
-      </template>
-    </Card>
-
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
-      <template #content>
         <div v-if="loading" class="space-y-3 py-2" aria-label="Loading return requests">
           <div v-for="row in filters.per_page > 15 ? 8 : 6" :key="row" class="grid grid-cols-6 gap-4 border-b border-gray-100 py-4">
             <Skeleton height="1rem" />
@@ -89,7 +84,7 @@
           v-else
           :value="rows"
           dataKey="id"
-          stripedRows
+          rowHover
           paginator
           lazy
           :rows="filters.per_page"
@@ -98,20 +93,19 @@
           :rowsPerPageOptions="[15, 20, 50]"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
-          class="p-datatable-sm"
+          size="small"
+          class="p-datatable-sm text-xs"
           @page="onPage"
           @sort="onSort"
+          @row-click="router.push(`/crm/returns/${$event.data.id}`)"
           :sortField="sortField"
           :sortOrder="sortOrder"
         >
           <template #empty>
-            <div class="text-center py-10">
-              <i class="pi pi-inbox text-4xl text-gray-400"></i>
-              <p class="text-gray-600 mt-2">No return requests found</p>
-            </div>
+            <div class="py-8 text-center text-xs text-slate-500">No return requests found.</div>
           </template>
 
-             <Column field="created_at" header="Date" class="text-sm" sortable style="width: 20%">
+             <Column field="created_at" header="Date" class="text-xs" sortable style="width: 20%">
             <template #body="{ data }">
               {{ formatDate(data.created_at) }}
             </template>
@@ -128,7 +122,7 @@
 
           <Column header="Customer" style="width: 18%">
             <template #body="{ data }">
-              <div class="text-sm">
+              <div class="text-xs">
                 <div class="font-medium text-gray-900">{{ data.user?.full_name || data.user?.email || 'N/A' }}</div>
                 <div class="text-xs text-gray-500">{{ data.user?.email || '' }}</div>
               </div>
@@ -137,7 +131,7 @@
 
           <Column header="Product" style="width: 22%">
             <template #body="{ data }">
-              <div class="text-sm">
+              <div class="text-xs">
                 <div class="font-medium text-gray-900">
                   {{ data.order_item?.product?.product_name || data.order_item?.product_name || 'N/A' }}
                 </div>
@@ -167,11 +161,11 @@
             <template #body="{ data }">
               <div v-if="data.investigation_ticket?.assignees?.length" class="space-y-1">
                 <p v-for="employee in data.investigation_ticket.assignees" :key="employee.id"
-                  class="text-sm text-slate-700">
+                  class="text-xs text-slate-700">
                   {{ investigatorName(employee) }}
                 </p>
               </div>
-              <span v-else class="text-sm text-slate-400">Not assigned</span>
+              <span v-else class="text-xs text-slate-400">Not assigned</span>
             </template>
           </Column>
 
@@ -180,8 +174,9 @@
               <Button
                 icon="pi pi-eye"
                 size="small"
+                severity="warn"
                 text
-                @click="router.push(`/crm/returns/${data.id}`)"
+                @click.stop="router.push(`/crm/returns/${data.id}`)"
               />
             </template>
           </Column>

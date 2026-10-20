@@ -20,6 +20,7 @@ class LoginResponseResource extends JsonResource
             'access_token' => $this->resource['token'],
             'token_type' => 'bearer',
             'abilities' => $this->resource['abilities'],
+            'simple_attendance' => $this->resource['simple_attendance'] ?? null,
             'requires_verification' => $this->resource['requires_verification'] ?? false,
         ];
     }

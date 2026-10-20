@@ -1,29 +1,28 @@
 <template>
-  <div class="space-y-6">
-    <Card class="border border-slate-200 shadow-none">
+  <div class="space-y-4 text-sm">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Platform Billing</p>
-            <h1 class="mt-1 text-2xl font-semibold text-slate-900">Subscription Management</h1>
-            <p class="text-sm text-slate-500">Manage store plans, renewals, and expiration timeline.</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Platform billing</p>
+            <h1 class="mt-1 text-xl font-semibold text-slate-950">Subscriptions</h1>
+            <p class="mt-1 text-xs text-slate-500">Manage plans, store subscriptions, and renewal timelines.</p>
           </div>
-          <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadAll" />
+          <Button icon="pi pi-refresh" label="Refresh" severity="secondary" size="small" outlined @click="loadAll" />
         </div>
       </template>
     </Card>
 
-    <Card class="border border-slate-200 shadow-none">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Plans</p>
-            <h2 class="mt-1 text-lg font-semibold text-slate-900">Subscription Plans</h2>
-            <p class="text-sm text-slate-500">Edit pricing and features shown on the marketing pricing page.</p>
+            <h2 class="text-sm font-semibold text-slate-950">Subscription plans</h2>
+            <p class="mt-1 text-xs text-slate-500">Pricing and features shown on the marketing pricing page.</p>
           </div>
-          <Button label="Add Plan" icon="pi pi-plus" severity="info" outlined @click="openCreatePlanDialog" />
+          <Button label="Add Plan" icon="pi pi-plus" severity="warn" size="small" @click="openCreatePlanDialog" />
         </div>
-        <DataTable :value="plans" :loading="plansLoading" rowHover dataKey="id" @row-click="onPlanRowClick" class="cursor-pointer">
+        <DataTable :value="plans" :loading="plansLoading" rowHover size="small" dataKey="id" @row-click="onPlanRowClick" class="cursor-pointer text-xs">
           <Column field="name" header="Plan" />
           <Column field="plan_key" header="Key" />
           <Column header="Pricing">
@@ -42,39 +41,39 @@
     </Card>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="border border-slate-200 shadow-sm">
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Total Stores</p>
-          <p class="mt-2 text-3xl font-semibold text-slate-900">{{ stats.total_stores }}</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-900">{{ stats.total_stores }}</p>
         </template>
       </Card>
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="border border-slate-200 shadow-sm">
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Paid</p>
-          <p class="mt-2 text-3xl font-semibold text-emerald-600">{{ stats.paid }}</p>
+          <p class="mt-2 text-2xl font-semibold text-emerald-600">{{ stats.paid }}</p>
         </template>
       </Card>
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="border border-slate-200 shadow-sm">
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Overdue</p>
-          <p class="mt-2 text-3xl font-semibold text-rose-600">{{ stats.overdue }}</p>
+          <p class="mt-2 text-2xl font-semibold text-rose-600">{{ stats.overdue }}</p>
         </template>
       </Card>
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="border border-slate-200 shadow-sm">
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Unpaid</p>
-          <p class="mt-2 text-3xl font-semibold text-amber-600">{{ stats.unpaid }}</p>
+          <p class="mt-2 text-2xl font-semibold text-amber-600">{{ stats.unpaid }}</p>
         </template>
       </Card>
     </div>
 
-    <Card class="border border-slate-200 shadow-none">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
         <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-12">
           <div class="md:col-span-5">
             <IconField>
               <InputIcon class="pi pi-search" />
-              <InputText v-model="filters.search" placeholder="Search store, owner, email..." fluid />
+              <InputText v-model="filters.search" placeholder="Search store, owner, email..." size="small" fluid />
             </IconField>
           </div>
           <div class="md:col-span-3">
@@ -85,6 +84,7 @@
               optionValue="value"
               placeholder="Plan Tier"
               showClear
+              size="small"
               fluid
             />
           </div>
@@ -96,15 +96,16 @@
               optionValue="value"
               placeholder="Store Status"
               showClear
+              size="small"
               fluid
             />
           </div>
           <div class="md:col-span-1 flex items-center justify-end">
-            <Button icon="pi pi-filter-slash" text severity="secondary" @click="clearFilters" />
+            <Button icon="pi pi-filter-slash" text severity="secondary" size="small" @click="clearFilters" />
           </div>
         </div>
 
-        <DataTable :value="stores" :loading="loading" stripedRows dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+        <DataTable :value="stores" :loading="loading" rowHover size="small" dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]" class="text-xs">
           <Column field="store_name" header="Store" sortable>
             <template #body="{ data }">
               <div>

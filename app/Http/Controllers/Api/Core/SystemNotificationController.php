@@ -11,6 +11,7 @@ use App\Models\Logistics\ReturnPickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class SystemNotificationController extends Controller
 {
@@ -44,6 +45,26 @@ class SystemNotificationController extends Controller
             $notifications = $query
                 ->orderBy($sortBy, $sortOrder)
                 ->paginate($perPage);
+
+            $creatorIds = $notifications->getCollection()
+                ->pluck('data.created_by.id')->filter()->unique()->values();
+            if ($creatorIds->isNotEmpty()) {
+                $superAdminIds = DB::table('users')
+                    ->join('roles', 'roles.id', '=', 'users.role_id')
+                    ->whereIn('users.id', $creatorIds)
+                    ->where('roles.name', 'super_admin')
+                    ->pluck('users.id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+
+                foreach ($notifications->getCollection() as $notification) {
+                    $data = $notification->data ?? [];
+                    if (in_array((int) ($data['created_by']['id'] ?? 0), $superAdminIds, true)) {
+                        unset($data['created_by']);
+                        $notification->data = $data;
+                    }
+                }
+            }
 
             if ($request->get('module') === 'ecommerce') {
                 $notifications->setCollection(

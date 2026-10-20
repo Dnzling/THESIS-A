@@ -4,7 +4,7 @@
     <TopNav />
 
     <main>
-      <section class="relative min-h-[3000px] overflow-hidden bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 text-white">
+      <section class="relative min-h-[760px] overflow-hidden bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 text-white lg:min-h-[820px]">
         <div class="absolute inset-0 opacity-30">
           <div class="absolute -left-24 top-12 h-72 w-72 rounded-full bg-white/20 blur-3xl"></div>
           <div class="absolute right-0 top-24 h-80 w-80 rounded-full bg-amber-200/20 blur-3xl"></div>

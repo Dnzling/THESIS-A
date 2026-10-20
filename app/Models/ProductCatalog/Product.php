@@ -156,6 +156,11 @@ class Product extends Model
             ->withTimestamps();
     }
 
+    public function shoppingRooms()
+    {
+        return $this->belongsToMany(ShoppingRoom::class, 'product_rooms');
+    }
+
     /**
      * Alias used when the legacy products.tags attribute would shadow the
      * many-to-many tags relationship during serialization.

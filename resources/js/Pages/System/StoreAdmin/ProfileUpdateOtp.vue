@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -99,6 +99,7 @@ const startCountdown = () => {
 }
 
 const submitOtp = () => {
+  if (submitting.value) return
   if (otpValue.value.length !== 6) {
     errorMessage.value = 'Please enter the complete 6-digit OTP.'
     return
@@ -119,6 +120,10 @@ const submitOtp = () => {
     }
   )
 }
+
+watch(otpValue, (value) => {
+  if (value.length === 6 && !submitting.value) submitOtp()
+})
 
 const resendOtp = () => {
   if (countdown.value > 0) return

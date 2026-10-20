@@ -54,37 +54,82 @@
 
     <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div class="space-y-4 lg:col-span-2">
+        <div class="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-6">
+          <button v-for="(step, index) in checkoutSteps" :key="step" type="button" :disabled="index + 1 > checkoutStep"
+            class="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-semibold sm:text-sm"
+            :class="checkoutStep === index + 1 ? 'text-orange-600' : index + 1 < checkoutStep ? 'text-slate-900' : 'text-slate-400'"
+            @click="checkoutStep = index + 1">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border"
+              :class="checkoutStep === index + 1 ? 'border-orange-500 bg-orange-500 text-white' : index + 1 < checkoutStep ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200'">
+              <i v-if="index + 1 < checkoutStep" class="pi pi-check text-[10px]" /><span v-else>{{ index + 1 }}</span>
+            </span>
+            <span class="truncate">{{ step }}</span>
+          </button>
+        </div>
         <Card
-          :class="pickupOnly ? 'border border-slate-200 shadow-none' : 'cursor-pointer border border-slate-200 shadow-none transition hover:border-amber-300 hover:shadow-sm'"
-          @click="!pickupOnly && openAddressDialog()"
+          v-if="checkoutStep === 1"
+          class="border border-slate-200 shadow-none"
         >
           <template #content>
             <div class="flex items-start justify-between gap-3">
               <div class="flex min-w-0 items-start gap-3">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ pickupOnly ? 'Pickup Order' : 'Shipping Address' }}</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Your address</p>
                     <Badge v-if="selectedAddress && selectedAddress.id === defaultAddressId" value="Default"  />
                   </div>
-              <template v-if="!pickupOnly">
-                <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
-                <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
-                <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
-              </template>
-              <div v-else class="mt-2 space-y-1 text-sm text-slate-600">
-                <p class="font-semibold text-slate-900">{{ pickupBranch?.name || 'Finding your pickup branch...' }}</p>
-                <p>{{ pickupBranchAddress }}</p>
-                <p v-if="pickupBranch?.contact_number" class="text-xs">Contact: {{ pickupBranch.contact_number }}</p>
-                <p class="text-xs text-slate-500">Pickup branch is confirmed when your order is placed.</p>
-              </div>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
+                  <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
+                  <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
                 </div>
               </div>
-          <Button v-if="!pickupOnly" label="Change" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="openAddressDialog" />
+          <Button :label="selectedAddress ? 'Change' : 'Add address'" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="openAddressDialog" />
             </div>
           </template>
         </Card>
 
-        <Card v-if="selectedPaymentMethod === 'online'" class="border border-slate-200 shadow-none">
+        <Card v-if="checkoutStep === 2" class="border border-slate-200 shadow-none">
+          <template #content>
+            <h2 class="text-lg font-semibold text-slate-900">How would you like to receive your order?</h2>
+            <p class="mt-1 text-xs text-slate-500">Choose how this order gets to you.</p>
+            <div class="mt-5 grid gap-3 sm:grid-cols-2">
+              <button type="button" class="rounded-xl border p-4 text-left transition" :class="serviceMethod === 'pickup' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'" @click="serviceMethod = 'pickup'">
+                <span class="block text-sm font-semibold text-slate-900">Store pickup <span class="float-right text-emerald-700">Free</span></span>
+                <span class="mt-2 block text-xs text-slate-600">Collect from the store after confirmation.</span>
+              </button>
+              <button type="button" class="rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50" :class="serviceMethod === 'delivery' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'" :disabled="pickupOnly" @click="serviceMethod = 'delivery'">
+                <span class="block text-sm font-semibold text-slate-900">Truck delivery <span class="float-right">{{ estimatedShippingFee <= 0 ? 'Free' : `₱ ${formatNumber(estimatedShippingFee, 2)}` }}</span></span>
+                <span class="mt-2 block text-xs text-slate-600">{{ pickupOnly ? 'Delivery is unavailable for this order.' : 'Delivered to your selected address.' }}</span>
+              </button>
+            </div>
+            <div v-if="serviceMethod === 'pickup'" class="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p class="font-semibold">{{ pickupBranch?.name || 'Pickup branch confirmed after ordering' }}</p>
+              <p class="mt-1 text-xs">{{ pickupBranchAddress }}</p>
+            </div>
+            <div class="mt-5 border-t border-slate-200 pt-4">
+              <label class="mb-2 block text-xs font-semibold text-slate-700">Preferred {{ serviceMethod }} date *</label>
+              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="new Date()" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon iconDisplay="input" size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid />
+              <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
+              <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
+              <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
+            </div>
+          </template>
+        </Card>
+        <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
+          <template #content>
+            <h2 class="text-lg font-semibold text-slate-900">How would you like to pay?</h2>
+            <div class="mt-5 grid gap-3">
+              <button v-for="method in allPaymentMethods" :key="method.value" type="button" class="flex items-center gap-4 rounded-xl border p-4 text-left transition disabled:opacity-50"
+                :class="selectedPaymentMethod === method.value ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'"
+                :disabled="method.value === 'cod' && codBlocked && serviceMethod === 'delivery'" @click="selectPaymentMethod(method.value)">
+                <i :class="[method.icon, 'text-lg text-slate-800']" />
+                <span><span class="block text-sm font-semibold text-slate-900">{{ paymentMethodLabel(method.value) }}</span><span class="block text-xs text-slate-500">{{ paymentMethodDescription(method.value) }}</span></span>
+                <i v-if="selectedPaymentMethod === method.value" class="pi pi-check-circle ml-auto text-orange-600" />
+              </button>
+            </div>
+          </template>
+        </Card>
+        <Card v-if="checkoutStep === 3 && selectedPaymentMethod === 'online'" class="border border-slate-200 shadow-none">
           <template #content>
             <h2 class="text-base font-semibold text-slate-900">Billing address</h2>
             <p class="mt-1 text-xs text-slate-500">Used for your payment receipt, not for delivery.</p>
@@ -123,7 +168,7 @@
           </template>
         </Card>
 
-        <Card class="border border-slate-200 shadow-none">
+        <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
         <template #content>
           <div class="mb-4 flex items-center justify-between">
             <div>
@@ -148,7 +193,7 @@
                   <p class="text-xs font-medium text-slate-500">{{ item.store_name }}</p>
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <p class="mt-2 text-xs text-slate-500">{{ pickupOnly ? 'Pickup from the store' : `Delivery Fee: ${shippingFeePerItem <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeePerItem, 2)}`} · Estimated Delivery: ${estimatedDeliveryDate}` }}</p>
+                  <p class="mt-2 text-xs text-slate-500">{{ serviceMethod === 'pickup' ? 'Store pickup' : `Delivery fee: ${shippingFeePerItem <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeePerItem, 2)}`}` }}</p>
                   <div v-if="item.is_customizable" class="mt-3">
                     <button
                       type="button"
@@ -191,6 +236,11 @@
           </div>
         </template>
         </Card>
+        <div class="flex justify-between gap-3">
+          <Button v-if="checkoutStep > 1" label="Back" icon="pi pi-arrow-left" text severity="secondary" @click="checkoutStep--" />
+          <span v-else />
+          <Button v-if="checkoutStep < 3" label="Continue" icon="pi pi-arrow-right" iconPos="right" severity="warn" :disabled="(checkoutStep === 1 && !selectedAddress) || (checkoutStep === 2 && (!fulfillmentDates.includes(fulfillmentDateString) || availabilityLoading))" @click="checkoutStep++" />
+        </div>
       </div>
 
       <Card class="h-fit border border-slate-200 shadow-none lg:sticky lg:top-4">
@@ -201,13 +251,9 @@
               <p class="text-xs text-slate-500">Final charges before placing your order</p>
             </div>
             <Divider />
-            <div>
+            <div v-if="checkoutStep === 3">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Method</p>
-              <button
-                type="button"
-                class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-amber-300 hover:bg-amber-50/40"
-                @click="paymentDialogVisible = true"
-              >
+              <div class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-amber-600 shadow-sm">
                   <i :class="selectedPaymentMethodOption.icon" />
                 </span>
@@ -215,8 +261,7 @@
                   <span class="block text-sm font-semibold text-slate-900">{{ selectedPaymentMethodOption.label }}</span>
                   <span class="block text-xs text-slate-500">{{ selectedPaymentMethodOption.description }}</span>
                 </span>
-                <i class="pi pi-chevron-right text-xs text-slate-400" />
-              </button>
+              </div>
             </div>
 
             <!-- <div class="rounded-lg border border-slate-200 p-3">
@@ -235,7 +280,22 @@
             <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span>VATable Sales</span><span>₱ {{ formatNumber(vatableSales, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span> (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
-            <div class="flex justify-between"><span>{{ pickupOnly ? 'Pickup fee' : 'Shipping Fee' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
+            <div class="flex justify-between"><span>{{ serviceMethod === 'pickup' ? 'Pickup' : 'Delivery' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
+            <div v-if="fulfillmentDateString" class="flex justify-between text-xs text-slate-600"><span>Preferred date</span><span>{{ fulfillmentDate?.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) }}</span></div>
+            <div class="border-t border-slate-200 pt-3">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ serviceMethod === 'pickup' ? 'Pickup details' : 'Delivery details' }}</p>
+              <p class="mt-1 text-xs font-semibold text-slate-900">{{ serviceMethod === 'pickup' ? (pickupBranch?.name || 'Store branch') : (selectedAddress?.full_name || 'Choose an address') }}</p>
+              <p class="mt-1 text-xs leading-5 text-slate-600">{{ serviceMethod === 'pickup' ? pickupBranchAddress : selectedAddressSummary }}</p>
+              <p v-if="fulfillmentWindow" class="mt-1 text-xs text-slate-500">{{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}</p>
+            </div>
+            <div class="border-t border-slate-200 pt-3">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
+              <div v-for="item in checkoutItems" :key="`summary-${item.id}`" class="flex gap-2 py-2 text-xs">
+                <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-11 w-11 rounded-lg border border-slate-200 object-cover" @error="onImageError" />
+                <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-slate-900">{{ item.product_name }}</span><span class="text-slate-500">Qty {{ item.quantity }}</span></span>
+                <span class="font-semibold text-slate-900">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
+              </div>
+            </div>
             <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
               <span>Bulk trip discount</span>
               <InputSwitch v-model="bulkTripEnabled" />
@@ -280,7 +340,7 @@
               <span class="font-semibold text-slate-900">Total</span>
               <span class="text-xl font-bold text-slate-900">₱ {{ formatNumber(totalAmount, 2) }}</span>
             </div>
-          <Button label="Place Order" class="mt-2" fluid :disabled="!pickupOnly && !selectedAddress" :loading="placing || paymongoCreating" @click="placeOrder" />
+          <Button v-if="checkoutStep === 3" label="Place Order" class="mt-2" fluid :disabled="!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString)" :loading="placing || paymongoCreating" @click="placeOrder" />
             <p class="text-center text-xs text-slate-500">Your payment information is securely processed.</p>
           </div>
         </template>
@@ -412,48 +472,6 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="paymentDialogVisible" modal header="Choose Payment Method" class="w-full max-w-xl" :draggable="false">
-      <div class="space-y-4">
-        <p class="text-sm text-slate-500">Select how you would like to pay for this order.</p>
-        <div
-          v-for="method in allPaymentMethods"
-          :key="method.value"
-          class="rounded-xl border p-4 transition"
-          :class="[
-            selectedPaymentMethod === method.value ? 'border-amber-500 bg-amber-50/60 ring-1 ring-amber-500' : 'border-slate-200 bg-white',
-            method.value === 'cod' && codBlocked && !pickupOnly ? 'opacity-60' : 'cursor-pointer hover:border-amber-300',
-          ]"
-          @click="selectPaymentMethod(method.value)"
-        >
-          <div class="flex items-center gap-3">
-            <span
-              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg"
-              :class="selectedPaymentMethod === method.value ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'"
-            >
-              <i :class="method.icon" />
-            </span>
-            <RadioButton
-              v-model="selectedPaymentMethod"
-              :inputId="`payment-${method.value}`"
-              :value="method.value"
-              :disabled="method.value === 'cod' && codBlocked && !pickupOnly"
-              @click.stop
-            />
-            <div class="min-w-0 flex-1">
-              <label :for="`payment-${method.value}`" class="cursor-pointer text-sm font-semibold text-slate-900">
-                {{ paymentMethodLabel(method.value) }}
-              </label>
-              <p class="mt-0.5 text-xs leading-5 text-slate-500">{{ paymentMethodDescription(method.value) }}</p>
-            </div>
-          </div>
-          <p v-if="method.value === 'cod' && codBlocked && !pickupOnly" class="mt-2 text-xs text-amber-600">
-            COD is not available for totals above ₱ {{ COD_LIMIT.toLocaleString() }}. Use Online Payment.
-          </p>
-        </div>
-        <Button label="Use Payment Method" icon="pi pi-check" severity="warn" fluid @click="paymentDialogVisible = false" />
-      </div>
-    </Dialog>
-
     <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false" @show="initCoordsMap" @hide="destroyCoordsMap">
    
         <div class="space-y-4">
@@ -492,6 +510,7 @@ import RadioButton from 'primevue/radiobutton'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
 import InputSwitch from 'primevue/inputswitch'
 import Badge from 'primevue/badge'
@@ -538,11 +557,64 @@ const loading = ref(false)
 const checkingPaymongoResult = ref(false)
 const completedPaymongoOrderId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
+const checkoutSteps = ['Address', 'Service', 'Payment']
+const checkoutStep = ref(1)
+const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
+const fulfillmentDates = ref<string[]>([])
+const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
+const fulfillmentDate = ref<Date | null>(null)
+const availabilityLoading = ref(false)
+const availabilityError = ref('')
+let availabilityRequest = 0
+const fulfillmentDateString = computed(() => fulfillmentDate.value
+  ? `${fulfillmentDate.value.getFullYear()}-${String(fulfillmentDate.value.getMonth() + 1).padStart(2, '0')}-${String(fulfillmentDate.value.getDate()).padStart(2, '0')}`
+  : '')
+const maxFulfillmentDate = computed(() => {
+  const last = fulfillmentDates.value.at(-1)
+  if (!last) return new Date()
+  const [year, month, day] = last.split('-').map(Number)
+  return new Date(year, month - 1, day)
+})
+const disabledFulfillmentDates = computed(() => {
+  const allowed = new Set(fulfillmentDates.value)
+  const days: Date[] = []
+  const start = new Date()
+  for (let offset = 0; offset <= 45; offset++) {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + offset)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    if (!allowed.has(key)) days.push(date)
+  }
+  return days
+})
+
+async function loadFulfillmentAvailability() {
+  const requestId = ++availabilityRequest
+  const storeId = Number(checkoutItems.value[0]?.store_id || 0)
+  fulfillmentDate.value = null
+  fulfillmentDates.value = []
+  fulfillmentWindow.value = null
+  if (!storeId) return
+  availabilityLoading.value = true
+  availabilityError.value = ''
+  try {
+    const response = await ecommerceService.getCheckoutAvailability(storeId, serviceMethod.value, checkoutItemIds.value)
+    if (requestId !== availabilityRequest) return
+    fulfillmentDates.value = response.data?.data?.dates || []
+    fulfillmentWindow.value = response.data?.data?.window || null
+    if (serviceMethod.value === 'pickup') pickupBranch.value = response.data?.data?.pickup_branch || null
+  } catch (error: any) {
+    if (requestId !== availabilityRequest) return
+    availabilityError.value = error?.response?.data?.message || 'Available dates could not be loaded. Please try again.'
+  } finally {
+    if (requestId === availabilityRequest) availabilityLoading.value = false
+  }
+}
+
+watch([serviceMethod, () => checkoutItems.value[0]?.store_id], loadFulfillmentAvailability)
 const customizationRequests = reactive<Record<number, string>>({})
 const customizationEnabled = reactive<Record<number, boolean>>({})
 const selectedItemIds = ref<number[]>([])
 const addressDialogVisible = ref(false)
-const paymentDialogVisible = ref(false)
 const showAddAddressForm = ref(false)
 const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
@@ -672,7 +744,8 @@ onBeforeUnmount(() => {
   destroyCoordsMap()
 })
 
-const shippingFeeTotal = ref(0)
+const estimatedShippingFee = ref(0)
+const shippingFeeTotal = computed(() => serviceMethod.value === 'pickup' ? 0 : estimatedShippingFee.value)
 const shippingFeeLoading = ref(false)
 const shippingFeeNotice = ref<string | null>(null)
 const shippingDistanceKm = ref<number | null>(null)
@@ -680,12 +753,6 @@ const shippingFeeBreakdown = ref<any | null>(null)
 const showBreakdown = ref(false)
 const bulkTripEnabled = ref(false)
 const bulkTripAllowed = ref(false)
-const estimatedDeliveryDate = computed(() => {
-  const date = new Date()
-  date.setDate(date.getDate() + 5)
-  return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-})
-
 const addressTemplates = ref<AddressTemplate[]>([])
 const selectedAddressId = ref<number | null>(null)
 const defaultAddressId = computed(() => addressTemplates.value[0]?.id || null)
@@ -756,7 +823,7 @@ const allPaymentMethods = [
     label: 'Online Payment',
     value: 'online' as const,
     icon: 'pi pi-credit-card',
-    description: 'Choose an available wallet, card, QR, or bank option securely on PayMongo.',
+    description: 'Choose a card, e-wallet, QR, or bank option securely.',
   },
 ]
 
@@ -802,12 +869,12 @@ const checkoutItemIds = computed(() =>
 )
 
 function paymentMethodLabel(method: 'cod' | 'online') {
-  if (method === 'cod' && pickupOnly.value) return 'Pay Upon Pickup'
+  if (method === 'cod' && serviceMethod.value === 'pickup') return 'Pay Upon Pickup'
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
 }
 
 function paymentMethodDescription(method: 'cod' | 'online') {
-  if (method === 'cod' && pickupOnly.value) return 'Pay in cash when you collect your order from the store.'
+  if (method === 'cod' && serviceMethod.value === 'pickup') return 'Pay in cash when you collect your order from the store.'
   return allPaymentMethods.find((m) => m.value === method)?.description || ''
 }
 
@@ -820,7 +887,7 @@ const selectedPaymentMethodOption = computed(() =>
 )
 
 function selectPaymentMethod(method: 'cod' | 'online') {
-  if (method === 'cod' && codBlocked.value && !pickupOnly.value) return
+  if (method === 'cod' && codBlocked.value && serviceMethod.value === 'delivery') return
   selectedPaymentMethod.value = method
 }
 
@@ -837,8 +904,13 @@ function formatNumber(value: unknown, decimals = 0): string {
       })
 }
 
+function formatServiceTime(value: string): string {
+  const [hours, minutes] = value.split(':').map(Number)
+  return new Date(2020, 0, 1, hours, minutes).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
 watch(codBlocked, (blocked) => {
-  if (blocked && !pickupOnly.value && selectedPaymentMethod.value === 'cod') {
+  if (blocked && serviceMethod.value === 'delivery' && selectedPaymentMethod.value === 'cod') {
     selectedPaymentMethod.value = 'online'
   }
 })
@@ -1016,13 +1088,14 @@ async function estimateShippingFee() {
     })
     const fee = Number(response?.data?.data?.shipping_fee || 0)
     pickupOnly.value = Boolean(response?.data?.data?.pickup_only)
-    pickupBranch.value = pickupOnly.value ? (response?.data?.data?.pickup_branch || null) : null
+    if (pickupOnly.value) serviceMethod.value = 'pickup'
+    if (pickupOnly.value) pickupBranch.value = response?.data?.data?.pickup_branch || null
     const fallbackUsed = Boolean(response?.data?.data?.fallback_used)
     const fallbackReason = String(response?.data?.data?.fallback_reason || '')
     const distance = Number(response?.data?.data?.distance_km ?? NaN)
     const allowed = Boolean(response?.data?.data?.bulk_trip_allowed)
     const breakdown = response?.data?.data?.breakdown || null
-    shippingFeeTotal.value = Number.isFinite(fee) ? fee : 0
+    estimatedShippingFee.value = Number.isFinite(fee) ? fee : 0
     shippingDistanceKm.value = Number.isFinite(distance) ? distance : null
     bulkTripAllowed.value = allowed
     if (!allowed && bulkTripEnabled.value) {
@@ -1033,8 +1106,8 @@ async function estimateShippingFee() {
       ? (fallbackReason || 'Using default delivery fee settings for this address.')
       : null
   } catch (error: any) {
-    pickupBranch.value = null
-    shippingFeeTotal.value = 0
+    if (serviceMethod.value !== 'pickup') pickupBranch.value = null
+    estimatedShippingFee.value = 0
     shippingDistanceKm.value = null
     shippingFeeNotice.value = null
     shippingFeeBreakdown.value = null
@@ -1184,12 +1257,17 @@ async function startEditAddress(address: AddressTemplate) {
 // Coordinates are picked via the interactive Mapbox dialog.
 
 async function placeOrder() {
-  if (!pickupOnly.value && !selectedAddress.value) {
+  if (!fulfillmentDates.value.includes(fulfillmentDateString.value)) {
+    showAlert({ severity: 'warn', summary: 'Date Required', detail: 'Please select an available pickup or delivery date.' })
+    checkoutStep.value = 2
+    return
+  }
+  if (!selectedAddress.value) {
     showAlert({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.' })
     return
   }
 
-  if (selectedPaymentMethod.value === 'cod' && codBlocked.value && !pickupOnly.value) {
+  if (selectedPaymentMethod.value === 'cod' && codBlocked.value && serviceMethod.value === 'delivery') {
     showAlert({
       severity: 'warn',
       summary: 'COD Not Available',
@@ -1222,15 +1300,16 @@ async function placeOrder() {
       shipping_name: selectedAddress.value?.full_name || authStore.user?.name || 'Customer',
       shipping_phone: selectedAddress.value?.contact_number || undefined,
       shipping_email: authStore.user?.email || undefined,
-      shipping_address: pickupOnly.value ? 'Store pickup' : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
+      shipping_address: serviceMethod.value === 'pickup' ? 'Store pickup' : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
       billing_name: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
-        ? billingForm.name.trim() : (pickupOnly.value ? undefined : selectedAddress.value?.full_name),
+        ? billingForm.name.trim() : selectedAddress.value?.full_name,
       billing_address: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
         ? [billingForm.street, billingForm.barangay, billingForm.city, billingForm.province, billingForm.postalCode].map((part) => part.trim()).filter(Boolean).join(', ')
-        : (pickupOnly.value ? undefined : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`),
+        : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value) as 'cod' | 'bank_transfer' | 'card' | 'e_wallet',
       shipping_fee: shippingFeeTotal.value,
-      fulfillment_method: pickupOnly.value ? 'pickup' : 'delivery',
+      fulfillment_method: serviceMethod.value,
+      requested_fulfillment_date: fulfillmentDateString.value,
       discount_amount: discountAmount.value,
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
@@ -1240,8 +1319,8 @@ async function placeOrder() {
           .filter(([itemId, request]) => customizationEnabled[Number(itemId)] && Boolean(String(request || '').trim()))
           .map(([itemId, request]) => [Number(itemId), String(request).trim()]),
       ),
-      customer_latitude: pickupOnly.value ? undefined : (customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined),
-      customer_longitude: pickupOnly.value ? undefined : (customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined),
+      customer_latitude: serviceMethod.value === 'pickup' ? undefined : (customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined),
+      customer_longitude: serviceMethod.value === 'pickup' ? undefined : (customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined),
       bulk_trip: bulkTripEnabled.value,
     }
 

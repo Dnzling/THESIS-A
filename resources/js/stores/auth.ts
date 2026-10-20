@@ -386,15 +386,21 @@ export const useAuthStore = defineStore('auth', () => {
         error.value = null
 
         try {
-            const location = await getCurrentLocation()
-            // Make login request
-            const response = await axios.post(endpoint, {
+            let location: { latitude: number; longitude: number } | null = null
+            const loginData = {
                 login,
                 password,
                 device_name: 'web_browser',
-                latitude: location?.latitude ?? null,
-                longitude: location?.longitude ?? null,
-            })
+            }
+            let response
+            try {
+                response = await axios.post(endpoint, loginData)
+            } catch (loginError: any) {
+                if (loginError?.response?.data?.code !== 'location_required') throw loginError
+                location = await getCurrentLocation()
+                if (!location) throw loginError
+                response = await axios.post(endpoint, { ...loginData, ...location })
+            }
 
             const payload = response.data || {}
             const accessToken = payload?.data?.access_token || payload?.access_token || payload?.token
@@ -406,7 +412,7 @@ export const useAuthStore = defineStore('auth', () => {
             const normalizedRole = String(userData?.role || '')
                 .toLowerCase()
                 .replace(/[\s-]+/g, '_')
-            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'owner', 'applicant'].includes(normalizedRole)
+            const roleExcludedFromAttendance = ['supplier', 'customer', 'super_admin', 'applicant'].includes(normalizedRole)
             const customerUser = isCustomerRoleValue(userData?.role)
 
             token.value = accessToken
@@ -430,20 +436,30 @@ export const useAuthStore = defineStore('auth', () => {
                 permissionsLoaded.value = true
             }
 
-            // Clock-in is separate from RBAC loading; some roles are excluded from geofence/clock-in.
-            if (!roleExcludedFromGeoloc && !customerUser) {
+            // Free/Simple clock-in is returned by login; other employees use HR attendance.
+            let employeeAttendance = payload?.data?.simple_attendance ?? null
+            if (!roleExcludedFromAttendance && !customerUser && !employeeAttendance) {
                 try {
-                    await axios.post('/api/attendances/clock-in', {
+                    const clockResponse = await axios.post('/api/attendances/clock-in', {
                         user_id: userData.id,
                         method: 'web',
                         latitude: location?.latitude ?? null,
                         longitude: location?.longitude ?? null,
                     })
-                    console.log('Clock-in successful')
-                } catch (clockInError) {
+                    if (clockResponse.data?.success && clockResponse.data?.data) {
+                        const record = clockResponse.data.data
+                        employeeAttendance = {
+                            state: record.clock_out ? 'completed' : clockResponse.data.already_clocked_in ? 'already_clocked_in' : 'clocked_in',
+                            late_seconds: Number(record.late_seconds || 0),
+                        }
+                    }
+                } catch (clockInError: any) {
                     console.warn('Clock-in failed:', clockInError)
+                    employeeAttendance = { state: 'not_recorded', message: clockInError?.response?.data?.message || 'Attendance could not be recorded.' }
                 }
             }
+
+            if (payload?.data) payload.data.employee_attendance = employeeAttendance
 
             return response
 

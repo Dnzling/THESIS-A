@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 
@@ -116,6 +116,9 @@ let resendInterval: ReturnType<typeof setInterval> | null = null
 
 // Compute full OTP from digits
 const fullOtp = computed(() => otpDigits.value.join(''))
+watch(fullOtp, (value) => {
+  if (/^\d{6}$/.test(value) && !isLoading.value && !isVerified.value) void verifyOtp()
+})
 const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
@@ -188,8 +191,8 @@ const handlePaste = (event: ClipboardEvent) => {
   }
 }
 
-const verifyOtp = async () => { // Add async here
-  if (isVerified.value) return
+const verifyOtp = async () => {
+  if (isLoading.value || isVerified.value) return
 
   const enteredOtp = fullOtp.value
 

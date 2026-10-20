@@ -48,6 +48,10 @@ const ecommerceService = {
     return ecommerceClient.get('/api/ecommerce/products/active-stock', { params })
   },
 
+  getProductSuggestions(search: string) {
+    return ecommerceClient.get('/api/ecommerce/products/suggestions', { params: { search } })
+  },
+
   getActiveStockCategories() {
     return ecommerceClient.get('/api/ecommerce/categories/active-stock')
   },
@@ -212,6 +216,7 @@ const ecommerceService = {
     payment_method: 'cod' | 'bank_transfer' | 'card' | 'e_wallet'
     shipping_fee?: number
     fulfillment_method?: 'delivery' | 'pickup'
+    requested_fulfillment_date: string
     discount_amount?: number
     voucher_code?: string
     notes?: string
@@ -219,6 +224,10 @@ const ecommerceService = {
     customization_requests?: Record<number, string>
   }) {
     return ecommerceClient.post('/api/ecommerce/checkout', payload)
+  },
+
+  getCheckoutAvailability(storeId: number, method: 'pickup' | 'delivery', itemIds: number[]) {
+    return ecommerceClient.get('/api/ecommerce/checkout/availability', { params: { store_id: storeId, method, item_ids: itemIds } })
   },
 
   getOrders(params?: any) {

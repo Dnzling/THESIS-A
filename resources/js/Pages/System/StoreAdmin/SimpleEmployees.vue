@@ -63,37 +63,6 @@
             <template #empty><div class="py-8 text-center text-slate-500">No attendance records match the filters.</div></template>
           </DataTable>
         </div>
-        <div class="border-t border-slate-200 pt-6">
-        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-slate-900">Manual Daily Attendance</h2>
-            <p class="text-sm text-slate-500">For employees who do not clock in. Clocked records cannot be overwritten here.</p>
-          </div>
-          <div class="w-56"><label class="mb-1 block text-sm text-slate-600">Date</label>
-            <DatePicker v-model="attendanceDate" dateFormat="MM d, yy" showIcon fluid @date-select="loadAttendance" :maxDate="new Date()" />
-          </div>
-        </div>
-        <DataTable :value="employees" :loading="loading || loadingAttendance" stripedRows>
-          <Column field="name" header="Employee" />
-          <Column field="branch" header="Branch" />
-          <Column header="Status"><template #body="{ data }"><Select v-model="attendanceDraft[data.id]"
-                :options="attendanceOptions" optionLabel="label" optionValue="value" placeholder="Not recorded"
-                showClear class="w-44" /></template>
-          </Column>
-          <Column header="Note"><template #body="{ data }">
-              <InputText v-model="attendanceNotes[data.id]" placeholder="Optional note" class="w-full"
-                maxlength="500" />
-            </template>
-          </Column>
-          <Column header="Action"><template #body="{ data }"><Button label="Save" size="small"
-                :disabled="!attendanceDraft[data.id] || clockedAttendance[data.id]" :loading="savingAttendanceId === data.id"
-                @click="saveAttendance(data.id)" /></template>
-          </Column>
-          <template #empty>
-            <div class="py-10 text-center text-slate-500">Add an employee to start recording attendance.</div>
-          </template>
-        </DataTable>
-        </div>
       </template>
     </Card>
 
@@ -122,6 +91,7 @@
         </div>
         <div><label class="field-label">Employment type</label><Select v-model="form.employment_type"
             :options="employmentTypes" optionLabel="label" optionValue="value" fluid /></div>
+        <div v-if="form.employment_type === 'contract'"><label class="field-label">End Contract *</label><DatePicker v-model="form.contract_end_date" :minDate="form.hire_date" dateFormat="MM d, yy" showIcon fluid /></div>
       </div>
       <template #footer><Button label="Cancel" severity="secondary" outlined @click="showAdd = false" /><Button
           label="Add Employee" :loading="savingEmployee" @click="addEmployee" /></template>
@@ -154,23 +124,16 @@ const toast = useToast()
 const tab = ref<'directory' | 'attendance'>('attendance')
 const search = ref('')
 const loading = ref(false)
-const loadingAttendance = ref(false)
 const savingEmployee = ref(false)
-const savingAttendanceId = ref<number | null>(null)
 const showAdd = ref(false)
 const employees = ref<any[]>([])
 const roles = ref<any[]>([])
 const branches = ref<any[]>([])
-const attendanceDate = ref(new Date())
 const attendanceRange = ref<Date[]>([new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()])
 const attendanceSearch = ref('')
 const attendanceRows = ref<any[]>([])
 const loadingAttendanceRows = ref(false)
-const attendanceDraft = reactive<Record<number, string | null>>({})
-const attendanceNotes = reactive<Record<number, string>>({})
-const clockedAttendance = reactive<Record<number, boolean>>({})
-const form = reactive({ fname: '', lname: '', email: '', role_id: null as number | null, branch_id: null as number | null, hire_date: new Date(), employment_type: 'full_time' })
-const attendanceOptions = [{ label: 'Present', value: 'present' }, { label: 'Absent', value: 'absent' }, { label: 'Day Off', value: 'day_off' }]
+const form = reactive({ fname: '', lname: '', email: '', role_id: null as number | null, branch_id: null as number | null, hire_date: new Date(), employment_type: 'full_time', contract_end_date: null as Date | null })
 const employmentTypes = [{ label: 'Full Time', value: 'full_time' }, { label: 'Part Time', value: 'part_time' }, { label: 'Contract', value: 'contract' }, { label: 'Intern', value: 'intern' }]
 const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const filteredEmployees = computed(() => employees.value.filter(employee => `${employee.name} ${employee.employee_number} ${employee.email}`.toLowerCase().includes(search.value.toLowerCase())))
@@ -196,35 +159,16 @@ async function loadEmployees() {
   finally { loading.value = false }
 }
 
-async function loadAttendance() {
-  loadingAttendance.value = true
-  try {
-    const rows = (await axios.get('/api/store/simple-staff/attendances', { params: { date: dateString(attendanceDate.value) } })).data.data || []
-    for (const employee of employees.value) { attendanceDraft[employee.id] = null; attendanceNotes[employee.id] = ''; clockedAttendance[employee.id] = false }
-    for (const row of rows) { attendanceDraft[row.employee_id] = row.status; attendanceNotes[row.employee_id] = row.note || ''; clockedAttendance[row.employee_id] = Boolean(row.clock_in_at) }
-  } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load attendance', detail: String(errorText(error)), life: 3500 }) }
-  finally { loadingAttendance.value = false }
-}
-
-async function saveAttendance(employeeId: number) {
-  savingAttendanceId.value = employeeId
-  try {
-    await axios.put('/api/store/simple-staff/attendances', { employee_id: employeeId, attendance_date: dateString(attendanceDate.value), status: attendanceDraft[employeeId], note: attendanceNotes[employeeId] || null })
-    await loadAttendanceRows()
-    toast.add({ severity: 'success', summary: 'Attendance saved', life: 2500 })
-  } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to save', detail: String(errorText(error)), life: 3500 }) }
-  finally { savingAttendanceId.value = null }
-}
 
 async function addEmployee() {
-  if (!form.fname.trim() || !form.lname.trim() || !form.email.trim() || !form.role_id || !form.branch_id) {
+  if (!form.fname.trim() || !form.lname.trim() || !form.email.trim() || !form.role_id || !form.branch_id || (form.employment_type === 'contract' && (!form.contract_end_date || form.contract_end_date < form.hire_date))) {
     toast.add({ severity: 'warn', summary: 'Complete required fields', life: 3000 }); return
   }
   savingEmployee.value = true
   try {
-    await axios.post('/api/employees/invite', { ...form, hire_date: dateString(form.hire_date), simple_staff: true, status: 'active' })
+    await axios.post('/api/employees/invite', { ...form, hire_date: dateString(form.hire_date), contract_end_date: form.employment_type === 'contract' && form.contract_end_date ? dateString(form.contract_end_date) : null, simple_staff: true, status: 'active' })
     showAdd.value = false
-    Object.assign(form, { fname: '', lname: '', email: '', role_id: null, hire_date: new Date() })
+    Object.assign(form, { fname: '', lname: '', email: '', role_id: null, hire_date: new Date(), contract_end_date: null, employment_type: 'full_time' })
     await loadEmployees()
     toast.add({ severity: 'success', summary: 'Employee added', life: 2500 })
   } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to add employee', detail: String(errorText(error)), life: 4000 }) }
@@ -240,7 +184,6 @@ onMounted(async () => {
   if (results[1].status === 'rejected' || results[2].status === 'rejected') {
     toast.add({ severity: 'warn', summary: 'Employee form options unavailable', detail: 'Refresh the page before adding an employee.', life: 3500 })
   }
-  await loadAttendance()
   await loadAttendanceRows()
 })
 </script>

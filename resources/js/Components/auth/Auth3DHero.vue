@@ -11,7 +11,7 @@
     <div class="relative z-10 space-y-6">
 
       <div>
-        <Link href="/" class="inline-flex text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
+        <Link href="/business" class="inline-flex text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
           FURNISYNC
         </Link>
         <p class="mt-4 max-w-md text-sm leading-relaxed opacity-90 lg:text-base">

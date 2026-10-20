@@ -121,6 +121,13 @@
 
               <div class="space-y-2"><label class="text-sm font-medium text-gray-700">Collection Name</label><InputText v-model="form.collection_name" placeholder="e.g., Living Room Collection" fluid /></div>
 
+              <div v-if="form.product_type === 'finished_good'" class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Rooms</label>
+                <MultiSelect v-model="form.room_ids" :options="availableRooms" optionLabel="name" optionValue="id"
+                  display="chip" :selectionLimit="5" placeholder="Select rooms where this product fits" class="w-full" size="small" />
+                <small class="text-xs text-gray-500">Optional. Room names and images are managed by FurniSync.</small>
+              </div>
+
               <!-- Store Tags -->
               <div v-if="showInventoryFields" class="space-y-2">
                 <div class="flex items-center justify-between">
@@ -761,6 +768,7 @@ const loadingData = ref(false)
 const loadingCategories = ref(false)
 const loadingTags = ref(false)
 const availableTags = ref<any[]>([])
+const availableRooms = ref<any[]>([])
 const categoryDialogVisible = ref(false)
 const categorySaving = ref(false)
 const categoryForm = reactive({
@@ -835,6 +843,7 @@ const form = ref({
   brand: '',
   collection_name: '',
   tag_ids: [] as number[],
+  room_ids: [] as number[],
   stock_status: 'In Stock',
   description: '',
   base_price: 0.00,
@@ -1188,13 +1197,18 @@ const loadTags = async () => {
   try {
     const response = await merchandisingService.getTags({ active_only: true, per_page: 200 })
     const data = response?.data?.data || response?.data || []
-    availableTags.value = Array.isArray(data) ? data : (data?.data || [])
+    availableTags.value = (Array.isArray(data) ? data : (data?.data || [])).filter((tag: any) => tag.tag_type !== 'Room')
   } catch (error) {
     console.error('Failed to load tags:', error)
     availableTags.value = []
   } finally {
     loadingTags.value = false
   }
+}
+
+const loadRooms = async () => {
+  try { availableRooms.value = (await axiosClient.get('/api/public/shopping-rooms')).data?.data || [] }
+  catch { availableRooms.value = [] }
 }
 
 const tagName = (tagId: number) => {
@@ -1218,7 +1232,8 @@ const loadProduct = async () => {
       product_type: product.product_type || 'finished_good',
       brand: product.brand || '',
       collection_name: product.collection_name || '',
-      tag_ids: (product.tags || []).slice(0, 3).map((tag: any) => Number(tag.id)),
+      tag_ids: (product.tags || []).filter((tag: any) => tag.tag_type !== 'Room').slice(0, 3).map((tag: any) => Number(tag.id)),
+      room_ids: (product.shopping_rooms || []).map((room: any) => Number(room.id)),
       stock_status: product.stock_status || 'In Stock',
       description: product.description || '',
       base_price: product.base_price,
@@ -1882,6 +1897,7 @@ const handleSubmit = async () => {
     // Prepare data for submission - convert Date back to ISO string
     const submitData = {
       collection_name: form.value.collection_name,
+      room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
       description: form.value.description,
       is_customizable: form.value.is_customizable,
       is_featured: form.value.is_featured,
@@ -2053,6 +2069,7 @@ onMounted(async () => {
   loadCategories()
   loadUnits()
   loadTags()
+  loadRooms()
   loadProduct()
   loadVariations()
 })

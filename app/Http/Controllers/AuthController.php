@@ -440,7 +440,11 @@ class AuthController extends Controller
                 Auth::logout();
                 return response()->json([
                     'success' => false,
-                    'message' => 'You are outside the allowed attendance radius.',
+                    'code' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'location_required' : 'outside_geofence',
+                    'message' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'Location access is required to clock in at this branch.'
+                        : 'You are outside the allowed attendance radius.',
                 ], 403);
             }
 
@@ -460,6 +464,8 @@ class AuthController extends Controller
                     'role' => strtolower((string) ($user->role?->name ?? $user->role_name ?? '')),
                 ], 403);
             }
+
+            $simpleAttendance = $this->clockInSimpleEmployee($user);
 
             // Revoke existing tokens for this device
             $user->tokens()->where('name', $deviceName)->delete();
@@ -481,6 +487,7 @@ class AuthController extends Controller
                 'user' => $user,
                 'token' => $token,
                 'abilities' => $abilities,
+                'simple_attendance' => $simpleAttendance,
                 'status_code' => 200
             ]);
         } catch (ValidationException $e) {
@@ -681,7 +688,7 @@ class AuthController extends Controller
         }
 
         if ($branch->latitude === null || $branch->longitude === null) {
-            return true;
+            return false;
         }
 
         if ($latitude === null || $longitude === null) {
@@ -692,11 +699,61 @@ class AuthController extends Controller
         return $this->isWithinRadius($latitude, $longitude, (float) $branch->latitude, (float) $branch->longitude, $radius);
     }
 
+    private function clockInSimpleEmployee(User $user): ?array
+    {
+        if (!in_array($user->store?->subscription_tier, ['free', 'simple'], true)) {
+            return null;
+        }
+
+        $employee = Employee::query()->where('store_id', $user->store_id)
+            ->where('user_id', $user->id)->where('status', 'active')->first();
+        if (!$employee) {
+            return null;
+        }
+
+        $now = now();
+        $hours = $user->store?->settings['simple_operating_hours'] ?? null;
+        $opening = is_array($hours) && !empty($hours['opens_at'])
+            ? Carbon::parse($now->toDateString() . ' ' . $hours['opens_at']) : null;
+        $closing = is_array($hours) && !empty($hours['closes_at'])
+            ? Carbon::parse($now->toDateString() . ' ' . $hours['closes_at']) : null;
+        $lateSeconds = $opening ? max(0, (int) $opening->diffInSeconds($now, false)) : 0;
+
+        return DB::transaction(function () use ($user, $employee, $now, $closing, $lateSeconds) {
+            $existing = DB::table('simple_employee_attendances')
+                ->where('employee_id', $employee->id)
+                ->whereDate('attendance_date', $now->toDateString())
+                ->lockForUpdate()->first();
+
+            if ($existing) {
+                return ['state' => $existing->clock_out_at ? 'completed' : ($existing->clock_in_at ? 'already_clocked_in' : 'already_recorded'), 'late_seconds' => 0];
+            }
+
+            DB::table('simple_employee_attendances')->insert([
+                'store_id' => $employee->store_id,
+                'employee_id' => $employee->id,
+                'attendance_date' => $now->toDateString(),
+                'status' => 'present',
+                'clock_in_at' => $now,
+                'scheduled_close_at' => $closing,
+                'late_minutes' => (int) ceil($lateSeconds / 60),
+                'recorded_by' => $user->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return ['state' => 'clocked_in', 'late_seconds' => $lateSeconds];
+        });
+    }
+
     private function resolveGeofenceBranch(User $user, Employee $employee): ?Branch
     {
         $branchId = $user->branch_id ?: $employee->branch_id;
         if ($branchId) {
-            return Branch::find($branchId);
+            $branch = Branch::query()->where('store_id', $user->store_id)->find($branchId);
+            if ($branch) {
+                return $branch;
+            }
         }
 
         if ($user->store_id) {
@@ -773,6 +830,8 @@ class AuthController extends Controller
             ], 422);
         }
 
+        abort_unless((int) $request->user_id === (int) $user->id, 403);
+
         $employee = Employee::where('user_id', $request->user_id)
             ->where('store_id', $storeId)
             ->first();
@@ -782,6 +841,33 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Employee not found'
             ], 200);
+        }
+
+        if (in_array($user->store?->subscription_tier, ['free', 'simple'], true)) {
+            $now = now();
+            $clockedOut = DB::transaction(function () use ($employee, $now) {
+                $row = DB::table('simple_employee_attendances')
+                    ->where('employee_id', $employee->id)
+                    ->whereDate('attendance_date', $now->toDateString())
+                    ->whereNotNull('clock_in_at')
+                    ->whereNull('clock_out_at')
+                    ->orderByDesc('id')
+                    ->lockForUpdate()->first();
+                if (!$row) return false;
+
+                $clockIn = Carbon::parse($row->clock_in_at);
+                DB::table('simple_employee_attendances')->where('id', $row->id)->update([
+                    'clock_out_at' => $now,
+                    'worked_minutes' => max(0, (int) $clockIn->diffInMinutes($now, false)),
+                    'overtime_minutes' => $row->scheduled_close_at
+                        ? max(0, (int) Carbon::parse($row->scheduled_close_at)->diffInMinutes($now, false)) : 0,
+                    'updated_at' => $now,
+                ]);
+                return true;
+            });
+
+            $user->currentAccessToken()?->delete();
+            return response()->json(['success' => true, 'message' => 'Logged out successfully', 'clocked_out' => $clockedOut]);
         }
 
         $today = now()->format('Y-m-d');

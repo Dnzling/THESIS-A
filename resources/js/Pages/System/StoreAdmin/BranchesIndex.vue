@@ -127,9 +127,13 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <InputSwitch v-model="form.is_main_branch" />
-          <span class="text-sm text-slate-700">Main Branch</span>
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <ToggleSwitch v-model="form.is_main_branch" :disabled="loading || !!mainBranch" />
+            <span class="text-sm text-slate-700">Main Branch</span>
+          </div>
+          <small v-if="mainBranch" class="text-xs text-amber-700">{{ mainBranch.name }} is already the main branch. Only one main branch is allowed per store.</small>
+          <small v-if="validationErrors.is_main_branch" class="block text-xs text-red-600">{{ validationErrors.is_main_branch }}</small>
         </div>
 
         <div class="flex justify-end gap-2 pt-2">
@@ -143,7 +147,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { router } from '@inertiajs/vue3'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -152,17 +156,17 @@ import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Dropdown from 'primevue/dropdown'
-import InputSwitch from 'primevue/inputswitch'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Select from 'primevue/select'
 import inventoryService from '@/services/inventory.service'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
 import { showResponseDialog } from '@/utils/responseDialogBus'
 
-const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const branches = ref<any[]>([])
+const mainBranch = computed(() => branches.value.find((branch: any) => Boolean(branch.is_main_branch)))
 const registeredStoreLocation = ref<any>(null)
 const search = ref('')
 const showCreateDialog = ref(false)
@@ -334,7 +338,7 @@ const filteredBranches = computed(() => {
 })
 
 const viewBranch = (id: number) => {
-  router.push(`/store/branches/${id}`)
+  router.visit(`/store/branches/${id}`)
 }
 
 const openCreateDialog = async () => {
@@ -386,6 +390,7 @@ const createBranch = async () => {
   if (!form.value.provinceId || !form.value.province) errors.province = 'Province is required.'
   if (!form.value.city) errors.city = 'City is required.'
   if (!form.value.barangay) errors.barangay = 'Barangay is required.'
+  if (form.value.is_main_branch && mainBranch.value) errors.is_main_branch = 'This store already has a main branch.'
 
   if (Object.keys(errors).length) {
     validationErrors.value = errors
@@ -406,10 +411,12 @@ const createBranch = async () => {
     showCreateDialog.value = false
     await loadBranches()
   } catch (error: any) {
+    const serverError = error?.response?.data?.errors?.is_main_branch?.[0]
+    if (serverError) validationErrors.value.is_main_branch = serverError
     showResponseDialog({
       severity: 'error',
       title: 'Branch Save Failed',
-      message: error?.response?.data?.message || error?.response?.data?.error || 'Failed to save branch.',
+      message: serverError || error?.response?.data?.message || error?.response?.data?.error || 'Failed to save branch.',
     })
   } finally {
     saving.value = false

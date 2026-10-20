@@ -30,9 +30,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     // Store module (the signed-in user's assigned branch)
     $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
+    $inertia('/store/team', 'System/Store/Team', 'store.team', 'Branch Team');
     $inertia('/store/branch-settings', 'System/Store/Settings', 'store.branch-settings', 'Store Settings');
     $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
-    $inertia('/staff-chats', 'System/StaffChats/Index', 'staff.chats', 'Staff Chats');
 
     // Warehouse Operations
     Route::redirect('/warehouse', '/warehouse/dashboard')->name('warehouse');
@@ -67,7 +67,8 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
         $inertia('/admin/home-content', 'System/Admin/HomeContent', 'admin.home-content', 'Home Content');
-        $inertia('/admin/ecommerce-categories', 'System/Admin/EcommerceCategories', 'admin.ecommerce-categories', 'Ecommerce Categories');
+        $inertia('/admin/ecommerce-categories', 'System/Admin/EcommerceCategories', 'admin.ecommerce-categories', 'Shopping Navigation');
+        $inertia('/admin/shopping-navigation', 'System/Admin/EcommerceCategories', 'admin.shopping-navigation', 'Shopping Navigation');
         $inertia('/admin/ecommerce-feedback', 'System/Admin/EcommerceFeedback', 'admin.ecommerce-feedback', 'Ecommerce Feedback');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
@@ -115,8 +116,11 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
             ->name('store.settings.attendance');
         Route::put('/store/settings/operating-hours', [WebStoreSettingsController::class, 'updateOperatingHours'])
             ->name('store.settings.operating-hours');
+        Route::put('/store/settings/fulfillment-windows', [WebStoreSettingsController::class, 'updateFulfillmentWindows'])
+            ->name('store.settings.fulfillment-windows');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
+        $inertia('/store/branches/{id}/employees', 'System/StoreAdmin/BranchEmployees', 'store.branches.employees', 'Branch Employees')->whereNumber('id');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
         $inertia('/store/employees', 'System/StoreAdmin/SimpleEmployees', 'store.employees', 'Employees');
         $inertia('/store/employees/payments', 'System/StoreAdmin/EmployeePayments', 'store.employees.payments', 'Payment Records');
@@ -342,7 +346,6 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
     $inertia('/logistics/delivery-fees', 'System/Logistics/Settings/DeliverySettings', 'logistics.delivery-fees', 'Delivery Settings', 'Configure store delivery pricing and limits');
-    Route::get('/logistics/zones', fn() => redirect('/logistics/delivery-fees'));
 
     // Sales
     Route::redirect('/sales', '/sales/dashboard')->name('sales');

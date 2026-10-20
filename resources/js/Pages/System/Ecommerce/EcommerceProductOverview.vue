@@ -43,7 +43,7 @@
               <Model3DPreview :model-url="selectedModel3D.url" :model-format="selectedModel3D.model_format"
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
-                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" />
+                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" allow-bottom-view />
             </div>
   
             <div v-else-if="primaryImage" class="group relative w-full aspect-square cursor-zoom-in"

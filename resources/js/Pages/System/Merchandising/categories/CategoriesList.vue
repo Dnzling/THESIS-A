@@ -49,7 +49,6 @@
                                 <div>
                                     <p class="font-semibold text-gray-900">{{ node.label }}</p>
                                     <div class="flex items-center gap-2 mt-1">
-                                        <span class="text-xs font-mono text-gray-500">{{ node.data.category_code }}</span>
                                         <Badge :value="`${node.data.products_count || 0} products`" size="small" />
                                         <Tag v-if="node.data.is_active" value="Active" severity="success" size="small" />
                                         <Tag v-else value="Inactive" severity="secondary" size="small" />
@@ -87,12 +86,6 @@
                             <p class="text-gray-600 mt-4">No categories found</p>
                         </div>
                     </template>
-    
-                    <Column field="category_code" header="Code" sortable>
-                        <template #body="{ data }">
-                            <span class="font-mono text-sm font-semibold">{{ data.category_code }}</span>
-                        </template>
-                    </Column>
     
                     <Column field="category_name" header="Category Name" sortable>
                         <template #body="{ data }">

@@ -10,7 +10,7 @@ class ForecastPlanService
     {
         return (string) (DB::table('stores as s')
             ->leftJoin('subscription_plans as p', 'p.id', '=', 's.subscription_tier')
-            ->where('s.store_id', $storeId)
+            ->where('s.id', $storeId)
             ->value('p.plan_key') ?? 'free');
     }
 

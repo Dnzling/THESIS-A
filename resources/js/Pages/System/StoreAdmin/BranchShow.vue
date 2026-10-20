@@ -26,12 +26,45 @@
     </Card>
   
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+      <template #content>
+        <div class="mb-4"><h2 class="text-sm font-semibold text-slate-900">Branch performance</h2><p class="text-xs text-slate-500">Completed sales in the last 30 days and current stock health.</p></div>
+        <div v-if="performanceLoading" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Skeleton v-for="n in 4" :key="n" height="5rem" /></div>
+        <Message v-else-if="performanceError" severity="error" :closable="false">{{ performanceError }}</Message>
+        <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div v-for="metric in metrics" :key="metric.label" class="rounded-xl border border-slate-200 bg-slate-50 p-4"><div class="text-xs text-slate-500">{{ metric.label }}</div><div class="mt-1 text-lg font-semibold text-slate-900">{{ metric.value }}</div><div class="mt-1 text-xs text-slate-500">{{ metric.note }}</div></div>
+        </div>
+      </template>
+    </Card>
+
+    <div class="grid gap-4 xl:grid-cols-2">
+      <Card class="rounded-2xl border border-slate-200 shadow-sm"><template #content>
+        <div class="mb-4 flex items-center justify-between gap-3"><div><h2 class="text-sm font-semibold text-slate-900">Branch sales</h2><p class="text-xs text-slate-500">Completed POS and online orders</p></div>
+          <Select v-model="salesPeriod" :options="salesPeriods" optionLabel="label" optionValue="value" size="small" class="w-32" @change="loadPerformance" />
+        </div>
+        <div v-if="performanceLoading" class="py-12 text-center text-xs text-slate-500">Loading sales...</div>
+        <Chart v-else type="line" :data="salesChart" :options="chartOptions" class="h-64" />
+      </template></Card>
+      <Card class="rounded-2xl border border-slate-200 shadow-sm"><template #content>
+        <h2 class="text-sm font-semibold text-slate-900">Stock alerts</h2><p class="mb-4 text-xs text-slate-500">Items needing replenishment at this branch</p>
+        <div v-if="performanceLoading" class="py-12 text-center text-xs text-slate-500">Loading alerts...</div>
+        <DataTable v-else :value="performance?.stock_alerts || []" size="small" rowHover scrollable scrollHeight="240px" class="text-xs">
+          <template #empty><div class="py-8 text-center text-slate-500">No stock alerts for this branch.</div></template>
+          <Column header="Item"><template #body="{ data }"><div class="font-medium">{{ data.product_name }}</div><div class="text-slate-500">{{ data.sku }}</div></template></Column>
+          <Column field="quantity_available" header="Available" />
+          <Column field="reorder_point" header="Reorder at" />
+          <Column header="Status"><template #body="{ data }"><Tag :value="data.stock_status === 'out_of_stock' ? 'Out of stock' : 'Low stock'" :severity="data.stock_status === 'out_of_stock' ? 'danger' : 'warn'" /></template></Column>
+        </DataTable>
+      </template></Card>
+    </div>
+
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
         <div class="px-4 py-3 flex items-center justify-between">
           <div>
             <div class="text-xs uppercase text-slate-500 font-semibold">Employees</div>
             <div class="text-sm text-slate-600">Assigned to this branch</div>
           </div>
+          <Button label="View all employees" size="small" severity="warn" outlined @click="router.visit(`/store/branches/${branchId}/employees`)" />
         </div>
       </template>
       <template #content>
@@ -42,8 +75,8 @@
               placeholder="All roles" class="w-full" size="small" @change="applyEmpFilters" />
             <Button size="small" text icon="pi pi-refresh" label="Reset" @click="resetEmpFilters" />
           </div>
-          <DataTable :value="filteredEmployees" size="small" stripedRows :paginator="true" :rows="8" dataKey="id"
-            class="p-datatable-sm">
+          <DataTable :value="filteredEmployees" size="small" rowHover :paginator="true" :rows="8" dataKey="id"
+            class="p-datatable-sm" @row-click="router.visit(`/hr/employees/view/${$event.data.id}`)">
             <Column header="Employee Number" style="width:120px">
               <template #body="{ data }">
                 <div class="font-semibold text-sm"> {{ data.employee_number }}</div>
@@ -144,7 +177,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { router } from '@inertiajs/vue3'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -153,6 +186,11 @@ import Slider from 'primevue/slider'
 import InputSwitch from 'primevue/inputswitch'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import Skeleton from 'primevue/skeleton'
+import Message from 'primevue/message'
+import Chart from 'primevue/chart'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import inventoryService from '@/services/inventory.service'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
@@ -161,8 +199,7 @@ import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 import type { GeoJSONSource, Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
-const route = useRoute()
-const branchId = Number(route.params.id)
+const branchId = Number(window.location.pathname.match(/\/store\/branches\/(\d+)/)?.[1] || 0)
 const branch = ref<any>(null)
 const showEdit = ref(false)
 const saving = ref(false)
@@ -199,6 +236,39 @@ const filteredEmployees = ref<any[]>([])
 const empSearch = ref('')
 const empRoleFilter = ref('')
 const roleOptions = ref<{ label: string; value: string }[]>([])
+const performance = ref<any>(null)
+const performanceLoading = ref(true)
+const performanceError = ref('')
+const salesPeriod = ref('month')
+const salesPeriods = [{ label: 'Week', value: 'week' }, { label: 'Month', value: 'month' }, { label: 'Year', value: 'year' }]
+const salesChart = computed(() => ({
+  labels: (performance.value?.sales_trend || []).map((row: any) => row.date),
+  datasets: [
+    { label: 'POS', data: (performance.value?.sales_trend || []).map((row: any) => row.pos), borderColor: '#f97316', backgroundColor: '#f97316', tension: 0.3 },
+    { label: 'Online', data: (performance.value?.sales_trend || []).map((row: any) => row.online), borderColor: '#0f766e', backgroundColor: '#0f766e', tension: 0.3 },
+  ],
+}))
+const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' as const } } }
+const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
+const metrics = computed(() => [
+  { label: 'POS sales', value: money(performance.value?.pos_revenue), note: `${performance.value?.pos_orders || 0} completed orders` },
+  { label: 'Online sales', value: money(performance.value?.online_revenue), note: `${performance.value?.online_orders || 0} delivered orders` },
+  { label: 'Available stock', value: Number(performance.value?.available_units || 0).toLocaleString(), note: `${performance.value?.stock_items || 0} stocked items` },
+  { label: 'Stock needing attention', value: Number(performance.value?.low_stock || 0) + Number(performance.value?.out_of_stock || 0), note: `${performance.value?.low_stock || 0} low, ${performance.value?.out_of_stock || 0} out` },
+  { label: 'Employees', value: performance.value?.employees || 0, note: 'Assigned to this branch' },
+])
+const loadPerformance = async () => {
+  performanceLoading.value = true
+  try {
+    const response = await axiosClient.get(`/api/branches/${branchId}/performance`, { params: { period: salesPeriod.value } })
+    performance.value = response.data?.data || null
+    performanceError.value = ''
+  } catch (error: any) {
+    performanceError.value = error.response?.data?.message || 'Unable to load branch performance.'
+  } finally {
+    performanceLoading.value = false
+  }
+}
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase()
 const provinceOptions = computed(() => provinces.value.map((item: any) => ({
@@ -588,6 +658,7 @@ async function searchLocation() {
 
 onMounted(loadBranch)
 onMounted(loadEmployees)
+onMounted(loadPerformance)
 </script>
 
 <style scoped>

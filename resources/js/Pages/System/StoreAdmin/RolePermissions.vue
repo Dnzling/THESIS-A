@@ -49,13 +49,14 @@
               <template #body="{ data }">
                 <div class="text-sm ">
                   <div class="font-semibold text-gray-900">{{ data.display_name || data.name }}</div>
+                  <div v-if="data.store_id == null" class="text-xs text-slate-500">Shared system role</div>
                 </div>
               </template>
             </Column>
             <Column field="users_count" header="Users" style="width: 90px" />
             <Column header="Actions" style="width: 70px">
               <template #body="{ data }">
-                <Button
+                <Button v-if="data.store_id != null"
                   icon="pi pi-ellipsis-v"
                   text
                   rounded
@@ -80,7 +81,7 @@
               icon="pi pi-check"
               size="small"
               severity="warn"
-              :disabled="!selectedRole"
+              :disabled="!selectedRole || isSharedRole"
               :loading="savingPermissions"
               @click="savePermissions"
             />
@@ -92,6 +93,10 @@
             Assign a store first to manage permissions.
           </div>
           <div v-else>
+          <p v-if="isSharedRole" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {{ selectedRole?.display_name || selectedRole?.name }} is a shared system role. Its permissions cannot be changed for one store. Create a store-specific role to customize access.
+          </p>
+          <p class="mb-4 text-xs text-slate-500">Only permissions granted to the platform Owner role and included in this store's subscription plan can be assigned here.</p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             <InputText v-model="permissionSearch" placeholder="Search permissions..." />
             <Select
@@ -126,6 +131,7 @@
                   <span class="text-xs text-gray-500">{{ module.selected }}/{{ module.total }}</span>
                 </div>
                 <Checkbox
+                  :disabled="isSharedRole"
                   :modelValue="isModuleChecked(module)"
                   :indeterminate="isModuleIndeterminate(module)"
                   :binary="true"
@@ -144,6 +150,7 @@
                       {{ formatLabel(submodule.name) }}
                     </div>
                     <Checkbox
+                      :disabled="isSharedRole"
                       :modelValue="isSubmoduleChecked(submodule)"
                       :indeterminate="isSubmoduleIndeterminate(submodule)"
                       :binary="true"
@@ -160,6 +167,7 @@
                         <div class="font-medium text-gray-900">{{ permission.display_name }}</div>
                       </div>
                       <Checkbox
+                        :disabled="isSharedRole"
                         :modelValue="selectedRolePermissions.includes(permission.id)"
                         :binary="true"
                         @update:modelValue="(checked) => togglePermission(permission.id, checked)"
@@ -222,6 +230,7 @@ import { showResponseDialog } from '@/utils/responseDialogBus'
 const roles = ref<any[]>([])
 const permissions = ref<any[]>([])
 const selectedRole = ref<any | null>(null)
+const isSharedRole = computed(() => selectedRole.value?.store_id == null)
 const selectedRolePermissions = ref<number[]>([])
 const toast = useToast()
 const authStore = useAuthStore()
@@ -354,7 +363,7 @@ const loadRoles = async () => {
     storeScopeLoaded.value = true
     roles.value = response.data?.data || []
     if (!selectedRole.value && roles.value.length > 0) {
-      selectedRole.value = roles.value[0]
+      selectedRole.value = roles.value.find((role: any) => role.store_id != null) || roles.value[0]
     }
   } catch (error: any) {
     loadError.value = error?.response?.data?.message || 'Unable to load roles.'
@@ -450,7 +459,7 @@ const toggleModuleCollapse = (moduleName: string) => {
 }
 
 const savePermissions = async () => {
-  if (!selectedRole.value) return
+  if (!selectedRole.value || isSharedRole.value) return
   savingPermissions.value = true
   try {
     const allowedIds = allowedPermissionIds.value
@@ -461,7 +470,7 @@ const savePermissions = async () => {
       toast.add({
         severity: 'warn',
         summary: 'Permissions Trimmed',
-        detail: 'Some permissions were removed because their modules are not enabled.',
+        detail: 'Some permissions are no longer allowed by the platform Owner role or this subscription plan.',
         life: 3500
       })
     }

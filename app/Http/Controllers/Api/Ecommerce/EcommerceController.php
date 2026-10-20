@@ -1483,6 +1483,46 @@ class EcommerceController extends Controller
         ]);
     }
 
+    public function checkoutAvailability(Request $request)
+    {
+        $validated = $request->validate([
+            'store_id' => ['required', 'integer', 'exists:stores,id'],
+            'method' => ['required', Rule::in(['pickup', 'delivery'])],
+            'item_ids' => ['nullable', 'array'],
+            'item_ids.*' => ['integer'],
+        ]);
+        $store = Store::query()->findOrFail($validated['store_id']);
+        if (!app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store)) {
+            return response()->json(['success' => false, 'message' => 'This store is not accepting new orders right now.'], 403);
+        }
+        $data = app(\App\Services\Ecommerce\FulfillmentWindowService::class)->availability($store, $validated['method']);
+        if ($validated['method'] === 'pickup' && !empty($validated['item_ids'])) {
+            $items = EcommerceCartItem::query()
+                ->whereIn('id', $validated['item_ids'])
+                ->whereHas('cart', fn ($query) => $query->where('user_id', $request->user()->id)->where('store_id', $store->id))
+                ->get();
+            if ($items->count() !== count(array_unique($validated['item_ids']))) {
+                return response()->json(['success' => false, 'message' => 'Selected cart items are not available for this store.'], 422);
+            }
+            $branch = $this->resolveFulfillmentBranch((int) $store->id, $items);
+            if (!$branch) {
+                return response()->json(['success' => false, 'message' => 'No storefront branch can fulfill pickup for these items.'], 422);
+            }
+            $branch = Branch::query()->with('store')->findOrFail($branch->id);
+            $data['pickup_branch'] = [
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'address' => $branch->address ?: $store->address,
+                'barangay' => $branch->barangay ?: $store->barangay,
+                'city' => $branch->city ?: $store->city,
+                'province' => $branch->province ?: $store->province,
+                'contact_number' => $branch->contact_number ?: $store->phone,
+            ];
+        }
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
     public function checkout(Request $request)
     {
         $validated = $request->validate([
@@ -1495,6 +1535,7 @@ class EcommerceController extends Controller
             'payment_method' => ['required', Rule::in(['cod', 'bank_transfer', 'card', 'e_wallet'])],
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'fulfillment_method' => ['nullable', Rule::in(['delivery', 'pickup'])],
+            'requested_fulfillment_date' => ['required', 'date_format:Y-m-d'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
             'item_ids' => ['nullable', 'array'],
@@ -1568,10 +1609,14 @@ class EcommerceController extends Controller
         $fulfillmentMethod = $hasDeliveryVehicle
             ? (string) ($validated['fulfillment_method'] ?? 'delivery')
             : 'pickup';
-        if ($fulfillmentMethod === 'delivery' && !$hasDeliveryVehicle) {
+        if ($fulfillmentMethod !== ($validated['fulfillment_method'] ?? 'delivery')) {
             return response()->json(['success' => false, 'message' => 'Delivery is unavailable for this store. Please select pickup.'], 422);
         }
-
+        $windowService = app(\App\Services\Ecommerce\FulfillmentWindowService::class);
+        if (!$windowService->isAvailable($store, $fulfillmentMethod, $validated['requested_fulfillment_date'])) {
+            return response()->json(['success' => false, 'message' => 'The selected pickup or delivery date is no longer available. Please choose another date.'], 422);
+        }
+        $validated['requested_fulfillment_window'] = $windowService->settings($store)[$fulfillmentMethod]['start'] . '-' . $windowService->settings($store)[$fulfillmentMethod]['end'];
         $invalidVariationItem = $itemsForCheckout->first(function ($item) {
             if (!is_null($item->variation_id)) {
                 return false;
@@ -1726,6 +1771,8 @@ class EcommerceController extends Controller
                 'billing_name' => $validated['billing_name'] ?? null,
                 'billing_address' => $validated['billing_address'] ?? null,
                 'fulfillment_method' => $fulfillmentMethod,
+                'requested_fulfillment_date' => $validated['requested_fulfillment_date'],
+                'requested_fulfillment_window' => $validated['requested_fulfillment_window'],
                 'customer_latitude' => $customerLatitude,
                 'customer_longitude' => $customerLongitude,
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
@@ -1769,6 +1816,8 @@ class EcommerceController extends Controller
                         'variation_name' => $item->variation_name ? (string) $item->variation_name : null,
                         'quantity' => (int) $item->quantity,
                         'unit_price' => (float) $item->unit_price,
+                        'original_unit_price' => (float) $this->promotionPricing
+                            ->price($item->product, $item->variation)['regular_price'],
                         'tax_rate' => self::VAT_RATE,
                         'customization_request' => $item->product?->is_customizable
                             ? ($customizationRequests->get((int) $item->id) ?: null)
@@ -1842,6 +1891,8 @@ class EcommerceController extends Controller
                     'customization_status' => $item->product?->is_customizable && $customizationRequests->get((int) $item->id) ? 'pending' : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
+                    'original_unit_price' => (float) $this->promotionPricing
+                        ->price($item->product, $item->variation)['regular_price'],
                     'tax_rate' => self::VAT_RATE,
                     'line_subtotal' => round($lineSubtotal, 2),
                     'line_tax' => $lineTax,
@@ -3020,7 +3071,7 @@ class EcommerceController extends Controller
     private function formatCart(EcommerceCart $cart, array $favoriteMap = []): array
     {
         $this->applyCurrentCartPrices($cart->items);
-        $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap) {
+        $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap, $cart) {
             $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
             // Unit price is VAT-inclusive, so expose the included VAT without
             // increasing the amount payable by the customer.
@@ -3031,6 +3082,7 @@ class EcommerceController extends Controller
 
             return [
                 'id' => $item->id,
+                'store_id' => (int) $cart->store_id,
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->product_name,
                 'sku' => $item->product?->sku,
@@ -3265,6 +3317,8 @@ class EcommerceController extends Controller
             'billing_address' => $order->billing_address,
             'fulfillment_method' => $order->fulfillment_method ?: 'delivery',
             'pickup_date' => $order->pickup_date?->toDateString(),
+            'requested_fulfillment_date' => $order->requested_fulfillment_date?->toDateString(),
+            'requested_fulfillment_window' => $order->requested_fulfillment_window,
             'customer_latitude' => $order->customer_latitude,
             'customer_longitude' => $order->customer_longitude,
             'assigned_branch' => $order->assignedBranch ? [
@@ -3280,6 +3334,12 @@ class EcommerceController extends Controller
                 'longitude' => $order->assignedBranch->longitude,
             ] : null,
             'subtotal' => (float) $order->subtotal,
+            'original_subtotal' => round($order->items->sum(fn ($item) =>
+                max((float) ($item->original_unit_price ?? 0), (float) $item->unit_price)
+                    * (int) $item->quantity), 2),
+            'product_discount_amount' => round($order->items->sum(fn ($item) =>
+                max(0, (float) ($item->original_unit_price ?? 0) - (float) $item->unit_price)
+                    * (int) $item->quantity), 2),
             'tax_amount' => (float) $order->tax_amount,
             'shipping_fee' => (float) $order->shipping_fee,
             'discount_amount' => (float) $order->discount_amount,
@@ -3331,6 +3391,8 @@ class EcommerceController extends Controller
                     ] : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
+                    'original_unit_price' => $item->original_unit_price !== null
+                        ? (float) $item->original_unit_price : null,
                     'line_subtotal' => (float) $item->line_subtotal,
                     'line_tax' => (float) $item->line_tax,
                     'line_total' => (float) $item->line_total,

@@ -21,7 +21,7 @@
       <Card>
         <template #content>
           <!-- Filters -->
-          <div class="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-4">
+          <div class="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-3">
               <IconField>
                 <InputIcon class="pi pi-search" />
                 <InputText
@@ -37,16 +37,6 @@
                   optionLabel="label"
                   optionValue="value"
                   placeholder="Status"
-                  class="w-full text-sm"
-                  size="small"
-                  showClear
-                />
-                <Select
-                  v-model="filters.movement_type"
-                  :options="movementOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Movement"
                   class="w-full text-sm"
                   size="small"
                   showClear
@@ -93,22 +83,14 @@
             @row-click="onRowClick"
           >
             <Column field="issue_number" header="Issue Number" style="width: 140px" sortable />
-            <Column field="movement_type" header="Movement" style="width: 130px">
-              <template #body="slotProps">
-                <Badge
-                  :value="slotProps.data.movement_type === 'add' ? 'Add Stock' : 'Deduct Stock'"
-                  :severity="slotProps.data.movement_type === 'add' ? 'success' : 'danger'"
-                  class="capitalize"
-                />
-              </template>
-            </Column>
             <Column field="issue_type" header="Reason" style="width: 130px">
               <template #body="slotProps">
-                {{ formatIssueType(slotProps.data.issue_type) }}
+                {{ slotProps.data.issue_type === 'other' && slotProps.data.description
+                  ? slotProps.data.description : formatIssueType(slotProps.data.issue_type) }}
               </template>
             </Column>
            
-            <Column field="branch" header="Branch" style="min-width: 150px">
+            <Column v-if="showBranchColumn" field="branch" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
                 {{ slotProps.data.branch?.name || 'N/A' }}
               </template>
@@ -210,13 +192,14 @@ const cancelDialog = ref(false)
 const selectedStockIssue = ref<any>(null)
 const stockIssues = ref<any[]>([])
 const totalRecords = ref(0)
+const branchCount = ref(0)
+const showBranchColumn = computed(() => branchCount.value >= 2)
 const toast = useToast()
 const router = useRouter()
 
 const filters = reactive({
   search: '',
   status: null as string | null,
-  movement_type: null as string | null,
   issue_type: null as string | null,
   page: 1,
   per_page: 15,
@@ -248,13 +231,8 @@ const typeOptions = [
   { label: 'Other', value: 'other' }
 ]
 
-const movementOptions = [
-  { label: 'Add Stock', value: 'add' },
-  { label: 'Deduct Stock', value: 'deduct' },
-]
-
 const hasActiveFilters = computed(() => Boolean(
-  filters.search.trim() || filters.status || filters.movement_type || filters.issue_type
+  filters.search.trim() || filters.status || filters.issue_type
 ))
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -273,7 +251,6 @@ const loadStockIssues = async () => {
     
     if (filters.search) params.search = filters.search
     if (filters.status) params.status = filters.status
-    if (filters.movement_type) params.movement_type = filters.movement_type
     if (filters.issue_type) params.issue_type = filters.issue_type
 
     const response = await inventoryService.getStockIssues(params)
@@ -334,7 +311,6 @@ const onSort = (event: any) => {
 const clearFilters = () => {
   filters.search = ''
   filters.status = null
-  filters.movement_type = null
   filters.issue_type = null
   filters.page = 1
   filters.per_page = 15
@@ -447,11 +423,17 @@ const formatNumber = (value: string | number | null | undefined) => {
   return parseFloat(value.toString()).toFixed(2)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const response = await inventoryService.getBranches()
+    branchCount.value = Array.isArray(response?.data) ? response.data.length : 0
+  } catch {
+    branchCount.value = 0
+  }
   loadStockIssues()
 })
 
-watch([() => filters.status, () => filters.movement_type, () => filters.issue_type, () => filters.per_page], () => {
+watch([() => filters.status, () => filters.issue_type, () => filters.per_page], () => {
   filters.page = 1
   loadStockIssues()
 })

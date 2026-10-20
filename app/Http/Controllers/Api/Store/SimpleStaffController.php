@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Hr\Employee;
+use App\Models\Store\Branch;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -70,6 +71,7 @@ class SimpleStaffController extends Controller
     public function myClockStatus(Request $request): JsonResponse
     {
         $employee = $this->simpleEmployeeForUser($request);
+        $geofenceRequired = (bool) $this->attendanceBranch($employee, $request)?->geofence_enabled;
         $row = DB::table('simple_employee_attendances')
             ->where('employee_id', $employee->id)
             ->whereNotNull('clock_in_at')
@@ -84,12 +86,31 @@ class SimpleStaffController extends Controller
         $overtimeNow = $row && $row->clock_in_at && !$row->clock_out_at && $row->scheduled_close_at
             ? max(0, (int) Carbon::parse($row->scheduled_close_at)->diffInMinutes(now(), false)) : 0;
 
-        return response()->json(['data' => ['attendance' => $row, 'overtime_minutes_now' => $overtimeNow]]);
+        return response()->json(['data' => ['attendance' => $row, 'overtime_minutes_now' => $overtimeNow, 'geofence_required' => $geofenceRequired]]);
     }
 
     public function stageClock(Request $request): JsonResponse
     {
         $employee = $this->simpleEmployeeForUser($request);
+        $coordinates = $request->validate([
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+        $branch = $this->attendanceBranch($employee, $request);
+        if ($branch?->geofence_enabled) {
+            abort_unless($branch->latitude !== null && $branch->longitude !== null, 422, 'Branch geofence location is not configured.');
+            abort_unless(isset($coordinates['latitude'], $coordinates['longitude']), 422, 'Allow location access to clock in or out.');
+            $earthRadius = 6371000;
+            $latitude = (float) $coordinates['latitude'];
+            $longitude = (float) $coordinates['longitude'];
+            $targetLat = (float) $branch->latitude;
+            $targetLng = (float) $branch->longitude;
+            $latDistance = deg2rad($targetLat - $latitude);
+            $lngDistance = deg2rad($targetLng - $longitude);
+            $a = sin($latDistance / 2) ** 2 + cos(deg2rad($latitude)) * cos(deg2rad($targetLat)) * sin($lngDistance / 2) ** 2;
+            $distance = $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
+            abort_unless($distance <= (int) ($branch->geofence_radius_m ?? 5), 403, 'You are outside the allowed attendance radius.');
+        }
         $store = $request->user()->store;
         $hours = is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null;
         $now = now();
@@ -160,6 +181,17 @@ class SimpleStaffController extends Controller
             ->firstOrFail();
     }
 
+    private function attendanceBranch(Employee $employee, Request $request): ?Branch
+    {
+        $branches = Branch::query()->where('store_id', $employee->store_id);
+        $branchId = $request->user()->branch_id ?: $employee->branch_id;
+        if ($branchId && ($branch = (clone $branches)->find($branchId))) {
+            return $branch;
+        }
+
+        return $branches->orderByDesc('is_main_branch')->orderBy('id')->first();
+    }
+
     public function showEmployee(Request $request, string $employeeId): JsonResponse
     {
         abort_unless(ctype_digit($employeeId), 404);
@@ -188,6 +220,7 @@ class SimpleStaffController extends Controller
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
             'hire_date' => ['required', 'date'],
             'employment_type' => ['required', Rule::in(['full_time', 'part_time', 'contract', 'intern'])],
+            'contract_end_date' => ['nullable', 'required_if:employment_type,contract', 'date', 'after_or_equal:hire_date'],
             'status' => ['required', Rule::in(['active', 'on_leave', 'suspended'])],
         ]);
 
@@ -205,6 +238,7 @@ class SimpleStaffController extends Controller
                 'branch_id' => $validated['branch_id'],
                 'hire_date' => $validated['hire_date'],
                 'employment_type' => $validated['employment_type'],
+                'contract_end_date' => $validated['employment_type'] === 'contract' ? $validated['contract_end_date'] : null,
                 'status' => $validated['status'],
             ])->save();
         });
@@ -232,39 +266,11 @@ class SimpleStaffController extends Controller
             'branch' => $employee->branch?->name,
             'hire_date' => $employee->hire_date,
             'employment_type' => $employee->employment_type,
+            'contract_end_date' => $employee->contract_end_date?->toDateString(),
+            'resignation_date' => $employee->resignation_date?->toDateString(),
+            'last_working_day' => $employee->last_working_day?->toDateString(),
             'status' => $employee->status,
         ];
-    }
-
-    public function saveAttendance(Request $request): JsonResponse
-    {
-        $storeId = (int) $request->user()->store_id;
-        $validated = $request->validate([
-            'employee_id' => ['required', 'integer', Rule::exists('employees', 'id')->where('store_id', $storeId)],
-            'attendance_date' => ['required', 'date'],
-            'status' => ['required', Rule::in(['present', 'absent', 'day_off'])],
-            'note' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        $clocked = DB::table('simple_employee_attendances')
-            ->where('employee_id', $validated['employee_id'])
-            ->whereDate('attendance_date', $validated['attendance_date'])
-            ->whereNotNull('clock_in_at')
-            ->exists();
-        abort_unless(!$clocked, 422, 'This day has a clock-in record. Use a correction workflow rather than overwriting it.');
-
-        DB::table('simple_employee_attendances')->updateOrInsert(
-            ['employee_id' => $validated['employee_id'], 'attendance_date' => $validated['attendance_date']],
-            [
-                'store_id' => $storeId,
-                'status' => $validated['status'],
-                'note' => $validated['note'] ?? null,
-                'recorded_by' => $request->user()->id,
-                'updated_at' => now(),
-            ]
-        );
-
-        return response()->json(['message' => 'Attendance saved.']);
     }
 
     public function payments(Request $request): JsonResponse

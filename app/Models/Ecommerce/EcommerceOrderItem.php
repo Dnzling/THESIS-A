@@ -29,6 +29,7 @@ class EcommerceOrderItem extends Model
         'customization_reviewed_at',
         'quantity',
         'unit_price',
+        'original_unit_price',
         'tax_rate',
         'line_subtotal',
         'line_tax',
@@ -38,6 +39,7 @@ class EcommerceOrderItem extends Model
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
+        'original_unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'line_subtotal' => 'decimal:2',
         'line_tax' => 'decimal:2',

@@ -247,6 +247,16 @@ class SubscriptionPlanController extends Controller
             'success' => true,
             'message' => 'Plan updated successfully.',
             'data' => $subscriptionPlan->fresh(),
+            'saved_modules' => DB::table('plan_modules')
+                ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
+                ->where('plan_modules.plan_id', $subscriptionPlan->id)
+                ->where('plan_modules.included', true)
+                ->pluck('modules.key'),
+            'saved_permissions' => DB::table('plan_permissions')
+                ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+                ->where('plan_permissions.plan_id', $subscriptionPlan->id)
+                ->where('plan_permissions.included', true)
+                ->pluck('permissions.name'),
         ]);
     }
 

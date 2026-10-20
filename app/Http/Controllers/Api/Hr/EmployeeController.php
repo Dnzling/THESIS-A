@@ -304,7 +304,7 @@ class EmployeeController extends Controller
                 'date_of_birth' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
                 'hire_date' => 'required|date',
-                'contract_end_date' => 'nullable|date|after_or_equal:hire_date',
+                'contract_end_date' => 'nullable|required_if:employment_type,contract|date|after_or_equal:hire_date',
                 'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
                 'pay_type' => 'nullable|in:monthly,hourly,hybrid',

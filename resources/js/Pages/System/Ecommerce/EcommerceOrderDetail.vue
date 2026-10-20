@@ -35,7 +35,7 @@
             </div>
             <div class="overflow-hidden rounded-2xl border border-slate-200">
               <div ref="trackingMapElement" class="h-[340px] w-full sm:h-[440px]"></div>
-              <p v-if="!hasTrackingCoordinates" class="px-4 py-3 text-sm text-amber-700">Waiting for the driverâ€™s live GPS location.</p>
+              <p v-if="!hasTrackingCoordinates" class="px-4 py-3 text-sm text-amber-700">Waiting for the driver's live GPS location.</p>
             </div>
 
             <div v-if="deliveryTimeline.length" class="space-y-3 border-t border-slate-100 pt-4">
@@ -74,6 +74,7 @@
                 }}</span></div>
             <div v-if="isPickupOrder"><span class="text-slate-500">Pickup Date:</span> <span class="font-semibold">{{ order.pickup_date ? formatPickupDate(order.pickup_date) : 'To be scheduled' }}</span></div>
             <div v-else><span class="text-slate-500">Estimated Delivery:</span> <span class="font-semibold">{{ formatEstimatedDelivery(order.delivery?.estimated_delivery_at) }}</span></div>
+            <div v-if="order.requested_fulfillment_date"><span class="text-slate-500">Preferred {{ isPickupOrder ? 'pickup' : 'delivery' }}:</span> <span class="font-semibold">{{ formatPickupDate(order.requested_fulfillment_date) }} <span v-if="order.requested_fulfillment_window">({{ order.requested_fulfillment_window }})</span></span></div>
             <div><span class="text-slate-500">Status:</span>
               <Badge :value="statusLabel(order.primary_status || order.status)" />
             </div>
@@ -113,7 +114,7 @@
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
                   <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>Unit: {{ item.unit_of_measurement || 'â€”' }}</span>
+                    <span>Unit: {{ item.unit_of_measurement || '-' }}</span>
                     <span v-if="item.category_name">Category: {{ item.category_name }}</span>
                     <span v-if="item.brand">Brand: {{ item.brand }}</span>
                     <span v-if="item.weight_kg !== null && item.weight_kg !== undefined">Weight: {{ item.weight_kg }} kg</span>
@@ -237,11 +238,20 @@
           </div>
   
           <div class="mt-4 ml-auto max-w-sm space-y-2 text-sm">
-            <div class="flex justify-between"><span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span></div>
+            <div v-if="hasOrderDiscount" class="flex justify-between"><span>Original item price</span><span>{{ formatMoney(order.original_subtotal ?? order.subtotal) }}</span></div>
+            <div v-else class="flex justify-between"><span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span></div>
+            <div v-if="Number(order.product_discount_amount || 0) > 0" class="flex justify-between text-rose-600">
+              <span>Product discount</span><span>- {{ formatMoney(order.product_discount_amount) }}</span>
+            </div>
+            <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between text-rose-600">
+              <span>Order discount</span><span>- {{ formatMoney(order.discount_amount) }}</span>
+            </div>
+            <div v-if="hasOrderDiscount" class="flex justify-between font-semibold text-slate-900">
+              <span>Discounted item price</span><span>{{ formatMoney(discountedItemSubtotal) }}</span>
+            </div>
             <div class="flex justify-between"><span>VATable Sales</span><span>{{ formatMoney(vatableSales) }}</span></div>
             <div class="flex justify-between"><span> (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
             <div class="flex justify-between"><span>{{ isPickupOrder ? 'Pickup fee' : 'Shipping' }}</span><span>{{ Number(order.shipping_fee || 0) <= 0 ? 'Free' : formatMoney(order.shipping_fee) }}</span></div>
-            <div class="flex justify-between"><span>Discount</span><span>- {{ formatMoney(order.discount_amount) }}</span></div>
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>{{ formatMoney(order.total_amount) }}</span></div>
           </div>
@@ -261,7 +271,7 @@
                 <p class="text-sm font-semibold text-slate-900">{{ item.title }}</p>
                 <p class="mt-1 text-sm text-slate-600">{{ formatTimelineDescription(item.description) }}</p>
                 <p class="mt-1 text-xs text-slate-400">
-                  {{ formatDateTime(item.created_at) }} â€¢ {{ item.actor || 'System' }}
+                  {{ formatDateTime(item.created_at) }}<template v-if="item.actor && String(item.actor).toLowerCase() !== 'customer'"> &middot; {{ item.actor }}</template>
                 </p>
                 <div v-if="proofUrls(item).length" class="mt-3 flex flex-wrap gap-3">
                   <button v-for="proof in proofUrls(item)" :key="proof.url" type="button"
@@ -364,6 +374,11 @@ const vatableSales = computed(() => Math.max(
   Number(order.value?.subtotal || 0)
     - Number(order.value?.discount_amount || 0)
     - Number(order.value?.tax_amount || 0),
+))
+const hasOrderDiscount = computed(() => Number(order.value?.product_discount_amount || 0) > 0
+  || Number(order.value?.discount_amount || 0) > 0)
+const discountedItemSubtotal = computed(() => Math.max(0,
+  Number(order.value?.subtotal || 0) - Number(order.value?.discount_amount || 0),
 ))
 const mediaPreview = reactive({
   visible: false,

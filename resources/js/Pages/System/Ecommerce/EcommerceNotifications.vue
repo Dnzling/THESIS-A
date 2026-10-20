@@ -33,8 +33,12 @@
       </header>
 
       <div class="p-4 sm:p-6">
-        <div v-if="loading" class="space-y-3">
-          <Skeleton v-for="item in 5" :key="item" height="6rem" border-radius="1rem" />
+        <div v-if="loading" class="py-12 text-center text-sm text-slate-500">
+          Loading notifications...
+        </div>
+        <div v-else-if="loadError" class="py-12 text-center text-sm text-slate-600">
+          <p>{{ loadError }}</p>
+          <Button label="Try again" size="small" severity="warn" class="mt-3" @click="refresh" />
         </div>
 
         <div v-else-if="notifications.length === 0" class="flex min-h-64 flex-col items-center justify-center text-center">
@@ -127,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/axios'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
@@ -143,8 +147,10 @@ const filter = ref<'all' | 'unread'>('all')
 const unreadCount = ref(0)
 const currentPage = ref(1)
 const lastPage = ref(1)
+const loadError = ref('')
+let requestVersion = 0
 
-async function loadNotifications(page = 1, append = false) {
+async function loadNotifications(page = 1, append = false, version = requestVersion) {
   const response = await axiosClient.get('/api/notifications', {
     params: {
       module: 'ecommerce',
@@ -154,6 +160,7 @@ async function loadNotifications(page = 1, append = false) {
     },
     headers: { 'X-Suppress-Dialog': '1' },
   })
+  if (version !== requestVersion) return
   const items = response.data?.data || []
   notifications.value = append ? [...notifications.value, ...items] : items
   currentPage.value = Number(response.data?.meta?.current_page || page)
@@ -169,11 +176,15 @@ async function loadUnreadCount() {
 }
 
 async function refresh() {
+  const version = ++requestVersion
   loading.value = true
+  loadError.value = ''
   try {
-    await Promise.all([loadNotifications(), loadUnreadCount()])
+    await Promise.all([loadNotifications(1, false, version), loadUnreadCount()])
+  } catch {
+    if (version === requestVersion) loadError.value = 'Notifications could not be loaded.'
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 
@@ -187,6 +198,8 @@ async function loadMore() {
   loadingMore.value = true
   try {
     await loadNotifications(currentPage.value + 1, true)
+  } catch {
+    loadError.value = 'More notifications could not be loaded. Please try again.'
   } finally {
     loadingMore.value = false
   }
@@ -257,4 +270,5 @@ function formatStatus(value?: string | null) {
 }
 
 onMounted(refresh)
+onUnmounted(() => { requestVersion++ })
 </script>

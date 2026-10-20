@@ -32,9 +32,9 @@
         <!-- Module Accordions -->
         <template v-else>
           <div v-if="groupedNavigation.length > 0" class="px-1">
-            <Accordion multiple :value="expandedModuleValues" class="system-navigation-accordion">
+            <Accordion multiple v-model:value="expandedModuleValues" class="system-navigation-accordion">
               <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
-                :value="moduleGroup.module" @mouseenter="expandModule(moduleGroup.module)">
+                :value="moduleGroup.module">
                 <AccordionHeader size="small">
                   <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
                     {{ formatModuleName(moduleGroup.module) }}
@@ -171,10 +171,8 @@
             </div>
   
             <div class="max-h-[420px] overflow-y-auto">
-              <div v-if="notificationsLoading" class="p-4 space-y-3">
-                <Skeleton height="56px" class="rounded-xl" />
-                <Skeleton height="56px" class="rounded-xl" />
-                <Skeleton height="56px" class="rounded-xl" />
+              <div v-if="notificationsLoading" class="p-4 text-center text-sm text-gray-500">
+                Loading notifications...
               </div>
   
               <div v-else-if="filteredNotifications.length === 0" class="p-6 text-center text-sm text-gray-500">
@@ -207,8 +205,9 @@
           <!-- User Profile -->
           <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
             <div class="flex items-center space-x-3 hover:bg-gray-50 px-2 py-1 rounded-lg transition">
-              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                <span class="text-sm font-semibold text-orange-600">{{ userInitials }}</span>
+              <div class="w-8 h-8 overflow-hidden rounded-full bg-orange-100 flex items-center justify-center">
+                <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" :alt="`${fullName} profile photo`" class="h-full w-full object-cover" />
+                <span v-else class="text-sm font-semibold text-orange-600">{{ userInitials }}</span>
               </div>
               <div>
                 <h2 class="font-semibold text-gray-800 text-sm">{{ fullName }}</h2>
@@ -294,9 +293,6 @@ const currentPath = computed(() => String(page.url || '').split('?')[0] || '/')
 const pageTitle = computed(() => page.props?.title || '')
 const isMerchandising = computed(() => currentPath.value.startsWith('/merchandising'))
 const authStore = useAuthStore()
-watch(() => page.url, () => {
-  if (authStore.isAuthenticated) void authStore.fetchCurrentUser().catch(() => {})
-})
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isBooting = ref(true)
 const userDialogRef = ref(null)
@@ -441,16 +437,6 @@ const refreshNavigationWhenVisible = () => {
   if (document.visibilityState === 'visible' && authStore.isAuthenticated && authStore.permissionsLoaded) {
     void authStore.fetchNavigation()
   }
-}
-
-// Toggle module accordion
-const toggleModule = (module: string) => {
-  expandedModules.value[module] = !expandedModules.value[module]
-}
-
-const expandModule = (module: string) => {
-  if (!sidebarOpen.value || expandedModules.value[module]) return
-  expandedModules.value = { ...expandedModules.value, [module]: true }
 }
 
 const toggleSidebar = () => {
@@ -693,19 +679,20 @@ const routeMatches = (routePath: string): boolean => {
   return currentPath.value === target || (target !== '/' && currentPath.value.startsWith(`${target}/`))
 }
 
-// Preserve the user's open modules and always reveal the module for the active page.
+// Initialize new modules from the current route without overriding a user's collapsed state.
 watch(
-  [() => groupedNavigation.value, currentPath, sidebarOpen],
-  ([groups]) => {
-    const navigationGroups = groups as Array<{ module: string; items: any[] }>
+  () => groupedNavigation.value,
+  (navigationGroups) => {
     const nextState: Record<string, boolean> = {}
+    const hasActivePage = navigationGroups.some(group => group.items.some(item => routeMatches(item.route_path)))
     navigationGroups.forEach((group, index) => {
-      const containsActivePage = group.items.some((item) => routeMatches(item.route_path))
-      nextState[group.module] = containsActivePage || expandedModules.value[group.module] || (index === 0 && !navigationGroups.some(candidate => candidate.items.some((item) => routeMatches(item.route_path))))
+      nextState[group.module] = Object.prototype.hasOwnProperty.call(expandedModules.value, group.module)
+        ? expandedModules.value[group.module]
+        : group.items.some(item => routeMatches(item.route_path)) || (index === 0 && !hasActivePage)
     })
     expandedModules.value = nextState
   },
-  { immediate: true, deep: false }
+  { immediate: true }
 )
 
 

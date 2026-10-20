@@ -228,6 +228,11 @@ class StockAdjustmentController extends Controller
 
                 $difference = $item['actual_quantity'] - $item['system_quantity'];
 
+                if (($difference >= 0 && in_array($validated['type'], ['damage', 'loss', 'writeoff'], true))
+                    || ($difference <= 0 && $validated['type'] === 'found')) {
+                    throw new \InvalidArgumentException('The adjustment cause does not match the counted quantity difference.');
+                }
+
                 $unitCost = (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0);
                 $valueDifference = $difference * $unitCost;
 

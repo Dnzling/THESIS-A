@@ -214,9 +214,9 @@ const adminMenu = [
     icon: "pi pi-desktop text-gray-500 w-5"
   },
   {
-    to: "/admin/ecommerce-categories",
-    name: 'admin.ecommerce-categories',
-    label: "Ecommerce Categories",
+    to: "/admin/shopping-navigation",
+    name: 'admin.shopping-navigation',
+    label: "Shopping Navigation",
     icon: "pi pi-th-large text-gray-500 w-5"
   },
   {

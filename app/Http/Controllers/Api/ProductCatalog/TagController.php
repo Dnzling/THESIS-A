@@ -64,7 +64,7 @@ class TagController extends BaseController
         try {
             $validated = $this->validateRequest($request, [
                 'tag_name' => 'required|string|max:50',
-                'tag_type' => 'required|in:Style,Room,Promotion,Feature',
+                'tag_type' => 'required|in:Style,Promotion,Feature',
                 'is_active' => 'boolean'
             ]);
 
@@ -159,10 +159,13 @@ class TagController extends BaseController
     {
         try {
             $tag = Tag::byStore($this->getStoreId())->findOrFail($id);
+            if ($tag->tag_type === 'Room') {
+                return $this->errorResponse('Room tags are read-only. Assign preset rooms in the product form.', 422);
+            }
 
             $validated = $this->validateRequest($request, [
                 'tag_name' => 'sometimes|string|max:50|unique:tags,tag_name,' . $id . ',id,store_id,' . $this->getStoreId(),
-                'tag_type' => 'sometimes|in:Style,Room,Promotion,Feature',
+                'tag_type' => 'sometimes|in:Style,Promotion,Feature',
                 'is_active' => 'boolean'
             ]);
 

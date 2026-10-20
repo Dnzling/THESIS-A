@@ -24,6 +24,48 @@ class EcommerceActiveStockProductsController extends Controller
     {
     }
 
+    public function suggestions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['search' => ['required', 'string', 'min:2', 'max:100']]);
+        $term = trim($data['search']);
+
+        $products = Product::query()
+            ->select(['products.id', 'products.store_id', 'products.product_name', 'products.sku',
+                'products.category_id', 'products.subcategory_id', 'products.base_price', 'products.discounted_price'])
+            ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,display_order,created_at'])
+            ->where('products.product_type', 'finished_good')
+            ->where('products.is_active', true)
+            ->whereHas('store', fn ($store) => $store->acceptingNewSales())
+            ->whereHas('inventory', fn ($inventory) => $inventory->sellableInEcommerce()
+                ->where('quantity_available', '>', 0)
+                ->whereIn('stock_status', ['in_stock', 'low_stock']))
+            ->where(fn ($query) => $query->where('products.product_name', 'like', "%{$term}%")
+                ->orWhere('products.sku', 'like', "%{$term}%"))
+            ->orderByRaw(
+                'CASE WHEN LOWER(products.product_name) = ? THEN 0 '
+                .'WHEN LOWER(products.product_name) LIKE ? THEN 1 '
+                .'WHEN LOWER(products.product_name) LIKE ? THEN 2 '
+                .'WHEN LOWER(products.sku) LIKE ? THEN 3 ELSE 4 END',
+                [mb_strtolower($term), mb_strtolower($term).'%', '% '.mb_strtolower($term).'%', mb_strtolower($term).'%']
+            )
+            ->orderBy('products.product_name')
+            ->limit(6)
+            ->get()
+            ->map(function (Product $product) {
+                $imageAsset = $this->selectBestImage($product);
+
+                return [
+                    'id' => $product->id,
+                    'product_name' => $product->product_name,
+                    'category' => $product->category?->category_name,
+                    'image' => $imageAsset?->url ? (string) $imageAsset->url : $this->toAssetUrl($imageAsset?->file_path),
+                    'price' => $this->promotionPricing->price($product)['price'],
+                ];
+            });
+
+        return response()->json(['data' => $products]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->input('per_page', 16), 1), 100);
@@ -64,6 +106,7 @@ class EcommerceActiveStockProductsController extends Controller
             ->with([
                 'category:id,category_name',
                 'assets:id,product_id,file_path,asset_type,is_primary,display_order,created_at',
+                'attributes:id,product_id,attribute_value,color_hex_code',
             ])
             ->where('products.product_type', 'finished_good')
             ->where('products.is_active', true)
@@ -94,6 +137,12 @@ class EcommerceActiveStockProductsController extends Controller
 
         if ($request->filled('category_id')) {
             $query->whereIn('products.category_id', $this->relatedCategoryIds((int) $request->input('category_id')));
+        }
+
+        if ($request->filled('room')) {
+            $room = \App\Models\ProductCatalog\ShoppingRoom::where('slug', $request->input('room'))
+                ->where('is_active', true)->firstOrFail();
+            $query->whereHas('shoppingRooms', fn ($rooms) => $rooms->whereKey($room->id));
         }
 
         if ($request->boolean('discounted_only')) {
@@ -129,13 +178,35 @@ class EcommerceActiveStockProductsController extends Controller
             $query->whereBetween('products.created_at', [now()->startOfMonth(), now()->endOfMonth()]);
         }
 
+        if ($request->filled('color')) {
+            $color = trim((string) $request->input('color'));
+            $query->whereHas('attributes', fn ($attributes) => $attributes->where('attribute_value', $color));
+        }
+
         $sort = (string) $request->input('sort', 'latest');
-        if ($sort === 'price_asc') {
+        if ($sort === 'match' && $request->filled('search')) {
+            $term = mb_strtolower(trim((string) $request->input('search')));
+            $query->orderByRaw(
+                'CASE WHEN LOWER(products.product_name) = ? THEN 0 '
+                .'WHEN LOWER(products.product_name) LIKE ? THEN 1 '
+                .'WHEN LOWER(products.product_name) LIKE ? THEN 2 '
+                .'WHEN LOWER(products.sku) LIKE ? THEN 3 ELSE 4 END',
+                [$term, $term.'%', '% '.$term.'%', $term.'%']
+            )->orderByDesc('monthly_sales')->orderByDesc('products.id');
+        } elseif ($sort === 'price_asc') {
             $query->orderByRaw('COALESCE(discounted_price, base_price, 0) ASC');
         } elseif ($sort === 'price_desc') {
             $query->orderByRaw('COALESCE(discounted_price, base_price, 0) DESC');
         } elseif ($sort === 'discount') {
             $query->orderByRaw('((products.base_price - products.discounted_price) / NULLIF(products.base_price, 0)) DESC');
+        } elseif ($sort === 'rating') {
+            $query->orderByDesc(EcommerceProductReview::query()
+                ->selectRaw('AVG(rating)')
+                ->whereColumn('product_id', 'products.id')
+                ->where('status', 'published'))
+                ->orderByDesc('monthly_sales');
+        } elseif ($sort === 'name') {
+            $query->orderBy('products.product_name')->orderBy('products.id');
         } elseif ($sort === 'latest') {
             $query->orderByDesc('products.id');
         } else {
@@ -185,6 +256,9 @@ class EcommerceActiveStockProductsController extends Controller
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
+                'colors' => $product->attributes->filter(fn ($attribute) => $attribute->color_hex_code)
+                    ->map(fn ($attribute) => ['name' => $attribute->attribute_value, 'hex' => $attribute->color_hex_code])
+                    ->unique('name')->values()->all(),
                 'price' => $hasDiscount ? $discountedPrice : $basePrice,
                 'base_price' => $basePrice,
                 'discounted_price' => $hasDiscount ? $discountedPrice : null,

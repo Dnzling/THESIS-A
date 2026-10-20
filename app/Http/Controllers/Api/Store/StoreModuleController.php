@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Store\StoreBranch;
+use App\Models\Hr\Employee;
+use App\Models\Hr\ShiftSwapRequest;
+use App\Services\Core\PermissionService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +19,55 @@ use Illuminate\Support\Facades\Storage;
 
 class StoreModuleController extends Controller
 {
+    public function team(Request $request): JsonResponse
+    {
+        $permissions = app(PermissionService::class);
+        abort_unless($permissions->userHasPermission($request->user(), 'store.team.view'), 403);
+
+        $branch = $this->branchFor($request);
+        $employees = Employee::query()->where('employees.store_id', $branch->store_id)
+            ->where('employees.branch_id', $branch->id)
+            ->join('users as employee_users', 'employee_users.id', '=', 'employees.user_id')
+            ->with(['role:id,name,display_name', 'user:id,fname,lname'])
+            ->orderBy('employee_users.fname')->orderBy('employee_users.lname')
+            ->get(['employees.id', 'employees.user_id', 'employees.role_id', 'employees.employee_number', 'employees.status'])
+            ->each->append(['fname', 'lname']);
+
+        $schedules = DB::table('shift_schedules as s')
+            ->join('employees as e', 'e.id', '=', 's.employee_id')
+            ->join('users as employee_users', 'employee_users.id', '=', 'e.user_id')
+            ->where('e.store_id', $branch->store_id)->where('e.branch_id', $branch->id)
+            ->whereDate('s.schedule_date', '>=', now()->toDateString())
+            ->whereDate('s.schedule_date', '<=', now()->addDays(7)->toDateString())
+            ->whereNull('s.deleted_at')
+            ->orderBy('s.schedule_date')->limit(50)
+            ->get(['s.id', 's.schedule_date', 's.status', 'employee_users.fname', 'employee_users.lname']);
+
+        $swaps = ShiftSwapRequest::query()->with([
+            'requestor:id,user_id', 'requestor.user:id,fname,lname',
+            'receiver:id,user_id', 'receiver.user:id,fname,lname',
+        ])
+            ->where('status', 'pending')
+            ->whereHas('requestor', fn ($q) => $q->where('store_id', $branch->store_id)->where('branch_id', $branch->id))
+            ->whereHas('receiver', fn ($q) => $q->where('store_id', $branch->store_id)->where('branch_id', $branch->id))
+            ->latest()->limit(20)->get(['id', 'requestor_id', 'receiver_id', 'swap_type', 'reason', 'created_at'])
+            ->map(function ($swap) {
+                $swap->requestor?->append(['fname', 'lname']);
+                $swap->receiver?->append(['fname', 'lname']);
+                return $swap;
+            });
+
+        return response()->json(['success' => true, 'data' => [
+            'branch' => $this->branchPayload($branch),
+            'can_manage_swaps' => ($request->user()->hasRole('store_manager') || $request->user()->hasRole('branch_manager'))
+                && $permissions->userHasPermission($request->user(), 'store.team.manage'),
+            'manager_employee_id' => $request->user()->employee?->id,
+            'employees' => $employees,
+            'schedules' => $schedules,
+            'pending_swaps' => $swaps,
+        ]]);
+    }
+
     public function dashboard(Request $request): JsonResponse
     {
         $branch = $this->branchFor($request);
