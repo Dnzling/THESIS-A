@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ApplicantPortalController extends Controller
 {
@@ -111,7 +112,7 @@ class ApplicantPortalController extends Controller
                 'first_name' => 'required|string|max:100',
                 'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
-                'email' => ['required', 'email', 'max:255', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
+                'email' => ['required', 'email', 'max:255', 'regex:/@gmail\.com\z/i', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
                 'phone' => 'nullable|string|max:20',
                 'birthday' => 'nullable|date',
                 'city' => 'nullable|string|max:255',
@@ -124,6 +125,14 @@ class ApplicantPortalController extends Controller
                 'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png',
                 'document_types' => 'required|array|min:1',
                 'document_types.*' => ['required', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
+            ], [
+                'email.regex' => 'Invalid Gmail address. Please check your email and try again.',
+            ]);
+        }
+
+        if (! preg_match('/@gmail\.com\z/i', $validated['email'])) {
+            throw ValidationException::withMessages([
+                'email' => ['Invalid Gmail address. Please check your email and try again.'],
             ]);
         }
 

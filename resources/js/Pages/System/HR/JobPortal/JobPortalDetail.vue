@@ -76,7 +76,11 @@
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Store</p>
                   <p class="mt-1 text-sm font-semibold text-surface-900">{{ storeLabel }}</p>
                 </div>
-                <Button label="Apply Job" icon="pi pi-send" severity="warn" fluid @click="applyVisible = true" />
+                <Message v-if="applicationSubmitted" severity="success" :closable="false">
+                  <span class="font-semibold">Application submitted</span>
+                  <span class="block text-xs">You have already applied for this position.</span>
+                </Message>
+                <Button v-else label="Apply Job" icon="pi pi-send" severity="warn" fluid @click="applyVisible = true" />
               </div>
             </template>
           </Card>
@@ -93,7 +97,13 @@
           <label class="space-y-1">Middle name<InputText v-model.trim="form.middle_name" size="small" fluid /></label>
           <label class="space-y-1">Last name *<InputText v-model.trim="form.last_name" size="small" fluid required /></label>
         </div>
-        <label class="block space-y-1">Email *<InputText v-model.trim="form.email" type="email" size="small" fluid required /></label>
+        <label class="block space-y-1">Email *
+          <InputText v-model.trim="form.email" type="email" placeholder="name@gmail.com" size="small" fluid required
+            :invalid="emailValidationAttempted && !isGmailAddress" />
+          <small v-if="emailValidationAttempted && !isGmailAddress" class="text-red-600">
+            Invalid Gmail address. Please check your email and try again.
+          </small>
+        </label>
         <label class="block space-y-1">Document type *
           <Select v-model="form.document_type" :options="documentTypes" placeholder="Choose a document type" size="small" fluid />
         </label>
@@ -110,7 +120,8 @@
         <Message v-if="formError" severity="error" :closable="false">{{ formError }}</Message>
         <div class="flex justify-end gap-2 pt-2">
           <Button type="button" label="Cancel" severity="secondary" text size="small" @click="applyVisible = false" />
-          <Button type="submit" label="Submit application" severity="warn" size="small" :loading="submitting" :disabled="!documentFile || !form.document_type" />
+          <Button type="submit" label="Submit application" severity="warn" size="small" :loading="submitting"
+            :disabled="!documentFile || !form.document_type" @click="emailValidationAttempted = true" />
         </div>
       </form>
     </Dialog>
@@ -133,17 +144,22 @@ const posting = ref<JobPosting | null>(null)
 const loading = ref(false)
 const applyVisible = ref(false)
 const submitting = ref(false)
+const applicationSubmitted = ref(false)
 const formError = ref('')
 const form = reactive({ first_name: '', middle_name: '', last_name: '', email: '', document_type: '' })
 const documentTypes = ['Resume', 'CoverLetter', 'ID', 'Certificate', 'Portfolio', 'Other']
 const documentFile = ref<File | null>(null)
 const documentPreview = ref('')
+const emailValidationAttempted = ref(false)
+const isGmailAddress = computed(() => /^[^\s@]+@gmail\.com$/i.test(form.email))
+const appliedStorageKey = computed(() => `furnisync-job-applied:${String(route.params.id)}`)
 
 const fetchPosting = async () => {
   loading.value = true
   try {
     const response = await hrService.getPortalJobPosting(route.params.id as string)
     posting.value = response.data
+    applicationSubmitted.value = Boolean(response.has_applied) || localStorage.getItem(appliedStorageKey.value) === 'true'
   } finally {
     loading.value = false
   }
@@ -196,6 +212,10 @@ const confirmRemoveDocument = () => {
 
 const submitApplication = async () => {
   if (!documentFile.value || !form.document_type || submitting.value) return
+  emailValidationAttempted.value = true
+  if (!isGmailAddress.value) {
+    return
+  }
   submitting.value = true
   formError.value = ''
   const payload = new FormData()
@@ -208,7 +228,10 @@ const submitApplication = async () => {
   try {
     await hrService.applyToPortalJob(route.params.id as string, payload)
     applyVisible.value = false
+    applicationSubmitted.value = true
+    localStorage.setItem(appliedStorageKey.value, 'true')
     toast.add({ severity: 'success', summary: 'Application sent', detail: 'The hiring team received your application.', life: 4000 })
+    emailValidationAttempted.value = false
     clearDocument()
   } catch (error: any) {
     const errors = error.response?.data?.errors

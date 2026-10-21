@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Models\JobApplication;
 use App\Models\JobPosting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,7 +32,7 @@ class JobPortalController extends Controller
         ]);
     }
 
-    public function show(JobPosting $posting): JsonResponse
+    public function show(Request $request, JobPosting $posting): JsonResponse
     {
         abort_unless($posting->status === 'Open', 404);
 
@@ -41,9 +42,17 @@ class JobPortalController extends Controller
             'screeningStages',
         ]);
 
+        $hasApplied = $request->user()
+            ? JobApplication::query()
+                ->where('job_posting_id', $posting->id)
+                ->where('user_id', $request->user()->id)
+                ->exists()
+            : false;
+
         return response()->json([
             'success' => true,
             'data' => $posting,
+            'has_applied' => $hasApplied,
         ]);
     }
 }
