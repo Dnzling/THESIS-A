@@ -167,7 +167,7 @@
         </Card>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5">
         <Card class="lg:col-span-3">
           <template #title>
             <div class="flex items-center justify-between">

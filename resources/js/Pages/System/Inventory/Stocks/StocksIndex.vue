@@ -19,24 +19,26 @@
     <Card>
       <template #content>
         <!-- Filters -->
-        <div class="grid grid-cols-2 gap-4 items-end md:grid-cols-4 mb-5">
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full text-sm"
-              size="small" />
-          </IconField>
-  
-          <Select v-if="showBranchColumn" v-model="filters.branch_id" :options="branches" optionLabel="name"
-            optionValue="id" placeholder="Branch" class="w-full text-sm" size="small" showClear />
-  
-          <Select v-model="filters.stock_status" :options="stockStatuses" optionLabel="label" optionValue="value"
-            placeholder="Stock Status" size="small" class="w-full text-sm" showClear />
-  
-          <Select v-model="filters.product_type" :options="productTypeOptions" optionLabel="label" optionValue="value"
-            placeholder="Product Type" size="small" class="w-full text-sm" showClear />
-          <div v-if="hasActiveFilters">
-            <Button label="Clear All" severity="danger" size="small" @click="resetFilters" />
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <div class="w-full md:w-72">
+            <IconField class="w-full">
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full text-xs" size="small" />
+            </IconField>
           </div>
+          <div v-if="showBranchColumn" class="w-full md:w-48">
+            <Select v-model="filters.branch_id" :options="branches" optionLabel="name" optionValue="id"
+              placeholder="Branch" class="w-full text-xs" size="small" showClear />
+          </div>
+          <div class="w-full md:w-48">
+            <Select v-model="filters.stock_status" :options="stockStatuses" optionLabel="label" optionValue="value"
+              placeholder="Stock Status" size="small" class="w-full text-xs" showClear />
+          </div>
+          <div class="w-full md:w-48">
+            <Select v-model="filters.product_type" :options="productTypeOptions" optionLabel="label" optionValue="value"
+              placeholder="Product Type" size="small" class="w-full text-xs" showClear />
+          </div>
+          <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" class="text-xs" @click="resetFilters" />
         </div>
 
         <!-- Items Table -->
@@ -64,7 +66,7 @@
           @row-click="onItemRowClick" :rowClass="itemRowClass"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
-          class="p-datatable-sm text-xs" rowhover>
+          class="p-datatable-sm text-xs sm:text-sm" rowHover>
           <template #empty>
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
@@ -139,7 +141,7 @@
           <Column header="Actions" style="width: 120px">
             <template #body="{ data }">
               <div class="flex gap-1">
-                <Button icon="pi pi-eye" text rounded size="small" aria-label="View product" @click.stop="openProduct(data)" />
+                <Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" aria-label="View product" @click.stop="openProduct(data)" />
                 <Button v-if="canCreateAdjustments" icon="pi pi-plus-minus" text rounded size="small" severity="warn"
                   aria-label="Adjust stock" @click.stop="openAdjustment(data)" />
               </div>

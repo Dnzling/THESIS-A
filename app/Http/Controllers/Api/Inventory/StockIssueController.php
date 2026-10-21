@@ -76,8 +76,15 @@ class StockIssueController extends Controller
                 $query->whereDate('issue_date', '<=', $request->date_to);
             }
 
-            $issues = $query->orderBy('created_at', 'desc')
-                ->paginate($request->get('per_page', 15));
+            $sortableColumns = ['issue_number', 'issue_type', 'status', 'total_value', 'issue_date', 'created_at'];
+            $sortBy = (string) $request->input('sort_by', 'issue_date');
+            $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+            if (!in_array($sortBy, $sortableColumns, true)) {
+                $sortBy = 'issue_date';
+            }
+
+            $issues = $query->orderBy($sortBy, $sortOrder)
+                ->paginate(max(1, min((int) $request->input('per_page', 15), 100)));
 
             return response()->json([
                 'success' => true,
@@ -211,7 +218,7 @@ class StockIssueController extends Controller
                 app(PermissionService::class)->clearUserCache($authUser);
             }
 
-            if ($authUser?->hasPermissionTo('stock_issues.approve', $context['store_id'])) {
+            if ($authUser?->hasPermissionTo('inventory.stock_issues.approve', $context['store_id'])) {
                 $issue->load('items');
 
                 foreach ($issue->items as $issueItem) {

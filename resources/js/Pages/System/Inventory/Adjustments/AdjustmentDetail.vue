@@ -6,7 +6,7 @@
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50"
-          aria-label="Back to stock adjustments" @click="router.visit('/inventory/adjustments')">
+          aria-label="Go back" @click="goBack">
           <i class="pi pi-chevron-left text-gray-600"></i>
         </button>
         <div>
@@ -92,7 +92,7 @@
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><p class="text-xs font-medium uppercase tracking-wider text-gray-500">Value Difference</p><p class="mt-2 text-2xl font-semibold" :class="totalValueDifference < 0 ? 'text-red-600' : totalValueDifference > 0 ? 'text-green-600' : 'text-gray-900'">{{ signedMoney(totalValueDifference) }}</p></div>
       </div>
     </template>
-    <div v-else class="rounded-2xl border border-gray-100 bg-white py-12 text-center shadow-sm"><i class="pi pi-exclamation-triangle text-4xl text-gray-300"></i><p class="mt-2 text-gray-600">Adjustment not found.</p><Button label="Back to Adjustments" icon="pi pi-arrow-left" text class="mt-3" @click="router.visit('/inventory/adjustments')" /></div>
+    <div v-else class="rounded-2xl border border-gray-100 bg-white py-12 text-center shadow-sm"><i class="pi pi-exclamation-triangle text-4xl text-gray-300"></i><p class="mt-2 text-gray-600">Adjustment not found.</p><Button label="Go Back" icon="pi pi-arrow-left" text class="mt-3" @click="goBack" /></div>
 
     <Dialog v-model:visible="showRejectDialog" header="Reject Adjustment" :style="{ width: 'min(520px, 95vw)' }" modal>
       <div class="space-y-4"><p class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800">Please provide a reason for rejection. It will be recorded in the review notes.</p><div><label class="mb-1 block text-sm font-medium text-gray-700">Reason *</label><Select v-model="rejectReason" :options="rejectReasonOptions" optionLabel="label" optionValue="value" placeholder="Select a reason" class="w-full" /></div><div><label class="mb-1 block text-sm font-medium text-gray-700">Additional notes</label><Textarea v-model="rejectNotes" rows="3" class="w-full" placeholder="Optional details" /></div></div>
@@ -123,6 +123,7 @@ const auth = useAuthStore()
 const page = usePage()
 const confirm = useConfirm()
 const toast = useToast()
+const goBack = () => window.history.back()
 const adjustmentId = computed(() => page.url.split('?')[0].split('/').filter(Boolean).pop())
 const loading = ref(true)
 const processing = ref(false)

@@ -11,22 +11,28 @@
 
     <Card>
       <template #content>
-        <div class="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <IconField class="w-full">
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search reference or reason" size="small" class="w-full text-sm"
-              @keyup.enter="loadAdjustments(1)" />
-          </IconField>
-          <Select v-model="filters.type" :options="typeOptions" optionLabel="label" optionValue="value"
-            placeholder="Adjustment Type" showClear size="small" class="w-full text-sm" @change="loadAdjustments(1)" />
-          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-            placeholder="Status" showClear size="small" class="w-full text-sm" @change="loadAdjustments(1)" />
-          <DatePicker v-model="dateRange" selectionMode="range" dateFormat="M d, yy" :manualInput="false"
-            placeholder="Adjustment date range" showIcon size="small" class="w-full text-sm" @date-select="onDateSelect" />
-          <div class="flex gap-2">
-            <Button label="Search" icon="pi pi-search" size="small" @click="loadAdjustments(1)" />
-            <Button v-if="hasActiveFilters" label="Clear All" severity="danger" outlined size="small" @click="resetFilters" />
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <div class="w-full md:w-72">
+            <IconField class="w-full">
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search reference or reason" size="small" class="w-full text-xs"
+                @keyup.enter="loadAdjustments(1)" />
+            </IconField>
           </div>
+          <div class="w-full md:w-52">
+            <Select v-model="filters.type" :options="typeOptions" optionLabel="label" optionValue="value"
+              placeholder="Adjustment Type" showClear size="small" class="w-full text-xs" @change="loadAdjustments(1)" />
+          </div>
+          <div class="w-full md:w-48">
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+              placeholder="All Statuses" showClear size="small" class="w-full text-xs" @change="loadAdjustments(1)" />
+          </div>
+          <div class="w-full md:w-60">
+            <DatePicker v-model="dateRange" selectionMode="range" dateFormat="M d, yy" :manualInput="false"
+              placeholder="Adjustment date range" showIcon size="small" class="w-full text-xs" @date-select="onDateSelect" />
+          </div>
+          <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" class="text-xs" @click="resetFilters" />
+          <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" class="text-xs" :loading="loading" @click="loadAdjustments(1)" />
         </div>
 
         <div v-if="error" class="mb-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">{{ error }}</div>
@@ -38,8 +44,8 @@
           :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
           :rowsPerPageOptions="[15, 25, 50]" paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords}" class="p-datatable-sm text-xs"
-          rowHover :rowClass="() => 'cursor-pointer'" :sortField="sortField" :sortOrder="sortOrder"
-          @page="onPageChange" @sort="onSort" @row-click="onRowClick">
+          rowHover :sortField="sortField" :sortOrder="sortOrder"
+          @page="onPageChange" @sort="onSort">
           <template #empty>
             <div class="py-10 text-center">
               <i class="pi pi-inbox text-4xl text-slate-300"></i>
@@ -54,12 +60,13 @@
             <template #body="{ data }"><span class="font-mono font-semibold text-slate-900">{{ data.adjustment_number }}</span></template>
           </Column>
           <Column header="Branch" style="min-width: 140px"><template #body="{ data }">{{ data.branch?.name || '—' }}</template></Column>
-          <Column header="Type" style="min-width: 130px"><template #body="{ data }">{{ label(data.type) }}</template></Column>
+          <Column header="Type" style="min-width: 130px"><template #body="{ data }"><Tag :value="label(data.type)" severity="secondary" /></template></Column>
           <Column header="Reason" style="min-width: 190px"><template #body="{ data }"><span class="block max-w-xs truncate" :title="formatReason(data.reason)">{{ formatReason(data.reason) }}</span></template></Column>
           <Column header="Items" style="width: 80px"><template #body="{ data }">{{ data.items_count ?? 0 }}</template></Column>
-          <Column field="status" header="Status" sortable style="min-width: 130px"><template #body="{ data }"><Tag :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
-          <Column header="Actions" style="width: 75px">
-            <template #body="{ data }"><Button v-if="canViewAdjustments" icon="pi pi-eye" text rounded size="small" aria-label="View adjustment" @click.stop="openDetail(data.id)" /></template>
+          <Column field="status" header="Status" sortable style="min-width: 130px"><template #body="{ data }"><Badge :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
+          <Column header="Created By" style="min-width: 150px"><template #body="{ data }"><span class="text-slate-700">{{ employeeName(data.created_by) }}</span></template></Column>
+          <Column header="Actions" style="width: 110px">
+            <template #body="{ data }"><Button v-if="canViewAdjustments" label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" aria-label="View adjustment" @click="openDetail(data.id)" /></template>
           </Column>
         </DataTable>
       </template>
@@ -84,6 +91,7 @@ import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import SplitButton from 'primevue/splitbutton'
 import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 
 const auth = useAuthStore()
 const canViewAdjustments = computed(() => auth.hasPermission('inventory.adjustments.view'))
@@ -109,13 +117,16 @@ function formatReason(value?: string | null) {
   const reasons: Record<string, string> = { physical_count: 'Physical Count Correction', damaged: 'Damaged Goods', expired: 'Expired Items', theft: 'Theft/Loss', wrong_delivery: 'Wrong Delivery', quality_control: 'Quality Control', sample: 'Sample/Demo Usage', other: 'Other' }
   return value ? reasons[value] || label(value) : '—'
 }
-function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' || value === 'cancelled' ? 'danger' : 'secondary' }
+function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' ? 'danger' : 'secondary' }
+function employeeName(employee: any) {
+  const user = employee?.user
+  return user?.full_name || [user?.fname, user?.lname].filter(Boolean).join(' ') || employee?.full_name || 'N/A'
+}
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }
 function formatTime(value?: string | null) { return value ? new Date(value).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '' }
 function localDate(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}` }
 function openCreate(type?: string) { router.visit(`/inventory/adjustments/create${type ? `?type=${type}` : ''}`) }
 function openDetail(id: number) { router.visit(`/inventory/adjustments/${id}`) }
-function onRowClick(event: any) { if (canViewAdjustments.value && event.data?.id) openDetail(event.data.id) }
 function onPageChange(event: any) { pagination.per_page = event.rows; loadAdjustments(event.page + 1) }
 function onSort(event: any) { sortField.value = String(event.sortField || 'adjustment_date'); sortOrder.value = event.sortOrder || -1; loadAdjustments(1) }
 function onDateSelect() { if (dateRange.value?.length === 2 && dateRange.value[1]) loadAdjustments(1) }

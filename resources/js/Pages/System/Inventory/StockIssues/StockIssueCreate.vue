@@ -11,7 +11,9 @@
 
     <Card>
       <template #content>
-        <form class="space-y-6" @submit.prevent="confirmSubmit">
+        <form @submit.prevent="confirmSubmit">
+          <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+            <div class="space-y-6 lg:col-span-2">
           <!-- Header Section -->
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
@@ -35,6 +37,12 @@
                 </template>
               </Select>
               <small v-if="errors.issue_type" class="text-red-500">{{ errors.issue_type[0] }}</small>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-gray-700">Issued To / Additional Notes</label>
+              <Textarea v-model="form.remarks" rows="2" maxlength="1000" fluid
+                placeholder="Recipient or additional context for this issuance" />
             </div>
 
             <div v-if="form.issue_type === 'other'" class="flex flex-col gap-2 md:col-span-2">
@@ -157,7 +165,7 @@
           </div>
 
           <!-- Items Table -->
-          <DataTable :value="form.items" class="p-datatable-sm" stripedRows rowHover>
+          <DataTable :value="form.items" class="p-datatable-sm" rowHover>
             <template #empty>
               <div class="text-center py-8 text-gray-500">
                 <i class="pi pi-inbox text-4xl mb-2"></i>
@@ -215,52 +223,6 @@
             </Column>
           </DataTable>
 
-          <!-- Summary Section -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Optional recipient and context -->
-            <div class="space-y-4">
-              <div class="flex flex-col gap-2">
-                <label class="text-sm font-semibold text-gray-700">Issued to / additional notes</label>
-                <Textarea 
-                  v-model="form.remarks" 
-                  rows="3" 
-                  placeholder="Optional recipient or context"
-                  fluid
-                />
-              </div>
-            </div>
-
-            <!-- Totals Card -->
-            <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border">
-              <h4 class="text-sm font-medium text-gray-600 mb-4">Issue Summary</h4>
-              <div class="space-y-3">
-                <div class="flex justify-between items-center py-2 border-b">
-                  <span>Total Items:</span>
-                  <span class="font-semibold text-lg">{{ form.items.length }}</span>
-                </div>
-                <div class="flex justify-between items-center py-2 border-b">
-                  <span>Total Quantity:</span>
-                  <span class="font-semibold text-lg">{{ totalQuantity }}</span>
-                </div>
-                <div class="flex justify-between items-center py-2">
-                  <span class="text-lg font-medium">Total Value:</span>
-                  <span class="text-2xl font-bold text-red-600">{{ formatCurrency(totalValue) }}</span>
-                </div>
-              </div>
-
-              <div v-if="form.items.length > 0" class="mt-4 grid grid-cols-2 gap-2">
-                <div class="bg-white p-2 rounded text-center">
-                  <div class="text-xs text-gray-500">Avg Cost</div>
-                  <div class="font-semibold">{{ formatCurrency(averageCost) }}</div>
-                </div>
-                <div class="bg-white p-2 rounded text-center">
-                  <div class="text-xs text-gray-500">Items with Stock</div>
-                  <div class="font-semibold">{{ itemsWithStock }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- Form Actions -->
           <div class="pt-4 flex gap-2 justify-end border-t border-gray-200">
             <Button 
@@ -279,6 +241,30 @@
               :disabled="!isFormValid"
               class="bg-red-600 hover:bg-red-700 border-red-600"
             />
+          </div>
+            </div>
+
+            <aside class="rounded-xl border border-orange-200 bg-orange-50/60 p-5 lg:sticky lg:top-4">
+              <h3 class="text-sm font-semibold text-slate-800">Issue Summary</h3>
+              <p class="mt-1 text-xs text-slate-500">Review the quantities and estimated value before submitting.</p>
+              <dl class="mt-5 space-y-3">
+                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                  <dt class="text-sm text-slate-600">Unique items</dt>
+                  <dd class="font-semibold text-slate-900">{{ form.items.length }}</dd>
+                </div>
+                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                  <dt class="text-sm text-slate-600">Total quantity</dt>
+                  <dd class="font-semibold text-slate-900">{{ totalQuantity }}</dd>
+                </div>
+                <div class="pt-1">
+                  <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Estimated issue value</dt>
+                  <dd class="mt-1 text-2xl font-bold text-orange-700">{{ formatCurrency(totalValue) }}</dd>
+                </div>
+              </dl>
+              <div v-if="form.items.length" class="mt-4 rounded-lg bg-white p-3 text-xs text-slate-600">
+                Average unit cost: <span class="font-semibold text-slate-800">{{ formatCurrency(averageCost) }}</span>
+              </div>
+            </aside>
           </div>
         </form>
       </template>

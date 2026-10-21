@@ -103,7 +103,7 @@ class StockTransferController extends Controller
         $query = StockTransfer::with([
             'fromBranch',
             'toBranch',
-            'requestedBy'
+            'requestedBy.user'
         ]);
 
         if ($storeId > 0) {
@@ -132,7 +132,13 @@ class StockTransferController extends Controller
             $query->where('status', $request->status);
         }
 
-        $transfers = $query->orderBy('created_at', 'desc')
+        $sortBy = in_array($request->input('sort_by'), ['requested_date', 'created_at'], true)
+            ? $request->input('sort_by')
+            : 'created_at';
+        $sortOrder = $request->input('sort_order') === 'asc' ? 'asc' : 'desc';
+
+        $transfers = $query->orderBy($sortBy, $sortOrder)
+            ->orderBy('id', 'desc')
             ->paginate($request->get('per_page', 15));
 
         return response()->json([

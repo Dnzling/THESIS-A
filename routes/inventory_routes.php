@@ -288,7 +288,7 @@ Route::prefix('inventory')->group(function () {
         Route::post('/', [StockIssueController::class, 'store']);
         Route::put('/{id}', [StockIssueController::class, 'update']);
         Route::post('/{id}/approve', [StockIssueController::class, 'approve'])
-            ->middleware('can:stock_issues.approve');
+            ->middleware('can:inventory.stock_issues.approve');
         Route::get('/reasons', [StockIssueController::class, 'getReasons']);
     });
 

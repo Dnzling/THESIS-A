@@ -2,7 +2,7 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.items' })" />
+        <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
         <div>
           <h2 class="text-lg font-bold text-gray-800">Create Stock Adjustment</h2>
           <p class="text-sm text-gray-500 mt-1">Perform physical count or stock correction</p>
@@ -32,6 +32,18 @@
               />
               <small v-if="errors.type" class="text-red-500">{{ errors.type }}</small>
               <small v-if="hasCauseConflict" class="text-red-500">This cause does not match the quantity change. Review the listed items or choose a different cause.</small>
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-gray-700">Additional Remarks</label>
+              <Textarea
+                v-model="form.remarks"
+                rows="2"
+                maxlength="900"
+                placeholder="Any additional notes about this adjustment..."
+                fluid
+                size="small"
+                class="text-sm"
+              />
             </div>
           </div>
           <p v-if="errors.branch_id" class="text-sm text-red-500">{{ errors.branch_id }}</p>
@@ -184,20 +196,6 @@
               </template>
             </Column>
           </DataTable>
-  
-          <!-- Remarks -->
-          <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold text-gray-700">Additional Remarks</label>
-            <Textarea 
-              v-model="form.remarks" 
-              rows="2" 
-              maxlength="900"
-              placeholder="Any additional notes about this adjustment..."
-              fluid
-              size="small"
-              class="text-sm"
-            />
-          </div>
   
           <!-- Form Actions -->
           <div class="pt-4 flex gap-2 justify-end border-t border-gray-200">

@@ -2,7 +2,7 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <ConfirmDialog />
     <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })" />
+      <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Create Stock Transfer</h2>
         <p class="text-sm text-gray-500 mt-1">Request available stock from a warehouse or another branch.</p>

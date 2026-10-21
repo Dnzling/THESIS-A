@@ -31,6 +31,7 @@
                 v-model:search="adjustmentFilters.search"
                 v-model:status="adjustmentFilters.status"
                 :status-options="adjustmentStatuses"
+                :has-active-filters="Boolean(adjustmentFilters.search || adjustmentFilters.status)"
                 search-placeholder="Search adjustment number..."
                 @reset="resetFilters('adjustments')"
               />
@@ -38,10 +39,12 @@
                 :loading="adjustments.loading"
                 :rows="adjustments.rows"
                 :pagination="adjustments.pagination"
+                :sort-field="adjustmentFilters.sort_field"
+                :sort-order="adjustmentFilters.sort_order === 'asc' ? 1 : -1"
                 empty-label="No adjustments found"
                 kind="adjustment"
                 @page="(event) => onPage('adjustments', event)"
-                @row-click="openRow('adjustments', $event)"
+                @sort="(event) => onSort('adjustments', event)"
               />
             </TabPanel>
 
@@ -50,6 +53,7 @@
                 v-model:search="returnFilters.search"
                 v-model:status="returnFilters.status"
                 :status-options="returnStatuses"
+                :has-active-filters="Boolean(returnFilters.search || returnFilters.status)"
                 search-placeholder="Search return number..."
                 @reset="resetFilters('returns')"
               />
@@ -58,10 +62,12 @@
                 :loading="returns.loading"
                 :rows="returns.rows"
                 :pagination="returns.pagination"
+                :sort-field="returnFilters.sort_field"
+                :sort-order="returnFilters.sort_order === 'asc' ? 1 : -1"
                 empty-label="No returns found"
                 kind="return"
                 @page="(event) => onPage('returns', event)"
-                @row-click="openRow('returns', $event)"
+                @sort="(event) => onSort('returns', event)"
               />
             </TabPanel>
 
@@ -70,6 +76,7 @@
                 v-model:search="transferFilters.search"
                 v-model:status="transferFilters.status"
                 :status-options="transferStatuses"
+                :has-active-filters="Boolean(transferFilters.search || transferFilters.status)"
                 search-placeholder="Search transfer number..."
                 @reset="resetFilters('transfers')"
               />
@@ -77,10 +84,12 @@
                 :loading="transfers.loading"
                 :rows="transfers.rows"
                 :pagination="transfers.pagination"
+                :sort-field="transferFilters.sort_field"
+                :sort-order="transferFilters.sort_order === 'asc' ? 1 : -1"
                 empty-label="No transfers found"
                 kind="transfer"
                 @page="(event) => onPage('transfers', event)"
-                @row-click="openRow('transfers', $event)"
+                @sort="(event) => onSort('transfers', event)"
               />
             </TabPanel>
           </TabPanels>
@@ -97,7 +106,6 @@ import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
-import Calendar from 'primevue/calendar'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import IconField from 'primevue/iconfield'
@@ -110,6 +118,7 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tabs from 'primevue/tabs'
+import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -145,10 +154,17 @@ const transferStatuses = [
   { label: 'Cancelled', value: 'cancelled' },
 ]
 
-const newFilters = () => reactive({ search: '', status: null as string | null, page: 1, per_page: 15 })
-const adjustmentFilters = newFilters()
-const returnFilters = newFilters()
-const transferFilters = newFilters()
+const newFilters = (sortField: string) => reactive({
+  search: '',
+  status: null as string | null,
+  page: 1,
+  per_page: 15,
+  sort_field: sortField,
+  sort_order: 'desc' as 'asc' | 'desc',
+})
+const adjustmentFilters = newFilters('adjustment_date')
+const returnFilters = newFilters('requested_date')
+const transferFilters = newFilters('requested_date')
 
 const newMovementState = () => reactive({
   loading: false,
@@ -181,6 +197,13 @@ const loadMovement = async (kind: MovementKind) => {
   try {
     const endpoint = kind === 'adjustments' ? '/api/inventory/adjustments' : kind === 'returns' ? '/api/inventory/returns' : '/api/inventory/transfers'
     const params: Record<string, any> = { page: filters.page, per_page: filters.per_page }
+    if (kind === 'adjustments') {
+      params.sort_field = filters.sort_field
+      params.sort_direction = filters.sort_order
+    } else {
+      params.sort_by = filters.sort_field
+      params.sort_order = filters.sort_order
+    }
     if (filters.search.trim()) params.search = filters.search.trim()
     if (filters.status) params.status = filters.status
 
@@ -213,8 +236,15 @@ const onPage = (kind: MovementKind, event: any) => {
   loadMovement(kind)
 }
 
-const openRow = (kind: MovementKind, event: any) => {
-  const id = event?.data?.id
+const onSort = (kind: MovementKind, event: any) => {
+  const filters = filtersFor(kind)
+  filters.sort_field = event.sortField || filters.sort_field
+  filters.sort_order = event.sortOrder === 1 ? 'asc' : 'desc'
+  filters.page = 1
+  loadMovement(kind)
+}
+
+const openRecord = (kind: MovementKind, id: number) => {
   if (!id) return
   const routeName = kind === 'adjustments' ? 'inventory.adjustments.detail' : kind === 'returns' ? 'inventory.stock-returns.detail' : 'inventory.transfers.detail'
   router.push({ name: routeName, params: { id } })
@@ -256,32 +286,37 @@ const MovementFilters = defineComponent({
     status: { type: String, default: null },
     statusOptions: { type: Array, default: () => [] },
     searchPlaceholder: { type: String, default: 'Search...' },
+    hasActiveFilters: { type: Boolean, default: false },
   },
   emits: ['update:search', 'update:status', 'reset'],
   setup(props, { emit }) {
-    return () => h('div', { class: 'mb-4 grid grid-cols-1 items-end gap-3 md:grid-cols-3' }, [
-      h(IconField, { class: 'w-full' }, {
-        default: () => [h(InputIcon, { class: 'pi pi-search' }), h(InputText, {
-          modelValue: props.search,
-          'onUpdate:modelValue': (value: string) => emit('update:search', value),
-          placeholder: props.searchPlaceholder,
+    return () => h('div', { class: 'mb-4 flex flex-wrap items-end gap-3' }, [
+      h('div', { class: 'w-full md:w-72' }, [
+        h(IconField, { class: 'w-full' }, {
+          default: () => [h(InputIcon, { class: 'pi pi-search' }), h(InputText, {
+            modelValue: props.search,
+            'onUpdate:modelValue': (value: string) => emit('update:search', value),
+            placeholder: props.searchPlaceholder,
+            class: 'w-full text-xs',
+            size: 'small',
+            onKeyup: (event: KeyboardEvent) => event.key === 'Enter' && emit('update:search', props.search),
+          })],
+        }),
+      ]),
+      h('div', { class: 'w-full md:w-52' }, [
+        h(Select, {
+          modelValue: props.status,
+          'onUpdate:modelValue': (value: string | null) => emit('update:status', value),
+          options: props.statusOptions,
+          optionLabel: 'label',
+          optionValue: 'value',
+          placeholder: 'All Statuses',
+          showClear: true,
           class: 'w-full text-xs',
           size: 'small',
-          onKeyup: (event: KeyboardEvent) => event.key === 'Enter' && emit('update:search', props.search),
-        })],
-      }),
-      h(Select, {
-        modelValue: props.status,
-        'onUpdate:modelValue': (value: string | null) => emit('update:status', value),
-        options: props.statusOptions,
-        optionLabel: 'label',
-        optionValue: 'value',
-        placeholder: 'All Statuses',
-        showClear: true,
-        class: 'w-full text-xs',
-        size: 'small',
-      }),
-      h(Button, { label: 'Clear All', icon: 'pi pi-filter-slash', severity: 'secondary', outlined: true, size: 'small', class: 'text-xs', onClick: () => emit('reset') }),
+        }),
+      ]),
+      ...(props.hasActiveFilters ? [h(Button, { label: 'Clear Filter', icon: 'pi pi-filter-slash', severity: 'danger', size: 'small', class: 'text-xs', onClick: () => emit('reset') })] : []),
     ])
   },
 })
@@ -293,16 +328,48 @@ const MovementTable = defineComponent({
     pagination: { type: Object, required: true },
     emptyLabel: { type: String, default: 'No records found' },
     kind: { type: String, required: true },
+    sortField: { type: String, required: true },
+    sortOrder: { type: Number, default: -1 },
   },
-  emits: ['page', 'row-click'],
+  emits: ['page', 'sort'],
   setup(props, { emit }) {
     const formatDate = (value: any) => value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'
-    const statusLabel = (value: any) => String(value || 'N/A').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-    const statusSeverity = (value: any) => ({ approved: 'success', completed: 'success', received: 'success', rejected: 'danger', cancelled: 'danger', pending: 'warn', pending_approval: 'warn', requested: 'warn', shipped: 'info' } as Record<string, string>)[value] || 'secondary'
-    const rowClass = () => 'cursor-pointer hover:bg-orange-50'
+    const formatLabel = (value: any) => String(value || 'N/A')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+    const statusSeverity = (kind: string, value: any) => {
+      const status = String(value || '').toLowerCase()
+      const severityByTab: Record<string, Record<string, string>> = {
+        adjustment: {
+          draft: 'secondary',
+          pending_approval: 'warn',
+          approved: 'success',
+          rejected: 'danger',
+        },
+        return: {
+          pending: 'warn',
+          approved: 'success',
+          received: 'info',
+          completed: 'success',
+          rejected: 'danger',
+        },
+        transfer: {
+          draft: 'secondary',
+          requested: 'warn',
+          pending_approval: 'warn',
+          approved: 'success',
+          sender_approved: 'success',
+          shipped: 'info',
+          in_transit: 'info',
+          received: 'success',
+          cancelled: 'secondary',
+        },
+      }
+      return severityByTab[kind]?.[status] || 'secondary'
+    }
     return () => props.loading
       ? h('div', { class: 'space-y-2' }, Array.from({ length: 7 }, (_, index) => (
-          h('div', { key: index, class: 'grid grid-cols-5 gap-2' }, Array.from({ length: 5 }, (_, cell) => (
+          h('div', { key: index, class: 'grid grid-cols-7 gap-2' }, Array.from({ length: 7 }, (_, cell) => (
             h(Skeleton, { key: cell, height: '24px' })
           )))
         )))
@@ -313,12 +380,14 @@ const MovementTable = defineComponent({
         rows: (props.pagination as Pagination).per_page,
         first: ((props.pagination as Pagination).current_page - 1) * (props.pagination as Pagination).per_page,
         totalRecords: (props.pagination as Pagination).total,
+        sortMode: 'single',
+        sortField: props.sortField,
+        sortOrder: props.sortOrder,
         dataKey: 'id',
-        class: 'p-datatable-sm p-datatable-fluid text-xs',
-        stripedRows: true,
-        rowClass,
+        class: 'p-datatable-sm p-datatable-fluid text-xs sm:text-sm',
+        rowHover: true,
         onPage: (event: any) => emit('page', event),
-        onRowClick: (event: any) => emit('row-click', event),
+        onSort: (event: any) => emit('sort', event),
         paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect',
         currentPageReportTemplate: 'Showing {first} to {last} of {totalRecords}',
         rowsPerPageOptions: [15, 25, 50],
@@ -327,27 +396,56 @@ const MovementTable = defineComponent({
         default: () => {
           const columns = props.kind === 'adjustment'
             ? [
-                ['adjustment_number', 'Reference'],
-                ['reason', 'Reason'],
                 ['adjustment_date', 'Date'],
+                ['adjustment_number', 'Reference'],
+                ['type', 'Type'],
+                ['reason', 'Reason'],
                 ['status', 'Status'],
+                ['created_by', 'Created By'],
               ]
             : props.kind === 'return'
-              ? [['return_number', 'Reference'], ['return_type', 'Type'], ['requested_date', 'Date'], ['status', 'Status']]
-              : [['transfer_number', 'Transfer No.'], ['from_branch', 'From'], ['to_branch', 'To'], ['requested_date', 'Date'], ['status', 'Status']]
-          return columns.map(([field, header]) => h(Column, { key: field, field, header, class: 'text-xs' }, {
+              ? [['requested_date', 'Date'], ['return_number', 'Reference'], ['return_type', 'Type'], ['status', 'Status'], ['requested_by', 'Created By']]
+              : [['requested_date', 'Date'], ['transfer_number', 'Reference'], ['from_branch', 'From Branch'], ['to_branch', 'To Branch'], ['status', 'Status'], ['requested_by', 'Created By']]
+          return columns.map(([field, header]) => h(Column, { key: field, field, header, sortable: field.endsWith('_date'), class: 'text-xs sm:text-sm' }, {
             body: ({ data }: any) => field === 'status'
-              ? h(Tag, { value: statusLabel(data[field]), severity: statusSeverity(data[field]), class: 'text-xs' })
+              ? h(Badge, { value: formatLabel(data[field]), severity: statusSeverity(props.kind, data[field]), class: 'text-xs' })
+              : field === 'type' || field === 'return_type'
+                ? h(Tag, { value: formatLabel(data[field]), severity: 'secondary', class: 'text-xs' })
+              : field === 'reason'
+                ? h('span', { class: 'text-xs text-slate-700 sm:text-sm' }, data[field] || 'N/A')
               : field.includes('date')
-                ? h('span', { class: 'text-xs text-gray-600' }, formatDate(data[field]))
+                ? h('span', { class: 'text-xs text-gray-600 sm:text-sm' }, formatDate(data[field]))
+                : field === 'created_by' || field === 'requested_by'
+                  ? h('span', { class: 'text-xs text-slate-700 sm:text-sm' }, personName(data[field]))
                 : field === 'from_branch'
-                  ? h('span', { class: 'text-xs' }, data.from_branch?.name || 'N/A')
+                  ? h('span', { class: 'text-xs sm:text-sm' }, data.from_branch?.name || 'N/A')
                   : field === 'to_branch'
-                    ? h('span', { class: 'text-xs' }, data.to_branch?.name || 'N/A')
-                    : h('span', { class: 'text-xs' }, String(data[field] || 'N/A').replace(/_/g, ' ')),
-          }))
+                    ? h('span', { class: 'text-xs sm:text-sm' }, data.to_branch?.name || 'N/A')
+                    : h('span', { class: 'text-xs sm:text-sm' }, formatLabel(data[field])),
+          })).concat([
+            h(Column, { key: 'actions', header: 'Actions', style: 'width: 100px' }, {
+              body: ({ data }: any) => h(Button, {
+                label: 'View',
+                icon: 'pi pi-eye',
+                size: 'small',
+                outlined: true,
+                rounded: true,
+                class: 'text-xs',
+                onClick: (event: Event) => {
+                  event.stopPropagation()
+                  openRecord(props.kind as MovementKind, data.id)
+                },
+              }),
+            }),
+          ])
         },
       })
   },
 })
+
+const personName = (employee: any) => {
+  const user = employee?.user
+  const name = employee?.full_name || user?.full_name || [user?.fname, user?.lname].filter(Boolean).join(' ')
+  return name || employee?.name || 'N/A'
+}
 </script>

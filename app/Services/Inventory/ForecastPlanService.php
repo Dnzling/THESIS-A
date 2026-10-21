@@ -8,19 +8,20 @@ class ForecastPlanService
 {
     public function key(int $storeId): string
     {
-        return (string) (DB::table('stores as s')
+        return strtolower(trim((string) (DB::table('stores as s')
             ->leftJoin('subscription_plans as p', 'p.id', '=', 's.subscription_tier')
             ->where('s.id', $storeId)
-            ->value('p.plan_key') ?? 'free');
+            ->value('p.plan_key') ?? 'free')));
     }
 
     public function allowsForecast(int $storeId): bool
     {
-        return in_array($this->key($storeId), ['growth', 'enterprise'], true);
+        // `unlimited` was the legacy key for the highest tier before plans were renamed.
+        return in_array($this->key($storeId), ['growth', 'enterprise', 'unlimited'], true);
     }
 
     public function allowsConsolidated(int $storeId): bool
     {
-        return $this->key($storeId) === 'enterprise';
+        return in_array($this->key($storeId), ['enterprise', 'unlimited'], true);
     }
 }

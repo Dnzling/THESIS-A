@@ -7,13 +7,8 @@
             <h1 class="text-xl font-bold text-gray-800">Stock Issuance</h1>
           </div>
           <div class="flex items-center gap-2">
-            <Button
-              label="New Stock Issuance"
-              icon="pi pi-plus"
-              size="small"
-              class="text-sm"
-              @click="createStockIssue"
-            />
+            <Button label="New Stock Issuance" icon="pi pi-plus" size="small" class="text-sm"
+              @click="createStockIssue" />
           </div>
         </div>
       </div>
@@ -22,74 +17,40 @@
         <template #content>
           <!-- Filters -->
           <div class="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-3">
-              <IconField>
-                <InputIcon class="pi pi-search" />
-                <InputText
-                  v-model="filters.search"
-                  placeholder="Search issue number or description"
-                  class="w-full text-sm"
-                  size="small"
-                />
-              </IconField>
-                <Select
-                  v-model="filters.status"
-                  :options="statusOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Status"
-                  class="w-full text-sm"
-                  size="small"
-                  showClear
-                />
-                <Select
-                  v-model="filters.issue_type"
-                  :options="typeOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Reason"
-                  class="w-full text-sm"
-                  size="small"
-                  showClear
-                />
-              <div v-if="hasActiveFilters">
-                <Button
-                  label="Clear All"
-                  severity="danger"
-                  size="small"
-                  @click="clearFilters"
-                />
-              </div>
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search issue number or description"
+                class="w-full text-sm" size="small" />
+            </IconField>
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+              placeholder="Status" class="w-full text-sm" size="small" showClear />
+            <Select v-model="filters.issue_type" :options="typeOptions" optionLabel="label" optionValue="value"
+              placeholder="Reason" class="w-full text-sm" size="small" showClear />
+            <div v-if="hasActiveFilters">
+              <Button label="Clear All" severity="danger" size="small" @click="clearFilters" />
+            </div>
           </div>
 
           <!-- Data Table -->
-          <DataTable
-            :value="stockIssues"
-            :loading="loading"
-            paginator
-            :rows="filters.per_page"
-            :rowsPerPageOptions="[15, 25, 50]"
-            :totalRecords="totalRecords"
-            :lazy="true"
-            @page="onPage"
-            @sort="onSort"
-            :sortField="filters.sort_field"
-            :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
+          <DataTable :value="stockIssues" :loading="loading" paginator :rows="filters.per_page"
+            :rowsPerPageOptions="[15, 25, 50]" :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort"
+            :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
             currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
-            tableStyle="min-width: 50rem"
-            class="p-datatable-sm text-xs"
-            rowHover
-            :rowClass="() => 'cursor-pointer hover:bg-orange-50'"
-            @row-click="onRowClick"
-          >
-            <Column field="issue_number" header="Issue Number" style="width: 140px" sortable />
-            <Column field="issue_type" header="Reason" style="width: 130px">
+            tableStyle="min-width: 50rem" class="p-datatable-sm text-sm" rowHover>
+            <Column field="issue_date" header="Issue Date" style="width: 150px" sortable>
+              <template #body="slotProps">
+                {{ formatDate(slotProps.data.issue_date) }}
+              </template>
+            </Column>
+            <Column field="issue_number" header="Issue Number" style="width: 200px" sortable />
+            <Column field="issue_type" header="Reason" style="width: 190px" sortable>
               <template #body="slotProps">
                 {{ slotProps.data.issue_type === 'other' && slotProps.data.description
                   ? slotProps.data.description : formatIssueType(slotProps.data.issue_type) }}
               </template>
             </Column>
-           
+
             <Column v-if="showBranchColumn" field="branch" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
                 {{ slotProps.data.branch?.name || 'N/A' }}
@@ -105,31 +66,19 @@
                 ₱{{ formatNumber(slotProps.data.total_value) }}
               </template>
             </Column>
-            <Column field="status" header="Status" style="width: 120px">
+            <Column field="status" header="Status" style="width: 120px" sortable>
               <template #body="slotProps">
-                <Badge
-                  :value="formatIssueType(slotProps.data.status)"
-                  :severity="getStatusSeverity(slotProps.data.status)"
-                />
+                <Badge :value="formatStatus(slotProps.data.status)"
+                  :severity="getStatusSeverity(slotProps.data.status)" />
               </template>
             </Column>
-            <Column field="issue_date" header="Issue Date" style="width: 150px" sortable>
-              <template #body="slotProps">
-                {{ formatDate(slotProps.data.issue_date) }}
-              </template>
-            </Column>
+
             <Column header="Actions" style="width: 150px">
               <template #body="slotProps">
                 <div class="flex gap-2">
-                  <Button
-                    icon="pi pi-eye"
-                    text
-                    rounded
-                    size="small"
-                    @click="viewStockIssue(slotProps.data)"
-                    v-tooltip.top="'View Details'"
-                  />
-              
+                  <Button icon="pi pi-eye" outlined label="View" rounded size="small"
+                    @click="viewStockIssue(slotProps.data)" v-tooltip.top="'View Details'" />
+
                 </div>
               </template>
             </Column>
@@ -146,12 +95,7 @@
   </div>
 
   <!-- Cancel Confirmation Dialog -->
-  <Dialog
-    v-model:visible="cancelDialog"
-    modal
-    header="Confirm Cancellation"
-    :style="{ width: '450px' }"
-  >
+  <Dialog v-model:visible="cancelDialog" modal header="Confirm Cancellation" :style="{ width: '450px' }">
     <div class="flex items-center gap-3">
       <i class="pi pi-exclamation-triangle text-orange-500 text-2xl"></i>
       <div>
@@ -165,17 +109,8 @@
       </div>
     </div>
     <template #footer>
-      <Button
-        label="No, Keep It"
-        severity="secondary"
-        @click="cancelDialog = false"
-      />
-      <Button
-        label="Yes, Cancel Issue"
-        severity="danger"
-        @click="cancelStockIssue"
-        :loading="cancelLoading"
-      />
+      <Button label="No, Keep It" severity="secondary" @click="cancelDialog = false" />
+      <Button label="Yes, Cancel Issue" severity="danger" @click="cancelStockIssue" :loading="cancelLoading" />
     </template>
   </Dialog>
 </template>
@@ -209,25 +144,16 @@ const filters = reactive({
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Submitted', value: 'submitted' },
+  { label: 'Pending', value: 'submitted' },
   { label: 'Approved', value: 'approved' },
   { label: 'Issued', value: 'issued' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
 
 const typeOptions = [
-  { label: 'Goods Received', value: 'goods_received' },
-  { label: 'Stock Return', value: 'stock_return' },
-  { label: 'Inventory Correction', value: 'inventory_correction' },
-  { label: 'Opening Balance', value: 'opening_balance' },
-  { label: 'Transfer In', value: 'transfer_in' },
   { label: 'Used for Production', value: 'production_use' },
   { label: 'Office Consumption', value: 'office_consumption' },
-  { label: 'Store Usage', value: 'store_usage' },
-  { label: 'Damaged', value: 'damaged' },
-  { label: 'Lost', value: 'lost' },
-  { label: 'Expired', value: 'expired' },
-  { label: 'Stock Correction', value: 'stock_correction' },
+  { label: 'Store Usage / Sample or Demo', value: 'store_usage' },
   { label: 'Other', value: 'other' }
 ]
 
@@ -237,7 +163,14 @@ const hasActiveFilters = computed(() => Boolean(
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
-const formatIssueType = (type: string) => String(type || 'other').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+const formatIssueType = (type: string) => {
+  if (type === 'store_usage') return 'Store Usage / Sample or Demo'
+  return String(type || 'other').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+const formatStatus = (status: string) => status === 'submitted'
+  ? 'Pending'
+  : formatIssueType(status)
 
 const loadStockIssues = async () => {
   loading.value = true
@@ -248,7 +181,7 @@ const loadStockIssues = async () => {
       sort_by: filters.sort_field,
       sort_order: filters.sort_direction
     }
-    
+
     if (filters.search) params.search = filters.search
     if (filters.status) params.status = filters.status
     if (filters.issue_type) params.issue_type = filters.issue_type
@@ -267,7 +200,7 @@ const loadStockIssues = async () => {
         stockIssues.value = []
         totalRecords.value = 0
       }
-      
+
     } else {
       toast.add({
         severity: 'error',
@@ -384,27 +317,27 @@ const getStatusSeverity = (status: string) => {
       return 'success'
     case 'submitted':
       return 'warning'
-    case 'draft': 
+    case 'draft':
       return 'info'
-    case 'cancelled': 
+    case 'cancelled':
       return 'danger'
-    default: 
+    default:
       return 'secondary'
   }
 }
 
 const getTypeSeverity = (type: string) => {
   switch (type) {
-    case 'expired': 
-    case 'damaged': 
+    case 'expired':
+    case 'damaged':
       return 'danger'
-    case 'lost': 
+    case 'lost':
       return 'warning'
-    case 'internal_use': 
+    case 'internal_use':
       return 'info'
-    case 'sample': 
+    case 'sample':
       return 'success'
-    default: 
+    default:
       return 'secondary'
   }
 }
