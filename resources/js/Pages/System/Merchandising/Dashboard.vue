@@ -1,723 +1,144 @@
 <template>
-  <div class="space-y-6">
-  
-    <!-- Loading State -->
-    <div v-if="loading" class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Skeleton v-for="i in 8" :key="i" height="120px" class="rounded-lg" />
+  <div class="module-dashboard dashboard--ecommerce space-y-5 pb-6 text-sm">
+    <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-slate-950">E-Commerce Dashboard</h1>
+        <p class="mt-1 text-sm text-slate-500">Online orders, product performance, and storefront readiness across your store.</p>
       </div>
-  
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Skeleton v-for="i in 4" :key="i" height="320px" class="rounded-lg" />
+      <div class="flex items-center gap-2">
+        <Select v-model="days" :options="periods" optionLabel="label" optionValue="value" class="w-40" aria-label="Reporting period" @change="loadDashboard" />
+        <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadDashboard" />
       </div>
+    </header>
+
+    <div v-if="loading" class="space-y-5">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 4" :key="item" height="118px" class="rounded-2xl" /></div>
+      <div class="grid gap-4 xl:grid-cols-3"><Skeleton height="290px" class="rounded-2xl xl:col-span-2" /><Skeleton height="290px" class="rounded-2xl" /></div>
+      <Skeleton v-for="item in 2" :key="item" height="190px" class="rounded-2xl" />
     </div>
-  
-    <!-- Dashboard Content -->
-    <div v-else>
-      <!-- Stats Cards Row 1 - Products -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.products' })">
+    <div v-else-if="loadError" class="dashboard-panel rounded-2xl border border-red-200 bg-white p-6"><p class="font-semibold text-slate-900">The E-Commerce dashboard could not load.</p><p class="mt-1 text-slate-500">{{ loadError }}</p><Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" /></div>
+    <template v-else-if="data">
+      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="(metric, index) in salesMetrics" :key="metric.label" class="dashboard-panel border shadow-sm" :class="index === 0 ? 'border-orange-200' : 'border-slate-200'">
           <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Total Products</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_products }}</h3>
-                <p class="text-xs text-green-600 mt-1">
-                  <i class="pi pi-check-circle"></i> {{ stats.active_products }} Active
-                </p>
-              </div>
-              <div class="bg-blue-100 p-4 rounded-full">
-                <i class="pi pi-box text-3xl text-blue-600"></i>
-              </div>
-            </div>
+            <div class="flex items-start justify-between gap-2"><p class="text-xs font-medium text-slate-500">{{ metric.label }}</p><i :class="[metric.icon, 'text-orange-500']" /></div>
+            <p class="mt-2 text-2xl font-semibold text-slate-950">{{ metric.value }}</p>
+            <p class="mt-2 text-xs text-slate-500">{{ metric.caption }}</p>
           </template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Categories</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_categories }}</h3>
-                <p class="text-xs text-gray-500 mt-1">
-                  <i class="pi pi-tag"></i> {{ stats.total_subcategories }} Subcategories
-                </p>
-              </div>
-              <div class="bg-purple-100 p-4 rounded-full">
-                <i class="pi pi-tags text-3xl text-purple-600"></i>
-              </div>
-            </div>
-          </template>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+          <template #title><div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Online order value</h2><p class="mt-1 text-xs font-normal text-slate-500">Non-cancelled online order value</p></div><Select v-model="orderValueTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Online order value period" /></div></template>
+          <template #content><Skeleton v-if="orderValueTrend.loading.value" height="16rem" class="rounded-xl" /><div v-else-if="orderValueTrend.error.value" class="flex h-64 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ orderValueTrend.error.value }}<Button text label="Try again" @click="orderValueTrend.reload" /></div><Chart v-else-if="hasSales" type="line" :data="salesChart" :options="lineOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online sales in this period.</div></template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">In Stock</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.in_stock_products }}</h3>
-                <p class="text-xs text-yellow-600 mt-1">
-                  <i class="pi pi-exclamation-triangle"></i> {{ stats.low_stock_products }} Low Stock
-                </p>
-              </div>
-              <div class="bg-green-100 p-4 rounded-full">
-                <i class="pi pi-check-circle text-3xl text-green-600"></i>
-              </div>
-            </div>
-          </template>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Order status</h2><p class="mt-1 text-xs font-normal text-slate-500">All online orders in the selected period</p></template>
+          <template #content><Chart v-if="statusRows.length" type="doughnut" :data="statusChart" :options="doughnutOptions" class="mx-auto h-64 max-w-72" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online orders yet.</div></template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Total Value</p>
-                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.total_inventory_value) }}</h3>
-                <p class="text-xs text-gray-600 mt-1">
-                  <i class="pi pi-dollar"></i> Inventory value
-                </p>
-              </div>
-              <div class="bg-yellow-100 p-4 rounded-full">
-                <i class="pi pi-dollar text-3xl text-yellow-600"></i>
-              </div>
-            </div>
-          </template>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+          <template #title><div class="flex items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Best selling products</h2><p class="mt-1 text-xs font-normal text-slate-500">Item sales from valid online orders</p></div><Button label="Product listings" text size="small" @click="go('merchandising.products')" /></div></template>
+          <template #content><Chart v-if="topProducts.length" type="bar" :data="productChart" :options="barOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">Product performance appears after your first online order.</div></template>
         </Card>
-      </div>
-  
-      <!-- Stats Cards Row 2 - Assets & Media -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.3d-gallery' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">3D Models</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_3d_models }}</h3>
-                <p class="text-xs text-indigo-600 mt-1">
-                  <i class="pi pi-cube"></i> {{ formatFileSize(stats.total_3d_size) }}
-                </p>
-              </div>
-              <div class="bg-indigo-100 p-4 rounded-full">
-                <i class="pi pi-cube text-3xl text-indigo-600"></i>
-              </div>
-            </div>
-          </template>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Daily online orders</h2><p class="mt-1 text-xs font-normal text-slate-500">Order activity over the selected period</p></template>
+          <template #content><Chart v-if="hasOrders" type="bar" :data="ordersChart" :options="ordersOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No orders in this period.</div></template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.assets' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Images</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_images }}</h3>
-                <p class="text-xs text-blue-600 mt-1">
-                  <i class="pi pi-image"></i> {{ formatFileSize(stats.total_image_size) }}
-                </p>
-              </div>
-              <div class="bg-blue-100 p-4 rounded-full">
-                <i class="pi pi-image text-3xl text-blue-600"></i>
-              </div>
-            </div>
-          </template>
+      </section>
+
+      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="metric in storefrontMetrics" :key="metric.label" class="border border-slate-200 shadow-sm"><template #content><div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ metric.label }}</span><i :class="metric.icon" class="text-orange-500" /></div><p class="mt-2 text-2xl font-bold text-slate-950">{{ metric.value }}</p><p class="mt-1 text-xs text-slate-500">{{ metric.caption }}</p></template></Card>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><div class="flex items-center justify-between gap-2"><h2 class="text-base font-semibold">Top product performance</h2><Button label="View all" text size="small" @click="go('merchandising.products')" /></div></template>
+          <template #content><DataTable :value="topProducts" size="small" stripedRows responsiveLayout="scroll"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="units" header="Units" /><Column header="Item sales"><template #body="{ data: item }">{{ money(item.sales) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales yet.</div></template></DataTable></template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Variations</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_variations }}</h3>
-                <p class="text-xs text-purple-600 mt-1">
-                  <i class="pi pi-th-large"></i> {{ stats.active_variations }} Active
-                </p>
-              </div>
-              <div class="bg-purple-100 p-4 rounded-full">
-                <i class="pi pi-th-large text-3xl text-purple-600"></i>
-              </div>
-            </div>
-          </template>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Recent online orders</h2></template>
+          <template #content><DataTable :value="data.recent_orders || []" size="small" stripedRows responsiveLayout="scroll"><Column field="order_number" header="Order" /><Column field="shipping_name" header="Customer" /><Column header="Status"><template #body="{ data: item }"><Tag :value="statusLabel(item.status)" :severity="statusSeverity(item.status)" /></template></Column><Column header="Total"><template #body="{ data: item }">{{ money(item.total_amount) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No online orders in this period.</div></template></DataTable></template>
         </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Avg Price</p>
-                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.average_price) }}</h3>
-                <p class="text-xs text-gray-600 mt-1">
-                  <i class="pi pi-chart-line"></i> Per product
-                </p>
-              </div>
-              <div class="bg-orange-100 p-4 rounded-full">
-                <i class="pi pi-chart-line text-3xl text-orange-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Charts Row 1 - Category & Stock -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Products by Category Chart -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-pie text-purple-600"></i>
-              <span>Products by Category</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="categoryChartData.labels.length > 0" type="doughnut" :data="categoryChartData"
-              :options="pieChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-chart-pie text-6xl text-gray-300 mb-3 block"></i>
-                <p>No category data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Stock Status Chart -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-bar text-green-600"></i>
-              <span>Stock Status Distribution</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="stockChartData.labels.length > 0" type="bar" :data="stockChartData" :options="barChartOptions"
-              class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-chart-bar text-6xl text-gray-300 mb-3 block"></i>
-                <p>No stock data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Charts Row 2 - Price & Features -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Price Range Distribution -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-dollar text-yellow-600"></i>
-              <span>Price Range Distribution</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="priceRangeChartData.labels.length > 0" type="bar" :data="priceRangeChartData"
-              :options="barChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-dollar text-6xl text-gray-300 mb-3 block"></i>
-                <p>No price data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Product Features -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-star text-blue-600"></i>
-              <span>Product Features</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="featuresChartData.labels.length > 0" type="polarArea" :data="featuresChartData"
-              :options="polarChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-star text-6xl text-gray-300 mb-3 block"></i>
-                <p>No feature data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Recent Activity & Quick Info -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Recent Products (1/3) -->
-        <Card>
-          <template #title>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i class="pi pi-clock text-blue-600"></i>
-                <span>Recent Products</span>
-              </div>
-              <Button label="View All" text size="small" @click="router.push({ name: 'merchandising.products' })" />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="recentProducts.length === 0" class="text-center py-8 text-gray-500">
-              <i class="pi pi-inbox text-4xl mb-2 block"></i>
-              <p>No recent products</p>
-            </div>
-            <div v-else class="space-y-3">
-              <div v-for="product in recentProducts" :key="product.id"
-                class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                @click="router.push({ name: 'merchandising.products.view', params: { id: product.id } })">
-                <div class="w-10 h-10 bg-linear-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center">
-                  <i class="pi pi-box text-blue-600"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-sm text-gray-900 truncate">{{ product.product_name }}</p>
-                  <p class="text-xs text-gray-500">{{ product.sku }}</p>
-                </div>
-                <Tag :value="product.stock_status" :severity="getStockSeverity(product.stock_status)" size="small" />
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Activity Log (2/3) -->
-        <Card class="lg:col-span-2">
-          <template #title>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i class="pi pi-history text-purple-600"></i>
-                <span>Recent Activity</span>
-              </div>
-              <Button icon="pi pi-refresh" text rounded size="small" @click="loadActivityLog" />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="loadingActivity" class="space-y-3">
-              <Skeleton v-for="i in 5" :key="i" height="60px" class="rounded-lg" />
-            </div>
-            <div v-else-if="activityLog.length === 0" class="text-center py-8 text-gray-500">
-              <i class="pi pi-inbox text-4xl mb-2 block"></i>
-              <p>No recent activity</p>
-            </div>
-            <Timeline v-else :value="activityLog" class="customized-timeline">
-              <template #marker="{ item }">
-                <div :class="['flex items-center justify-center w-8 h-8 rounded-full', getActivityColor(item.action)]">
-                  <i :class="['text-white text-sm', getActivityIcon(item.action)]"></i>
-                </div>
-              </template>
-              <template #content="{ item }">
-                <div class="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="flex-1">
-                      <p class="font-semibold text-sm text-gray-900">{{ item.description }}</p>
-                      <p class="text-xs text-gray-600 mt-1">{{ item.details }}</p>
-                      <div class="flex items-center gap-2 mt-2">
-                        <span class="text-xs text-gray-500">
-                          <i class="pi pi-user text-xs"></i> {{ item.user }}
-                        </span>
-                        <span class="text-xs text-gray-400">•</span>
-                        <span class="text-xs text-gray-500">{{ formatRelativeTime(item.created_at) }}</span>
-                      </div>
-                    </div>
-                    <Tag :value="item.action" :severity="getActivitySeverity(item.action)" size="small" />
-                  </div>
-                </div>
-              </template>
-            </Timeline>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Low Stock Alert -->
-      <Card v-if="lowStockProducts.length > 0" class="mt-6 border-l-4 border-yellow-500">
-        <template #title>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-exclamation-triangle text-yellow-600"></i>
-              <span>Low Stock Alert</span>
-            </div>
-            <Badge :value="lowStockProducts.length" severity="warning" size="large" />
-          </div>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div v-for="product in lowStockProducts" :key="product.id"
-              class="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors cursor-pointer border border-yellow-200"
-              @click="router.push({ name: 'merchandising.products.edit', params: { id: product.id } })">
-              <div class="w-12 h-12 bg-yellow-200 rounded flex items-center justify-center">
-                <i class="pi pi-exclamation-triangle text-yellow-600"></i>
-              </div>
-              <div class="flex-1">
-                <p class="font-semibold text-sm text-gray-900">{{ product.product_name }}</p>
-                <p class="text-xs text-gray-500">SKU: {{ product.sku }}</p>
-              </div>
-              <Tag value="Low Stock" severity="warning" />
-            </div>
-          </div>
-        </template>
-      </Card>
-  
-      <!-- Quick Actions -->
-      <Card class="mt-6">
-        <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-bolt text-yellow-600"></i>
-            <span>Quick Actions</span>
-          </div>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Button label="Add Product" icon="pi pi-plus" class="w-full"
-              @click="router.push({ name: 'merchandising.products.create' })" />
-            <Button label="View Products" icon="pi pi-list" severity="secondary" class="w-full"
-              @click="router.push({ name: 'merchandising.products' })" />
-            <Button label="3D Gallery" icon="pi pi-cube" severity="info" class="w-full"
-              @click="router.push({ name: 'merchandising.3d-gallery' })" />
-            <Button v-if="showReconstruction" label="3D Reconstruction" icon="pi pi-camera" severity="success" class="w-full"
-              @click="router.push({ name: 'merchandising.3d-reconstruction' })" />
-            <Button label="Upload Assets" icon="pi pi-cloud-upload" severity="secondary" class="w-full"
-              @click="router.push({ name: 'merchandising.assets.upload' })" />
-          </div>
-        </template>
-      </Card>
-    </div>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings needing an image</h2></template><template #content><DataTable :value="data.missing_images || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.edit', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have a main image.</div></template></DataTable></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings unavailable to shoppers</h2></template><template #content><DataTable :value="data.out_of_stock_products || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have available stock.</div></template></DataTable></template></Card>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useToast } from 'primevue/usetoast'
-import merchandisingService, { type Product } from '../../../services/merchandising.service'
-
-
-import Card from 'primevue/card'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import merchandisingService from '../../../services/merchandising.service'
 import Button from 'primevue/button'
+import Card from 'primevue/card'
+import Chart from 'primevue/chart'
+import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
+import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
-import Badge from 'primevue/badge'
-import Chart from 'primevue/chart'
-import Timeline from 'primevue/timeline'
-import { useRouter } from 'vue-router'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
+
+type TrendPoint = { date: string; label: string; sales: number; orders: number }
+type ProductPerformance = { id: number; name: string; sku?: string | null; units: number; sales: number }
+type DashboardData = { period_days: number; summary: Record<string, number>; sales_trend: TrendPoint[]; status_breakdown: { status: string; count: number }[]; top_products: ProductPerformance[]; missing_images: any[]; out_of_stock_products: any[]; recent_orders: any[] }
 
 const router = useRouter()
-const toast = useToast()
-const showReconstruction = !import.meta.env.PROD
-
-const loading = ref(true)
-const loadingActivity = ref(false)
-
-// ✅ Initialize with default values to prevent undefined errors
-const stats = ref({
-  total_products: 0,
-  active_products: 0,
-  inactive_products: 0,
-  total_categories: 0,
-  total_subcategories: 0,
-  in_stock_products: 0,
-  low_stock_products: 0,
-  out_of_stock_products: 0,
-  total_3d_models: 0,
-  total_images: 0,
-  total_variations: 0,
-  active_variations: 0,
-  total_3d_size: 0,
-  total_image_size: 0,
-  total_inventory_value: 0,
-  average_price: 0,
-  featured_count: 0,
-  new_arrival_count: 0,
-  bestseller_count: 0,
-  products_by_category: [],
-  stock_status_distribution: [],
-  price_range_distribution: []
-})
-
-const recentProducts = ref<Product[]>([])
-const lowStockProducts = ref<Product[]>([])
-const activityLog = ref([])
-
-// Chart Data
-const categoryChartData = computed(() => {
-  if (!stats.value.products_by_category || stats.value.products_by_category.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const labels = stats.value.products_by_category.map((item: any) => item.category_name || 'Uncategorized')
-  const data = stats.value.products_by_category.map((item: any) => item.count)
-
-  return {
-    labels,
-    datasets: [
-      {
-        data,
-        backgroundColor: ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#6b7280'],
-        hoverBackgroundColor: ['#4f46e5', '#7c3aed', '#db2777', '#d97706', '#059669', '#2563eb', '#dc2626', '#4b5563']
-      }
-    ]
-  }
-})
-
-const stockChartData = computed(() => {
-  if (!stats.value.stock_status_distribution || stats.value.stock_status_distribution.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const distribution = stats.value.stock_status_distribution
-
-  return {
-    labels: distribution.map((item: any) => item.stock_status),
-    datasets: [
-      {
-        label: 'Products',
-        data: distribution.map((item: any) => item.count),
-        backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'],
-        borderColor: ['#059669', '#d97706', '#dc2626', '#4b5563'],
-        borderWidth: 2,
-        borderRadius: 8
-      }
-    ]
-  }
-})
-
-const priceRangeChartData = computed(() => {
-  if (!stats.value.price_range_distribution || stats.value.price_range_distribution.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const distribution = stats.value.price_range_distribution
-
-  return {
-    labels: distribution.map((item: any) => item.range),
-    datasets: [
-      {
-        label: 'Products',
-        data: distribution.map((item: any) => item.count),
-        backgroundColor: '#f59e0b',
-        borderColor: '#d97706',
-        borderWidth: 2,
-        borderRadius: 8
-      }
-    ]
-  }
-})
-
-const featuresChartData = computed(() => {
-  return {
-    labels: ['Featured', 'New Arrivals', 'Bestsellers', 'With 3D', 'With Images'],
-    datasets: [
-      {
-        data: [
-          stats.value.featured_count || 0,
-          stats.value.new_arrival_count || 0,
-          stats.value.bestseller_count || 0,
-          stats.value.total_3d_models || 0,
-          stats.value.total_images || 0
-        ],
-        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6'],
-        borderColor: '#fff',
-        borderWidth: 2
-      }
-    ]
-  }
-})
-
-const pieChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'right',
-      labels: {
-        usePointStyle: true,
-        padding: 15
-      }
-    }
-  }
-}
-
-const barChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: false
-    }
-  },
-  scales: {
-    y: {
-      beginAtZero: true,
-      ticks: {
-        stepSize: 1
-      }
-    }
-  }
-}
-
-const polarChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'bottom'
-    }
-  }
-}
-
-// Methods
-const loadDashboardStats = async () => {
+const orderValueTrend = useDashboardTrend('/api/product-catalog/dashboard/trend')
+const periods = [{ label: 'Last 7 days', value: 7 }, { label: 'Last 30 days', value: 30 }, { label: 'Last 90 days', value: 90 }]
+const days = ref(30)
+const loading = ref(false)
+const loadError = ref('')
+const data = ref<DashboardData | null>(null)
+const summary = computed(() => data.value?.summary || {})
+const trend = computed(() => data.value?.sales_trend || [])
+const topProducts = computed(() => data.value?.top_products || [])
+const statusRows = computed(() => data.value?.status_breakdown || [])
+const hasSales = computed(() => orderValueTrend.points.value.some((row: any) => Number(row.value) > 0))
+const hasOrders = computed(() => trend.value.some(row => Number(row.orders) > 0))
+const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
+const number = (value: unknown) => Number(value || 0).toLocaleString('en-PH')
+const change = (current: number, previous: number) => previous > 0 ? `${current >= previous ? '+' : ''}${(((current - previous) / previous) * 100).toFixed(1)}% vs prior period` : (current > 0 ? 'New activity this period' : 'No activity this period')
+const salesMetrics = computed(() => [
+  { label: 'Online order value', value: money(summary.value.order_value), caption: change(Number(summary.value.order_value || 0), Number(summary.value.previous_order_value || 0)), icon: 'pi pi-wallet', tone: 'bg-orange-100 text-orange-600' },
+  { label: 'Online orders', value: number(summary.value.orders), caption: change(Number(summary.value.orders || 0), Number(summary.value.previous_orders || 0)), icon: 'pi pi-shopping-bag', tone: 'bg-blue-100 text-blue-600' },
+  { label: 'Average order value', value: money(summary.value.average_order_value), caption: 'Value per online order', icon: 'pi pi-chart-bar', tone: 'bg-violet-100 text-violet-600' },
+  { label: 'Units sold', value: number(summary.value.units_sold), caption: 'From valid online orders', icon: 'pi pi-box', tone: 'bg-emerald-100 text-emerald-600' },
+])
+const storefrontMetrics = computed(() => [
+  { label: 'Active listings', value: number(summary.value.active_listings), caption: 'Finished goods visible in the catalog', icon: 'pi pi-list' },
+  { label: 'Image ready', value: number(summary.value.image_ready_products), caption: `${number(summary.value.missing_main_images)} missing a main image`, icon: 'pi pi-image' },
+  { label: '3D enabled', value: number(summary.value.products_with_3d), caption: 'Active products with a 3D model', icon: 'pi pi-cube' },
+  { label: 'Unavailable', value: number(summary.value.out_of_stock_products), caption: 'Active products without available stock', icon: 'pi pi-exclamation-circle' },
+])
+const salesChart = computed(() => ({ labels: orderValueTrend.points.value.map((row: any) => row.label), datasets: [{ label: 'Order value', data: orderValueTrend.points.value.map((row: any) => Number(row.value)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35, pointRadius: orderValueTrend.period.value === 'month' ? 1 : 2 }] }))
+const ordersChart = computed(() => ({ labels: trend.value.map(row => row.label), datasets: [{ label: 'Orders', data: trend.value.map(row => Number(row.orders)), backgroundColor: '#60a5fa', borderRadius: 4, maxBarThickness: 20 }] }))
+const productChart = computed(() => ({ labels: topProducts.value.map(row => row.name), datasets: [{ label: 'Item sales', data: topProducts.value.map(row => Number(row.sales)), backgroundColor: '#fb923c', borderRadius: 6 }] }))
+const statusLabel = (value: unknown) => String(value || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
+const statusSeverity = (value: unknown) => ['delivered', 'completed'].includes(String(value)) ? 'success' : ['cancelled', 'rejected'].includes(String(value)) ? 'danger' : ['pending', 'processing'].includes(String(value)) ? 'warn' : 'info'
+const statusChart = computed(() => ({ labels: statusRows.value.map(row => statusLabel(row.status)), datasets: [{ data: statusRows.value.map(row => Number(row.count)), backgroundColor: ['#f97316', '#60a5fa', '#34d399', '#a78bfa', '#f87171', '#fbbf24', '#94a3b8'] }] }))
+const lineOptions = { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } } } }
+const ordersOptions = { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 7 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
+const barOptions = { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } }, y: { grid: { display: false }, ticks: { callback: (value: any) => String(topProducts.value[Number(value)]?.name || '').slice(0, 20) } } } }
+const doughnutOptions = { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } } }
+const go = (name: string, id?: number) => router.push(id ? { name, params: { id } } : { name })
+const loadDashboard = async () => {
   loading.value = true
+  loadError.value = ''
   try {
-    const response = await merchandisingService.getDashboardStats()
-    stats.value = { ...stats.value, ...(response || {}) }
-
-    // Load recent products
-    const productsResponse = await merchandisingService.getProducts({
-      per_page: 5,
-      product_type: 'finished_good',
-      sort_by: 'created_at',
-      sort_order: 'desc'
-    })
-    recentProducts.value = productsResponse.data.data || []
-
-    // Load low stock products
-    const lowStockResponse = await merchandisingService.getProducts({
-      stock_status: 'Low Stock',
-      product_type: 'finished_good',
-      per_page: 6
-    })
-    lowStockProducts.value = lowStockResponse.data.data || []
-
-  } catch (error: any) {
-    console.error('Failed to load dashboard stats:', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load dashboard statistics',
-      life: 3000
-    })
-  } finally {
-    loading.value = false
-  }
+    const response = await merchandisingService.getDashboardOverview(days.value)
+    if (response?.success === false) throw new Error(response.message || 'Unable to load dashboard.')
+    data.value = response.data
+  } catch (error: any) { loadError.value = error?.response?.data?.message || error?.message || 'Unable to load E-Commerce performance.' }
+  finally { loading.value = false }
 }
-
-const loadActivityLog = async () => {
-  loadingActivity.value = true
-  try {
-    const response = await merchandisingService.getActivityLog({ per_page: 10 })
-    const payload = response?.data || response || {}
-    const rows = payload?.data || payload?.data?.data || []
-    activityLog.value = (Array.isArray(rows) ? rows : []).map((item: any) => ({
-      ...item,
-      details: item?.meta?.result
-        ? `${item.meta.result.toUpperCase()} ${item?.meta?.method || ''} ${item?.meta?.path || ''}`.trim()
-        : (item?.meta?.path || item?.description || 'No additional details'),
-      action: String(item?.action || '').split('.').pop() || 'updated'
-    }))
-  } catch (error: any) {
-    console.error('Failed to load activity log:', error)
-    // Don't show error toast for activity log, just keep it empty
-    activityLog.value = []
-  } finally {
-    loadingActivity.value = false
-  }
-}
-
-const getStockSeverity = (status: string) => {
-  const severities: Record<string, string> = {
-    'In Stock': 'success',
-    'Low Stock': 'warning',
-    'Out of Stock': 'danger',
-    'Pre-order': 'info'
-  }
-  return severities[status] || 'secondary'
-}
-
-const getActivityColor = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const colors: Record<string, string> = {
-    'created': 'bg-green-500',
-    'create': 'bg-green-500',
-    'updated': 'bg-blue-500',
-    'update': 'bg-blue-500',
-    'deleted': 'bg-red-500',
-    'delete': 'bg-red-500',
-    'uploaded': 'bg-purple-500',
-    'price_changed': 'bg-yellow-500'
-  }
-  return colors[normalized] || 'bg-gray-500'
-}
-
-const getActivityIcon = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const icons: Record<string, string> = {
-    'created': 'pi pi-plus',
-    'create': 'pi pi-plus',
-    'updated': 'pi pi-pencil',
-    'update': 'pi pi-pencil',
-    'deleted': 'pi pi-trash',
-    'delete': 'pi pi-trash',
-    'uploaded': 'pi pi-upload',
-    'price_changed': 'pi pi-dollar'
-  }
-  return icons[normalized] || 'pi pi-info-circle'
-}
-
-const getActivitySeverity = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const severities: Record<string, string> = {
-    'created': 'success',
-    'create': 'success',
-    'updated': 'info',
-    'update': 'info',
-    'deleted': 'danger',
-    'delete': 'danger',
-    'uploaded': 'secondary',
-    'price_changed': 'warning'
-  }
-  return severities[normalized] || 'secondary'
-}
-
-const formatPrice = (price: number) => {
-  if (!price || isNaN(price)) return '0.00'
-  return new Intl.NumberFormat('en-PH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(price)
-}
-
-const formatCurrencyPHP = (price: number) => {
-  return `PHP ${formatPrice(price)}`
-}
-
-const formatFileSize = (bytes: number) => {
-  if (!bytes || bytes === 0 || isNaN(bytes)) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatRelativeTime = (dateString: string) => {
-  if (!dateString) return 'N/A'
-
-  const date = new Date(dateString)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-onMounted(() => {
-  loadDashboardStats()
-  loadActivityLog()
-})
+onMounted(loadDashboard)
 </script>

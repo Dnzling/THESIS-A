@@ -18,16 +18,12 @@
 
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Store Name</label>
-              <InputText :modelValue="selectedStoreName" class="w-full" disabled />
-            </div>
-
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 md:col-span-2">
               <label class="text-sm font-semibold text-gray-700">Contract Title</label>
               <InputText v-model="form.contract_title" placeholder="e.g., Annual Furniture Supply Agreement 2026" class="w-full" />
               <small class="text-gray-500">Auto-generated based on supplier and dates. You can edit if needed.</small>
               <small v-if="errors.contract_title" class="text-red-600">{{ errors.contract_title }}</small>
+              <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -76,7 +72,8 @@
 
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Tax Rate (%)</label>
-              <InputNumber v-model="form.tax_rate" :min="0" :max="100" placeholder="0" suffix="%" class="w-full" />
+              <InputNumber v-model="form.tax_rate" :min="12" :max="12" suffix="%" class="w-full" disabled />
+              <small class="text-gray-600">Fixed at 12%.</small>
               <small v-if="errors.tax_rate" class="text-red-600">{{ errors.tax_rate }}</small>
             </div>
           </div>
@@ -154,23 +151,41 @@
       </div>
     </form>
 
-    <Dialog v-model:visible="showReviewDialog" modal header="Review Contract" :style="{ width: '70rem' }">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="space-y-2 text-sm">
-          <div><b>Store:</b> {{ selectedStoreName }}</div>
-          <div><b>Supplier:</b> {{ selectedSupplierName }}</div>
-          <div><b>Title:</b> {{ form.contract_title }}</div>
-          <div><b>Type:</b> {{ form.contract_type }}</div>
-          <div><b>Date Range:</b> {{ form.start_date ? form.start_date.toISOString().split('T')[0] : '-' }} to {{ form.end_date ? form.end_date.toISOString().split('T')[0] : '-' }}</div>
-          <div><b>Discount:</b> {{ form.discount_percentage }}%</div>
-          <div><b>Tax Rate:</b> {{ form.tax_rate }}%</div>
+    <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="w-[72rem] max-w-[96vw]" :pt="{ content: { class: 'p-0' }, footer: { class: 'p-0' } }">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Final review</p>
+          <h2 class="mt-1 text-xl font-semibold text-slate-900">Review supplier contract</h2>
+          <p class="mt-1 text-xs text-slate-500">Confirm the details below before submitting this agreement to the supplier.</p>
         </div>
-        <iframe class="w-full h-[420px] border rounded" :srcdoc="reviewHtml"></iframe>
+        <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close review" @click="showReviewDialog = false" />
+      </div>
+
+      <div class="max-h-[76vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+        <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Contract title</p><p class="mt-1 font-semibold text-slate-900">{{ form.contract_title }}</p></div>
+          <div><p class="text-xs text-slate-500">Type</p><p class="mt-1 font-medium capitalize text-slate-900">{{ form.contract_type }}</p></div>
+          <div><p class="text-xs text-slate-500">Duration</p><p class="mt-1 font-medium text-slate-900">{{ contractDurationDays }} days</p></div>
+          <div><p class="text-xs text-slate-500">Store</p><p class="mt-1 font-medium text-slate-900">{{ selectedStoreName }}</p></div>
+          <div><p class="text-xs text-slate-500">Supplier</p><p class="mt-1 font-medium text-slate-900">{{ selectedSupplierName }}</p></div>
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Effective period</p><p class="mt-1 font-medium text-slate-900">{{ reviewDate(form.start_date) }} to {{ reviewDate(form.end_date) }}</p></div>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.discount_percentage || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Tax rate</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.tax_rate || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Attachment</p><p class="mt-1 truncate font-semibold text-slate-900">{{ contractFile?.name || 'No file attached' }}</p><p v-if="contractFile" class="mt-1 text-xs text-slate-500">{{ formatFileSize(contractFile.size) }}</p></div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3"><div><h3 class="font-semibold text-slate-900">Agreement preview</h3><p class="text-xs text-slate-500">Read the generated agreement before submission.</p></div><span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">Draft preview</span></div>
+          <iframe class="h-[min(55vh,620px)] min-h-[360px] w-full bg-white" :srcdoc="reviewHtml" title="Draft store-supplier agreement"></iframe>
+        </div>
       </div>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <Button label="Close" severity="secondary" @click="showReviewDialog = false" />
-          <Button label="Submit Contract" severity="success" icon="pi pi-check" @click="submitForm" :loading="submitting" />
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
+          <p class="text-xs text-slate-500">Submitting sends this contract for supplier review.</p>
+          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Submit contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
       </template>
     </Dialog>
@@ -182,10 +197,12 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const submitting = ref(false)
 const suppliers = ref<any[]>([])
@@ -196,7 +213,7 @@ const showReviewDialog = ref(false)
 const titleManuallyEdited = ref(false)
 
 const form = reactive({
-  store_id: null,
+  store_id: null as number | null,
   supplier_id: null,
   contract_title: '',
   contract_type: 'supply',
@@ -204,7 +221,7 @@ const form = reactive({
   end_date: null,
   discount_percentage: 0,
   payment_terms_days: 30,
-  tax_rate: 0,
+  tax_rate: 12,
   terms_conditions: '',
   contract_file_path: null,
 })
@@ -243,6 +260,7 @@ const contractDurationDays = computed(() => {
   const end = new Date(form.end_date)
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24))
 })
+const reviewDate = (value: Date | null) => value ? new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '-'
 
 const paymentDueDate = computed(() => {
   if (!form.start_date || !form.payment_terms_days) return 'N/A'
@@ -738,6 +756,7 @@ const onFileSelect = (event: any) => {
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(key => delete errors[key])
 
+  if (!form.store_id) errors.store_id = 'Your account has no assigned store'
   if (!form.supplier_id) errors.supplier_id = 'Please select a supplier'
   if (!form.contract_title) {
     form.contract_title = generateContractTitle()
@@ -751,14 +770,18 @@ const validateForm = (): boolean => {
   if (form.discount_percentage < 0 || form.discount_percentage > 100) {
     errors.discount_percentage = 'Discount must be between 0 and 100'
   }
-  if (form.tax_rate < 0 || form.tax_rate > 100) {
-    errors.tax_rate = 'Tax rate must be between 0 and 100'
+  if (Number(form.tax_rate) !== 12) {
+    errors.tax_rate = 'Tax rate is fixed at 12%'
   }
 
   return Object.keys(errors).length === 0
 }
 
 const saveDraft = async () => {
+  if (!form.store_id) {
+    toast.add({ severity: 'warn', summary: 'Store unavailable', detail: 'Your account has no assigned store.', life: 3000 })
+    return
+  }
   if (!form.supplier_id) {
     toast.add({ severity: 'warn', summary: 'Incomplete', detail: 'Please select supplier first', life: 3000 })
     return
@@ -912,14 +935,15 @@ const skipOrCancel = () => {
 
 onMounted(async () => {
   try {
-    selectedStoreName.value = (route.query.store_name as string) || 'Not Selected'
+    const currentUser = await authStore.fetchCurrentUser()
+    const assignedStore = currentUser?.store || authStore.user?.store
+    form.store_id = assignedStore?.id || null
+    selectedStoreName.value = assignedStore?.name || 'No store assigned'
     selectedSupplierName.value = (route.query.supplier_name as string) || 'Not Selected'
 
     // Auto-select supplier if passed from supplier creation flow
     if (route.query.supplier_id) {
       form.supplier_id = parseInt(route.query.supplier_id as string)
-      form.store_id = route.query.store_id ? parseInt(route.query.store_id as string) : null
-
       if (!selectedSupplierName.value || selectedSupplierName.value === 'Not Selected') {
         const response = await procurementService.getSuppliers({ per_page: 100 })
         suppliers.value = response.data?.data || []

@@ -45,6 +45,8 @@ class Branch extends Model
         'longitude',
         'geofence_radius_m',
         'geofence_enabled',
+        'logo_path',
+        'logo_dimensions',
         // 'opening_hours',
         'status',
         'branch_code',
@@ -65,6 +67,7 @@ class Branch extends Model
         'geofence_radius_m' => 'integer',
         'geofence_enabled' => 'boolean',
         'opening_hours' => 'array',
+        'logo_dimensions' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
@@ -83,7 +86,7 @@ class Branch extends Model
      */
     public function store()
     {
-        return $this->belongsTo(Store::class, 'store_id', 'store_id');
+        return $this->belongsTo(Store::class, 'store_id', 'id');
     }
 
     /**

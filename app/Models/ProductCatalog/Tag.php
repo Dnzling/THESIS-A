@@ -33,6 +33,7 @@ class Tag extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class, 'product_tags')
+                    ->withPivot('store_id')
                     ->withTimestamps();
     }
 

@@ -27,7 +27,7 @@ class UserController extends Controller
             if ($currentUser->hasRole('super_admin')) {
                 $query->withTrashed(); // Can see everything including deleted
 
-            } elseif ($currentUser->hasRole('store_admin') || $currentUser->hasRole('hr_manager')) {
+            } elseif ($currentUser->hasRole('owner') || $currentUser->hasRole('hr_manager')) {
                 // Can see users in same store
                 if (!$currentUser->store_id) {
                     return response()->json(['success' => false, 'message' => 'No store assigned'], 400);
@@ -46,7 +46,7 @@ class UserController extends Controller
             }
 
             // Apply filters if user has permission
-            if ($currentUser->hasAnyRole(['super_admin', 'store_admin', 'hr'])) {
+            if ($currentUser->hasAnyRole(['super_admin', 'owner', 'hr'])) {
                 if ($request->store_id) $query->where('store_id', $request->store_id);
                 if ($request->role_id) $query->where('role_id', $request->role_id);
                 if ($request->is_active !== null) $query->where('is_active', $request->is_active);
@@ -108,19 +108,19 @@ class UserController extends Controller
                     'store_id' => 'required|exists:stores,id'
                 ]);
                 $storeIdForNewStaff = $request->id;
-            } elseif ($creatorUser->hasRole('store_admin')) {
-                // Store Admin can only assign to their own store
+            } elseif ($creatorUser->hasRole('owner')) {
+                // Owners can only assign staff to their own store.
                 if (!$creatorUser->store_id) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Store admin does not have an assigned store.',
+                        'message' => 'Store owner does not have an assigned store.',
                     ], 400);
                 }
                 $storeIdForNewStaff = $creatorUser->store_id;
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only HR or Store Admins can register staff.',
+                    'message' => 'Unauthorized. Only HR or store owners can register staff.',
                 ], 403);
             }
 
@@ -196,7 +196,7 @@ class UserController extends Controller
             }
 
             // Check if user has permission to view others
-            $allowedRoles = ['super_admin', 'store_admin', 'hr_manager'];
+            $allowedRoles = ['super_admin', 'owner', 'hr_manager'];
             if (!$currentUser->hasAnyRole($allowedRoles)) {
                 return response()->json([
                     'success' => false,
@@ -213,8 +213,8 @@ class UserController extends Controller
             }
 
             // Check specific permissions based on role
-            if ($currentUser->hasRole('store_admin')) {
-                // Store admin can only view users from same store
+            if ($currentUser->hasRole('owner')) {
+                // Owners can only view users from their own store.
                 if (!$currentUser->store_id || $currentUser->store_id !== $user->store_id) {
                     return response()->json([
                         'success' => false,
@@ -338,14 +338,14 @@ class UserController extends Controller
             }
 
             // Check permissions using ACTUAL database values
-            if ($deleter->role === 'storeAdmin') {
-                // Store admin can only delete users from their own store
+            if ($deleter->hasRole('owner')) {
+                // Owners can only delete users from their own store.
                 if ($deleter->store_id !== $userToDelete->store_id) {
                     return response()->json(['success' => false, 'message' => 'Can only delete from your store'], 403);
                 }
 
-                // Store admin cannot delete other admins
-                if (in_array($userToDelete->role, ['storeAdmin', 'admin'])) {
+                // Owners cannot delete other owners.
+                if ($userToDelete->hasAnyRole(['owner', 'admin'])) {
                     return response()->json(['success' => false, 'message' => 'Cannot delete admin'], 403);
                 }
             } elseif ($deleter->role === 'hr') {

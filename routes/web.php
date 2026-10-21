@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use App\Http\Middleware\VerifyCsrfToken;
 
 
-Route::prefix('stores/{store}')->group(function () {
+Route::middleware('auth')->prefix('stores/{store}')->group(function () {
     // Store owner submits verification documents
     Route::post('/verification/submit', [StoreVerificationController::class, 'submitDocuments']);
 
@@ -18,8 +18,9 @@ Route::prefix('stores/{store}')->group(function () {
     Route::get('/verification/status', [StoreVerificationController::class, 'getStatus']);
 });
 
-Route::get('/', function () {
+Route::get('/business', function () {
     return Inertia::render('Marketing/Home', [
+        'title' => 'Business',
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
         'laravelVersion' => Application::VERSION,
@@ -27,55 +28,64 @@ Route::get('/', function () {
     ]);
 });
 
-Route::get('/about', function () {
-    return Inertia::render('Marketing/About');
-});
-
-Route::get('/pricing', function () {
-    return Inertia::render('Marketing/Pricing');
+Route::get('/business/about', function () {
+    return Inertia::render('Marketing/About', ['title' => 'About']);
 });
 
 Route::get('/subscription-plans', function () {
-    return Inertia::render('Auth/SubscriptionPlans');
+    return Inertia::render('Auth/SubscriptionPlans', ['title' => 'Subscription Plans']);
 })->name('subscription.plans');
 
 Route::get('/subscription-checkout', function () {
-    return redirect('/subscription-plans');
+    return Inertia::render('Auth/SubscriptionCheckout', ['title' => 'Subscription Checkout']);
 })->name('subscription.checkout');
 
+Route::get('/wholesale-payment/return', function () {
+    return Inertia::render('Marketing/WholesalePaymentReturn', ['title' => 'Wholesale Payment']);
+})->name('wholesale.payment.return');
+
+Route::get('/business/pricing', function () {
+    return Inertia::render('Marketing/Pricing', ['title' => 'Pricing']);
+})->name('pricing');
+
+
+
 Route::get('/store/registration', function () {
-    return Inertia::render('Auth/StoreRegistration');
+    return Inertia::render('Auth/StoreRegistration', ['title' => 'Store Registration']);
 })->name('store.registration');
 
 Route::get('/customer/login', function () {
-    return Inertia::render('Auth/CustomerLogin');
+    return Inertia::render('Auth/CustomerLogin', [
+        'title' => 'Customer Login',
+        'status' => session('status'),
+    ]);
 })->name('customer.login');
 
 Route::get('/super-admin/login', function () {
-    return Inertia::render('Auth/SuperAdminLogin');
+    return Inertia::render('Auth/SuperAdminLogin', ['title' => 'Super Admin Login']);
 })->name('super-admin.login');
 
 Route::get('/customer/register', function () {
-    return Inertia::render('Auth/CustomerRegister');
+    return Inertia::render('Auth/CustomerRegister', ['title' => 'Customer Registration']);
 })->name('customer.register');
 
 // Compatibility for older customer links; the canonical storefront is /shop.
 Route::redirect('/customer/shop', '/shop');
 
 Route::get('/supplier/register', function () {
-    return Inertia::render('Auth/SupplierRegister');
+    return Inertia::render('Auth/SupplierRegister', ['title' => 'Supplier Registration']);
 })->name('supplier.register');
 
 Route::get('/verify-otp', function () {
-    return Inertia::render('Auth/VerifyOtp');
+    return Inertia::render('Auth/VerifyOtp', ['title' => 'Verify Email']);
 })->name('verify-otp');
 
 Route::get('/unauthorized', function () {
-    return Inertia::render('Auth/Unauthorized');
+    return Inertia::render('Auth/Unauthorized', ['title' => 'Unauthorized']);
 })->name('unauthorized');
 
 Route::get('/system/store/verification', function () {
-    return Inertia::render('Auth/VerifyStore');
+    return Inertia::render('Auth/VerifyStore', ['title' => 'Store Verification']);
 });
 
 Route::get('/dashboard', function () {
@@ -89,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware(['auth'])->group(function () {
+    Route::post('/store/settings/profile/request-otp', [\App\Http\Controllers\System\StoreAdmin\StoreSettingsController::class, 'requestProfileUpdateOtp']);
     Route::get('/inventory/transactions/{id}/print', [InventoryTransactionController::class, 'print'])
         ->name('inventory.transactions.print');
 });
@@ -112,6 +123,6 @@ Route::middleware(['auth', 'role:super_admin'])->group(function () {
     })->name('system.admin.supplier-verifications');
 
     Route::get('/system/admin/supplier-verifications/{id}', function ($id) {
-        return Inertia::render('System/Admin/SupplierVerificationShow', ['id' => $id]);
+        return Inertia::render('System/Admin/SupplierVerificationShow', ['id' => $id, 'title' => 'Supplier Verification']);
     })->name('system.admin.supplier-verifications.show');
 });

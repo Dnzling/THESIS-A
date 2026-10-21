@@ -76,13 +76,6 @@ class FinanceDashboardController extends Controller
                 ->count()
             : 0;
 
-        $merchPriceForFinanceApprovalCount = Schema::hasTable('products')
-            ? Product::query()
-                ->where('store_id', $storeId)
-                ->where('price_approval_status', 'pending')
-                ->count()
-            : 0;
-
         $highValueSupplierPaymentsForFinanceApprovalCount = Schema::hasTable('supplier_payments')
             ? SupplierPayment::query()
                 ->when(
@@ -126,13 +119,6 @@ class FinanceDashboardController extends Controller
                 'target_approval' => 'Finance Approval',
                 'pending_count' => $hrPayrollForFinanceApprovalCount,
                 'route' => '/system/finance/payroll',
-            ],
-            [
-                'source_module' => 'Merchandising',
-                'workflow' => 'Price changes',
-                'target_approval' => 'Finance Approval',
-                'pending_count' => $merchPriceForFinanceApprovalCount,
-                'route' => '/system/merchandising/products',
             ],
             [
                 'source_module' => 'Procurement',

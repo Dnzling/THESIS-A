@@ -112,7 +112,7 @@ const pickups = ref<any[]>([])
 
 const filters = reactive({
   search: '',
-  status: 'scheduled',
+  status: 'ready_for_dispatch',
 })
 
 const pageState = reactive({
@@ -123,7 +123,7 @@ const pageState = reactive({
 
 const statusOptions = [
   { label: 'All', value: '' },
-  { label: 'Scheduled', value: 'scheduled' },
+  { label: 'Ready For Dispatch', value: 'ready_for_dispatch' },
   { label: 'Assigned', value: 'assigned' },
   { label: 'Picked Up', value: 'picked_up' },
   { label: 'Cancelled', value: 'cancelled' },
@@ -157,7 +157,7 @@ const onPage = (event: any) => {
 
 const resetFilters = () => {
   filters.search = ''
-  filters.status = 'scheduled'
+  filters.status = 'ready_for_dispatch'
   pageState.page = 1
   loadPickups()
 }

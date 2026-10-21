@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\LoginResponseResource;
 use App\Http\Resources\UserResource;
-use App\Mail\CustomerOtpVerificationMail;
-use App\Mail\OtpVerificationMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -13,15 +11,14 @@ use Illuminate\Validation\Rules;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
-use App\Models\Hr\ShiftAssignment;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Customer\Customer;
-use App\Models\Hr\ShiftSchedule;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Core\Role;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\Hr\AttendanceClockInService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -33,6 +30,15 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
+    public function superAdminLogin(Request $request)
+    {
+        $request->merge(['login_portal' => 'super_admin']);
+
+        return $this->login($request);
+    }
+
+    private const STRONG_PASSWORD_RULE = 'required|string|min:8|max:255|regex:/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/';
+
     public function registerSupplier(Request $request)
     {
         try {
@@ -46,7 +52,7 @@ class AuthController extends Controller
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
                 'email' => 'required|email|unique:users,email',
-                'password' => 'required|string|min:8|max:255|confirmed',
+                'password' => self::STRONG_PASSWORD_RULE . '|confirmed',
                 'phone' => 'nullable|string|max:50',
             ]);
 
@@ -61,35 +67,8 @@ class AuthController extends Controller
                     ]
                 );
 
-                $storeId = Store::query()->value('id');
-                if (!$storeId) {
-                    throw new \RuntimeException('No store available for supplier registration.');
-                }
-
-                $fullName = trim($validated['fname'] . ' ' . $validated['lname']);
-                $supplierCode = $this->generateSupplierCode();
-
-                $supplierName = trim((string) ($validated['supplier_name'] ?? ''));
-                if ($supplierName === '') {
-                    $supplierName = trim($validated['fname'] . ' ' . $validated['lname']);
-                }
-
-                $supplier = Supplier::create([
-                    'store_id' => $storeId,
-                    'supplier_code' => $supplierCode,
-                    'supplier_name' => $supplierName,
-                    'company_name' => $supplierName,
-                    'contact_person' => $fullName,
-                    'email' => $validated['email'],
-                    'phone' => $validated['phone'] ?? '',
-                    'country' => 'Philippines',
-                    'status' => 'inactive',
-                    'supplier_type' => 'wholesaler',
-                    'payment_terms' => 'net_30',
-                ]);
-
                 $user = User::create([
-                    'user_id' => $supplierCode,
+                    'user_id' => User::generateUserId(),
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
                     'email' => $validated['email'],
@@ -98,18 +77,8 @@ class AuthController extends Controller
                     'is_active' => 1,
                 ]);
 
-                SupplierPortal::create([
-                    'user_id' => $user->id,
-                    'supplier_id' => $supplier->id,
-                    'status' => 'pending',
-                    'resubmission_count' => 0,
-                ]);
-
                 return $user;
             });
-
-            $otp = $user->generateOtp();
-            Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
 
             $user->load(['role' => function ($query) {
                 $query->select('id', 'name', 'display_name');
@@ -119,7 +88,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Supplier account created. Please verify OTP sent to your email.',
+                'message' => 'Supplier account created. Open the verification page to receive your OTP.',
                 'user' => [
                     'firstname' => $user->fname,
                     'lastname' => $user->lname,
@@ -170,22 +139,87 @@ class AuthController extends Controller
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
                 'email' => 'required|email',
-                'password' => 'required|string|min:8|max:255',
+                'password' => self::STRONG_PASSWORD_RULE,
                 'role_id' => 'nullable|integer|exists:roles,id',
+                'account_type' => 'nullable|string|in:owner,customer',
                 'birthday' => 'nullable|date|before_or_equal:today',
-                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
                 'store_name' => 'nullable|string|max:255',
                 'store_type' => 'nullable|string|max:100',
+                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
-            $targetRoleId = (int) ($validated['role_id'] ?? 2);
-            $isCustomerRegistration = $targetRoleId === 16;
+            $registrationType = $validated['account_type'] ?? null;
+            if (!$registrationType && !empty($validated['role_id'])) {
+                $requestedRoleName = Role::query()
+                    ->whereKey((int) $validated['role_id'])
+                    ->value('name');
+                $registrationType = strtolower((string) $requestedRoleName) === 'customer'
+                    ? 'customer'
+                    : 'owner';
+            }
+            $registrationType ??= 'owner';
+            $isCustomerRegistration = $registrationType === 'customer';
+            $targetRole = Role::query()
+                ->where('name', $registrationType)
+                ->whereNull('store_id')
+                ->first();
+
+            if (!$targetRole && $registrationType === 'owner') {
+                // Older installations may only have a store-scoped default role.
+                // Registration and onboarding need a global role shared by new stores.
+                $targetRole = DB::transaction(function () {
+                    $role = Role::firstOrCreate(
+                        ['name' => 'owner', 'store_id' => null],
+                        [
+                            'display_name' => 'Store Owner',
+                            'description' => 'Owns and manages store configuration and operations',
+                            'code' => 'OWN',
+                            'is_active' => true,
+                        ]
+                    );
+
+                    if ($role->wasRecentlyCreated) {
+                        $existingRoleId = Role::query()
+                            ->where('name', 'owner')
+                            ->whereNotNull('store_id')
+                            ->orderBy('id')
+                            ->value('id');
+
+                        if ($existingRoleId) {
+                            $now = now();
+                            $permissions = DB::table('role_permissions')
+                                ->where('role_id', $existingRoleId)
+                                ->pluck('permission_id')
+                                ->map(fn ($permissionId) => [
+                                    'role_id' => $role->id,
+                                    'permission_id' => $permissionId,
+                                    'created_at' => $now,
+                                    'updated_at' => $now,
+                                ])
+                                ->all();
+
+                            if ($permissions) {
+                                DB::table('role_permissions')->insert($permissions);
+                            }
+                        }
+                    }
+
+                    return $role;
+                });
+            }
+
+            if (!$targetRole) {
+                throw ValidationException::withMessages([
+                    'account_type' => ["The {$registrationType} role is not configured."],
+                ]);
+            }
+
             $existingUser = User::query()->where('email', $validated['email'])->first();
 
             // A customer whose email has not been verified is still a pending
             // registration. Allow them to retry and receive a fresh OTP.
             if ($existingUser && (!$isCustomerRegistration
-                || (int) $existingUser->role_id !== 16
+                || (int) $existingUser->role_id !== (int) $targetRole->id
                 || $existingUser->email_verified_at !== null)) {
                 throw ValidationException::withMessages([
                     'email' => ['The email has already been taken.'],
@@ -208,13 +242,13 @@ class AuthController extends Controller
                 }
             }
 
-            $user = DB::transaction(function () use ($validated, $existingUser) {
+            $user = DB::transaction(function () use ($validated, $existingUser, $targetRole) {
                 $attributes = [
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
                     'birthday' => $validated['birthday'] ?? null,
                     'password' => Hash::make($validated['password']),
-                    'role_id' => $validated['role_id'] ?? 2,
+                    'role_id' => $targetRole->id,
                     'is_active' => 1,
                 ];
 
@@ -227,22 +261,12 @@ class AuthController extends Controller
 
                 $user->loadMissing('role');
 
-                if ($user->hasRole('customer') || (int) $user->role_id === 16) {
+                if ($user->hasRole('customer')) {
                     Customer::firstOrCreate(
                         ['user_id' => $user->id],
                         ['verification_status' => 'unverified']
                     );
                 }
-
-                // Keep account creation atomic with OTP delivery. If the mail
-                // transport fails, the transaction rolls back the user and
-                // customer rows so the email can be registered again.
-                $otp = $user->generateOtp();
-                $mail = $user->hasRole('customer')
-                    ? new CustomerOtpVerificationMail($otp, $user->fname)
-                    : new OtpVerificationMail($otp, $user->fname);
-
-                Mail::to($user->email)->send($mail);
 
                 return $user;
             });
@@ -258,7 +282,7 @@ class AuthController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Registration successful. Please check your email for OTP.',
+                    'message' => 'Registration successful. Open the verification page to receive your OTP.',
                     'user' => [
                         'firstname' => $user->fname,
                         'lastname' => $user->lname,
@@ -347,6 +371,20 @@ class AuthController extends Controller
                 if (!$employee && is_numeric($identifier)) {
                     $employee = Employee::where('id', (int) $identifier)->first();
                 }
+                // Drivers may also sign in using their employee name. Resolve the
+                // employee first, then only accept it when the linked user is a driver.
+                if (!$employee) {
+                    $name = preg_replace('/\s+/', ' ', $identifier);
+                    $employee = Employee::query()
+                        ->with(['user.role'])
+                        ->whereHas('user', function ($query) use ($name) {
+                            $query->where(function ($query) use ($name) {
+                                $query->whereRaw("CONCAT_WS(' ', fname, lname) = ?", [$name])
+                                    ->orWhereRaw("CONCAT_WS(' ', lname, fname) = ?", [$name]);
+                            })->whereHas('role', fn ($query) => $query->where('name', 'driver'));
+                        })
+                        ->first();
+                }
                 if ($employee?->user?->email) {
                     $email = $employee->user->email;
                 } else {
@@ -377,6 +415,12 @@ class AuthController extends Controller
                 ]);
             }
 
+            if ($request->input('login_portal') === 'super_admin' && !$user->isSuperAdmin()) {
+                throw ValidationException::withMessages([
+                    'login' => ['This account is not authorized for Super Admin access.']
+                ]);
+            }
+
             Auth::login($user);
             $deviceName = trim((string) ($credentials['device_name'] ?? 'web_browser'));
             if ($deviceName === '') {
@@ -396,14 +440,16 @@ class AuthController extends Controller
                 Auth::logout();
                 return response()->json([
                     'success' => false,
-                    'message' => 'You are outside the allowed attendance radius.',
+                    'code' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'location_required' : 'outside_geofence',
+                    'message' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'Location access is required to clock in at this branch.'
+                        : 'You are outside the allowed attendance radius.',
                 ], 403);
             }
 
             // Check email verification
             if (!$user->email_verified_at) {
-                $user->generateOtp();
-
                 // Issue a temporary token for OTP verification flow.
                 $tempToken = $user->createToken('otp_verification')->plainTextToken;
                 $user->loadMissing('role');
@@ -418,6 +464,8 @@ class AuthController extends Controller
                     'role' => strtolower((string) ($user->role?->name ?? $user->role_name ?? '')),
                 ], 403);
             }
+
+            $simpleAttendance = $this->clockInSimpleEmployee($user);
 
             // Revoke existing tokens for this device
             $user->tokens()->where('name', $deviceName)->delete();
@@ -439,6 +487,7 @@ class AuthController extends Controller
                 'user' => $user,
                 'token' => $token,
                 'abilities' => $abilities,
+                'simple_attendance' => $simpleAttendance,
                 'status_code' => 200
             ]);
         } catch (ValidationException $e) {
@@ -537,8 +586,11 @@ class AuthController extends Controller
         $alreadyClockedIn = false;
 
         if ($employee) {
-            $today = now()->format('Y-m-d');
-            $now = now();
+            $storeSettings = is_array($employee->store?->settings) ? $employee->store->settings : [];
+            $attendanceRules = $storeSettings['hr_attendance_rules'] ?? [];
+            $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
+            $now = now($timezone);
+            $today = $now->toDateString();
 
             // Check if already clocked in today
             $attendance = Attendance::where('employee_id', $employee->id)
@@ -557,85 +609,42 @@ class AuthController extends Controller
                     'shift_name' => $attendance->shift->name ?? 'No Shift'
                 ];
             } else {
-                // Get today's schedule
-                $schedule = ShiftSchedule::with('shift')
-                    ->where('employee_id', $employee->id)
-                    ->whereDate('schedule_date', $today)
-                    ->first();
-
-                // Fallback: derive and auto-create schedule from active assignment
-                if (!$schedule) {
-                    $assignment = ShiftAssignment::query()
-                        ->where('employee_id', $employee->id)
-                        ->active($today)
-                        ->latest('start_date')
-                        ->first();
-
-                    if ($assignment) {
-                        $schedule = ShiftSchedule::firstOrCreate(
-                            [
-                                'employee_id' => $employee->id,
-                                'schedule_date' => $today,
-                            ],
-                            [
-                                'shift_id' => $assignment->shift_id,
-                                'assignment_id' => $assignment->id,
-                                'generation_method' => 'manual',
-                                'status' => 'scheduled',
-                                'assigned_by' => $user->id,
-                            ]
-                        )->load('shift');
-                    }
-                }
+                $attendanceClockIn = app(AttendanceClockInService::class);
+                $clockInAt = $now->copy();
+                $resolved = $attendanceClockIn->resolveSchedule($employee, $today, $clockInAt, $user->id);
+                $schedule = $resolved['schedule'];
+                $calculated = $attendanceClockIn->calculateStatus($resolved, $clockInAt, $today, $timezone, $attendanceRules);
 
                 if ($attendance) {
                     // Reuse existing row for the date (e.g. absent record created earlier)
                     $attendance->update([
-                        'schedule_id' => $attendance->schedule_id ?? ($schedule->id ?? null),
-                        'shift_id' => $attendance->shift_id ?? ($schedule->shift_id ?? null),
+                        'schedule_id' => $schedule?->id ?? $attendance->schedule_id,
+                        'shift_id' => $resolved['shift']?->id ?? $attendance->shift_id,
                         'clock_in' => $now,
                         'clock_in_method' => 'web',
                         'clock_in_ip' => $request->ip(),
-                        'status' => 'present',
+                        'status' => $calculated['status'],
                     ]);
                 } else {
                     // Create new attendance with clock-in
                     $attendance = Attendance::create([
                         'employee_id' => $employee->id,
                         'schedule_id' => $schedule->id ?? null,
-                        'shift_id' => $schedule->shift_id ?? null,
+                        'shift_id' => $resolved['shift']?->id,
                         'attendance_date' => $today,
                         'clock_in' => $now,
                         'clock_in_method' => 'web',
                         'clock_in_ip' => $request->ip(),
-                        'status' => 'present',
+                        'status' => $calculated['status'],
                     ]);
                 }
 
-                // Calculate late minutes
-                if ($schedule && $schedule->shift) {
-                    $startTime = $schedule->shift->start_time;
-
-                    // Handle both time-only and datetime formats
-                    if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/', $startTime)) {
-                        $shiftStart = Carbon::parse($startTime);
-                    } else {
-                        $shiftStart = Carbon::parse($today . ' ' . $startTime);
-                    }
-
-                    $minutesLate = $shiftStart->diffInMinutes($now, false);
-                    $gracePeriod = $schedule->shift->grace_period_minutes ?? 15;
-
-                    if ($minutesLate > $gracePeriod) {
-                        $attendance->late_minutes = $minutesLate - $gracePeriod;
-                        $attendance->status = 'late';
-                    } else {
-                        $attendance->late_minutes = 0;
-                        $attendance->status = 'present';
-                    }
-
-                    $attendance->save();
+                $attendance->late_minutes = $calculated['late_minutes'];
+                $attendance->is_restday_work = $resolved['is_rest_day'];
+                if ($calculated['status'] === 'unscheduled') {
+                    $attendance->notes = trim(($attendance->notes ? $attendance->notes . "\n" : '') . 'Clock-in recorded without an assigned shift; review schedule.');
                 }
+                $attendance->save();
 
                 $clockInData = [
                     'id' => $attendance->id,
@@ -643,7 +652,7 @@ class AuthController extends Controller
                     'clock_in_formatted' => $attendance->clock_in->format('h:i A'),
                     'status' => $attendance->status,
                     'late_minutes' => $attendance->late_minutes,
-                    'shift_name' => $schedule->shift->name ?? 'No Shift'
+                    'shift_name' => $attendance->shift?->name ?? 'No Shift'
                 ];
             }
         }
@@ -661,12 +670,7 @@ class AuthController extends Controller
 
     private function passesGeofence(User $user, ?float $latitude, ?float $longitude): bool
     {
-        if ($user->isSuperAdmin() || $user->isStoreAdmin()) {
-            return true;
-        }
-
-        $settings = is_array($user->store?->settings) ? $user->store->settings : [];
-        if (array_key_exists('attendance_geofence_enabled', $settings) && !$settings['attendance_geofence_enabled']) {
+        if ($user->isSuperAdmin() || $user->isOwner()) {
             return true;
         }
 
@@ -679,8 +683,12 @@ class AuthController extends Controller
         }
 
         $branch = $this->resolveGeofenceBranch($user, $employee);
-        if (!$branch || $branch->latitude === null || $branch->longitude === null) {
+        if (!$branch || !$branch->geofence_enabled) {
             return true;
+        }
+
+        if ($branch->latitude === null || $branch->longitude === null) {
+            return false;
         }
 
         if ($latitude === null || $longitude === null) {
@@ -691,11 +699,61 @@ class AuthController extends Controller
         return $this->isWithinRadius($latitude, $longitude, (float) $branch->latitude, (float) $branch->longitude, $radius);
     }
 
+    private function clockInSimpleEmployee(User $user): ?array
+    {
+        if (!in_array($user->store?->subscription_tier, ['free', 'simple'], true)) {
+            return null;
+        }
+
+        $employee = Employee::query()->where('store_id', $user->store_id)
+            ->where('user_id', $user->id)->where('status', 'active')->first();
+        if (!$employee) {
+            return null;
+        }
+
+        $now = now();
+        $hours = $user->store?->settings['simple_operating_hours'] ?? null;
+        $opening = is_array($hours) && !empty($hours['opens_at'])
+            ? Carbon::parse($now->toDateString() . ' ' . $hours['opens_at']) : null;
+        $closing = is_array($hours) && !empty($hours['closes_at'])
+            ? Carbon::parse($now->toDateString() . ' ' . $hours['closes_at']) : null;
+        $lateSeconds = $opening ? max(0, (int) $opening->diffInSeconds($now, false)) : 0;
+
+        return DB::transaction(function () use ($user, $employee, $now, $closing, $lateSeconds) {
+            $existing = DB::table('simple_employee_attendances')
+                ->where('employee_id', $employee->id)
+                ->whereDate('attendance_date', $now->toDateString())
+                ->lockForUpdate()->first();
+
+            if ($existing) {
+                return ['state' => $existing->clock_out_at ? 'completed' : ($existing->clock_in_at ? 'already_clocked_in' : 'already_recorded'), 'late_seconds' => 0];
+            }
+
+            DB::table('simple_employee_attendances')->insert([
+                'store_id' => $employee->store_id,
+                'employee_id' => $employee->id,
+                'attendance_date' => $now->toDateString(),
+                'status' => 'present',
+                'clock_in_at' => $now,
+                'scheduled_close_at' => $closing,
+                'late_minutes' => (int) ceil($lateSeconds / 60),
+                'recorded_by' => $user->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return ['state' => 'clocked_in', 'late_seconds' => $lateSeconds];
+        });
+    }
+
     private function resolveGeofenceBranch(User $user, Employee $employee): ?Branch
     {
         $branchId = $user->branch_id ?: $employee->branch_id;
         if ($branchId) {
-            return Branch::find($branchId);
+            $branch = Branch::query()->where('store_id', $user->store_id)->find($branchId);
+            if ($branch) {
+                return $branch;
+            }
         }
 
         if ($user->store_id) {
@@ -772,6 +830,8 @@ class AuthController extends Controller
             ], 422);
         }
 
+        abort_unless((int) $request->user_id === (int) $user->id, 403);
+
         $employee = Employee::where('user_id', $request->user_id)
             ->where('store_id', $storeId)
             ->first();
@@ -781,6 +841,33 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Employee not found'
             ], 200);
+        }
+
+        if (in_array($user->store?->subscription_tier, ['free', 'simple'], true)) {
+            $now = now();
+            $clockedOut = DB::transaction(function () use ($employee, $now) {
+                $row = DB::table('simple_employee_attendances')
+                    ->where('employee_id', $employee->id)
+                    ->whereDate('attendance_date', $now->toDateString())
+                    ->whereNotNull('clock_in_at')
+                    ->whereNull('clock_out_at')
+                    ->orderByDesc('id')
+                    ->lockForUpdate()->first();
+                if (!$row) return false;
+
+                $clockIn = Carbon::parse($row->clock_in_at);
+                DB::table('simple_employee_attendances')->where('id', $row->id)->update([
+                    'clock_out_at' => $now,
+                    'worked_minutes' => max(0, (int) $clockIn->diffInMinutes($now, false)),
+                    'overtime_minutes' => $row->scheduled_close_at
+                        ? max(0, (int) Carbon::parse($row->scheduled_close_at)->diffInMinutes($now, false)) : 0,
+                    'updated_at' => $now,
+                ]);
+                return true;
+            });
+
+            $user->currentAccessToken()?->delete();
+            return response()->json(['success' => true, 'message' => 'Logged out successfully', 'clocked_out' => $clockedOut]);
         }
 
         $today = now()->format('Y-m-d');
@@ -822,7 +909,35 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         try {
-            $user = $request->user()->load(['role', 'store', 'branch']);
+            $user = $request->user()->load(['role', 'store.subscriptionPlan', 'branch']);
+
+            // Match the store resolution used by the Billing page. Some staff
+            // are associated to a store through their employee or branch record
+            // instead of users.store_id.
+            $resolvedStore = $user->store;
+            if (!$resolvedStore) {
+                $employee = Employee::query()
+                    ->where('user_id', $user->id)
+                    ->first(['store_id', 'branch_id']);
+
+                $resolvedStoreId = $employee?->store_id;
+                if (!$resolvedStoreId && $employee?->branch_id) {
+                    $resolvedStoreId = Branch::query()
+                        ->where('id', (int) $employee->branch_id)
+                        ->value('store_id');
+                }
+
+                if ($resolvedStoreId) {
+                    $resolvedStore = Store::query()
+                        ->with('subscriptionPlan')
+                        ->find((int) $resolvedStoreId);
+                }
+            }
+
+            if ($resolvedStore) {
+                $resolvedStore->loadMissing('subscriptionPlan');
+                $user->setRelation('store', $resolvedStore);
+            }
 
             return response()->json([
                 'success' => true,
@@ -838,16 +953,16 @@ class AuthController extends Controller
     public static function generateUserId()
     {
         $currentYear = date('Y');
-        $yearPrefix = $currentYear . '-';
+        $yearPrefix = 'USR-' . $currentYear . '-';
 
         // Get max number for current year
         $maxId = DB::table('users')
-            ->select(DB::raw("MAX(CAST(SUBSTRING(user_id, 6) AS UNSIGNED)) as max_num"))
+            ->select(DB::raw("MAX(CAST(SUBSTRING(user_id, 10) AS UNSIGNED)) as max_num"))
             ->where('user_id', 'LIKE', $yearPrefix . '%')
             ->value('max_num');
 
         $nextNumber = ($maxId ?? 0) + 1;
-        $formattedNumber = str_pad($nextNumber, 7, '0', STR_PAD_LEFT);
+        $formattedNumber = str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 
         return $yearPrefix . $formattedNumber;
     }

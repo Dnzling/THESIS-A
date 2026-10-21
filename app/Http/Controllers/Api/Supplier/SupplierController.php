@@ -68,7 +68,8 @@ class SupplierController extends Controller
             'phone' => 'required|string',
             'address' => 'required|string',
             'city' => 'required|string',
-            'state' => 'required|string',
+            'state' => 'nullable|required_without:province|string',
+            'province' => 'nullable|required_without:state|string',
             'postal_code' => 'required|string',
             'country' => 'required|string',
             'payment_terms' => 'required|string',
@@ -77,6 +78,8 @@ class SupplierController extends Controller
         ]);
 
         try {
+            $validated['province'] = $validated['province'] ?? $validated['state'] ?? null;
+            unset($validated['state']);
             $supplier = Supplier::create($validated);
 
             return response()->json([
@@ -123,7 +126,8 @@ class SupplierController extends Controller
             'phone' => 'sometimes|string',
             'address' => 'sometimes|string',
             'city' => 'sometimes|string',
-            'state' => 'sometimes|string',
+            'state' => 'sometimes|nullable|string',
+            'province' => 'sometimes|nullable|string',
             'postal_code' => 'sometimes|string',
             'country' => 'sometimes|string',
             'payment_terms' => 'sometimes|string',
@@ -133,6 +137,10 @@ class SupplierController extends Controller
         ]);
 
         try {
+            if (array_key_exists('state', $validated) && !array_key_exists('province', $validated)) {
+                $validated['province'] = $validated['state'];
+            }
+            unset($validated['state']);
             $supplier = Supplier::findOrFail($id);
             $supplier->update($validated);
 

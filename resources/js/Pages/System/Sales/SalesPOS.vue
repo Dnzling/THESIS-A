@@ -30,14 +30,21 @@
               <template #body="{ data }">
                 <div>
                   <div class="font-medium">{{ data.product?.product_name }}</div>
-                  <div class="truncate text-xs text-slate-500">Variant: {{ data.variation?.variation_name || data.product?.sku || 'Standard' }}</div>
+                  <div v-if="data.variation?.variation_name" class="truncate text-xs text-slate-500">
+                    Variant: {{ data.variation.variation_name }}
+                  </div>
                 </div>
+              </template>
+            </Column>
+            <Column header="SKU">
+              <template #body="{ data }">
+                <span class="text-sm text-slate-600">{{ data.variation?.variation_sku || data.product?.sku || '—' }}</span>
               </template>
             </Column>
             <Column field="quantity_available" header="Stock">
               <template #body="{ data }">
-                <Tag 
-                  :value="data.quantity_available" 
+                <badge 
+                  :value="`${Number(data.quantity_available || 0)} available`"
                   :severity="getStockSeverity(data.quantity_available)" 
                 />
               </template>
@@ -51,9 +58,9 @@
               <template #body="{ data }">
                 <Button 
                   text 
-                  severity="info" 
+                   
                   icon="pi pi-plus" 
-                  :disabled="!canManagePos" 
+                  :disabled="!canManagePos || cartQuantity(data.id) >= Number(data.quantity_available || 0)"
                   @click="addToCart(data)"
                 />
               </template>
@@ -66,7 +73,6 @@
       <Card>
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-shopping-cart text-blue-500"></i>
             <span>Cart</span>
             <Badge v-if="cart.length" :value="cart.length" class="ml-auto" />
           </div>
@@ -82,6 +88,7 @@
                 <div>
                   <p class="font-medium">{{ item.product_name }}</p>
                   <p class="text-sm text-gray-600">{{ money(item.unit_price) }}</p>
+                  <p class="text-xs text-slate-500">{{ item.stock_available }} in inventory</p>
                 </div>
                 <Button 
                   text 
@@ -92,15 +99,34 @@
                   size="small"
                 />
               </div>
-              <InputNumber 
-                v-model="item.quantity" 
-                :min="1" 
-                showButtons
-                buttonLayout="horizontal"
-                :step="1"
-                fluid
-                @update:model-value="updateCartTotal"
-              />
+              <div class="flex w-full items-stretch" role="group" :aria-label="`Quantity for ${item.product_name}`">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  outlined
+                  class="shrink-0 rounded-r-none"
+                  :disabled="!canManagePos || item.quantity <= 1"
+                  :aria-label="`Decrease ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, -1)"
+                />
+                <InputNumber
+                  v-model="item.quantity"
+                  :min="1"
+                  :max="item.stock_available"
+                  :useGrouping="false"
+                  inputClass="w-full text-center rounded-none"
+                  class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                  @update:model-value="normalizeCartQuantity(item)"
+                />
+                <Button
+                  icon="pi pi-plus"
+                  
+                  class="shrink-0 rounded-l-none"
+                  :disabled="!canManagePos || item.quantity >= item.stock_available"
+                  :aria-label="`Increase ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, 1)"
+                />
+              </div>
             </div>
           </div>
 
@@ -129,7 +155,9 @@
           </div>
 
           <!-- Payment Method -->
+          <label for="payment-mode" class="mb-1 block text-sm font-medium text-gray-700">Payment Mode</label>
           <Select 
+            inputId="payment-mode"
             v-model="paymentMethod" 
             :options="paymentOptions" 
             optionLabel="label" 
@@ -146,12 +174,16 @@
             mode="currency" 
             currency="PHP" 
             :min="0"
+            :invalid="tenderedAmountInvalid"
             placeholder="Amount tendered"
             class="mb-3"
           />
+          <Message v-if="tenderedAmountInvalid" severity="error" :closable="false" class="-mt-2 mb-3">
+            Amount tendered must be at least {{ money(total) }}.
+          </Message>
 
           <!-- GCash Info -->
-          <Message v-if="paymentMethod === 'gcash'" severity="info" class="mb-3">
+          <Message v-if="paymentMethod === 'gcash'"  class="mb-3">
             <i class="pi pi-info-circle mr-2"></i>
             GCash checkout opens after you submit. We will auto-refresh payment status.
           </Message>
@@ -161,6 +193,10 @@
             <div class="flex justify-between py-1 text-sm">
               <span>Subtotal</span>
               <span class="font-medium">{{ money(subtotal) }}</span>
+            </div>
+            <div v-if="deliveryRequired" class="flex justify-between py-1 text-sm">
+              <span>Shipping fee</span>
+              <span class="font-medium">{{ estimatingShipping ? 'Calculating...' : money(shippingFee) }}</span>
             </div>
             <div class="flex justify-between py-1 text-base font-semibold border-t mt-1 pt-2">
               <span>Total</span>
@@ -174,10 +210,10 @@
 
           <!-- Checkout Button -->
           <Button 
-            severity="info" 
+             
             fluid 
             :loading="checkingOut" 
-            :disabled="!canManagePos || !cart.length"
+            :disabled="!canManagePos || !cart.length || tenderedAmountInvalid || (paymentMethod !== 'gcash' && amountTendered === null)"
             label="Checkout"
             @click="checkout"
           />
@@ -191,6 +227,8 @@
       header="Customer Information" 
       modal 
       :style="{ width: '90%', maxWidth: '800px' }"
+      @show="initMap"
+      @hide="destroyMap"
     >
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -203,7 +241,13 @@
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Phone</label>
-          <InputText v-model="customerForm.phone" fluid placeholder="Contact number" />
+          <InputMask
+            v-model="customerForm.phone"
+            mask="0999 999 9999"
+            placeholder="09XX XXX XXXX"
+            :autoClear="false"
+            fluid
+          />
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Province</label>
@@ -271,6 +315,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import ecommerceService from '@/services/ecommerce.service'
 import Card from 'primevue/card'
@@ -278,6 +323,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Divider from 'primevue/divider'
@@ -291,15 +337,14 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
-import { onBeforeUnmount, nextTick } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { onBeforeUnmount } from 'vue'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 
 const toast = useToast()
 const confirm = useConfirm()
+const router = useRouter()
 const authStore = useAuthStore()
 const search = ref('')
 const products = ref<any[]>([])
@@ -309,6 +354,8 @@ const cart = ref<any[]>([])
 const paymentMethod = ref('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
+const shippingFee = ref(0)
+const estimatingShipping = ref(false)
 const customerDialog = ref(false)
 const customerForm = ref({
   name: '',
@@ -333,14 +380,13 @@ const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
 
 const mapEl = ref<HTMLDivElement | null>(null)
-let map: L.Map | null = null
-let marker: L.Marker | null = null
-const paymentOptions = [
+let map: MapboxMap | null = null
+let marker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
+const paymentOptions = ref([
   { label: 'Cash', value: 'cash' },
-  { label: 'Card', value: 'card' },
-  { label: 'GCash', value: 'gcash' },
-  { label: 'Cash On Delivery', value: 'cod' },
-]
+  { label: 'Online Payment', value: 'card' },
+])
 const canManagePos = authStore.hasPermission('sales.pos.manage')
 
 const getStockSeverity = (stock: number) => {
@@ -361,10 +407,23 @@ const updateCartTotal = () => {
   cart.value = [...cart.value]
 }
 
+const normalizeCartQuantity = (item: any) => {
+  item.quantity = Math.max(1, Math.min(Number(item.stock_available || 1), Number(item.quantity || 1)))
+  updateCartTotal()
+}
+
+const changeCartQuantity = (item: any, amount: number) => {
+  item.quantity = Number(item.quantity || 1) + amount
+  normalizeCartQuantity(item)
+}
+
+const cartQuantity = (inventoryId: number) => Number(cart.value.find((item) => item.branch_inventory_id === inventoryId)?.quantity || 0)
+
 const addToCart = (row: any) => {
   const id = row.id
   const existing = cart.value.find((i) => i.branch_inventory_id === id)
   if (existing) { 
+    if (existing.quantity >= existing.stock_available) return
     existing.quantity += 1
     updateCartTotal()
     return 
@@ -374,6 +433,7 @@ const addToCart = (row: any) => {
     product_name: row.product?.product_name || 'Product',
     unit_price: Number(row.product?.discounted_price || row.product?.base_price || 0),
     quantity: 1,
+    stock_available: Number(row.quantity_available || 0),
   })
   updateCartTotal()
   
@@ -405,12 +465,49 @@ const removeCart = (item: any) => {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
-const total = computed(() => subtotal.value)
+const total = computed(() => subtotal.value + (deliveryRequired.value ? shippingFee.value : 0))
+const tenderedAmountInvalid = computed(() =>
+  paymentMethod.value !== 'gcash'
+  && amountTendered.value !== null
+  && Number(amountTendered.value) < total.value
+)
 const changeAmount = computed(() => Math.max(0, Number(amountTendered.value || 0) - total.value))
+
+let shippingEstimateRequest = 0
+const updateShippingFee = async () => {
+  const requestId = ++shippingEstimateRequest
+  if (!deliveryRequired.value || !cart.value.length) {
+    shippingFee.value = 0
+    return
+  }
+
+  estimatingShipping.value = true
+  try {
+    const response = await salesService.estimatePosShipping({
+      subtotal: subtotal.value,
+      delivery_latitude: customerForm.value.latitude,
+      delivery_longitude: customerForm.value.longitude,
+    })
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = Number(response?.data?.shipping_fee || 0)
+    }
+  } catch (error: any) {
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = 0
+      toast.add({ severity: 'error', summary: 'Shipping fee', detail: error?.response?.data?.message || 'Unable to calculate shipping fee.', life: 2500 })
+    }
+  } finally {
+    if (requestId === shippingEstimateRequest) estimatingShipping.value = false
+  }
+}
 
 const checkout = async () => {
   if (!cart.value.length) {
     toast.add({ severity: 'warn', summary: 'Empty Cart', detail: 'Please add items to cart first.', life: 2500 })
+    return
+  }
+
+  if (paymentMethod.value !== 'gcash' && (amountTendered.value === null || Number(amountTendered.value) < total.value)) {
     return
   }
   
@@ -454,6 +551,7 @@ const checkout = async () => {
       delivery_email: deliveryRequired.value ? customerForm.value.email : undefined,
       items: cart.value.map((i) => ({ branch_inventory_id: i.branch_inventory_id, quantity: i.quantity })),
     })
+    const orderId = Number(response?.data?.id || 0)
 
     if (response?.checkout_url) {
       openCheckout(response.checkout_url)
@@ -467,7 +565,11 @@ const checkout = async () => {
     deliveryRequired.value = false
     customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '' }
     addressSelection.value = { provinceId: null, cityId: null, barangayCode: null }
-    loadProducts()
+    if (orderId) {
+      await router.push({ name: 'sales.pos.order-detail', params: { id: orderId } })
+    } else {
+      loadProducts()
+    }
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Checkout failed', detail: error?.response?.data?.message || 'Failed checkout.', life: 3000 })
   } finally { checkingOut.value = false }
@@ -481,52 +583,50 @@ const openCheckout = (url: string) => {
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 
 watch(search, () => loadProducts())
+watch([deliveryRequired, subtotal, () => customerForm.value.latitude, () => customerForm.value.longitude], updateShippingFee)
 onMounted(async () => {
   loadProducts()
+  try {
+    const response = await salesService.getPosPaymentOptions()
+    if (response?.data?.gcash) paymentOptions.value.push({ label: 'GCash', value: 'gcash' })
+  } catch {
+    // Cash and Card remain available when payment configuration cannot be loaded.
+  }
   await fetchProvinces()
 })
 
-watch(customerDialog, async (visible) => {
-  if (!visible) return
-  await nextTick()
-  initMap()
-})
-
-function initMap() {
+async function initMap() {
   if (!mapEl.value) return
   if (map) {
-    map.invalidateSize()
+    map.resize()
     return
   }
 
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-  })
-
   const startLat = customerForm.value.latitude ?? 14.5995
   const startLng = customerForm.value.longitude ?? 120.9842
-  map = L.map(mapEl.value).setView([startLat, startLng], 12)
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(map)
-
-  marker = L.marker([startLat, startLng], { draggable: true }).addTo(map)
-  marker.on('dragend', () => {
-    const pos = marker?.getLatLng()
-    if (!pos) return
-    customerForm.value.latitude = pos.lat
-    customerForm.value.longitude = pos.lng
-  })
-
-  map.on('click', (e: L.LeafletMouseEvent) => {
-    marker?.setLatLng(e.latlng)
-    customerForm.value.latitude = e.latlng.lat
-    customerForm.value.longitude = e.latlng.lng
-  })
+  try {
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    const currentMap = new mapboxgl.Map({ container: mapEl.value, style: 'mapbox://styles/mapbox/streets-v12', center: [startLng, startLat], zoom: 12 })
+    map = currentMap
+    await new Promise<void>((resolve) => currentMap.once('load', () => resolve()))
+    if (map !== currentMap || !customerDialog.value) return
+    marker = new mapboxgl.Marker({ draggable: true, color: '#f97316' }).setLngLat([startLng, startLat]).addTo(map)
+    marker.on('dragend', () => {
+      const position = marker?.getLngLat()
+      if (!position) return
+      customerForm.value.latitude = position.lat
+      customerForm.value.longitude = position.lng
+    })
+    map.on('click', (event) => {
+      marker?.setLngLat(event.lngLat)
+      customerForm.value.latitude = event.lngLat.lat
+      customerForm.value.longitude = event.lngLat.lng
+    })
+    map.resize()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Mapbox Unavailable', detail: error?.message || 'Unable to load the location map.', life: 3500 })
+  }
 }
 
 const geocodeAddressText = async (addressText: string): Promise<{ latitude: number; longitude: number } | null> => {
@@ -534,23 +634,8 @@ const geocodeAddressText = async (addressText: string): Promise<{ latitude: numb
   if (!query) return null
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`,
-      {
-        headers: { Accept: 'application/json' },
-      },
-    )
-
-    if (!response.ok) return null
-    const results = await response.json()
-    if (!Array.isArray(results) || results.length === 0) return null
-
-    const first = results[0]
-    const latitude = Number(first?.lat)
-    const longitude = Number(first?.lon)
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-
-    return { latitude, longitude }
+    const result = await forwardGeocodeMapbox(query)
+    return result ? { latitude: result.latitude, longitude: result.longitude } : null
   } catch {
     return null
   }
@@ -565,8 +650,8 @@ async function geocodeCustomerAddress() {
   }
   customerForm.value.latitude = geocoded.latitude
   customerForm.value.longitude = geocoded.longitude
-  if (marker) marker.setLatLng([geocoded.latitude, geocoded.longitude])
-  if (map) map.setView([geocoded.latitude, geocoded.longitude], 14)
+  if (marker) marker.setLngLat([geocoded.longitude, geocoded.latitude])
+  if (map) map.flyTo({ center: [geocoded.longitude, geocoded.latitude], zoom: 14 })
 }
 
 async function fetchProvinces() {
@@ -612,13 +697,15 @@ async function onCityChange() {
   }
 }
 
-onBeforeUnmount(() => {
+const destroyMap = () => {
   if (map) {
     map.remove()
     map = null
     marker = null
   }
-})
+}
+
+onBeforeUnmount(destroyMap)
 </script>
 
 <style scoped>

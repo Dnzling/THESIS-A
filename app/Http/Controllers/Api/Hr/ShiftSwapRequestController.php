@@ -7,6 +7,7 @@ use App\Models\Hr\ShiftSwapRequest;
 use App\Models\Hr\ShiftSchedule;
 use App\Models\Hr\Employee;
 use App\Models\Core\ActivityLog;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,25 @@ use Illuminate\Support\Facades\Auth;
 
 class ShiftSwapRequestController extends Controller
 {
+    private function canManageBranchSwap($user, ShiftSwapRequest $swapRequest): bool
+    {
+        if (! $user->hasRole('store_manager') && ! $user->hasRole('branch_manager')) {
+            return false;
+        }
+
+        if (! app(PermissionService::class)->userHasPermission($user, 'store.team.manage')) {
+            return false;
+        }
+
+        $manager = Employee::query()->where('user_id', $user->id)->where('store_id', $user->store_id)->first();
+        if (! $manager || ! $manager->branch_id || in_array($manager->id, [$swapRequest->requestor_id, $swapRequest->receiver_id], true)) {
+            return false;
+        }
+
+        return Employee::query()->where('store_id', $user->store_id)->where('branch_id', $manager->branch_id)
+            ->whereIn('id', [$swapRequest->requestor_id, $swapRequest->receiver_id])->count() === 2;
+    }
+
     /**
      * Check if user is HR/Admin
      */
@@ -285,7 +305,8 @@ class ShiftSwapRequestController extends Controller
         }
 
         // Authorization: HR can accept OR Receiver can accept
-        $canAccept = $isHr || ($employee && $swapRequest->receiver_id === $employee->id);
+        $canAccept = ($isHr && ! $user->hasRole('store_manager') && ! $user->hasRole('branch_manager')) || ($employee && $swapRequest->receiver_id === $employee->id)
+            || $this->canManageBranchSwap($user, $swapRequest);
 
         if (!$canAccept) {
             return response()->json([
@@ -408,7 +429,8 @@ class ShiftSwapRequestController extends Controller
         }
 
         // Authorization: HR can reject OR Receiver can reject
-        $canReject = $isHr || ($employee && $swapRequest->receiver_id === $employee->id);
+        $canReject = ($isHr && ! $user->hasRole('store_manager') && ! $user->hasRole('branch_manager')) || ($employee && $swapRequest->receiver_id === $employee->id)
+            || $this->canManageBranchSwap($user, $swapRequest);
 
         if (!$canReject) {
             return response()->json([

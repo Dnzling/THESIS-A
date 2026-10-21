@@ -14,6 +14,7 @@ class SupplierPOFeedback extends Model
         'supplier_portal_id',
         'purchase_order_id',
         'response',
+        'fulfillment_method',
         'rejection_reason',
         'receipt_status',
         'expected_delivery_date',

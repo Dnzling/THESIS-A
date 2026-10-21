@@ -41,7 +41,8 @@ class StockReturnService
             // Create return items
             $totalValue = 0;
             foreach ($data['items'] as $itemData) {
-                $branchInventory = BranchInventory::findOrFail($itemData['branch_inventory_id']);
+                $branchInventory = BranchInventory::with('product')->findOrFail($itemData['branch_inventory_id']);
+                $unitCost = (float) ($branchInventory->product?->getRawOriginal('cost_price') ?? 0);
 
                 $item = StockReturnItem::create([
                     'stock_return_id' => $return->id,
@@ -49,10 +50,10 @@ class StockReturnService
                     'variation_id' => $itemData['variation_id'] ?? null,
                     'branch_inventory_id' => $itemData['branch_inventory_id'],
                     'quantity_returned' => $itemData['quantity_returned'],
-                    'unit_cost' => $branchInventory->unit_cost ?? 0,
-                    'total_cost' => ($branchInventory->unit_cost ?? 0) * $itemData['quantity_returned'],
-                    'unit_value' => $branchInventory->average_cost ?? $branchInventory->unit_cost ?? 0,
-                    'total_value' => ($branchInventory->average_cost ?? $branchInventory->unit_cost ?? 0) * $itemData['quantity_returned'],
+                    'unit_cost' => $unitCost,
+                    'total_cost' => $unitCost * $itemData['quantity_returned'],
+                    'unit_value' => $unitCost,
+                    'total_value' => $unitCost * $itemData['quantity_returned'],
                     'condition' => $itemData['condition'] ?? 'good',
                     'return_reason' => $itemData['return_reason'] ?? null,
                     'notes' => $itemData['notes'] ?? null,
@@ -92,7 +93,8 @@ class StockReturnService
             // Recreate items
             $totalValue = 0;
             foreach ($data['items'] as $itemData) {
-                $branchInventory = BranchInventory::findOrFail($itemData['branch_inventory_id']);
+                $branchInventory = BranchInventory::with('product')->findOrFail($itemData['branch_inventory_id']);
+                $unitCost = (float) ($branchInventory->product?->getRawOriginal('cost_price') ?? 0);
 
                 $item = StockReturnItem::create([
                     'stock_return_id' => $return->id,
@@ -100,10 +102,10 @@ class StockReturnService
                     'variation_id' => $itemData['variation_id'] ?? null,
                     'branch_inventory_id' => $itemData['branch_inventory_id'],
                     'quantity_returned' => $itemData['quantity_returned'],
-                    'unit_cost' => $branchInventory->unit_cost ?? 0,
-                    'total_cost' => ($branchInventory->unit_cost ?? 0) * $itemData['quantity_returned'],
-                    'unit_value' => $branchInventory->average_cost ?? $branchInventory->unit_cost ?? 0,
-                    'total_value' => ($branchInventory->average_cost ?? $branchInventory->unit_cost ?? 0) * $itemData['quantity_returned'],
+                    'unit_cost' => $unitCost,
+                    'total_cost' => $unitCost * $itemData['quantity_returned'],
+                    'unit_value' => $unitCost,
+                    'total_value' => $unitCost * $itemData['quantity_returned'],
                     'condition' => $itemData['condition'] ?? 'good',
                     'return_reason' => $itemData['return_reason'] ?? null,
                     'notes' => $itemData['notes'] ?? null,
@@ -220,17 +222,11 @@ class StockReturnService
                         'quantity_damaged' => 0,
                         'quantity_incoming' => 0,
                         'stock_status' => 'in_stock',
-                        'unit_cost' => $item->unit_cost,
-                        'average_cost' => $item->unit_value,
-                        'total_value' => 0,
                     ]);
 
                     // Add quantity to destination branch
                     $destinationInventory->increment('quantity_on_hand', $item->quantity_returned);
                     $destinationInventory->increment('quantity_available', $item->quantity_returned);
-                    $destinationInventory->update([
-                        'total_value' => $destinationInventory->quantity_on_hand * $destinationInventory->average_cost,
-                    ]);
 
                     // Create inventory transaction for destination branch
                     InventoryTransaction::create([

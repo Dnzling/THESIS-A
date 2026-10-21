@@ -273,7 +273,7 @@ const formatMoney = (value: number | string) => {
 }
 
 const formatSubscriptionDuration = (endsAt: string | null | undefined) => {
-  if (!endsAt) return 'No end date'
+  if (!endsAt) return 'Unlimited'
   return endsAt
 }
 

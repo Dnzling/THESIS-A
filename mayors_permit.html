@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mayor's Business Permit 2026 - Barili</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #e9ecef;
+    font-family: 'Times New Roman', Times, serif;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #1a1a1a;
+  }
+
+  .permit-container {
+    width: 850px;
+    background: #ffffff;
+    padding: 40px 50px;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    overflow: hidden;
+  }
+
+  /* Background Watermark */
+  .watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    width: 600px;
+    height: 600px;
+    opacity: 0.08;
+    z-index: 0;
+    pointer-events: none;
+    border: 10px double #1a3a6b;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    font-weight: bold;
+    color: #1a3a6b;
+    text-align: center;
+    font-family: Arial, sans-serif;
+  }
+
+  .watermark::before {
+    content: "MUNICIPALITY OF BARILI";
+    position: absolute;
+    top: 100px;
+    font-size: 30px;
+    letter-spacing: 5px;
+  }
+  .watermark::after {
+    content: "PROVINCE OF CEBU";
+    position: absolute;
+    bottom: 100px;
+    font-size: 30px;
+    letter-spacing: 5px;
+  }
+
+  /* Content Layer */
+  .content {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* HEADER */
+  .header {
+    text-align: center;
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  .header .republic {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  .header .province {
+    font-size: 14px;
+  }
+  .header .municipality {
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+  .header .office {
+    font-size: 26px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    margin-top: 5px;
+  }
+
+  .seal-left {
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid #1a3a6b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    text-align: center;
+    color: #1a3a6b;
+    font-weight: bold;
+    line-height: 1.1;
+  }
+
+  /* TOP BOXES */
+  .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .permit-type {
+    font-size: 14px;
+  }
+  .permit-type label {
+    display: block;
+    margin-bottom: 5px;
+    cursor: pointer;
+  }
+  .permit-type input {
+    margin-right: 8px;
+  }
+
+  .permit-number-box {
+    border: 2px solid #333;
+    padding: 5px 20px;
+    font-size: 26px;
+    font-weight: bold;
+    color: #b11226;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+    min-width: 200px;
+    background: #f9f9f9;
+  }
+
+  .plate-date {
+    text-align: right;
+    font-size: 13px;
+  }
+  .plate-date div {
+    margin-bottom: 5px;
+  }
+  .plate-date span {
+    font-weight: bold;
+    border-bottom: 1px solid #333;
+    padding-bottom: 2px;
+    display: inline-block;
+    min-width: 120px;
+  }
+
+  /* MAIN TITLE */
+  .main-title {
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    margin: 25px 0;
+    text-transform: uppercase;
+  }
+
+  /* FORM FIELDS */
+  .form-row {
+    display: flex;
+    align-items: flex-end;
+    margin-bottom: 15px;
+    font-size: 15px;
+  }
+  .form-row .label {
+    width: 220px;
+    font-weight: bold;
+    text-align: right;
+    padding-right: 10px;
+    white-space: nowrap;
+  }
+  .form-row .line {
+    flex: 1;
+    border-bottom: 1px solid #333;
+    padding: 0 10px 2px;
+    font-weight: bold;
+    text-align: center;
+    font-size: 16px;
+  }
+
+  /* BODY TEXT */
+  .body-text {
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 15px;
+    text-align: justify;
+  }
+  .body-text ul {
+    margin-left: 40px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+  }
+  .body-text ul li {
+    list-style-type: disc;
+  }
+
+  /* SIGNATURES */
+  .signature-section {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 50px;
+    margin-bottom: 30px;
+    font-size: 14px;
+  }
+
+  .sig-block {
+    width: 45%;
+    text-align: center;
+  }
+
+  .sig-block .sig-name {
+    font-weight: bold;
+    font-size: 16px;
+    border-bottom: 1px solid #333;
+    display: inline-block;
+    padding-bottom: 2px;
+    margin-bottom: 5px;
+    min-width: 250px;
+    text-align: center;
+  }
+
+  .sig-block .sig-title {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .sig-block.left {
+    text-align: left;
+  }
+  .sig-block.left .sig-name {
+    text-align: left;
+    padding-left: 20px;
+  }
+
+  /* BOTTOM ROW */
+  .bottom-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 20px;
+  }
+
+  .bottom-left-img {
+    width: 70px;
+    height: 70px;
+    background: #d4e6f1;
+    border: 1px solid #aaa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #555;
+    text-align: center;
+    border-radius: 4px;
+  }
+
+  .bottom-text {
+    flex: 1;
+    padding: 0 20px;
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: justify;
+  }
+
+  .or-date-box {
+    text-align: right;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .or-date-box div {
+    margin-bottom: 8px;
+  }
+  .or-date-box span {
+    border-bottom: 1px solid #333;
+    display: inline-block;
+    min-width: 120px;
+    padding-bottom: 2px;
+  }
+
+  /* PRINT STYLES */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .permit-container { box-shadow: none; width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="permit-container">
+  
+  <!-- Watermark Background -->
+  <div class="watermark"></div>
+
+  <div class="content">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="seal-left">MUNICIPALITY<br>OF BARILI<br>PROVINCE OF CEBU</div>
+      <div class="republic">REPUBLIC OF THE PHILIPPINES</div>
+      <div class="province">Province of CEBU</div>
+      <div class="municipality">MUNICIPALITY OF BARILI</div>
+      <div class="office">OFFICE OF THE MAYOR</div>
+    </div>
+
+    <!-- TOP ROW -->
+    <div class="top-row">
+      <div class="permit-type">
+        <label><input type="checkbox"> New</label>
+        <label><input type="checkbox" checked> Renewal</label>
+      </div>
+      <div class="permit-number-box">
+        2026-0126752
+      </div>
+      <div class="plate-date">
+        <div>Plate No.: <span>01-2024-14</span></div>
+        <div>Date : <span>January 13, 2026</span></div>
+      </div>
+    </div>
+
+    <!-- MAIN TITLE -->
+    <div class="main-title">MAYOR'S BUSINESS PERMIT</div>
+
+    <!-- FORM FIELDS -->
+    <div class="form-row">
+      <div class="label">Name of Owner/Operator:</div>
+      <div class="line">JUAN DELA CRUZ</div>
+    </div>
+    <div class="form-row">
+      <div class="label">Business Name:</div>
+      <div class="line">GWK ENTERPRISES</div>
+    </div>
+    <div class="form-row">
+      <div class="label">Location of Business:</div>
+      <div class="line">SAN RAFAEL, BARILI, CEBU</div>
+    </div>
+
+    <!-- BODY TEXT -->
+    <div class="body-text">
+      Specific business or trade activity being permitted:
+      <ul>
+        <li><strong>Retailer (Non-Essential) - CONSTRUCTION MATERIALS</strong></li>
+      </ul>
+      to engage in, or operate the above mentioned business or trade activity, subject however, to the provisions of existing laws, ordinances or rules and regulations on this matter.
+    </div>
+
+    <div class="body-text">
+      <strong>Expiration date:</strong><br>
+      This permit is non-transferable and shall expire on <strong>December 31, 2026</strong> or sooner thereof, upon surrender when the business or trade activity is discontinued, or revoked by the mayor for violation of existing laws, ordinance or rules and regulations.
+    </div>
+
+    <!-- SIGNATURES -->
+    <div class="signature-section">
+      <div class="sig-block left">
+        <div style="font-weight: bold; font-size: 12px; margin-bottom: 25px;">RECOMMENDING APPROVAL:</div>
+        <div class="sig-name">JEWELDINE V. TAMPOS</div>
+        <div class="sig-title">LICENSING OFFICER</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-name">PABLO JOHN D. GARCIA IV</div>
+        <div class="sig-title">MUNICIPAL MAYOR</div>
+      </div>
+    </div>
+
+    <!-- BOTTOM ROW -->
+    <div class="bottom-row">
+      <div class="bottom-left-img">OFFICIAL<br>SEAL</div>
+      <div class="bottom-text">
+        This permit shall be posted conspicuously at the place where business is being conducted, shall be presented to competent authorities upon demand and must be surrendered upon closure or retirement.<br>
+        (Official receipt evidencing payment must be attached as part of this permit)
+      </div>
+      <div class="or-date-box">
+        <div>O.R. # <span>1413</span></div>
+        <div>Date: <span>January 13, 2026</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

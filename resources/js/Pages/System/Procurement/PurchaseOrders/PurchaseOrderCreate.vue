@@ -1,139 +1,115 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 pb-8 sm:px-6 lg:px-8">
     <!-- Header -->
-    <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-orders' })" />
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
-        <p class="text-sm text-gray-500 mt-1">{{ isEditing ? 'Update PO details' : 'Use smart automation to speed up PO creation' }}</p>
+    <div class="flex items-center gap-3 px-5 py-4 shadow-sm">
+      <Button icon="pi pi-arrow-left" text rounded severity="secondary" aria-label="Back to purchase orders" @click="router.push({ name: 'procurement.purchase-orders' })" />
+      <div class="min-w-0">
+        <h2 class="text-2xl font-bold text-slate-900">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
+        <p class="mt-1 text-sm text-slate-500">Review the assigned supplier, destination branch, items, and totals before submission.</p>
       </div>
     </div>
   
     <!-- Alert for supplier issues -->
     <Toast />
-    <Message v-if="supplierWarning.show" :severity="supplierWarning.severity" :text="supplierWarning.message"
-      class="w-full" />
+    <!-- <Message v-if="supplierWarning.show" :severity="supplierWarning.severity" :text="supplierWarning.message"/> -->
   
     <!-- Main Form -->
-    <Card>
+    <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <template #content>
-        <form class="space-y-6" @submit.prevent="submitForm">
-          <!-- Section 1: Basic Information -->
-          <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-info-circle text-blue-600"></i>
-              Purchase Order Information
-            </h3>
-  
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <!-- Currency (Pre-filled from store settings) -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Currency</label>
-                <InputText v-model="storeCurrency" disabled class="w-full bg-gray-100" />
-              </div>
-  
-              <!-- Branch Selection -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Branch
-                </label>
-                <Select v-model="form.branch_id" :options="branches" option-label="name" option-value="id"
-                  placeholder="Select branch" class="w-full" />
-              </div>
-  
-              <!-- Order Date -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Order Date
-                </label>
-                <DatePicker v-model="form.order_date" date-format="yy-mm-dd" class="w-full" fluid />
-              </div>
+        <form class="space-y-8" @submit.prevent="openSplitPoPreview('submit')">
+          <!-- Supplier selection comes first so products can be scoped to the supplier. -->
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
+              <p class="mt-1 text-sm text-slate-500">Select the supplier for this purchase order.</p>
             </div>
-          </div>
-  
-          <!-- Section 2: Supplier Information -->
-          <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-building text-purple-600"></i>
-              Supplier Information
-            </h3>
-  
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
-              <!-- Supplier Selection -->
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span v-if="!splitPoMode" class="text-red-500">*</span> Supplier
-                </label>
-                <Select v-model="form.supplier_id" :options="suppliers" option-label="supplier_name" option-value="id"
-                  placeholder="Select supplier" class="w-full" filter @change="onSupplierChange"
-                  :loading="loadingSuppliers" :disabled="splitPoMode" />
-                <p class="text-xs text-gray-500 mt-1" v-if="!splitPoMode">Auto-populates supplier details when selected</p>
-                <p class="text-xs text-blue-600 mt-1" v-else>
-                  Split mode active: PR has {{ splitPoSupplierGroups }} supplier groups. System will create one PO per supplier automatically.
-                </p>
-              </div>
-  
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Contract Discount Amount</label>
-                <InputNumber v-model="form.discount_amount" :min="0" mode="currency" currency="PHP" fluid
-                  disabled />
-                <p class="text-xs text-gray-500 mt-1">Auto-calculated from contract discount %</p>
-              </div>
+
+            <div v-if="!splitPoMode" class="mb-4 max-w-xl">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Supplier</label>
+              <Select
+                v-model="form.supplier_id"
+                :options="eligibleSuppliers"
+                option-label="display_name"
+                option-value="id"
+                placeholder="Select an eligible supplier"
+                :loading="eligibleSuppliersLoading"
+                :disabled="eligibleSuppliersLoading || listedProductIds.length === 0"
+                filter
+                show-clear
+                fluid
+                @change="onSupplierChange"
+              />
+              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add a product to find its suppliers.</small>
+              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
+              <small v-else class="mt-1 block text-slate-500">Suppliers linked to all listed products with an active contract.</small>
             </div>
-  
-            <!-- Supplier Details Card (Auto-populated) -->
-            <div v-if="selectedSupplier" class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+            <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Suppliers are assigned separately to each product group in this split purchase order.
+            </div>
+
+            <div v-if="selectedSupplier" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 <div>
-                  <p class="text-gray-600 font-semibold">Contact Person</p>
-                  <p class="text-gray-800">{{ selectedSupplier.contact_person || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contact Person</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.contact_person || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Email</p>
-                  <p class="text-gray-800">{{ selectedSupplier.email || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
+                  <p class="mt-1 break-all font-medium text-slate-900">{{ selectedSupplier.email || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Phone</p>
-                  <p class="text-gray-800">{{ selectedSupplier.phone || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.phone || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Contract Discount</p>
-                  <p class="text-gray-800">
-                    {{ contractDiscountDisplay }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-gray-600 font-semibold">Tax Rate</p>
-                  <p class="text-gray-800">
-                    {{ supplierTaxRateDisplay }} <span v-if="selectedContract?.is_tax_exempt" class="text-xs text-orange-600">(Exempt)</span>
-                  </p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Discount</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ contractDiscountDisplay }}</p>
                 </div>
               </div>
             </div>
-  
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4"></div>
-          </div>
-  
+            <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Select a supplier to load its details.' }}
+            </div>
+          </section>
+
+          <!-- Order context is determined by the source PR/RFQ. -->
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Order Information</h3>
+                <p class="mt-1 text-sm text-slate-500">Choose a supplier that can provide every product in this purchase order.</p>
+              </div>
+              <Tag v-if="form.purchase_requisition_id" value="From Purchase Requisition" severity="info" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Supplier</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ selectedSupplierName }}</p>
+                <p v-if="splitPoMode" class="mt-1 text-xs text-blue-600">Separate PO will be created for each supplier.</p>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Destination Branch</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ selectedBranchName }}</p>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Currency</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ storeCurrency }}</p>
+              </div>
+            </div>
+          </section>
+
           <!-- Section 3: Line Items -->
-          <div class="border-b pb-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <i class="pi pi-list text-green-600"></i>
-                Purchase Items
-              </h3>
-              <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"
-                v-tooltip="'Or select from Quick Add below'" />
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Purchase Items</h3>
+                <p class="mt-1 text-sm text-slate-500">Verify the ordered quantity and supplier-quoted cost for each item.</p>
+              </div>
+              <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"/>
             </div>
   
-            <!-- Quick Add Frequently Purchased Products -->
-            <div v-if="frequentProducts.length > 0" class="mb-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
-              <p class="text-sm font-semibold text-gray-700 mb-3">Quick Add (Top Products)</p>
-              <div class="flex gap-2 flex-wrap">
-                <Button v-for="product in frequentProducts" :key="product.id"
-                  :label="`${product.product_name} (${product.quantity_ordered})`" size="small" severity="secondary"
-                  outlined @click="addQuickProduct(product)" class="text-xs" />
-              </div>
-            </div>
+           
   
             <!-- Line Items Table -->
             <Transition name="slide-fade" mode="out-in">
@@ -142,10 +118,10 @@
                   <div
                     v-for="(item, index) in form.items"
                     :key="item.id || index"
-                    class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-5"
+                    class="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
                   >
                     <div class="flex items-center justify-between mb-4">
-                      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Item {{ index + 1 }}</div>
+                      <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Item {{ index + 1 }}</div>
                       <Button
                         icon="pi pi-trash"
                         text
@@ -156,22 +132,32 @@
                       />
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                      <div class="md:col-span-6">
+                    <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+              <div class="lg:col-span-4">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
                         <Select
-                          :model-value="item.product_id"
+                          :model-value="itemSelectionKey(item)"
                           :options="products"
                           option-label="product_name"
-                          option-value="id"
+                          option-value="selection_key"
                           placeholder="Select product..."
                           class="w-full"
                           filter fluid
                           @update:model-value="(value) => onProductChange(index, value)"
-                        />
+                        >
+                          <template #option="{ option }">
+                            <div class="flex flex-col py-0.5">
+                              <span class="text-sm">{{ option.product_name }}</span>
+                              <span class="text-xs text-slate-500">SKU: {{ option.sku || '—' }}</span>
+                            </div>
+                          </template>
+                        </Select>
+                        <p v-if="item.variation_id || item.variation" class="mt-1 text-xs text-orange-700">
+                          Variant selected: {{ item.variation?.variation_name || item.variation?.name || `Variant #${item.variation_id}` }}
+                        </p>
                       </div>
 
-                      <div class="md:col-span-2">
+                      <div class="lg:col-span-2">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
                         <InputNumber
                           v-model="item.quantity_ordered"
@@ -184,27 +170,23 @@
                           Warning: {{ budgetWarnings[index] }}
                         </p>
                       </div>
-
-                      <div class="md:col-span-4">
-                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Price</label>
-                        <InputNumber
-                          v-model="item.unit_cost"
-                          :min="0"
-                          mode="currency"
-                          currency="PHP"
-                          fluid
-                          disabled
-                          @input="calculateItemTotal(index)"
-                          class="w-full text-right"
-                        />
-                        <p class="text-xs text-gray-500 mt-2">Cost price from products table</p>
+                      <div class="lg:col-span-1">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit</label>
+                        <p class="flex h-[3.25rem] items-center px-3 text-md font-bold text-gray-700">
+                          {{ getItemUnitOfMeasurement(item) }}
+                        </p>
                       </div>
 
-                      <div class="md:col-span-4">
-                        <div class="bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+                      <div class="lg:col-span-2">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Price</label>
+                        <p class="flex h-[3.25rem] items-center px-3 text-md text-green-600 font-bold">{{ formatCurrency(Number(item.unit_cost || 0)) }}</p>
+                      </div>
+
+                      <div class="lg:col-span-3">
+                        <div class="rounded-lg border border-slate-200 bg-white px-3 py-2">
                           <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Line Total</label>
-                          <div class="text-lg font-semibold text-green-600">
-                            ₱ {{ item.line_total?.toFixed(2) || '0.00' }}
+                          <div class="text-lg font-semibold text-slate-900">
+                            {{ formatCurrency(Number(item.line_total) || 0) }}
                           </div>
                         </div>
                       </div>
@@ -212,63 +194,88 @@
                   </div>
                 </TransitionGroup>
               </div>
-              <div v-else class="text-center py-10 bg-gray-50 border border-dashed border-gray-300 rounded-2xl">
-                <i class="pi pi-inbox text-gray-400 text-3xl mb-2"></i>
-                <p class="text-gray-500">No items added yet. Click "Add Item" to start.</p>
+              <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center">
+                <i class="pi pi-inbox mb-2 text-3xl text-slate-400"></i>
+                <p class="text-slate-500">No items added yet. Click "Add Item" to start.</p>
               </div>
             </Transition>
-          </div>
+          </section>
   
           <!-- Section 4: Running Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card class="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200">
-              <template #content>
-                <p class="text-xs text-blue-600 font-semibold">Subtotal</p>
-                <p class="text-2xl font-bold text-blue-900">{{ formatCurrency(totals.subtotal) }}</p>
-              </template>
-            </Card>
+           
+           <div class="grid grid-cols-2 items-center gap-2">
+               <!-- Section 5: Notes -->
+          <section>
+            <label class="mb-2 block text-sm font-semibold text-slate-900">Notes / Special Instructions</label>
+            <p class="mb-3 text-sm text-slate-500">Add delivery instructions, packaging requirements, or other supplier notes.</p>
+            <Textarea v-model="form.notes" rows="4" auto-resize class="w-full"
+              placeholder="Add any special instructions or notes for this purchase order..." />
+          </section>
+          <div class="flex justify-end">
+            <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">Cost Summary</h3>
 
-            <Card class="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-200">
-              <template #content>
-                <p class="text-xs text-orange-600 font-semibold">Supplier Discount</p>
-                <p class="text-2xl font-bold text-orange-900">
-                  {{ formatCurrency(form.discount_amount || 0) }}
-                </p>
-              </template>
-            </Card>
+              <div class="space-y-3 text-sm">
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Items subtotal</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(totals.subtotal) }}</span>
+                </div>
+                <div v-if="Number(form.discount_amount) > 0" class="flex items-center justify-between gap-6 text-red-500">
+                  <span>Supplier discount</span>
+                  <span class="font-semibold">− {{ formatCurrency(form.discount_amount) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-6 border-t border-slate-100 pt-3 text-slate-600">
+                  <span>Taxable amount</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, totals.subtotal - form.discount_amount)) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>VAT <span class="text-xs text-slate-400">({{ selectedContract?.is_tax_exempt ? 'Exempt' : '12%' }})</span></span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(totals.tax_amount) }}</span>
+                </div>
 
-            <Card class="bg-linear-to-br from-yellow-50 to-yellow-100 border border-yellow-200">
-              <template #content>
-                <p class="text-xs text-amber-600 font-semibold">Tax</p>
-                <p class="text-2xl font-bold text-amber-900">
-                  {{ formatCurrency(totals.tax_amount) }}
-                </p>
-              </template>
-            </Card>
- 
-            <Card class="bg-linear-to-br from-green-50 to-green-100 border border-green-300 shadow-lg">
-              <template #content>
-                <p class="text-xs text-green-600 font-semibold">TOTAL AMOUNT</p>
-                <p class="text-3xl font-bold text-green-900">{{ formatCurrency(totals.total_amount) }}</p>
-              </template>
-            </Card>
+                <div v-if="shippingEstimate?.breakdown" class="rounded-lg bg-slate-50 px-3 py-2.5">
+                  <div class="flex items-center justify-between gap-6 text-slate-600">
+                    <span>Shipping</span>
+                    <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
+                  </div>
+                  <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
+                    <span>Base {{ formatCurrency(shippingEstimate.breakdown.base_fee) }}</span>
+                    <span>Distance {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }}</span>
+                    <span>Weight {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span>
+                    <span v-if="shippingEstimate.breakdown.bulky_item_surcharge">Bulky {{ formatCurrency(shippingEstimate.breakdown.bulky_item_surcharge) }}</span>
+                    <span v-if="shippingEstimate.breakdown.remote_area_surcharge">Remote area {{ formatCurrency(shippingEstimate.breakdown.remote_area_surcharge) }}</span>
+                  </div>
+                </div>
+                <div v-else class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Shipping</span>
+                  <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
+                </div>
+
+                <p v-if="shippingEstimateError" class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{{ shippingEstimateError }}</p>
+              </div>
+
+              <div class="my-4 border-t border-slate-200"></div>
+              <div class="flex items-center justify-between gap-6 rounded-xl bg-slate-900 px-4 py-3 text-white">
+                <div>
+                  <span class="block font-semibold">Total payable</span>
+                  <span class="text-xs text-slate-300">Includes VAT and shipping</span>
+                </div>
+                <span class="text-xl font-bold">{{ formatCurrency(totals.total_amount) }}</span>
+              </div>
+            </div>
           </div>
   
-          <!-- Section 5: Notes -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Notes / Special Instructions</label>
-            <Textarea v-model="form.notes" rows="5" auto-resize class="w-full"
-              placeholder="Add any special instructions or notes for this purchase order..." />
-          </div>
+           </div>
+        
+       
   
           <!-- Section 6: Action Buttons -->
-          <div class="pt-4 flex justify-end gap-3 border-t">
+          <div class="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-end">
             <Button label="Cancel" severity="secondary" text type="button"
               @click="router.push({ name: 'procurement.purchase-orders' })" />
-            <Button label="Save as Draft" icon="pi pi-download" severity="info" :loading="saving"
+            <Button label="Save as Draft" severity="secondary" :loading="saving"
               @click="openSplitPoPreview('draft')" />
-            <Button label="Create & Submit" icon="pi pi-check" severity="success" :loading="saving"
-              @click="openSplitPoPreview('submit')" />
+            <Button label="Create & Submit" type="submit" :loading="saving" />
           </div>
         </form>
       </template>
@@ -295,13 +302,35 @@
 
       <template #footer>
         <div class="flex justify-end gap-3">
-          <Button label="Cancel" severity="secondary" text @click="splitPoPreviewVisible = false" />
+          <Button label="No" severity="secondary" text @click="splitPoPreviewVisible = false" />
           <Button
-            :label="splitPoPreviewAction === 'draft' ? 'Confirm Save Draft' : 'Confirm Create & Submit'"
+            :label="splitPoPreviewAction === 'draft' ? 'Confirm' : 'Confirm'"
             icon="pi pi-check"
             severity="success"
             @click="confirmSplitPoPreview"
           />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="submitConfirmationVisible" modal header="Submit Purchase Order" :style="{ width: '26rem' }">
+      <p class="text-sm text-slate-600">Submit this purchase order for finance approval?</p>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <Button label="No" severity="secondary" text @click="submitConfirmationVisible = false" />
+          <Button label="Confirm" icon="pi pi-check" :loading="saving" @click="confirmPurchaseOrderSubmission" />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="removeItemConfirmationVisible" modal header="Remove Item" :style="{ width: '26rem' }">
+      <p class="text-sm text-slate-600">
+        Remove <span class="font-semibold text-slate-900">{{ itemPendingRemoval?.product_name || 'this item' }}</span> from this purchase order?
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Keep Item" severity="secondary" text @click="removeItemConfirmationVisible = false" />
+          <Button label="Remove" severity="danger" @click="confirmRemoveLineItem" />
         </div>
       </template>
     </Dialog>
@@ -345,7 +374,10 @@ const saving = ref(false)
 const saveDraft = ref(false)
 const isEditing = ref(false)
 const loadingSuppliers = ref(false)
+const eligibleSuppliersLoading = ref(false)
+const prefilling = ref(false)
 const suppliers = ref<any[]>([])
+const eligibleSuppliers = ref<any[]>([])
 const products = ref<any[]>([])
 const branches = ref<any[]>([])
 const frequentProducts = ref<any[]>([])
@@ -360,18 +392,49 @@ const splitPoMode = ref(false)
 const splitPoSupplierGroups = ref<number>(0)
 const splitPoPreviewVisible = ref(false)
 const splitPoPreviewAction = ref<'draft' | 'submit'>('submit')
+const submitConfirmationVisible = ref(false)
+const removeItemConfirmationVisible = ref(false)
+const itemPendingRemoval = ref<{ index: number; product_name: string } | null>(null)
 
 const totals = reactive({
   subtotal: 0,
   tax_amount: 0,
   total_amount: 0
 })
+const shippingEstimate = ref<any>(null)
+const shippingEstimateLoading = ref(false)
+const shippingEstimateError = ref('')
+const shippingEstimateRouteUnavailable = ref(false)
+const shippingFee = computed(() => Number(shippingEstimate.value?.shipping_fee || 0))
+let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 
 const supplierTaxRate = computed(() =>
-  selectedContract.value?.is_tax_exempt ? 0 : (contractTaxRate.value ?? 0)
+  selectedContract.value?.is_tax_exempt ? 0 : 12
 )
-const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
+const selectedBranchName = computed(() => {
+  const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
+  return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
+})
+const listedProductIds = computed(() => Array.from(new Set(
+  form.items.map((item: any) => Number(item?.product_id || 0)).filter((id: number) => id > 0)
+)))
+const productSelectionKey = (productId: any, variationId: any = null) =>
+  `${Number(productId || 0)}:${Number(variationId || 0)}`
+const itemSelectionKey = (item: any) =>
+  productSelectionKey(item?.product_id, item?.variation_id || item?.variation?.id)
+const selectedSupplierName = computed(() => {
+  if (splitPoMode.value) {
+    return `${splitPoSupplierGroups.value} assigned suppliers`
+  }
+
+  const supplier = selectedSupplier.value
+    || suppliers.value.find((item: any) => Number(item.id) === Number(form.supplier_id))
+
+  return supplier?.supplier_name
+    || supplier?.company_name
+    || (loadingSuppliers.value ? 'Loading supplier...' : form.supplier_id ? `Supplier #${form.supplier_id}` : 'Not assigned')
+})
 const splitPoSummary = computed(() => {
   const groups = new Map<number, {
     supplier_id: number
@@ -416,6 +479,8 @@ const splitPoSummary = computed(() => {
 // Load initial data
 onMounted(async () => {
   await loadInitialData()
+  prefilling.value = true
+  try {
   // Check if editing an existing PO
   const poId = route.params.id
   if (poId) {
@@ -434,14 +499,17 @@ onMounted(async () => {
         if (payload) {
           // Populate form items with server-provided items (keep existing mapping)
           if (Array.isArray(payload.requisition?.items)) {
-            form.items = payload.requisition.items.map((item: any) => ({
+              form.items = payload.requisition.items.map((item: any) => ({
               id: `req-${item.id}`,
               product_id: item.product_id,
+              variation_id: item.variation_id || item.variation?.id || null,
+              variation: item.variation || null,
               product_name: item.product?.product_name || item.product_name || '',
+              unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
               selected_supplier_id: item.selected_supplier_id || null,
               selected_supplier_name: item.selected_supplier_id ? (item.selected_supplier_name || null) : null,
               quantity_ordered: item.quantity_requested || 1,
-              unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+              unit_cost: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0,
               line_total: 0
             }))
 
@@ -471,17 +539,22 @@ onMounted(async () => {
     const rfqId = parseInt(route.query.rfq_id as string)
     await prefillFromRFQ(rfqId)
   }
+  } finally {
+    prefilling.value = false
+    await loadEligibleSuppliers()
+  }
 })
 
 const loadInitialData = async () => {
   try {
     loadingSuppliers.value = true
     const [suppliersRes, branchesRes] = await Promise.all([
-      procurementService.getSuppliers({ per_page: 100 }),
+      procurementService.getSuppliers({ per_page: 1000, active_contract_only: true }),
       procurementService.getBranches ? procurementService.getBranches() : Promise.resolve({ data: [] })
     ])
 
     suppliers.value = suppliersRes.data?.data || suppliersRes.data || []
+    eligibleSuppliers.value = []
     const branchData = branchesRes.data?.data || branchesRes.data || []
     branches.value = branchData.map((branch: any) => ({
       ...branch,
@@ -517,7 +590,7 @@ const syncItemUnitCostsFromProducts = () => {
 
   form.items.forEach((item) => {
     if (!item || !item.product_id) return
-    const product = products.value.find((p) => Number(p.id) === Number(item.product_id))
+    const product = products.value.find((p) => p.selection_key === itemSelectionKey(item))
     if (!product) return
     const current = Number(item.unit_cost || 0)
     if (current > 0) return
@@ -529,7 +602,7 @@ const syncItemUnitCostsFromProducts = () => {
 const prefillFromRequisition = async (requisitionId: number) => {
   try {
       const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId)
-      const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
+      const requisition = requisitionRes?.data?.data || requisitionRes?.data || requisitionRes
 
       if (!requisition) return
 
@@ -545,7 +618,10 @@ const prefillFromRequisition = async (requisitionId: number) => {
       form.items = requisition.items.map((item: any) => ({
         id: `req-${item.id}`,
         product_id: item.product_id,
+        variation_id: item.variation_id || item.variation?.id || null,
+        variation: item.variation || null,
         product_name: item.product?.product_name || item.product_name || '',
+        unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         selected_supplier_id: item.selected_supplier_id || null,
         selected_supplier_name: item.selected_supplier_id
           ? (Array.isArray(item.product?.suppliers)
@@ -553,7 +629,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
             : null)
           : null,
         quantity_ordered: item.quantity_requested || 1,
-        unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+        unit_cost: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0,
         line_total: 0
       }))
 
@@ -581,16 +657,17 @@ const prefillFromRequisition = async (requisitionId: number) => {
           product_name: item.product?.product_name || item.product_name || 'Unknown Product',
           sku: item.product?.sku || item.sku || '',
           stock_level: 0,
-          cost_price: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0
+          cost_price: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0
         }))
     }
 
     syncItemUnitCostsFromProducts()
 
-    const firstSupplierId = requisition.items?.[0]?.selected_supplier_id || requisition.items?.[0]?.product?.suppliers?.[0]?.id
+    const requisitionSuppliers = Array.isArray(requisition.suppliers) ? requisition.suppliers : []
+    const firstSupplierId = uniqueSupplierIds[0] || requisition.supplier_id
+      || (requisitionSuppliers.length === 1 ? requisitionSuppliers[0].id : null)
     if (!splitPoMode.value && firstSupplierId) {
       form.supplier_id = Number(firstSupplierId)
-      await onSupplierChange()
     } else if (splitPoMode.value) {
       form.supplier_id = null
     }
@@ -612,14 +689,20 @@ const prefillFromRFQ = async (rfqId: number) => {
     const approvedFeedbacks = Array.isArray(rfq.supplier_portal_feedbacks)
       ? rfq.supplier_portal_feedbacks.filter((f: any) => f.status === 'approved')
       : []
+    const targetRfqItemId = Number(route.query.rfq_item_id || 0)
+    const selectedApprovedFeedbacks = targetRfqItemId > 0
+      ? approvedFeedbacks.filter((f: any) => Number(f.rfq_item_id || f.rfqItem?.id) === targetRfqItemId)
+      : approvedFeedbacks
 
-    const supplierIds = approvedFeedbacks
+    const supplierIds = selectedApprovedFeedbacks
       .map((f: any) => f?.supplier_portal?.supplier_id || f?.supplier_portal?.supplier?.id)
       .filter((id: any) => !!id)
 
     const uniqueSupplierIds = Array.from(new Set(supplierIds)).map((id: any) => Number(id)).filter((id: number) => id > 0)
-    if (rfq.awarded_to_supplier_id) {
-      form.supplier_id = rfq.awarded_to_supplier_id
+    if (targetRfqItemId > 0 && uniqueSupplierIds.length === 1) {
+      form.supplier_id = uniqueSupplierIds[0]
+    } else if (rfq.awarded_to_supplier_id) {
+      form.supplier_id = Number(rfq.awarded_to_supplier_id)
     } else if (uniqueSupplierIds.length === 1) {
       form.supplier_id = uniqueSupplierIds[0]
     } else if (uniqueSupplierIds.length > 1) {
@@ -631,28 +714,41 @@ const prefillFromRFQ = async (rfqId: number) => {
       })
     }
 
-      const rfqItemsRaw =
-        rfq.items?.data || rfq.items || rfq.rfq_items || rfq.rfqItems || []
+      const rfqItemsRaw = selectedApprovedFeedbacks.length > 0
+        ? selectedApprovedFeedbacks.map((feedback: any) => ({
+            ...feedback.rfq_item,
+            id: feedback.rfq_item_id || feedback.rfq_item?.id,
+            product: feedback.rfq_item?.product,
+            quantity: feedback.rfq_item?.quantity,
+            selected_supplier_id: feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
+            approved_unit_price: feedback.quoted_price,
+            length_cm: feedback.length_cm,
+            width_cm: feedback.width_cm,
+            height_cm: feedback.height_cm,
+            weight_kg: feedback.weight_kg,
+          }))
+        : []
 
       if (Array.isArray(rfqItemsRaw)) {
         form.items = rfqItemsRaw.map((item: any) => {
           const product = item.product || {}
           return {
             id: `rfq-item-${item.id || Date.now()}`,
+            rfq_item_id: item.id || null,
             product_id: item.product_id || product.id || null,
+            variation_id: item.variation_id || item.variation?.id || null,
+            variation: item.variation || null,
             product_name: product.product_name || item.product_name || '',
+            unit_of_measurement: product.unit_of_measurement || item.unit_of_measurement || item.unit || '',
             quantity_ordered: item.quantity || 1,
-            unit_cost: 0,
+            unit_cost: Number(item.approved_unit_price || 0),
+            selected_supplier_id: item.selected_supplier_id || null,
             line_total: 0,
             stock_level: 0
           }
         })
       } else {
         form.items = []
-      }
-
-      if (form.supplier_id) {
-        await onSupplierChange()
       }
 
       if (products.value.length === 0) {
@@ -705,6 +801,9 @@ const loadPOForEdit = async (poId: number) => {
       form.items = po.items.map((item: any) => ({
         product_id: item.product_id,
         variation_id: item.variation_id,
+        variation: item.variation || null,
+        product_name: item.product?.product_name || item.product_name || '',
+        unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost
       }))
@@ -735,22 +834,47 @@ const loadProductsByBranch = async (branchId: number) => {
     const data = response.data?.data || response.data || []
 
     // Map the API response to product format
-    products.value = data.map((item: any) => ({
-      id: item.product_id || item.product?.id,
-      product_name: item.product?.product_name || item.product_name || 'Unknown Product',
-      sku: item.product?.sku || item.sku,
-      stock_level: item.quantity_available || 0,
-      cost_price: item.product?.cost_price ?? item.unit_cost ?? 0,
-      quantity_on_hand: item.quantity_on_hand,
-      reorder_point: item.reorder_point,
-      category_id: item.product?.category_id || item.category_id
-    })).filter((p: any) => !!p.id)
+    const variantProductIds = new Set(
+      data.filter((item: any) => item.variation_id || item.variation?.id)
+        .map((item: any) => Number(item.product_id || item.product?.id))
+    )
+    products.value = data
+      .filter((item: any) => {
+        const productId = Number(item.product_id || item.product?.id)
+        return item.variation_id || item.variation?.id || !variantProductIds.has(productId)
+      })
+      .map((item: any) => {
+        const productId = Number(item.product_id || item.product?.id)
+        const variation = item.variation || null
+        const variationId = Number(item.variation_id || variation?.id || 0) || null
+        const parentName = item.product?.product_name || item.product_name || 'Unknown Product'
+        const variationName = variation?.variation_name || variation?.name
+        return {
+          id: productId,
+          product_id: productId,
+          variation_id: variationId,
+          variation,
+          selection_key: productSelectionKey(productId, variationId),
+          product_name: variationId ? `${parentName} — ${variationName || `Variant #${variationId}`}` : parentName,
+          sku: variation?.variation_sku || item.product?.sku || item.sku,
+          unit_of_measurement: variation?.unit_of_measurement || item.product?.unit_of_measurement || item.unit_of_measurement,
+          stock_level: item.quantity_available || 0,
+          cost_price: variation?.cost_price ?? item.product?.cost_price ?? item.unit_cost ?? 0,
+          quantity_on_hand: item.quantity_on_hand,
+          reorder_point: variation?.reorder_point ?? item.reorder_point,
+          category_id: item.product?.category_id || item.category_id
+        }
+      })
+      .filter((p: any) => !!p.id)
 
     if (products.value.length === 0) {
       const fallbackRes = await procurementService.getProcurementProducts({ per_page: 500 })
       const fallbackList = fallbackRes?.data?.data || fallbackRes?.data || []
       products.value = fallbackList.map((product: any) => ({
         id: product.id,
+        product_id: product.id,
+        variation_id: null,
+        selection_key: productSelectionKey(product.id),
         product_name: product.product_name || 'Unknown Product',
         sku: product.sku || '',
         stock_level: product.stock_level || 0,
@@ -780,8 +904,13 @@ const loadProductsBySupplier = async (supplierId: number) => {
     const list = payload?.data ?? payload ?? []
     products.value = list.map((product: any) => ({
       id: product.id,
+      product_id: product.id,
+      variation_id: product.variation_id || product.variation?.id || null,
+      variation: product.variation || null,
+      selection_key: productSelectionKey(product.id, product.variation_id || product.variation?.id),
       product_name: product.product_name || 'Unknown Product',
       sku: product.sku || '',
+      unit_of_measurement: product.unit_of_measurement || product.variation?.unit_of_measurement || '',
       stock_level: product.stock_level || 0,
       cost_price: product.unit_cost ?? product.cost_price ?? 0,
       category_id: product.category_id
@@ -792,6 +921,79 @@ const loadProductsBySupplier = async (supplierId: number) => {
     products.value = []
   }
 }
+
+let supplierLookupRequest = 0
+const loadEligibleSuppliers = async () => {
+  const requestId = ++supplierLookupRequest
+  const productIds = listedProductIds.value
+
+  if (splitPoMode.value) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    return
+  }
+  if (productIds.length === 0) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    if (!isEditing.value && form.supplier_id) {
+      form.supplier_id = null
+      await onSupplierChange()
+    }
+    return
+  }
+
+  eligibleSuppliersLoading.value = true
+  try {
+    const response = await procurementService.getSuppliers({
+      active_contract_only: true,
+      product_ids: productIds,
+      per_page: 1000,
+    })
+    if (requestId !== supplierLookupRequest) return
+
+    const page = response?.data ?? response
+    const rows = Array.isArray(page) ? page : (page?.data || [])
+    const options = rows.map((supplier: any) => ({
+      ...supplier,
+      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+    }))
+    eligibleSuppliers.value = options
+
+    const selectedIsEligible = options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+    if (isEditing.value && form.supplier_id && !selectedIsEligible) {
+      const currentSupplier = suppliers.value.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+      if (currentSupplier) {
+        eligibleSuppliers.value.unshift({
+          ...currentSupplier,
+          display_name: currentSupplier.supplier_name || currentSupplier.company_name || `Supplier #${currentSupplier.id}`,
+        })
+      }
+      return
+    }
+    if (selectedIsEligible) {
+      if (Number(selectedSupplier.value?.id) !== Number(form.supplier_id)) await onSupplierChange()
+      return
+    }
+
+    const nextSupplierId = options.length === 1 ? Number(options[0].id) : null
+    if (form.supplier_id !== nextSupplierId) {
+      form.supplier_id = nextSupplierId
+      await onSupplierChange()
+    }
+  } catch (error) {
+    if (requestId === supplierLookupRequest) {
+      console.error('Failed to load suppliers for listed products', error)
+      eligibleSuppliers.value = []
+    }
+  } finally {
+    if (requestId === supplierLookupRequest) eligibleSuppliersLoading.value = false
+  }
+}
+
+watch(
+  () => listedProductIds.value.join(','),
+  () => { if (!prefilling.value) void loadEligibleSuppliers() },
+)
 
 watch(
   () => form.branch_id,
@@ -834,6 +1036,9 @@ const onSupplierChange = async () => {
     contractDiscountPercent.value = 0
     contractTaxRate.value = 0
     supplierWarning.show = false
+    if (form.branch_id) {
+      await loadProductsByBranch(form.branch_id)
+    }
     return
   }
 
@@ -881,15 +1086,16 @@ const onSupplierChange = async () => {
 
 const onProductChange = (index: number, productId: any) => {
   if (productId) {
-    // Ensure we have a numeric ID
-    const id = typeof productId === 'object' ? productId?.id : productId
+    const key = typeof productId === 'object' ? productId?.selection_key : String(productId)
 
-    if (id) {
-      const numericId = Number(id)
-      const product = products.value.find((p) => Number(p.id) === numericId)
+    if (key) {
+      const product = products.value.find((p) => p.selection_key === key)
       if (product) {
-        form.items[index].product_id = numericId
+        form.items[index].product_id = Number(product.product_id || product.id)
+        form.items[index].variation_id = product.variation_id || null
+        form.items[index].variation = product.variation || null
         form.items[index].product_name = product.product_name
+        form.items[index].unit_of_measurement = product.unit_of_measurement || product.unit || ''
         form.items[index].stock_level = product.stock_level || 0
         form.items[index].unit_cost = Number(product.cost_price ?? 0) || 0
       }
@@ -898,10 +1104,21 @@ const onProductChange = (index: number, productId: any) => {
   calculateItemTotal(index)
 }
 
+const getItemUnitOfMeasurement = (item: any) => {
+  if (item?.unit_of_measurement) return item.unit_of_measurement
+  if (item?.product?.unit_of_measurement) return item.product.unit_of_measurement
+
+  const selectedProduct = products.value.find((product: any) => Number(product.id) === Number(item?.product_id))
+  return selectedProduct?.unit_of_measurement || selectedProduct?.unit || '-'
+}
+
 const addLineItem = () => {
   form.items.push({
     id: `item-${Date.now()}`,
     product_id: null,
+    variation_id: null,
+    variation: null,
+    unit_of_measurement: '',
     selected_supplier_id: null,
     selected_supplier_name: null,
     quantity_ordered: 1,
@@ -911,9 +1128,22 @@ const addLineItem = () => {
 }
 
 const removeLineItem = (index: number) => {
+  itemPendingRemoval.value = {
+    index,
+    product_name: form.items[index]?.product_name || '',
+  }
+  removeItemConfirmationVisible.value = true
+}
+
+const confirmRemoveLineItem = () => {
+  const index = itemPendingRemoval.value?.index
+  if (index === undefined || index === null) return
+
   form.items.splice(index, 1)
   delete budgetWarnings.value[index]
   updateTotals()
+  removeItemConfirmationVisible.value = false
+  itemPendingRemoval.value = null
 }
 
 const calculateItemTotal = (index: number) => {
@@ -935,13 +1165,45 @@ const calculateItemTotal = (index: number) => {
 
 const updateTotals = () => {
   const subtotal = form.items.reduce((sum, item) => sum + (Number(item.line_total) || 0), 0)
-  const taxRate = Number(supplierTaxRate.value || 0) / 100
-  const taxAmount = subtotal * taxRate
   const discount = subtotal * (Number(contractDiscountPercent.value || 0) / 100)
+  const taxableAmount = Math.max(0, subtotal - discount)
+  const taxRate = Number(supplierTaxRate.value || 0) / 100
+  const taxAmount = taxableAmount * taxRate
   form.discount_amount = discount
   totals.subtotal = subtotal
   totals.tax_amount = taxAmount
-  totals.total_amount = subtotal + taxAmount - discount
+  totals.total_amount = subtotal + taxAmount - discount + shippingFee.value
+  scheduleShippingEstimate(subtotal)
+}
+
+const scheduleShippingEstimate = (subtotal: number) => {
+  if (shippingEstimateTimer) clearTimeout(shippingEstimateTimer)
+  if (prefilling.value) return
+  if (shippingEstimateRouteUnavailable.value) return
+  const hasCompleteItems = form.items.length > 0 && form.items.every((item) => Number(item.product_id) > 0 && Number(item.quantity_ordered) > 0)
+  if (!form.supplier_id || !form.branch_id || !hasCompleteItems) {
+    shippingEstimate.value = null
+    shippingEstimateError.value = ''
+    return
+  }
+  shippingEstimateTimer = setTimeout(async () => {
+    shippingEstimateLoading.value = true
+    shippingEstimateError.value = ''
+    try {
+      const response = await procurementService.estimatePurchaseOrderShipping({ supplier_id: form.supplier_id, branch_id: form.branch_id, subtotal, items: form.items.map(item => ({ product_id: item.product_id, quantity_ordered: item.quantity_ordered })) })
+      shippingEstimate.value = response?.data || null
+      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount + shippingFee.value
+    } catch (error: any) {
+      shippingEstimate.value = null
+      if (error?.response?.status === 404) shippingEstimateRouteUnavailable.value = true
+      shippingEstimateError.value = error?.response?.status === 404
+        ? 'Shipping estimate is unavailable on this server. Ask an administrator to deploy the purchase-order shipping route.'
+        : error?.response?.data?.errors?.shipping_fee?.[0]
+        || error?.response?.data?.message
+        || 'Shipping fee could not be calculated. Check the supplier and branch locations.'
+      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount
+    } finally { shippingEstimateLoading.value = false }
+  }, 500)
 }
 
 const addQuickProduct = (product: any) => {
@@ -976,12 +1238,22 @@ const openSplitPoPreview = (action: 'draft' | 'submit') => {
     return
   }
 
+  if (action === 'submit') {
+    submitConfirmationVisible.value = true
+    return
+  }
+
   submitForm()
 }
 
 const confirmSplitPoPreview = () => {
   splitPoPreviewVisible.value = false
   submitForm(true)
+}
+
+const confirmPurchaseOrderSubmission = () => {
+  submitConfirmationVisible.value = false
+  submitForm()
 }
 
 const submitForm = async (confirmedSplitMode = false) => {
@@ -1024,13 +1296,17 @@ const submitForm = async (confirmedSplitMode = false) => {
       }
       : {
         supplier_id: form.supplier_id,
+        rfq_id: Number(route.query.rfq_id || 0) || null,
         branch_id: form.branch_id,
         purchase_requisition_id: form.purchase_requisition_id,
         order_date: orderDate,
         discount_amount: form.discount_amount,
+        shipping_cost: shippingFee.value,
         notes: form.notes,
         items: form.items.map((item) => ({
-          product_id: item.product_id,
+        product_id: item.product_id,
+        variation_id: item.variation_id || item.variation?.id || null,
+          rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost
         })),
@@ -1043,7 +1319,9 @@ const submitForm = async (confirmedSplitMode = false) => {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'Purchase Order updated successfully',
+        detail: saveDraft.value
+          ? 'Purchase Order draft updated successfully'
+          : 'Purchase Order submitted for finance approval successfully',
         life: 2000
       })
     } else {

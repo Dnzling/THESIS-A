@@ -3,23 +3,25 @@
   <div
     class="flex h-screen w-full max-w-[100vw] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_38%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)]">
     <!-- Sidebar -->
-    <aside class="sidebar bg-white w-64 flex flex-col z-30 overflow-y-auto shadow-lg"
+    <aside class="sidebar bg-white flex flex-col z-30 overflow-y-auto shadow-lg"
       :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
       <!-- Logo section -->
-      <div class="px-5 py-4 border-b border-gray-200">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center justify-center w-10 h-10 rounded-lg">
+      <div class="px-4 py-4">
+        <div class="flex items-center gap-3" :class="sidebarOpen ? '' : 'justify-center'">
+          <div class="flex min-w-0 items-center gap-3">
+          <div class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0">
             <img src="/F.svg" alt="Furnisync" class="w-20 h-20" />
           </div>
-          <div class="leading-tight">
-          <span class="portal-brand text-orange-400">FURNISYNC</span>
-            <p class="text-xs text-gray-600">Platform</p>
+          <div v-if="sidebarOpen" class="leading-tight">
+            <span class="portal-brand text-orange-400">FURNISYNC</span>
+            <p class="mt-1 text-xs font-semibold text-slate-500">{{ subscriptionName }}</p>
+          </div>
           </div>
         </div>
       </div>
   
       <!-- Navigation by Module -->
-      <nav class="flex-1 overflow-y-auto py-4">
+      <nav v-if="sidebarOpen" class="flex-1 overflow-y-auto py-4">
         <!-- Loading State -->
         <div v-if="loadingNavigation" class="px-4 space-y-2">
           <Skeleton height="40px" class="rounded-lg" />
@@ -29,79 +31,39 @@
   
         <!-- Module Accordions -->
         <template v-else>
-          <div v-if="groupedNavigation.length > 0" class="px-2 space-y-1">
-            <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="mb-3">
-              <!-- Module Header (Accordion Toggle) -->
-              <button v-if="moduleGroup.items.length > 0" @click="toggleModule(moduleGroup.module)"
-                class="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors group">
-                <div class="flex items-center space-x-2">
-                  <span class="uppercase tracking-wider text-xs font-bold">{{
-                    formatModuleName(moduleGroup.module) }}</span>
-                </div>
-                <i :class="[
-                          'pi transition-transform',
-                          expandedModules[moduleGroup.module] ? 'pi-chevron-down' : 'pi-chevron-right'
-                        ]"></i>
-              </button>
-  
-              <!-- Module Items (Accordion Content) -->
-              <transition name="accordion">
-                <div v-if="expandedModules[moduleGroup.module]" class="space-y-1 mt-1">
+          <div v-if="groupedNavigation.length > 0" class="px-1">
+            <Accordion multiple v-model:value="expandedModuleValues" class="system-navigation-accordion">
+              <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
+                :value="moduleGroup.module">
+                <AccordionHeader size="small">
+                  <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
+                    {{ formatModuleName(moduleGroup.module) }}
+                  </span>
+                </AccordionHeader>
+                <AccordionContent>
+                  <div class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
-                    <div v-if="item.children?.length && item.route_path && !String(item.route_path).startsWith('#') && !item.meta?.is_group"
-                      class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
-                      <Link :href="item.route_path" class="flex items-center space-x-3 flex-1 min-w-0"
-                        :class="{ 'text-blue-600': isActive(item.route_path) }">
-                        <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
-                        <span class="truncate">{{ item.display_name }}</span>
-                      </Link>
-                      <button type="button" class="shrink-0" @click.stop="toggleSection(item.id)">
-                        <i :class="[
-                                                  'pi text-xs transition-transform',
-                                                  expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
-                                              ]"></i>
-                      </button>
-                    </div>
-
-                    <button v-else-if="item.children?.length" @click="toggleSection(item.id)"
-                      class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
-                      <div class="flex items-center space-x-3">
-                        <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
-                        <span>{{ item.display_name }}</span>
-                      </div>
-                      <i :class="[
-                                                  'pi text-xs transition-transform',
-                                                  expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
-                                              ]"></i>
-                    </button>
-  
-                    <Link v-else :href="item.route_path"
-                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
-                      :class="{ 'bg-blue-50 text-blue-600': isActive(item.route_path) }">
+                    <Link v-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
+                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors group"
+                      :class="{ 'bg-orange-50 text-orange-600': isActive(item.route_path) }">
                     <div class="flex items-center space-x-3 flex-1">
-                      <i :class="[item.icon || 'pi pi-circle', 'w-4 text-gray-400 group-hover:text-blue-500']"></i>
+                      <i :class="[
+                        item.icon || 'pi pi-circle',
+                        'w-4',
+                        isActive(item.route_path)
+                          ? 'text-orange-600'
+                          : 'text-gray-400 group-hover:text-orange-500'
+                      ]"></i>
                       <span>{{ item.display_name }}</span>
                     </div>
-                    <Badge v-if="item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
+                    <Badge v-if="item.name !== 'merchandising.products' && item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
                       size="small" />
                     </Link>
-  
-                    <div v-if="item.children?.length && expandedSections[item.id]" class="space-y-1 ml-5">
-                      <Link v-for="child in item.children" :key="child.id" :href="child.route_path"
-                        class="flex items-center justify-between px-6 py-2 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
-                        :class="{ 'bg-blue-50 text-blue-600': isActive(child.route_path) }">
-                      <div class="flex items-center space-x-3 flex-1">
-                        <i :class="[child.icon || 'pi pi-circle', 'w-4 text-gray-300 group-hover:text-blue-500']"></i>
-                        <span>{{ child.display_name }}</span>
-                      </div>
-                      <Badge v-if="child.badge_count && child.badge_count > 0" :value="child.badge_count"
-                        severity="danger" size="small" />
-                      </Link>
-                    </div>
                   </div>
-                </div>
-              </transition>
-            </div>
+                  </div>
+                </AccordionContent>
+              </AccordionPanel>
+            </Accordion>
           </div>
   
           <!-- Empty State -->
@@ -112,26 +74,75 @@
           </div>
         </template>
       </nav>
+
+      <!-- Icon navigation when collapsed -->
+      <nav v-else class="flex-1 overflow-y-auto px-2 py-3">
+        <div v-if="loadingNavigation" class="space-y-3 px-1">
+          <Skeleton v-for="n in 5" :key="n" width="2.5rem" height="2.5rem" class="mx-auto rounded-xl" />
+        </div>
+        <div v-else class="space-y-3">
+          <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="space-y-1 border-b border-slate-100 pb-3 last:border-0">
+            <Link
+              v-for="item in moduleGroup.items"
+              :key="item.id"
+              :href="item.route_path"
+              class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600"
+              :class="{ 'bg-orange-100 text-orange-600': isActive(item.route_path) }"
+              v-tooltip.right="item.display_name"
+            >
+              <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
+            </Link>
+          </div>
+        </div>
+      </nav>
     </aside>
   
     <!-- Main Content -->
     <div class="flex-1 flex flex-col h-screen overflow-hidden">
       <!-- Top Header -->
       <header
-        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between lg:justify-end sticky top-0 z-20 shadow-sm">
-        <div class="flex items-center gap-3 lg:hidden">
-          <Button icon="pi pi-bars" text rounded severity="secondary" @click="sidebarOpen = true" />
-          <div class="text-sm font-semibold text-gray-700">Menu</div>
+        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3">
+          <Button
+            :icon="sidebarOpen ? 'pi pi-angle-left' : 'pi pi-bars'"
+            size="small"
+            text
+            rounded
+            severity="secondary"
+            :aria-label="sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            @click="toggleSidebar"
+          />
+          <div class="hidden text-sm font-semibold text-gray-700 sm:block">{{ pageTitle || 'Workspace' }}</div>
         </div>
   
   
         <!-- Header Actions -->
         <div class="flex items-center space-x-4">
+          <template v-if="canManageStaffChats">
+            <Button icon="pi pi-comments" severity="secondary" text rounded
+              :badge="staffChatUnread > 0 ? staffChatUnread.toString() : undefined" badgeSeverity="warn"
+              aria-label="Staff chats" @click="toggleStaffChats" />
+            <Popover ref="staffChatPanel" class="w-[min(380px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0 rounded-2xl shadow-xl border border-orange-100">
+              <div class="flex items-center justify-between border-b border-orange-100 px-4 py-3">
+                <div><p class="font-semibold text-slate-900">Staff Chats</p><p class="text-xs text-slate-500">Messages from your store team</p></div>
+                <Button label="View all" size="small" text class="!text-orange-600" @click="openAllStaffChats" />
+              </div>
+              <div class="max-h-[390px] overflow-y-auto p-2">
+                <div v-if="staffChatsLoading" class="space-y-2 p-2"><Skeleton v-for="n in 3" :key="n" height="58px" class="rounded-xl" /></div>
+                <p v-else-if="!staffChatConversations.length" class="p-7 text-center text-sm text-slate-500">No staff messages yet.</p>
+                <button v-for="chat in staffChatConversations.slice(0, 8)" :key="chat.id" class="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-orange-50" @click="openStaffChat(chat.id)">
+                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">{{ staffInitials(chat.staff) }}</div>
+                  <div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><p class="truncate text-sm font-semibold text-slate-900">{{ staffName(chat.staff) }}</p><span class="shrink-0 text-[11px] text-slate-400">{{ formatTimeAgo(chat.last_message_at) }}</span></div><p class="truncate text-xs text-slate-500">{{ chat.last_message }}</p></div>
+                  <Badge v-if="chat.unread_count" :value="chat.unread_count" severity="warn" />
+                </button>
+              </div>
+            </Popover>
+          </template>
           <!-- Notifications -->
           <Button icon="pi pi-bell" severity="secondary" text rounded
             :badge="unreadCount > 0 ? unreadCount.toString() : undefined" badgeSeverity="danger"
             @click="toggleNotifications" />
-          <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+          <Popover ref="notificationPanel" class="w-[min(380px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0 rounded-2xl shadow-xl border border-gray-100">
             <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div class="font-semibold text-gray-900">Notifications</div>
               <Button label="Mark all as read" size="small" text class="text-xs"
@@ -141,18 +152,18 @@
             <div class="px-4 pt-3">
               <div class="flex items-center gap-4 text-sm">
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'inbox' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'inbox' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'inbox'">
                   Inbox <span v-if="unreadCount" class="ml-1 text-xs bg-green-500 text-white rounded-full px-2 py-0.5">{{
                     unreadCount }}</span>
                 </button>
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'general' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'general' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'general'">
                   General
                 </button>
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'archived' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'archived' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'archived'">
                   Archived
                 </button>
@@ -160,10 +171,8 @@
             </div>
   
             <div class="max-h-[420px] overflow-y-auto">
-              <div v-if="notificationsLoading" class="p-4 space-y-3">
-                <Skeleton height="56px" class="rounded-xl" />
-                <Skeleton height="56px" class="rounded-xl" />
-                <Skeleton height="56px" class="rounded-xl" />
+              <div v-if="notificationsLoading" class="p-4 text-center text-sm text-gray-500">
+                Loading notifications...
               </div>
   
               <div v-else-if="filteredNotifications.length === 0" class="p-6 text-center text-sm text-gray-500">
@@ -171,21 +180,24 @@
               </div>
   
               <button v-for="notif in filteredNotifications" :key="notif.id"
-                class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-blue-50/50 transition"
+                class="w-full min-w-0 text-left px-4 py-3 flex items-start gap-3 hover:bg-orange-50/50 transition"
                 @click="openNotification(notif)">
                 <div class="relative">
                   <div
-                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-700 font-semibold text-xs">
+                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center text-orange-700 font-semibold text-xs">
                     {{ getNotifInitials(notif) }}
                   </div>
                   <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="text-sm font-semibold text-gray-900 truncate">{{ notif.title }}</p>
-                    <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="min-w-0 flex-1 whitespace-normal break-words text-sm font-semibold leading-5 text-gray-900">{{ notif.title }}</p>
+                    <span class="shrink-0 whitespace-nowrap pt-0.5 text-xs text-gray-400">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
-                  <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                  <p class="mt-1 whitespace-normal break-words text-xs leading-relaxed text-gray-600">{{ notif.message || 'Tap to view' }}</p>
+                  <p v-if="notif.data?.created_by?.name" class="mt-1 truncate text-[11px] text-gray-400">
+                    Created by {{ notif.data.created_by.name }}
+                  </p>
                 </div>
               </button>
             </div>
@@ -193,8 +205,9 @@
           <!-- User Profile -->
           <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
             <div class="flex items-center space-x-3 hover:bg-gray-50 px-2 py-1 rounded-lg transition">
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <span class="text-sm font-semibold text-blue-600">{{ userInitials }}</span>
+              <div class="w-8 h-8 overflow-hidden rounded-full bg-orange-100 flex items-center justify-center">
+                <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url" :alt="`${fullName} profile photo`" class="h-full w-full object-cover" />
+                <span v-else class="text-sm font-semibold text-orange-600">{{ userInitials }}</span>
               </div>
               <div>
                 <h2 class="font-semibold text-gray-800 text-sm">{{ fullName }}</h2>
@@ -206,7 +219,7 @@
       </header>
   
       <!-- Main Content Area -->
-      <main class="flex-1 overflow-y-auto p-6 bg-transparent" :class="{ 'merchandising-hide-delete': isMerchandising }">
+      <main class="flex-1 overflow-y-auto p-6 bg-transparent">
         <slot />
       </main>
     </div>
@@ -233,7 +246,7 @@
                 ? 'bg-red-50 text-red-600'
                 : responseDialog.severity === 'warn'
                   ? 'bg-amber-50 text-amber-600'
-                  : 'bg-blue-50 text-blue-600'
+                  : 'bg-orange-50 text-orange-600'
           ]">
           <i :class="[
               'pi text-2xl',
@@ -265,6 +278,10 @@ import { startCase, toLower, groupBy } from 'lodash'
 import Skeleton from 'primevue/skeleton'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
+import Accordion from 'primevue/accordion'
+import AccordionPanel from 'primevue/accordionpanel'
+import AccordionHeader from 'primevue/accordionheader'
+import AccordionContent from 'primevue/accordioncontent'
 import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
@@ -281,12 +298,22 @@ const isBooting = ref(true)
 const userDialogRef = ref(null)
 const loadingNavigation = ref(false)
 const enabledModules = ref<string[] | null>(null)
-const sidebarOpen = ref(false)
+const sidebarOpen = ref(true)
+const subscriptionName = computed(() => {
+  if (String(authStore.userRole || '').toLowerCase() === 'super_admin') return 'Platform Administration'
+  const name = authStore.user?.store?.subscription_name
+  return name || 'Free'
+})
 const notificationPanel = ref()
+const staffChatPanel = ref()
+const staffChatConversations = ref<any[]>([])
+const staffChatsLoading = ref(false)
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 const unreadCount = ref(0)
 const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
+const canManageStaffChats = computed(() => authStore.hasPermission('admin.chats.manage'))
+const staffChatUnread = computed(() => staffChatConversations.value.reduce((sum, chat) => sum + Number(chat.unread_count || 0), 0))
 const notificationPoller = ref<number | null>(null)
 const responseDialog = ref({
   visible: false,
@@ -297,31 +324,38 @@ const responseDialog = ref({
 let responseDialogUnsub: (() => void) | null = null
 
 // Track expanded/collapsed modules
-const expandedModules = ref<Record<string, boolean>>({
-  admin: true,
-  inventory: false,
-  procurement: false,
-  merchandising: false,
-  hr: false,
-  supplier: true,
+const expandedModules = ref<Record<string, boolean>>({})
+const expandedModuleValues = computed<string[]>({
+  get: () => Object.entries(expandedModules.value)
+    .filter(([, expanded]) => expanded)
+    .map(([module]) => module),
+  set: (values) => {
+    const openModules = new Set(values)
+    const nextState: Record<string, boolean> = {}
+    Object.keys(expandedModules.value).forEach((module) => {
+      nextState[module] = openModules.has(module)
+    })
+    expandedModules.value = nextState
+  }
 })
-const expandedSections = ref<Record<string, boolean>>({})
 
-// Load saved state on mount
+// Load the user and their navigation on mount.
 onMounted(async () => {
+  sidebarOpen.value = window.innerWidth >= 1024
+    ? localStorage.getItem('sidebarOpen') !== 'false'
+    : false
+
   const storedToken = localStorage.getItem('auth_token')
   if (!storedToken) {
     router.visit('/login')
     return
   }
 
-  if (!authStore.user) {
-    try {
-      await authStore.fetchCurrentUser()
-    } catch (error) {
-      // fetchCurrentUser handles logout/redirection on 401
-      return
-    }
+  try {
+    await authStore.fetchCurrentUser()
+  } catch (error) {
+    // fetchCurrentUser handles logout/redirection on 401
+    return
   }
 
   if (!isAuthenticated.value) {
@@ -362,24 +396,10 @@ onMounted(async () => {
 
   isBooting.value = false
 
-  const saved = localStorage.getItem('expandedModules')
-  if (saved) {
-    try {
-      expandedModules.value = JSON.parse(saved)
-    } catch (e) {
-      // Use defaults
-    }
-  }
-  const savedSections = localStorage.getItem('expandedSections')
-  if (savedSections) {
-    try {
-      expandedSections.value = JSON.parse(savedSections)
-    } catch (e) {
-      // ignore
-    }
-  }
   window.addEventListener('keydown', handleKeyboardShortcut)
+  document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
   loadNotifications()
+  if (canManageStaffChats.value) loadStaffChats()
   if (!notificationPoller.value) {
     notificationPoller.value = window.setInterval(() => {
       loadNotifications()
@@ -402,6 +422,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyboardShortcut)
+  document.removeEventListener('visibilitychange', refreshNavigationWhenVisible)
   if (notificationPoller.value) {
     clearInterval(notificationPoller.value)
     notificationPoller.value = null
@@ -412,16 +433,39 @@ onUnmounted(() => {
   }
 })
 
-// Toggle module accordion
-const toggleModule = (module: string) => {
-  expandedModules.value[module] = !expandedModules.value[module]
-  localStorage.setItem('expandedModules', JSON.stringify(expandedModules.value))
+const refreshNavigationWhenVisible = () => {
+  if (document.visibilityState === 'visible' && authStore.isAuthenticated && authStore.permissionsLoaded) {
+    void authStore.fetchNavigation()
+  }
 }
 
-const toggleSection = (sectionId: number) => {
-  expandedSections.value[sectionId] = !expandedSections.value[sectionId]
-  localStorage.setItem('expandedSections', JSON.stringify(expandedSections.value))
+const toggleSidebar = () => {
+  sidebarOpen.value = !sidebarOpen.value
+  localStorage.setItem('sidebarOpen', sidebarOpen.value.toString())
 }
+
+const loadStaffChats = async () => {
+  staffChatsLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/staff-chats/conversations')
+    const payload = response.data?.data
+    staffChatConversations.value = Array.isArray(payload) ? payload : (payload?.data || [])
+  } catch (error) {
+    console.warn('Failed to load staff chat preview', error)
+  } finally {
+    staffChatsLoading.value = false
+  }
+}
+
+const toggleStaffChats = (event: Event) => {
+  if (notificationPanel.value) notificationPanel.value.hide()
+  staffChatPanel.value?.toggle(event)
+  void loadStaffChats()
+}
+const openStaffChat = (id: number) => { staffChatPanel.value?.hide(); router.visit(`/staff-chats?conversation=${id}`) }
+const openAllStaffChats = () => { staffChatPanel.value?.hide(); router.visit('/staff-chats') }
+const staffName = (staff: any) => `${staff?.fname || ''} ${staff?.lname || ''}`.trim() || 'Staff'
+const staffInitials = (staff: any) => `${staff?.fname?.[0] || ''}${staff?.lname?.[0] || ''}`.toUpperCase() || 'S'
 
 watch(currentPath, () => {
   if (window.innerWidth < 1024) {
@@ -433,137 +477,9 @@ watch(currentPath, () => {
 const handleKeyboardShortcut = (event: KeyboardEvent) => {
   if (event.ctrlKey && event.key === 'b') {
     event.preventDefault()
-    sidebarOpen.value = !sidebarOpen.value
-    localStorage.setItem('sidebarOpen', sidebarOpen.value.toString())
+    toggleSidebar()
   }
 }
-
-// Group navigation items by module
-const supplierFallbackNavigation = [
-  {
-    id: -101,
-    name: 'supplier.dashboard',
-    display_name: "Supplier's Dashboard",
-    module: 'supplier',
-    route_name: 'supplier.dashboard',
-    route_path: '/supplier-portal/dashboard',
-    icon: 'pi pi-home',
-    parent_id: null,
-    display_order: 1,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -102,
-    name: 'supplier.purchase_orders',
-    display_name: 'Purchase Orders',
-    module: 'supplier',
-    route_name: 'supplier.pos',
-    route_path: '/supplier-portal/pos',
-    icon: 'pi pi-shopping-cart',
-    parent_id: null,
-    display_order: 2,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -103,
-    name: 'supplier.rfqs',
-    display_name: 'RFQs',
-    module: 'supplier',
-    route_name: 'supplier.rfqs',
-    route_path: '/supplier-portal/rfqs',
-    icon: 'pi pi-file',
-    parent_id: null,
-    display_order: 3,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -104,
-    name: 'supplier.transactions',
-    display_name: 'Transactions',
-    module: 'supplier',
-    route_name: 'supplier.transactions',
-    route_path: '/supplier-portal/transactions',
-    icon: 'pi pi-credit-card',
-    parent_id: null,
-    display_order: 4,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -105,
-    name: 'supplier.payment_account',
-    display_name: 'Payment Account',
-    module: 'supplier',
-    route_name: 'supplier.payment-account',
-    route_path: '/supplier-portal/payment-account',
-    icon: 'pi pi-wallet',
-    parent_id: null,
-    display_order: 5,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-]
-
-// const storeFallbackNavigation = [
-//   {
-//     id: -201,
-//     name: 'store.dashboard',
-//     display_name: 'Store Dashboard',
-//     module: 'store',
-//     route_name: 'store.dashboard',
-//     route_path: '/store/index',
-//     icon: 'pi pi-home',
-//     parent_id: null,
-//     display_order: 1,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -202,
-//     name: 'store.registration',
-//     display_name: 'Store Registration',
-//     module: 'store',
-//     route_name: 'StoreVerification',
-//     route_path: '/store/store/verification',
-//     icon: 'pi pi-building',
-//     parent_id: null,
-//     display_order: 2,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -203,
-//     name: 'store.roles_permissions',
-//     display_name: 'Roles & Permissions',
-//     module: 'store',
-//     route_name: 'store.role-permissions',
-//     route_path: '/store/roles-permissions',
-//     icon: 'pi pi-shield',
-//     parent_id: null,
-//     display_order: 3,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-// ]
 
 const groupedNavigation = computed(() => {
   if (loadingNavigation.value && authStore.navigation.length === 0) {
@@ -578,35 +494,58 @@ const groupedNavigation = computed(() => {
     ? [...authStore.navigation]
     : []
 
-  if (baseNavigation.length === 0) {
-    if (isSupplierRole) {
-      baseNavigation = [...supplierFallbackNavigation]
-    } else if (isStoreRole) {
-      // baseNavigation = [...storeFallbackNavigation]
-    }
-  }
+  baseNavigation = baseNavigation.filter((item: any) => {
+    const name = String(item?.name || '').toLowerCase()
+    const path = String(item?.route_path || '').toLowerCase()
+    return name !== 'account.profile' && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path)
+  })
 
-  if (!isCustomerRole) {
-    const profileItem = {
-      id: -901,
-      name: 'account.profile',
-      display_name: 'Profile',
-      module: 'account',
-      route_name: isSupplierRole ? 'supplier.profile' : 'profile.edit',
-      route_path: isSupplierRole ? '/supplier-portal/profile' : '/profile',
-      icon: 'pi pi-user',
+  // CRM is an independent module. Keep compatibility with the existing
+  // sales.crm permission/navigation record while rendering it outside Sales.
+  baseNavigation = baseNavigation.map((item: any) => {
+    const name = String(item?.name || '').toLowerCase()
+    const routeName = String(item?.route_name || '').toLowerCase()
+    const routePath = String(item?.route_path || '').toLowerCase()
+    const isCrmItem = name === 'sales.crm'
+      || name.startsWith('crm.')
+      || routeName === 'sales.crm'
+      || routeName.startsWith('crm.')
+      || routePath.startsWith('/crm')
+
+    if (!isCrmItem) return item
+
+    return {
+      ...item,
+      module: 'crm',
+      route_name: name === 'sales.crm' || routeName === 'sales.crm' ? 'crm.dashboard' : item.route_name,
+      route_path: name === 'sales.crm' || routeName === 'sales.crm' ? '/crm/dashboard' : item.route_path,
+      display_name: name === 'sales.crm' ? 'Dashboard' : item.display_name,
+      is_active: true,
+    }
+  })
+
+  const hasCrmNavigation = baseNavigation.some((item: any) => String(item?.module || '').toLowerCase() === 'crm')
+  if (!hasCrmNavigation && authStore.hasPermission('sales.crm.view')) {
+    baseNavigation.push({
+      id: -905,
+      name: 'crm.dashboard',
+      display_name: 'Dashboard',
+      module: 'crm',
+      route_name: 'crm.dashboard',
+      route_path: '/crm/dashboard',
+      icon: 'pi pi-users',
       parent_id: null,
-      display_order: 999,
+      display_order: 1,
       section: 'General',
       meta: null,
       is_active: true,
       badge_count: 0,
-    }
+    })
+  }
 
-    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-    if (!existingPaths.has(profileItem.route_path)) {
-      baseNavigation = [...baseNavigation, profileItem]
-    }
+  if (baseNavigation.length === 0) {
+    // Navigation is supplied by the backend permission response.
+    // Keep the list empty when no permitted items are returned.
   }
 
   if (isSuperAdminRole) {
@@ -655,15 +594,11 @@ const groupedNavigation = computed(() => {
     }
   }
 
-  // if (isStoreRole) {
-  //   const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-  //   const missingStoreItems = storeFallbackNavigation.filter((item) => !existingPaths.has(item.route_path))
-  //   if (missingStoreItems.length > 0) {
-  //     baseNavigation = [...baseNavigation, ...missingStoreItems]
-  //   }
-  // }
-
   let activeItems = baseNavigation.filter((item: any) => item.is_active)
+
+  if (!isSupplierRole) {
+    activeItems = activeItems.filter((item: any) => String(item?.module || '').toLowerCase() !== 'supplier')
+  }
 
   if (isSupplierRole) {
     activeItems = activeItems.map((item: any) => {
@@ -676,20 +611,6 @@ const groupedNavigation = computed(() => {
       return item
     })
   }
-
-  // For store roles, hide nav items for modules that are not enabled for their store
-  if (isStoreRole && Array.isArray(enabledModules.value)) {
-    const allowed = new Set<string>(enabledModules.value)
-    activeItems = activeItems.filter((item: any) => {
-      // keep items with no module tag (safety), and account/profile utilities
-      if (!item.module) return true
-      if (['account', 'support'].includes(item.module)) return true
-      return allowed.has(item.module)
-    })
-  }
-
-  const itemsById = new Map<number, any>()
-  activeItems.forEach((item: any) => itemsById.set(item.id, item))
 
   const childrenByParent: Record<number, any[]> = {}
   activeItems.forEach((item: any) => {
@@ -705,10 +626,7 @@ const groupedNavigation = computed(() => {
     children.sort((a, b) => a.display_order - b.display_order)
   })
 
-  const parents = activeItems.filter((item: any) => !item.parent_id)
-  const orphans = activeItems.filter((item: any) => item.parent_id && !itemsById.has(item.parent_id))
-
-  const filtered = [...parents, ...orphans].map((item: any) => ({
+  const filtered = activeItems.map((item: any) => ({
     ...item,
     children: childrenByParent[item.id] || [],
   }))
@@ -716,26 +634,36 @@ const groupedNavigation = computed(() => {
       if (item.meta?.is_group && (!item.children || item.children.length === 0)) {
         return false
       }
-      return true
+
+      const routePath = String(item.route_path || '').trim()
+      return routePath !== '' && !routePath.startsWith('#')
     })
 
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['admin', 'supplier', 'inventory', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'account']
+  const moduleOrder = ['admin', 'store', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','sales','logistics', 'crm']
 
-  for (const module of moduleOrder) {
-    if (itemsByModule[module]) {
-      grouped.push({
-        module,
-        items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
-      })
-    }
+  const catalogModules = authStore.systemModules
+    .map((module: any) => String(module?.key || '').trim().toLowerCase())
+    .filter(module => Boolean(module) && (module !== 'supplier' || isSupplierRole))
+  const orderedModules = [
+    ...moduleOrder.filter(module => catalogModules.includes(module) || Boolean(itemsByModule[module]?.length)),
+    ...catalogModules.filter(module => !moduleOrder.includes(module)),
+  ]
+
+  // The module catalog contains every system module, but the sidebar should
+  // only show groups that have at least one navigation item for this user.
+  for (const module of orderedModules.filter((module) => Boolean(itemsByModule[module]?.length))) {
+    grouped.push({
+      module,
+      items: [...(itemsByModule[module] || [])].sort((a, b) => a.display_order - b.display_order)
+    })
   }
 
-  // Add any custom modules not in moduleOrder
+  // Include legacy navigation modules that are not in the module catalog yet.
   for (const module in itemsByModule) {
-    if (!moduleOrder.includes(module)) {
+    if (!orderedModules.includes(module) && itemsByModule[module]?.length) {
       grouped.push({
         module,
         items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
@@ -746,10 +674,37 @@ const groupedNavigation = computed(() => {
   return grouped
 })
 
+const routeMatches = (routePath: string): boolean => {
+  const target = String(routePath || '').replace(/\/$/, '') || '/'
+  return currentPath.value === target || (target !== '/' && currentPath.value.startsWith(`${target}/`))
+}
+
+// Initialize new modules from the current route without overriding a user's collapsed state.
+watch(
+  () => groupedNavigation.value,
+  (navigationGroups) => {
+    const nextState: Record<string, boolean> = {}
+    const hasActivePage = navigationGroups.some(group => group.items.some(item => routeMatches(item.route_path)))
+    navigationGroups.forEach((group, index) => {
+      nextState[group.module] = Object.prototype.hasOwnProperty.call(expandedModules.value, group.module)
+        ? expandedModules.value[group.module]
+        : group.items.some(item => routeMatches(item.route_path)) || (index === 0 && !hasActivePage)
+    })
+    expandedModules.value = nextState
+  },
+  { immediate: true }
+)
+
 
 
 // Format module name
 const formatModuleName = (module: string): string => {
+  const catalogName = authStore.systemModules.find((item: any) => String(item?.key || '').toLowerCase() === module)?.name
+  if (catalogName) return catalogName
+  if (module === 'warehouse') return 'Warehouse'
+  if (module == 'hr') return 'Human Resources'
+  if (module === 'merchandising') return 'E-Commerce'
+
   return module
     .replace(/_/g, ' ')
     .split(' ')
@@ -759,7 +714,7 @@ const formatModuleName = (module: string): string => {
 
 // Check if route is active
 const isActive = (routePath: string): boolean => {
-  return currentPath.value === routePath
+  return routeMatches(routePath)
 }
 
 // User data
@@ -844,7 +799,9 @@ const markAllNotificationsRead = async () => {
   if (!isAuthenticated.value) return
   if (notificationsLoading.value) return
   try {
-    await axiosClient.put('/api/notifications/mark-all-read')
+    await axiosClient.put('/api/notifications/mark-all-read', {}, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     notifications.value = notifications.value.map((n: any) => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
     unreadCount.value = 0
   } catch (error) {
@@ -856,7 +813,9 @@ const openNotification = async (notif: any) => {
   if (!isAuthenticated.value) return
   if (!notif.is_read) {
     try {
-      await axiosClient.put(`/api/notifications/${notif.id}/read`)
+      await axiosClient.put(`/api/notifications/${notif.id}/read`, {}, {
+        headers: { 'X-Suppress-Success-Dialog': '1' },
+      })
       notif.is_read = true
       unreadCount.value = Math.max(0, unreadCount.value - 1)
     } catch (error) {
@@ -954,8 +913,23 @@ watch(isAuthenticated, (value) => {
   font-family: 'Barabara', sans-serif;
 }
 
+.system-navigation-accordion :deep(.p-accordionheader-toggle-icon) {
+  width: 0.7rem;
+  height: 0.7rem;
+  font-size: 0.7rem;
+}
+
+.system-navigation-accordion :deep(.p-accordionheader) {
+  padding: 0.7rem 1rem;
+}
+
 .sidebar {
-  transition: all 0.3s ease;
+  width: 16rem;
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+.sidebar.closed {
+  width: 5rem;
 }
 
 @media (max-width: 1024px) {

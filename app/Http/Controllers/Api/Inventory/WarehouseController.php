@@ -28,8 +28,8 @@ class WarehouseController extends Controller
     {
         try {
             $user = $request->user();
-            $storeId = (int) ($user?->store_id ?? 0);
-            $branchId = (int) ($user?->branch_id ?? 0);
+            $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
+            $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
 
             $query = Warehouse::with(['store', 'branch']);
 
@@ -64,7 +64,8 @@ class WarehouseController extends Controller
                 });
             }
 
-            $warehouses = $query->orderBy('name')->paginate(15);
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 1000);
+            $warehouses = $query->orderBy('name')->paginate($perPage);
 
             return response()->json([
                 'success' => true,

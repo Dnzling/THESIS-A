@@ -9,7 +9,7 @@ class UpdateProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['admin', 'storeAdmin', 'inventoryManager']);
+        return $this->user()->hasAnyRole(['admin', 'owner', 'inventoryManager']);
     }
 
     public function rules(): array

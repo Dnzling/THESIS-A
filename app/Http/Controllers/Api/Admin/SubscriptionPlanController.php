@@ -67,9 +67,12 @@ class SubscriptionPlanController extends Controller
                 'permissions.module',
                 'permissions.display_name',
                 'permissions.description',
+                'permissions.is_active',
+                'permissions.deleted_at',
                 DB::raw('COALESCE(plan_permissions.included, 0) as included')
             )
             ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
             ->orderBy('permissions.module')
             ->orderBy('permissions.display_name')
             ->get()
@@ -100,6 +103,11 @@ class SubscriptionPlanController extends Controller
             'description' => 'nullable|string|max:255',
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:5',
+            'max_user_accounts' => 'nullable|integer|min:1',
+            'max_branches' => 'nullable|integer|min:1',
+            'max_products' => 'nullable|integer|min:1',
+            'max_3d_model_requests_per_month' => 'nullable|integer|min:0',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -113,6 +121,11 @@ class SubscriptionPlanController extends Controller
             'description' => $validated['description'] ?? null,
             'monthly_price' => $validated['monthly_price'],
             'yearly_price' => $validated['yearly_price'],
+            'commission_rate' => $validated['commission_rate'] ?? null,
+            'max_user_accounts' => $validated['max_user_accounts'] ?? null,
+            'max_branches' => $validated['max_branches'] ?? null,
+            'max_products' => $validated['max_products'] ?? null,
+            'max_3d_model_requests_per_month' => $validated['max_3d_model_requests_per_month'] ?? 0,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? false),
             'is_active' => (bool) ($validated['is_active'] ?? true),
@@ -137,6 +150,11 @@ class SubscriptionPlanController extends Controller
             'description' => 'nullable|string|max:255',
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:5',
+            'max_user_accounts' => 'nullable|integer|min:1',
+            'max_branches' => 'nullable|integer|min:1',
+            'max_products' => 'nullable|integer|min:1',
+            'max_3d_model_requests_per_month' => 'nullable|integer|min:0',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -153,6 +171,13 @@ class SubscriptionPlanController extends Controller
             'description' => $validated['description'] ?? null,
             'monthly_price' => $validated['monthly_price'],
             'yearly_price' => $validated['yearly_price'],
+            'commission_rate' => array_key_exists('commission_rate', $validated)
+                ? $validated['commission_rate']
+                : $subscriptionPlan->commission_rate,
+            'max_user_accounts' => $validated['max_user_accounts'] ?? null,
+            'max_branches' => $validated['max_branches'] ?? null,
+            'max_products' => $validated['max_products'] ?? null,
+            'max_3d_model_requests_per_month' => $validated['max_3d_model_requests_per_month'] ?? 0,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? $subscriptionPlan->is_featured),
             'is_active' => (bool) ($validated['is_active'] ?? $subscriptionPlan->is_active),
@@ -207,10 +232,25 @@ class SubscriptionPlanController extends Controller
             }
         }
 
+        DB::table('stores')
+            ->where('subscription_tier', $subscriptionPlan->id)
+            ->pluck('id')
+            ->each(fn ($storeId) => app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $storeId));
+
         return response()->json([
             'success' => true,
             'message' => 'Plan updated successfully.',
             'data' => $subscriptionPlan->fresh(),
+            'saved_modules' => DB::table('plan_modules')
+                ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
+                ->where('plan_modules.plan_id', $subscriptionPlan->id)
+                ->where('plan_modules.included', true)
+                ->pluck('modules.key'),
+            'saved_permissions' => DB::table('plan_permissions')
+                ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+                ->where('plan_permissions.plan_id', $subscriptionPlan->id)
+                ->where('plan_permissions.included', true)
+                ->pluck('permissions.name'),
         ]);
     }
 
@@ -242,6 +282,32 @@ class SubscriptionPlanController extends Controller
             ->get();
 
         return response()->json(['success' => true, 'data' => $plans]);
+    }
+
+    public function firstPlanForPermission(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'permission' => 'required|string|max:150',
+        ]);
+
+        $plan = SubscriptionPlan::query()
+            ->select('subscription_plans.*')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'subscription_plans.id')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('permissions.name', $validated['permission'])
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->where('subscription_plans.is_active', true)
+            ->whereNull('subscription_plans.deleted_at')
+            ->orderBy('subscription_plans.sort_order')
+            ->orderBy('subscription_plans.id')
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => $plan,
+        ]);
     }
 
     public function publicModules(string $planKey): JsonResponse

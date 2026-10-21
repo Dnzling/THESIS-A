@@ -185,7 +185,7 @@ class StoreManagementController extends Controller
 
         $storeModel = Store::withTrashed()->findOrFail((int) $store);
         $storeModel->update([
-            'status' => 'inactive',
+            'status' => 'deactivated',
             'deactivation_reason' => trim((string) $validated['reason']),
             'deactivated_at' => now(),
             'deactivated_by' => $request->user()?->id,
@@ -212,7 +212,7 @@ class StoreManagementController extends Controller
 
         $storeModel = Store::withTrashed()->findOrFail((int) $store);
         $storeModel->update([
-            'status' => 'inactive',
+            'status' => 'deactivated',
             'deactivation_reason' => trim((string) $validated['reason']),
             'deactivated_at' => now(),
             'deactivated_by' => $request->user()?->id,
@@ -243,8 +243,8 @@ class StoreManagementController extends Controller
             'city' => $city,
             'address' => $address,
             'status' => $store->status,
-            'subscription_tier' => $store->subscription_tier ?? 'free',
-            'subscription_ends_at' => optional($store->subscription_ends_at)->toDateString(),
+            'subscription_tier' => $store->subscription_tier,
+            'subscription_ends_at' => optional($store->subscription_ends_at)->toDateTimeString(),
             'users_count' => (int) ($store->users_count ?? 0),
             'products_count' => (int) ($store->products_count ?? 0),
             'customers_count' => $customersCount,

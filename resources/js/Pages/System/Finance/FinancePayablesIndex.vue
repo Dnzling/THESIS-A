@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-gray-900">Accounts Payable</h1>
@@ -17,7 +17,8 @@
                 <i class="pi pi-clock text-sm text-orange-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pendingInvoices }}</p>
+            <Skeleton v-if="loading || loadingPayments" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pendingInvoices }}</p>
           </div>
         </template>
       </Card>
@@ -31,7 +32,8 @@
                 <i class="pi pi-check-circle text-sm text-green-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.approvedInvoices }}</p>
+            <Skeleton v-if="loading || loadingPayments" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.approvedInvoices }}</p>
           </div>
         </template>
       </Card>
@@ -45,12 +47,13 @@
                 <i class="pi pi-wallet text-sm text-blue-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pendingPayments }}</p>
+            <Skeleton v-if="loading || loadingPayments" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pendingPayments }}</p>
           </div>
         </template>
       </Card>
   
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-linear-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
         <template #content>
           <div class="p-5">
             <div class="mb-3 flex items-center justify-between">
@@ -59,21 +62,17 @@
                 <i class="pi pi-credit-card text-sm"></i>
               </div>
             </div>
-            <p class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+            <Skeleton v-if="loading || loadingPayments" width="7rem" height="1.75rem" />
+            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
           </div>
         </template>
       </Card>
     </div>
   
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+    <Card class="overflow-hidden rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Filter Records</h2>
-        </div>
-      </template>
-  
-      <template #content>
-        <div class="p-6 pt-2">
+        <div class="m-4 mt-6">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Payables & Supplier Payments</h2>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div class="space-y-2 md:col-span-2">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
@@ -88,27 +87,19 @@
             </div>
   
             <div class="flex items-end">
-              <Button fluid icon="pi pi-refresh" label="Refresh" size="small" :loading="loading || loadingPayments"
+              <Button fluid icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading || loadingPayments"
                 @click="reloadAll" />
             </div>
           </div>
         </div>
       </template>
-    </Card>
-  
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Payables & Supplier Payments</h2>
-        </div>
-      </template>
-  
       <template #content>
-        <div class="p-6 pt-2">
+        <div>
           <TabView>
             <TabPanel header="Payables" value="0">
-              <DataTable :value="filteredPayables" :loading="loading" stripedRows responsiveLayout="scroll"
-                class="p-datatable-sm" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
+              <div v-if="loading" class="space-y-3 pb-4"><div v-for="row in 6" :key="`payable-${row}`" class="grid grid-cols-6 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 6" :key="cell" height="1.25rem" /></div></div>
+              <DataTable v-else :value="filteredPayables" rowHover responsiveLayout="scroll"
+                class="p-datatable-sm text-xs" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
                 <Column field="reference" header="Invoice #" style="min-width: 130px">
                   <template #body="{ data }">
                     <span class="text-sm font-medium text-blue-600">{{ data.reference }}</span>
@@ -131,14 +122,18 @@
                 </Column>
                 <Column field="status" header="Status" style="width: 130px">
                   <template #body="{ data }">
-                    <Tag :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)" size="small" />
+                    <div class="flex flex-col gap-1">
+                      <Badge :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)"/>
+                      <span v-if="data.payment_date" class="text-xs text-gray-500">{{ formatDate(data.payment_date)
+                        }}</span>
+                    </div>
                   </template>
                 </Column>
                 <Column header="Actions" style="width: 110px" headerStyle="text-align: center">
                   <template #body="{ data }">
                     <div class="flex justify-center gap-1">
                       <Button icon="pi pi-eye" text rounded size="small" @click="viewInvoice(data)" />
-                     
+  
                     </div>
                   </template>
                 </Column>
@@ -149,8 +144,9 @@
             </TabPanel>
   
             <TabPanel header="Supplier Payments" value="1">
-              <DataTable :value="filteredSupplierPayments" :loading="loadingPayments" stripedRows
-                responsiveLayout="scroll" class="p-datatable-sm" paginator :rows="10"
+              <div v-if="loadingPayments" class="space-y-3 pb-4"><div v-for="row in 6" :key="`payment-${row}`" class="grid grid-cols-6 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 6" :key="cell" height="1.25rem" /></div></div>
+              <DataTable v-else :value="filteredSupplierPayments" rowHover
+                responsiveLayout="scroll" class="p-datatable-sm text-xs" paginator :rows="10"
                 :rowsPerPageOptions="[5, 10, 20, 50]">
                 <Column field="payment_number" header="Payment #" style="min-width: 130px">
                   <template #body="{ data }">
@@ -174,7 +170,7 @@
                 </Column>
                 <Column field="status" header="Status" style="width: 130px">
                   <template #body="{ data }">
-                    <Tag :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)" size="small" />
+                    <Badge :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)" />
                   </template>
                 </Column>
                 <Column header="Actions" style="width: 110px" headerStyle="text-align: center">
@@ -205,7 +201,8 @@ import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -213,10 +210,10 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import financeService from '../../../services/finance.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const payables = ref<any[]>([])
 const supplierPayments = ref<any[]>([])
-const loadingPayments = ref(false)
+const loadingPayments = ref(true)
 const router = useRouter()
 const filters = ref({
   search: '',
@@ -227,6 +224,7 @@ const statusOptions = [
   { label: 'All Statuses', value: '' },
   { label: 'Pending Approval', value: 'pending_approval' },
   { label: 'Approved', value: 'approved' },
+  { label: 'Paid', value: 'paid' },
   { label: 'Completed', value: 'completed' },
 ]
 
@@ -274,7 +272,7 @@ const stats = computed(() => {
   const approvedInvoices = payables.value.filter((row) => normalize(row?.status) === 'approved').length
   const pendingPayments = supplierPayments.value.filter((row) => normalize(row?.status) === 'pending_approval').length
   const outstandingAmount = payables.value
-    .filter((row) => normalize(row?.status) !== 'completed')
+    .filter((row) => normalize(row?.payment_status) !== 'paid' && normalize(row?.status) !== 'paid')
     .reduce((sum, row) => sum + Number(row?.amount || 0), 0)
 
   return {
@@ -312,6 +310,15 @@ const paymentSeverity = (status: string) => {
   return 'secondary'
 }
 
+const paymentStatusSeverity = (status: string) => {
+  const normalized = normalize(status)
+  if (normalized === 'paid') return 'success'
+  if (normalized === 'partial') return 'info'
+  if (normalized === 'pending') return 'warn'
+  if (normalized === 'failed' || normalized === 'cancelled') return 'danger'
+  return 'secondary'
+}
+
 const approvePayment = async (id: number) => {
   await financeService.approveSupplierPayment(id)
   loadSupplierPayments()
@@ -336,6 +343,15 @@ const formatStatus = (status: string) => {
   if (!status) return '-'
   if (status === 'pending_approval') return 'Pending'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const formatPaymentStatus = (status: string) => {
+  const normalized = normalize(status)
+  if (normalized === 'paid') return 'Paid'
+  if (normalized === 'pending') return 'Unpaid'
+  if (normalized === 'partial') return 'Partially Paid'
+  if (normalized === 'failed') return 'Payment Failed'
+  return formatStatus(status)
 }
 
 const reloadAll = () => {

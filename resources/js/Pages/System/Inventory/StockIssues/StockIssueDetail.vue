@@ -1,19 +1,23 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
+  <div class=" min-h-screen p-6">
     <div class="max-w-6xl mx-auto">
       <div class="mb-6">
         <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-3xl font-bold text-gray-800">Stock Issue Details</h1>
-            <p class="text-gray-600 mt-1">Reference: {{ stockIssue?.issue_number }}</p>
+          <div class="flex min-w-0 items-center gap-3">
+            <Button icon="pi pi-arrow-left" text rounded aria-label="Back to stock issuance" @click="router.push({ name: 'inventory.stock-issues' })" />
+            <div class="min-w-0">
+              <h1 class="truncate font-mono text-xl font-bold text-gray-800">{{ stockIssue?.issue_number || 'Stock Issuance' }}</h1>
+              <p class="mt-1 text-sm text-gray-500">Stock issuance record</p>
+            </div>
           </div>
-          <div class="flex gap-3">
+          <div class="flex flex-wrap gap-2">
             <Button
               label="Print"
               icon="pi pi-print"
               severity="info"
               @click="printStockIssue"
               :disabled="loading"
+              size="small"
             />
             <Button
               v-if="stockIssue?.status === 'draft'"
@@ -22,6 +26,7 @@
               severity="secondary"
               @click="editStockIssue"
               :disabled="loading"
+              size="small"
             />
             <Button
               v-if="stockIssue?.status === 'draft'"
@@ -30,13 +35,7 @@
               severity="danger"
               @click="confirmCancel"
               :disabled="loading"
-            />
-            <Button
-              label="Back to List"
-              icon="pi pi-arrow-left"
-              severity="secondary"
-              @click="goBack"
-              :disabled="loading"
+              size="small"
             />
           </div>
         </div>
@@ -58,29 +57,23 @@
                 <template #content>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Issue Number</label>
-                      <p class="text-gray-900 font-mono">{{ stockIssue.issue_number }}</p>
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
                       <Tag
-                        :value="stockIssue.issue_type"
+                        :value="formatReason(stockIssue.issue_type)"
                         :severity="getTypeSeverity(stockIssue.issue_type)"
                         class="capitalize"
                       />
+                      <p v-if="stockIssue.issue_type === 'other' && stockIssue.description" class="mt-1 text-sm text-gray-900">{{ stockIssue.description }}</p>
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
                       <Tag
-                        :value="stockIssue.status"
+                        :value="formatStatus(stockIssue.status)"
                         :severity="getStatusSeverity(stockIssue.status)"
                         class="capitalize"
                       />
                     </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
-                      <p class="text-gray-900">{{ formatDate(stockIssue.issue_date) }}</p>
-                    </div>
+                  
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                       <p class="text-gray-900">{{ stockIssue.branch?.name || 'N/A' }}</p>
@@ -90,16 +83,12 @@
                       <p class="text-gray-900">{{ stockIssue.requester?.full_name || 'N/A' }}</p>
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Created By</label>
-                      <p class="text-gray-900">{{ stockIssue.creator?.full_name || 'N/A' }}</p>
-                    </div>
-                    <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Created At</label>
                       <p class="text-gray-900">{{ formatDate(stockIssue.created_at) }}</p>
                     </div>
-                    <div class="md:col-span-2">
+                    <div v-if="stockIssue.description && stockIssue.issue_type !== 'other'" class="md:col-span-2">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                      <p class="text-gray-900">{{ stockIssue.description || 'No description provided' }}</p>
+                      <p class="text-gray-900">{{ stockIssue.description }}</p>
                     </div>
                     <div class="md:col-span-2" v-if="stockIssue.remarks">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
@@ -163,6 +152,7 @@
                 :loading="loading"
                 tableStyle="min-width: 50rem"
                 class="p-datatable-sm"
+                rowHover
               >
                 <Column field="inventory_item.product.sku" header="SKU" style="width: 120px">
                   <template #body="slotProps">
@@ -174,19 +164,16 @@
                     {{ slotProps.data.inventory_item?.product?.product_name || 'N/A' }}
                   </template>
                 </Column>
-                <Column header="Location" style="width: 150px">
-                  <template #body="slotProps">
-                    <span v-if="slotProps.data.inventory_item">
-                      {{ formatLocation(slotProps.data.inventory_item) }}
-                    </span>
-                    <span v-else>N/A</span>
-                  </template>
-                </Column>
                 <Column field="quantity" header="Quantity" style="width: 100px">
                   <template #body="slotProps">
                     <span class="font-medium text-red-600">
                       -{{ slotProps.data.quantity }}
                     </span>
+                  </template>
+                </Column>
+                <Column header="Unit" style="width: 100px">
+                  <template #body="slotProps">
+                    {{ slotProps.data.inventory_item?.product?.unit_of_measurement || '—' }}
                   </template>
                 </Column>
                 <Column field="unit_cost" header="Unit Cost" style="width: 120px">
@@ -197,20 +184,6 @@
                 <Column field="total_value" header="Total Value" style="width: 120px">
                   <template #body="slotProps">
                     ₱{{ formatNumber(slotProps.data.total_value) }}
-                  </template>
-                </Column>
-                <Column field="reason" header="Reason" style="min-width: 150px">
-                  <template #body="slotProps">
-                    <Tag
-                      :value="formatReason(slotProps.data.reason)"
-                      :severity="getReasonSeverity(slotProps.data.reason)"
-                      class="capitalize"
-                    />
-                  </template>
-                </Column>
-                <Column field="remarks" header="Remarks" style="min-width: 150px">
-                  <template #body="slotProps">
-                    {{ slotProps.data.remarks || 'N/A' }}
                   </template>
                 </Column>
               </DataTable>
@@ -294,6 +267,17 @@
               </DataTable>
             </template>
           </Card>
+
+          <div v-if="stockIssue?.status === 'submitted' && canApprove" class="flex justify-end border-t border-slate-200 pt-4">
+            <Button
+              label="Approve Stock Issuance"
+              icon="pi pi-check"
+              severity="success"
+              size="small"
+              @click="approveStockIssue"
+              :loading="actionLoading"
+            />
+          </div>
         </div>
 
         <!-- Print View (Hidden on screen) -->
@@ -326,12 +310,12 @@
                 <h3 class="font-bold">Status: 
                   <span :class="{
                     'text-green-600': stockIssue.status === 'approved',
-                    'text-yellow-600': stockIssue.status === 'pending',
+                    'text-yellow-600': ['pending', 'submitted'].includes(stockIssue.status),
                     'text-blue-600': stockIssue.status === 'draft',
                     'text-red-600': stockIssue.status === 'cancelled'
-                  }">{{ stockIssue.status?.toUpperCase() }}</span>
+                  }">{{ formatStatus(stockIssue.status).toUpperCase() }}</span>
                 </h3>
-                <p>Issue Type: {{ stockIssue.issue_type?.toUpperCase() }}</p>
+                <p>Reason: {{ stockIssue.issue_type === 'other' && stockIssue.description ? stockIssue.description : formatReason(stockIssue.issue_type) }}</p>
                 <p>Issue Date: {{ formatDate(stockIssue.issue_date) }}</p>
               </div>
             </div>
@@ -342,12 +326,11 @@
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <p><strong>Requested By:</strong> {{ stockIssue.requester?.full_name || 'N/A' }}</p>
-                <p><strong>Created By:</strong> {{ stockIssue.creator?.full_name || 'N/A' }}</p>
                 <p><strong>Created At:</strong> {{ formatDate(stockIssue.created_at) }}</p>
               </div>
               <div>
-                <p><strong>Description:</strong> {{ stockIssue.description || 'N/A' }}</p>
-                <p><strong>Remarks:</strong> {{ stockIssue.remarks || 'N/A' }}</p>
+                <p v-if="stockIssue.description && stockIssue.issue_type !== 'other'"><strong>Description:</strong> {{ stockIssue.description }}</p>
+                <p v-if="stockIssue.remarks"><strong>Issued To / Additional Notes:</strong> {{ stockIssue.remarks }}</p>
                 <p v-if="stockIssue.approval_notes"><strong>Approval Notes:</strong> {{ stockIssue.approval_notes }}</p>
               </div>
             </div>
@@ -361,27 +344,25 @@
                 <tr>
                   <th>SKU</th>
                   <th>Product Name</th>
-                  <th>Location</th>
                   <th>Qty</th>
+                  <th>Unit</th>
                   <th>Unit Cost</th>
                   <th>Total Value</th>
-                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="item in stockIssue.items" :key="item.id">
                   <td>{{ item.inventory_item?.product?.sku || 'N/A' }}</td>
                   <td>{{ item.inventory_item?.product?.product_name || 'N/A' }}</td>
-                  <td>{{ formatLocation(item.inventory_item) }}</td>
                   <td class="text-right">{{ item.quantity }}</td>
+                  <td>{{ item.inventory_item?.product?.unit_of_measurement || 'N/A' }}</td>
                   <td class="text-right">₱{{ formatNumber(item.unit_cost) }}</td>
                   <td class="text-right">₱{{ formatNumber(item.total_value) }}</td>
-                  <td>{{ formatReason(item.reason) }}</td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3" class="text-right font-bold">Totals:</td>
+                  <td colspan="2" class="text-right font-bold">Totals:</td>
                   <td class="text-right font-bold">{{ totalQuantity }}</td>
                   <td></td>
                   <td class="text-right font-bold">₱{{ formatNumber(stockIssue.total_value) }}</td>
@@ -469,6 +450,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '../../../../stores/auth'
 import inventoryService from '../../../../services/inventory.service'
 
 const loading = ref(true)
@@ -482,6 +464,9 @@ const serialNumbers = ref<any[]>([])
 const toast = useToast()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+const actionLoading = ref(false)
+const canApprove = computed(() => authStore.hasPermission('inventory.stock_issues.approve'))
 
 const totalQuantity = computed(() => {
   if (!stockIssue.value?.items) return 0
@@ -559,9 +544,6 @@ const loadSerialNumbers = async () => {
 }
 
 const printStockIssue = () => {
-  const printContent = document.getElementById('printable-content')
-  const originalTitle = document.title
-  
   // Create a new window for printing
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
@@ -587,9 +569,10 @@ const printStockIssue = () => {
         body {
           font-family: Arial, sans-serif;
           margin: 0;
-          padding: 20px;
+          padding: 24px;
           color: #333;
         }
+        @page { size: A4 portrait; margin: 14mm; }
         .print-container {
           max-width: 1200px;
           margin: 0 auto;
@@ -607,7 +590,9 @@ const printStockIssue = () => {
           width: 100%;
           border-collapse: collapse;
           margin-bottom: 20px;
+          page-break-inside: auto;
         }
+        .print-table tr { page-break-inside: avoid; page-break-after: auto; }
         .print-table th,
         .print-table td {
           border: 1px solid #ddd;
@@ -698,7 +683,7 @@ const printStockIssue = () => {
         .text-gray-600 { color: #4b5563; }
         .text-sm { font-size: 0.875rem; }
         @media print {
-          body { margin: 0; }
+          body { margin: 0; padding: 0; }
           .no-print { display: none; }
         }
       </style>
@@ -812,6 +797,10 @@ const formatReason = (reason: string) => {
   return reason?.replace(/_/g, ' ') || 'N/A'
 }
 
+const formatStatus = (status: string) => status === 'submitted'
+  ? 'Pending'
+  : status?.replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase()) || 'Unknown'
+
 const formatDate = (date: string) => {
   if (!date) return 'N/A'
   return new Date(date).toLocaleDateString('en-US', {
@@ -834,6 +823,24 @@ const editStockIssue = () => {
 
 const confirmCancel = () => {
   cancelDialog.value = true
+}
+
+const approveStockIssue = async () => {
+  if (!stockIssue.value || !canApprove.value) return
+  actionLoading.value = true
+  try {
+    const response = await inventoryService.approveStockIssue(stockIssue.value.id)
+    if (response.success) {
+      toast.add({ severity: 'success', summary: 'Approved', detail: 'Stock issuance approved and inventory updated.', life: 3000 })
+      await loadStockIssue()
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response.message || 'Failed to approve stock issuance', life: 3000 })
+    }
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to approve stock issuance', life: 3000 })
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 const cancelStockIssue = async () => {

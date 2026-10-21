@@ -28,12 +28,18 @@ class SalesOrderDeliveryController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // A few older orders can already be marked Ready for Dispatch without
+        // having an order_deliveries row (for example, after a status update
+        // made before the delivery queue was introduced). Reconcile those
+        // orders before reading the queue so Sales and Logistics stay in sync.
+        $this->ensureReadyOrdersAreQueued($request);
+
         $status = $request->filled('status') ? (string) $request->input('status') : null;
         $search = trim((string) $request->input('search', ''));
 
         $salesQuery = SalesOrderDelivery::query()
             ->with([
-                'order:id,branch_id,order_number,status,total_amount,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email',
+                'order:id,branch_id,order_number,status,total_amount,shipping_fee,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email',
                 'driver:id,fname,lname,email',
             ]);
 
@@ -121,11 +127,53 @@ class SalesOrderDeliveryController extends Controller
         return response()->json(['success' => true, 'data' => $deliveries]);
     }
 
+    private function ensureReadyOrdersAreQueued(Request $request): void
+    {
+        $query = SalesOrder::query()
+            ->where('status', 'ready_for_dispatch')
+            ->where('delivery_required', true)
+            ->whereDoesntHave('delivery');
+
+        $this->applyTenantScope($request, $query);
+        $orders = $query->get();
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        DB::transaction(function () use ($orders, $request): void {
+            foreach ($orders as $order) {
+                $delivery = SalesOrderDelivery::query()->firstOrCreate(
+                    ['sales_order_id' => $order->id],
+                    [
+                        'store_id' => $order->store_id,
+                        'branch_id' => $order->branch_id,
+                        'status' => 'ready_for_dispatch',
+                        'notes' => 'Order is ready for logistics assignment.',
+                        'created_by' => $request->user()->id,
+                        'updated_by' => $request->user()->id,
+                    ]
+                );
+
+                if ($delivery->wasRecentlyCreated) {
+                    SalesOrderDeliveryLog::query()->create([
+                        'delivery_id' => $delivery->id,
+                        'sales_order_id' => $order->id,
+                        'store_id' => $order->store_id,
+                        'event_type' => 'created',
+                        'status_to' => 'ready_for_dispatch',
+                        'message' => 'Ready for Dispatch order queued for logistics assignment.',
+                        'created_by' => $request->user()->id,
+                    ]);
+                }
+            }
+        });
+    }
+
     public function show(Request $request, int $id): JsonResponse
     {
         $query = SalesOrderDelivery::query()
             ->with([
-                'order:id,branch_id,order_number,status,total_amount,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email,created_at',
+                'order:id,branch_id,order_number,status,total_amount,shipping_fee,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email,created_at',
                 'order.items:id,order_id,product_name,sku,quantity,unit_price,line_total',
                 'driver:id,fname,lname,email',
                 'logs:id,delivery_id,sales_order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
@@ -213,7 +261,7 @@ class SalesOrderDeliveryController extends Controller
             ->unique();
 
         $drivers = User::query()
-            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
+            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->when($roleIds->isNotEmpty(), fn ($q) => $q->whereIn('role_id', $roleIds))
@@ -225,7 +273,7 @@ class SalesOrderDeliveryController extends Controller
                 'id' => $driver->id,
                 'name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                 'email' => $driver->email,
-                'contact' => $driver->employee?->phone ?? $driver->phone_number,
+                'contact' => $driver->phone_number,
                 'branch_id' => $driver->employee?->branch_id,
                 'role' => $driver->role?->display_name ?? $driver->role?->name ?? 'N/A',
             ])

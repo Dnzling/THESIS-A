@@ -1,15 +1,21 @@
 <template>
-  <div class="min-h-screen p-4">
-    <div class="max-w-5xl mx-auto space-y-4">
+  <div class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+    <ConfirmDialog />
+    <div class="mx-auto max-w-7xl space-y-6">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-          <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
+          <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200">
+            <i class="pi pi-chevron-left text-lg text-gray-600"></i>
+          </button>
           <div>
-            <h1 class="text-xl font-bold text-gray-800">Purchase Requisition</h1>
-            <p class="text-xs text-gray-500 mt-0.5">{{ headerSubtitle }}</p>
+            <h1 class="text-3xl font-semibold tracking-tight text-gray-900">{{ detail?.pr_number || (detail?.id ? `PR #${detail.id}` : 'Purchase Requisition') }}</h1>
+            <p class="mt-1 text-sm text-gray-500">{{ headerSubtitle }}</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <Button v-if="canEditDraft" label="Edit Draft" severity="warn" size="small" outlined @click="editDraft" />
+          <Button v-if="canEditDraft" label="Submit" severity="warn" size="small" :loading="submitting" @click="confirmSubmit" />
+          <Button v-if="canEditDraft" label="Delete" severity="danger" size="small" text :loading="deleting" @click="confirmDelete" />
           <Button
             v-if="canApprove && canShowApprovalActions"
             label="Reject"
@@ -29,12 +35,40 @@
             :loading="approving"
             @click="confirmApprove"
           />
-          <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+           <div v-if="canGenerateReceipt" class="flex justify-end">
+          <Button
+            label="Generate Receipt"
+            icon="pi pi-receipt"
+            severity="success"
+            size="small"
+            @click="generateReceipt"
+          />
+        </div>
+          <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="rounded-full px-3 py-1" />
+        </div>
+      </div>
+
+      <div v-if="detail" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Status</span><span :class="statusDotClass(detail.status)" class="h-2 w-2 rounded-full"></span></div>
+          <span class="text-base font-semibold text-gray-900">{{ formatStatus(detail.status) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Priority</span><i class="pi pi-flag text-gray-400"></i></div>
+          <span class="text-base font-semibold text-gray-900">{{ priorityLabel(detail.priority) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Requested Items</span><i class="pi pi-box text-gray-400"></i></div>
+          <span class="text-base font-semibold text-gray-900">{{ (detail.items || []).length }}</span>
+        </div>
+        <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
+          <span class="mb-3 block text-sm font-medium text-gray-400">Estimated Amount</span>
+          <span class="text-2xl font-bold tracking-tight text-white">{{ formatMoney(detail.estimated_amount) }}</span>
         </div>
       </div>
   
       <div v-if="loading">
-        <Card>
+        <Card class="rounded-2xl border border-gray-100 shadow-sm">
           <template #content>
             <div class="space-y-3">
               <Skeleton height="16px" width="220px" />
@@ -48,28 +82,28 @@
       <template v-else-if="detail">
         <Card>
           <template #content>
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
               <div>
                 <div class="text-xs text-gray-500">PR No.</div>
-                <div class="text-lg font-bold text-gray-900">{{ detail.pr_number || `PR #${detail.id}` }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Created {{ formatDateTime(detail.created_at) }}</div>
+                <div class="text-lg font-bold text-gray-900">Purchase Requisition Details</div>
+                <div class="mt-0.5 text-xs text-gray-500">Created {{ formatDateTime(detail.created_at) }}</div>
               </div>
             </div>
   
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-              <div class="rounded-lg border border-gray-100 p-3">
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 text-sm">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Branch</div>
                 <div class="font-semibold text-gray-900">{{ detail.branch?.name || branchLabel }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Requester</div>
                 <div class="font-semibold text-gray-900">{{ requesterName }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Type</div>
                 <div class="font-semibold text-gray-900">{{ String(detail.requisition_type || 'regular') }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Estimated Amount</div>
                 <div class="font-semibold text-gray-900">{{ formatMoney(detail.estimated_amount) }}</div>
               </div>
@@ -77,21 +111,25 @@
   
             <div class="mt-4">
               <div class="text-xs font-semibold text-gray-700 mb-1.5">Reason</div>
-              <div class="rounded-lg border border-gray-100 p-3 text-sm text-gray-800 bg-white whitespace-pre-line">
+              <div class="rounded-xl bg-gray-50/70 p-4 text-sm text-gray-800 whitespace-pre-line">
                 {{ detail.reason || '—' }}
               </div>
             </div>
           </template>
         </Card>
   
-        <Card>
+        <Card class="rounded-2xl border border-gray-100 shadow-sm">
           <template #content>
-            <div class="text-sm font-semibold text-gray-800 mb-3">Items</div>
+            <div class="mb-4 flex items-center justify-between"><div><h2 class="text-sm font-semibold uppercase tracking-wider text-gray-900">Line Items</h2><p class="mt-1 text-xs text-gray-500">Products and quantities requested for this requisition.</p></div><i class="pi pi-list text-xl text-gray-400"></i></div>
             <DataTable :value="detail.items || []" class="p-datatable-sm text-xs" responsiveLayout="scroll">
               <Column header="Product" style="min-width: 260px">
                 <template #body="{ data }">
                   <div class="text-sm">
-                    <div class="font-semibold text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
+                    <div class="font-semibold text-gray-900">
+                      {{ data.variation?.variation_name
+                        ? `${data.product?.product_name || 'N/A'} — ${data.variation.variation_name}`
+                        : (data.product?.product_name || 'N/A') }}
+                    </div>
                     <div class="text-gray-500">
                       SKU: {{ data.variation?.variation_sku || data.product?.sku || '-' }}
                     </div>
@@ -108,6 +146,11 @@
                   {{ formatMoney(data.estimated_unit_cost) }}
                 </template>
               </Column>
+                  <Column header="Unit" style="width: 140px">
+                <template #body="{ data }">
+                  <b>{{ (data.variation?.unit_of_measurement || data.product?.unit_of_measurement || '—') }}</b>
+                </template>
+              </Column>
               <Column header="Line Total" style="width: 160px">
                 <template #body="{ data }">
                   {{ formatMoney((Number(data.quantity_requested || 0) * Number(data.estimated_unit_cost || 0))) }}
@@ -117,15 +160,7 @@
           </template>
         </Card>
 
-        <div v-if="canGenerateReceipt" class="flex justify-end">
-          <Button
-            label="Generate Receipt"
-            icon="pi pi-receipt"
-            severity="success"
-            size="small"
-            @click="generateReceipt"
-          />
-        </div>
+       
       </template>
     </div>
   </div>
@@ -138,14 +173,18 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
+const props = defineProps<{ warehouseMode?: boolean }>()
+const service: any = props.warehouseMode ? WarehouseService : inventoryService
 
 const loading = ref(false)
 const detail = ref<any>(null)
@@ -153,6 +192,7 @@ const submitting = ref(false)
 const approving = ref(false)
 const rejecting = ref(false)
 const cancelling = ref(false)
+const deleting = ref(false)
 
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
@@ -162,16 +202,18 @@ const cancelDialogVisible = ref(false)
 const cancelReason = ref('')
 const cancelError = ref('')
 
-const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
+const canEditDraft = computed(() => !props.warehouseMode && canManage.value && detail.value?.status === 'draft')
 const canApprove = computed(() =>
-  authStore.hasPermission('inventory.requisitions.approve') ||
-  authStore.hasPermission('inventory.requisites.approve')
+  !props.warehouseMode && (authStore.hasPermission('inventory.requisitions.approve') ||
+  authStore.hasPermission('inventory.requisites.approve'))
 )
 const canShowApprovalActions = computed(() => {
   const s = String(detail.value?.status || '').toLowerCase()
-  return ['draft', 'pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
+  return ['pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
 })
 const canGenerateReceipt = computed(() => {
+  if (props.warehouseMode) return false
   const s = String(detail.value?.status || '').toLowerCase()
   if (s !== 'delivered') return false
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
@@ -181,6 +223,27 @@ const canGenerateReceipt = computed(() => {
 })
 
 const id = computed(() => String(route.params.id || ''))
+const editDraft = () => router.push({ name: 'inventory.requisites.edit', params: { id: id.value } })
+const confirmDelete = () => confirm.require({
+  header: 'Delete Draft PR?',
+  message: `Delete ${detail.value?.pr_number || 'this draft'}? This cannot be undone.`,
+  icon: 'pi pi-exclamation-triangle',
+  rejectLabel: 'Keep Draft',
+  acceptLabel: 'Delete Draft',
+  acceptProps: { severity: 'danger' },
+  accept: async () => {
+    deleting.value = true
+    try {
+      await inventoryService.deletePurchaseRequisitionDraft(id.value)
+      toast.add({ severity: 'success', summary: 'Draft deleted', life: 2500 })
+      goBack()
+    } catch (error: any) {
+      toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete draft.', life: 3500 })
+    } finally {
+      deleting.value = false
+    }
+  },
+})
 
 const branchLabel = computed(() => {
   const user = authStore.user as any
@@ -191,8 +254,10 @@ const branchLabel = computed(() => {
 })
 
 const requesterName = computed(() => {
-  const emp = detail.value?.requested_by
-  if (emp?.fname || emp?.lname) return `${emp?.fname || ''} ${emp?.lname || ''}`.trim()
+  if (detail.value?.requested_by_name) return detail.value.requested_by_name
+  const user = detail.value?.requestedBy?.user
+  const name = user?.full_name || [user?.fname, user?.lname].filter(Boolean).join(' ')
+  if (name) return name
   return '—'
 })
 
@@ -220,12 +285,25 @@ const statusSeverity = (status: string) => {
   return 'warning'
 }
 
+const statusDotClass = (status: string) => {
+  const severity = statusSeverity(status)
+  return severity === 'success' ? 'bg-green-500' : severity === 'danger' ? 'bg-red-500' : severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+}
+
+const priorityLabel = (priority: any) => {
+  const value = Number(priority)
+  if (value === 1) return 'Urgent'
+  if (value === 2) return 'High'
+  if (value === 3) return 'Normal'
+  return 'Low'
+}
+
 const formatStatus = (status: any) => {
   const s = String(status || '').replace(/_/g, ' ').trim()
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'
 }
 
-const goBack = () => router.push({ name: 'inventory.requisites.index' })
+const goBack = () => router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions' : 'inventory.requisites.index' })
 const generateReceipt = () => {
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
     ? detail.value.purchase_orders
@@ -246,8 +324,8 @@ const load = async () => {
   if (!id.value) return
   loading.value = true
   try {
-    const response = await inventoryService.getPurchaseRequisition(id.value)
-    if (response?.success) detail.value = response.data
+    const response = await service[props.warehouseMode ? 'purchaseRequisition' : 'getPurchaseRequisition'](id.value)
+    if (props.warehouseMode ? response : response?.success) detail.value = props.warehouseMode ? response : response.data
     else detail.value = null
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.message || 'Failed to load PR', life: 3000 })

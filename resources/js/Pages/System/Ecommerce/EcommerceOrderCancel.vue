@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-slate-900">Request Order Cancellation</h1>
+      <h1 class="text-2xl font-bold text-slate-900">Cancel Order</h1>
       <Button label="Back" severity="secondary" outlined @click="goBack" />
     </div>
 
@@ -23,14 +23,16 @@
 
           <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Additional details (optional)</label>
-            <Textarea v-model="form.details" rows="3" fluid placeholder="Add more context for store verification." />
+            <Textarea v-model="form.details" rows="3" fluid placeholder="Add more context about your cancellation." />
           </div>
 
-          <Button label="Submit Cancellation Request" severity="danger" :loading="submitting" @click="submitCancellation" />
+          <p class="text-xs text-slate-500">Pending orders are cancelled immediately. If you have paid, Finance will handle the refund.</p>
+          <Button label="Cancel Order" severity="danger" :loading="submitting" @click="confirmCancellation" />
         </div>
       </template>
     </Card>
   </div>
+  <ConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -39,6 +41,8 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -47,6 +51,7 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const confirm = useConfirm()
 const loading = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
@@ -69,22 +74,32 @@ async function loadOrder() {
   }
 }
 
-async function submitCancellation() {
+function confirmCancellation() {
   if (!form.reason.trim()) {
     showAlert({ severity: 'warn', summary: 'Required', detail: 'Please provide a reason.' })
     return
   }
 
+  confirm.require({
+    header: 'Cancel this order?',
+    message: 'This will cancel the order immediately. This action cannot be undone.',
+    rejectProps: { label: 'Keep Order', outlined: true },
+    acceptProps: { label: 'Cancel Order', severity: 'danger' },
+    accept: submitCancellation,
+  })
+}
+
+async function submitCancellation() {
   submitting.value = true
   try {
     await ecommerceService.requestOrderCancellation(route.params.id as string, {
       reason: form.reason.trim(),
       details: form.details.trim() || undefined,
     })
-    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Cancellation request sent for store verification.' })
+    showAlert({ severity: 'success', summary: 'Order Cancelled', detail: 'Your order was cancelled. If you already paid, your refund is pending with Finance.' })
     router.push({ name: 'ecommerce.order-detail', params: { id: route.params.id } })
   } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit cancellation.' })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to cancel this order.' })
   } finally {
     submitting.value = false
   }

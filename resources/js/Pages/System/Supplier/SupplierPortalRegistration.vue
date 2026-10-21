@@ -1,8 +1,8 @@
 <template>
-  <div class="supplier-portal-registration max-w-6xl mx-auto">
-    <div class="mb-4">
-      <h1 class="text-xl font-semibold text-slate-900">Supplier Registration & Verification</h1>
-      <p class="text-xs text-slate-500 mt-1">Complete your company profile, then upload required documents.</p>
+  <div class="supplier-portal-registration mx-auto max-w-7xl space-y-6">
+    <div class="relative overflow-hidden rounded-3xl bg-slate-950 px-7 py-8 text-white shadow-xl">
+      <div class="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-orange-400/20 blur-3xl"></div>
+      <div class="relative"><p class="text-xs font-bold uppercase tracking-[.22em] text-orange-300">Partner onboarding</p><h1 class="mt-3 text-3xl font-bold">Supplier registration &amp; verification</h1><p class="mt-3 max-w-2xl text-sm text-slate-300">Complete your business profile and submit clear credentials for verification.</p></div>
     </div>
 
     <Message
@@ -18,9 +18,9 @@
       </div>
     </Message>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.05fr]">
       <!-- Registration Form -->
-      <Card>
+      <Card class="overflow-hidden rounded-3xl border border-slate-200 shadow-sm">
         <template #title>
           <div class="text-sm font-semibold text-slate-800">Company Information</div>
         </template>
@@ -125,7 +125,7 @@
       </Card>
 
       <!-- Document Upload -->
-      <Card>
+      <Card class="overflow-hidden rounded-3xl border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center justify-between">
             <span class="text-sm font-semibold text-slate-800">Verification Documents</span>
@@ -143,8 +143,14 @@
               <div
                 v-for="doc in requiredDocuments"
                 :key="doc.value"
-                class="p-3 border border-slate-200 rounded-lg"
+                class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
               >
+                <div v-if="documentPreviews[doc.value]" class="relative h-40 overflow-hidden bg-slate-200">
+                  <img v-if="documentPreviews[doc.value].isImage" :src="documentPreviews[doc.value].url" :alt="doc.label" class="h-full w-full object-cover" />
+                  <div v-else class="flex h-full flex-col items-center justify-center text-slate-500"><i class="pi pi-file-pdf text-4xl text-red-500"></i><span class="mt-2 text-xs font-semibold">PDF document</span></div>
+                  <span class="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-emerald-700 shadow">{{ uploadedDocuments[doc.value] ? 'Uploaded' : 'Preview' }}</span>
+                </div>
+                <div class="p-4">
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
                     <i class="pi pi-file" :class="getDocumentIcon(doc.value)"></i>
@@ -156,6 +162,7 @@
                     severity="success"
                   />
                 </div>
+                <div v-if="documentPreviews[doc.value]" class="mb-3 min-w-0"><p class="truncate text-sm font-semibold text-slate-800">{{ documentPreviews[doc.value].name }}</p><p class="mt-1 text-xs text-slate-500">{{ formatFileSize(documentPreviews[doc.value].size) }}</p></div>
 
                 <FileUpload
                   :key="doc.value"
@@ -174,6 +181,7 @@
                     <p class="m-0 text-xs text-slate-500">Drag and drop or click to upload (PDF/Image, max 5MB)</p>
                   </template>
                 </FileUpload>
+                </div>
               </div>
             </div>
 
@@ -198,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onBeforeUnmount, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
@@ -218,6 +226,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const portalCreated = ref(false)
 const uploadedDocuments = ref<Record<string, boolean>>({})
+const documentPreviews = ref<Record<string, { url: string; name: string; size: number; isImage: boolean }>>({})
+const objectUrls = new Set<string>()
 const fieldErrors = ref<Record<string, string[]>>({})
 const errorSummary = ref('')
 
@@ -261,6 +271,13 @@ const errorList = computed(() => Object.values(fieldErrors.value).flat())
 
 const hasFieldError = (field: string) => !!fieldErrors.value[field]?.length
 const firstFieldError = (field: string) => fieldErrors.value[field]?.[0] || ''
+const formatFileSize = (bytes: number) => bytes ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : 'File attached'
+const setPreview = (type: string, blob: Blob, name: string, size: number, mime = blob.type) => {
+  const previous = documentPreviews.value[type]?.url
+  if (previous) { URL.revokeObjectURL(previous); objectUrls.delete(previous) }
+  const url = URL.createObjectURL(blob); objectUrls.add(url)
+  documentPreviews.value[type] = { url, name, size, isImage: String(mime).startsWith('image/') }
+}
 
 const normalizeFieldLabel = (field: string): string =>
   field.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -366,6 +383,7 @@ const uploadDocument = async (event: any, documentType: string) => {
       return
     }
     const file = event.files[0]
+    setPreview(documentType, file, file.name, file.size, file.type)
     await supplierService.uploadVerificationDocument(file, documentType)
 
     uploadedDocuments.value[documentType] = true
@@ -416,6 +434,7 @@ onMounted(() => {
         if (res?.data) {
           res.data.forEach((doc: any) => {
             uploadedDocuments.value[doc.document_type] = true
+            supplierService.downloadDocument(doc.id).then((blob: Blob) => setPreview(doc.document_type, blob, doc.original_filename, doc.file_size, doc.file_mime_type)).catch(() => undefined)
           })
         }
       }
@@ -425,6 +444,8 @@ onMounted(() => {
   }
   loadDocuments()
 })
+
+onBeforeUnmount(() => objectUrls.forEach(url => URL.revokeObjectURL(url)))
 
 const mapSupplierTypeToPortal = (type: string) => {
   const map: Record<string, string> = {
