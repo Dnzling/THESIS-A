@@ -43,7 +43,17 @@ class EnsureAccountOperational
         // Supplier-side restriction
         $portal = SupplierPortal::query()->with('supplier:id,status')->where('user_id', (int) $user->id)->first();
         if ($portal) {
-            if (in_array((string) ($portal->supplier?->status ?? ''), ['inactive', 'blacklisted'], true)) {
+            $supplierStatus = (string) ($portal->supplier?->status ?? '');
+
+            // A supplier is intentionally created as inactive while its portal
+            // application is pending. Do not treat that onboarding state as a
+            // suspension or the supplier cannot reach the document-upload step.
+            // Once approved, however, an inactive supplier is an operationally
+            // disabled account and must remain blocked.
+            $isBlocked = $supplierStatus === 'blacklisted'
+                || ($supplierStatus === 'inactive' && $portal->status === 'approved');
+
+            if ($isBlocked) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is currently suspended. Please contact platform admin.',

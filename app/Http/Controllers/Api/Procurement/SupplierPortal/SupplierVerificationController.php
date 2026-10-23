@@ -26,6 +26,7 @@ class SupplierVerificationController extends Controller
     public function getPending(Request $request): JsonResponse
     {
         $query = SupplierPortal::where('status', 'pending')
+            ->whereNotNull('last_submission_at')
             ->with(['user', 'supplier', 'verificationDocuments']);
 
         // Filter
@@ -84,6 +85,12 @@ class SupplierVerificationController extends Controller
     {
         try {
             $query = SupplierPortal::with(['user', 'supplier', 'verificationDocuments']);
+
+        // Incomplete drafts must not appear in the administrator review queue.
+        $query->where(function ($statusQuery) {
+            $statusQuery->where('status', '!=', 'pending')
+                ->orWhereNotNull('last_submission_at');
+        });
 
         // Filter by status
         if ($request->has('status')) {

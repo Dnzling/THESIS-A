@@ -39,6 +39,7 @@ Route::prefix('supplier-portal')->group(function () {
         Route::post('/documents', [SupplierPortalController::class, 'uploadDocument']);
         Route::get('/my-documents', [SupplierPortalController::class, 'getMyDocuments']);
         Route::get('/documents/{id}/download', [SupplierPortalController::class, 'downloadDocument']);
+        Route::post('/submit-verification', [SupplierPortalController::class, 'submitVerification']);
 
         // RFQ Feedback
         Route::get('/rfqs', [SupplierRFQFeedbackController::class, 'getRFQs']);

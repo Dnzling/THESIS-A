@@ -313,6 +313,11 @@ class SupplierService {
     return response.data
   }
 
+  async submitVerification(): Promise<{ success: boolean; message: string; data: SupplierPortal }> {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/submit-verification`)
+    return response.data
+  }
+
   async downloadDocument(documentId: number) {
     const response = await axiosClient.get(`${this.portalBaseUrl}/documents/${documentId}/download`, {
       responseType: 'blob',
