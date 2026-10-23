@@ -114,6 +114,7 @@ class EmployeeController extends Controller
                     'id' => $employee->id,
                     'fname' => $employee->fname,
                     'lname' => $employee->lname,
+                    'avatar_url' => $employee->user?->avatar_url,
                     'employee_number' => $employee->employee_number,
                     'role_name' => $employee->user->role_name ?? null,
                     'department' => $employee->department,

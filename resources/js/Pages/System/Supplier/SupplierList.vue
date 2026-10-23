@@ -1,126 +1,127 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="max-w-7xl mx-auto space-y-4 px-4 py-4 sm:px-6 lg:px-8 pb-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.suppliers' })" />
+        <Button icon="pi pi-arrow-left" text rounded size="small" aria-label="Go back" @click="router.back()" />
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">Suppliers</h2>
-          <p class="text-sm text-gray-500 mt-1">Manage supplier relationships and track performance</p>
+          <h1 class="text-xl font-semibold text-slate-900">Suppliers</h1>
+          <p class="text-sm text-slate-500 mt-1">Manage supplier relationships and performance</p>
         </div>
       </div>
-      <Button icon="pi pi-plus" label="New Supplier" @click="showSupplierForm = true" class="px-4 py-2" />
+      <Button icon="pi pi-plus" label="New Supplier" size="small" @click="showSupplierForm = true" />
     </div>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Card class="border-l-4 border-blue-500">
         <template #content>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-blue-600">{{ suppliers.length }}</div>
-            <p class="text-sm text-gray-600 mt-1">Total Suppliers</p>
+          <div class="px-4 py-3">
+            <div class="text-2xl font-semibold text-slate-900">{{ suppliers.length }}</div>
+            <p class="text-xs text-slate-500 mt-1">Total suppliers</p>
           </div>
         </template>
       </Card>
 
       <Card class="border-l-4 border-green-500">
         <template #content>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-green-600">{{ activeSupplierCount }}</div>
-            <p class="text-sm text-gray-600 mt-1">Active</p>
+          <div class="px-4 py-3">
+            <div class="text-2xl font-semibold text-slate-900">{{ activeSupplierCount }}</div>
+            <p class="text-xs text-slate-500 mt-1">Active</p>
           </div>
         </template>
       </Card>
 
       <Card class="border-l-4 border-yellow-500">
         <template #content>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-yellow-600">{{ inactiveSupplierCount }}</div>
-            <p class="text-sm text-gray-600 mt-1">Inactive</p>
+          <div class="px-4 py-3">
+            <div class="text-2xl font-semibold text-slate-900">{{ inactiveSupplierCount }}</div>
+            <p class="text-xs text-slate-500 mt-1">Inactive</p>
           </div>
         </template>
       </Card>
 
       <Card class="border-l-4 border-red-500">
         <template #content>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-red-600">{{ blacklistedSupplierCount }}</div>
-            <p class="text-sm text-gray-600 mt-1">Blacklisted</p>
+          <div class="px-4 py-3">
+            <div class="text-2xl font-semibold text-slate-900">{{ blacklistedSupplierCount }}</div>
+            <p class="text-xs text-slate-500 mt-1">Blacklisted</p>
           </div>
         </template>
       </Card>
     </div>
 
     <!-- Filters -->
-    <Card>
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #header>
-        <div class="flex items-center gap-2">
-          <i class="pi pi-filter"></i>
-          <span>Filters & Search</span>
+        <div class="px-4 pt-4 flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <i class="pi pi-filter text-orange-600"></i>
+          <span>Search &amp; Filters</span>
         </div>
       </template>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="flex flex-wrap items-end gap-2 px-4 pb-4">
           <!-- Search -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Search</label>
+          <div class="w-full sm:w-64">
             <InputText
               v-model="filters.search"
-              placeholder="Supplier name..."
-              class="w-full"
+              size="small"
+              placeholder="Search suppliers"
+              class="w-full text-sm"
               @input="onSearch"
             />
           </div>
 
           <!-- Status Filter -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Status</label>
+          <div class="w-full sm:w-44">
             <Select
               v-model="filters.status"
               :options="statusOptions"
               option-label="label"
               option-value="value"
               placeholder="All statuses"
-              class="w-full"
+              size="small"
+              class="w-full text-sm"
               @change="fetchSuppliers"
             />
           </div>
 
           <!-- Category Filter -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Category</label>
+          <div class="w-full sm:w-44">
             <Select
               v-model="filters.category"
               :options="categoryOptions"
               option-label="label"
               option-value="value"
               placeholder="All categories"
-              class="w-full"
+              size="small"
+              class="w-full text-sm"
               @change="fetchSuppliers"
             />
           </div>
 
           <!-- Sort -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Sort By</label>
+          <div class="w-full sm:w-48">
             <Select
               v-model="filters.sort_by"
               :options="sortOptions"
               option-label="label"
               option-value="value"
               placeholder="Sort by..."
-              class="w-full"
+              size="small"
+              class="w-full text-sm"
               @change="fetchSuppliers"
             />
           </div>
+          <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="resetFilters" />
         </div>
       </template>
     </Card>
 
     <!-- Suppliers Table -->
-    <Card>
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #header>
-        <div class="flex items-center gap-2">
+        <div class="px-4 pt-4 flex items-center gap-2 text-sm font-semibold text-slate-800">
           <i class="pi pi-building"></i>
           <span>Supplier List</span>
         </div>
@@ -128,21 +129,23 @@
       <template #content>
         <DataTable
           :value="suppliers"
-          :loading="loading"
+          v-if="!loading"
           :paginator="true"
-          :rows="15"
+          :rows="10"
+          :rows-per-page-options="[10, 15, 25]"
           :total-records="suppliers.length"
+          class="p-datatable-sm text-sm"
+          row-hover
           responsive-layout="scroll"
-          class="w-full"
         >
-          <Column field="supplier_name" header="Supplier Name" class="w-32">
+          <Column field="supplier_name" header="Supplier Name" sortable class="w-32">
             <template #body="{ data }">
               <div class="font-semibold text-gray-800">{{ data.supplier_name }}</div>
               <div class="text-xs text-gray-500">{{ data.company_name }}</div>
             </template>
           </Column>
 
-          <Column field="contact_person" header="Contact" class="w-28">
+          <Column field="contact_person" header="Contact" sortable class="w-28">
             <template #body="{ data }">
               <div class="text-sm">
                 <div>{{ data.contact_person }}</div>
@@ -151,29 +154,29 @@
             </template>
           </Column>
 
-          <Column field="category" header="Category" class="w-20">
+          <Column field="category" header="Category" sortable class="w-20">
             <template #body="{ data }">
               <Tag
-                :value="data.category"
+                :value="formatCategory(data.category)"
                 :severity="getCategoryColor(data.category)"
                 class="capitalize"
               />
             </template>
           </Column>
 
-          <Column field="status" header="Status" class="w-20">
+          <Column field="status" header="Status" sortable class="w-20">
             <template #body="{ data }">
-              <Tag :value="data.status" :severity="getSupplierStatusColor(data.status)" class="capitalize" />
+              <Badge :value="formatStatus(data.status)" :severity="getSupplierStatusColor(data.status)" />
             </template>
           </Column>
 
-          <Column field="rating" header="Rating" class="w-16">
+          <Column field="rating" header="Rating" sortable class="w-16">
             <template #body="{ data }">
               <Rating v-model="data.rating" :cancel="false" :readonly="true" />
             </template>
           </Column>
 
-          <Column field="quality_score" header="Quality" class="w-16">
+          <Column field="quality_score" header="Quality" sortable class="w-16">
             <template #body="{ data }">
               <ProgressBar :value="data.quality_score * 20" :show-value="false" class="h-2" />
               <span class="text-xs text-gray-600">{{ data.quality_score }}/5</span>
@@ -185,24 +188,27 @@
               <div class="flex gap-2">
                 <Button
                   icon="pi pi-eye"
-                  text
+                  outlined
                   rounded
-                  severity="info"
+                  size="small"
+                  severity="secondary"
                   @click="viewSupplier(data.id)"
                   v-tooltip="'View'"
                 />
                 <Button
                   icon="pi pi-pencil"
-                  text
+                  outlined
                   rounded
+                  size="small"
                   severity="warning"
                   @click="editSupplier(data)"
                   v-tooltip="'Edit'"
                 />
                 <Button
                   icon="pi pi-trash"
-                  text
+                  outlined
                   rounded
+                  size="small"
                   severity="danger"
                   @click="confirmDelete(data.id)"
                   v-tooltip="'Delete'"
@@ -211,13 +217,18 @@
             </template>
           </Column>
 
-          <template #empty>
-            <div class="text-center py-8">
-              <i class="pi pi-inbox text-4xl text-gray-300 mb-4 block"></i>
-              <p class="text-gray-500">No suppliers found</p>
-            </div>
-          </template>
         </DataTable>
+        <div v-else class="space-y-2 p-4">
+          <div v-for="row in 5" :key="row" class="grid grid-cols-4 gap-3">
+            <Skeleton v-for="cell in 4" :key="cell" height="2rem" />
+          </div>
+        </div>
+        <div v-if="error && !loading" class="mx-4 mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {{ error }}
+        </div>
+        <div v-if="!loading && suppliers.length === 0" class="px-4 pb-6 text-center text-sm text-slate-500">
+          No suppliers found. Try changing your filters or add a supplier.
+        </div>
       </template>
     </Card>
 
@@ -250,25 +261,29 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import SupplierForm from './SupplierForm.vue'
 import supplierService from '../../../services/supplier.service'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 
 const router = useRouter()
 const toast = useToast()
 const suppliers = ref<any[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const error = ref('')
 
 const getSupplierStatusColor = (status: string): string => {
   switch (status) {
     case 'active':
-      return 'success'
+      return 'info'
     case 'inactive':
-      return 'warning'
+      return 'secondary'
     case 'blacklisted':
       return 'danger'
     default:
       return 'info'
   }
 }
+
+const formatStatus = (status: string) => status ? status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Unknown'
 
 const activeSupplierCount = computed(() => suppliers.value.filter((s) => s.status === 'active').length)
 const inactiveSupplierCount = computed(() => suppliers.value.filter((s) => s.status === 'inactive').length)
@@ -280,6 +295,7 @@ const filters = ref({
   category: '',
   sort_by: 'supplier_name'
 })
+const hasActiveFilters = computed(() => Boolean(filters.value.search.trim() || filters.value.status !== 'all' || filters.value.category))
 
 const showSupplierForm = ref(false)
 const showDeleteConfirm = ref(false)
@@ -349,6 +365,11 @@ const onSearch = () => {
   fetchSuppliers()
 }
 
+const resetFilters = () => {
+  filters.value = { search: '', status: 'all', category: '', sort_by: 'supplier_name' }
+  fetchSuppliers()
+}
+
 const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
     raw_materials: 'info',
@@ -358,6 +379,10 @@ const getCategoryColor = (category: string): string => {
   }
   return colors[category] || 'secondary'
 }
+
+const formatCategory = (category: string) => category ? category.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : 'Uncategorized'
+
+const formatStatus = (status: string) => status ? status.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : 'Unknown'
 
 const viewSupplier = (id: number) => {
   router.push({ name: 'supplier-detail', params: { id } })

@@ -60,8 +60,11 @@ class UserResource extends JsonResource
                     'id' => $this->store->id,
                     'name' => $this->store->store_name ?? $this->store->name ?? 'N/A',
                     'code' => $this->store->store_code,
-                    'subscription_name' => $subscriptionPlan?->name ?? 'Free',
-                    'subscription_key' => $subscriptionPlan?->plan_key ?? 'free',
+                    'subscription_name' => $subscriptionPlan?->name,
+                    'subscription_key' => $subscriptionPlan?->plan_key,
+                    'subscription_status' => $this->store->subscription_status,
+                    'trial_started_at' => $this->store->trial_started_at?->toISOString(),
+                    'trial_ends_at' => $this->store->trial_ends_at?->toISOString(),
                 ] : null;
             }),
             

@@ -32,9 +32,12 @@ class AuthController extends Controller
 {
     public function superAdminLogin(Request $request)
     {
-        $request->merge(['login_portal' => 'super_admin']);
+        return $this->login($request, 'super_admin');
+    }
 
-        return $this->login($request);
+    public function customerLogin(Request $request)
+    {
+        return $this->login($request, 'customer');
     }
 
     private const STRONG_PASSWORD_RULE = 'required|string|min:8|max:255|regex:/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/';
@@ -278,7 +281,7 @@ class AuthController extends Controller
             // Check if request expects JSON (API) or web
             if ($request->expectsJson() || $request->is('api/*')) {
                 // For API requests, return JSON
-                $token = $user->createToken('web-browser')->plainTextToken;
+                $token = $user->createToken('otp_verification', ['otp:verify'])->plainTextToken;
 
                 return response()->json([
                     'success' => true,
@@ -344,7 +347,7 @@ class AuthController extends Controller
             }
         }
     }
-    public function login(Request $request)
+    public function login(Request $request, string $loginPortal = 'business')
     {
         try {
             $loginInput = trim((string) ($request->input('login') ?? $request->input('email') ?? ''));
@@ -415,9 +418,23 @@ class AuthController extends Controller
                 ]);
             }
 
-            if ($request->input('login_portal') === 'super_admin' && !$user->isSuperAdmin()) {
+            if ($loginPortal === 'super_admin' && !$user->isSuperAdmin()) {
                 throw ValidationException::withMessages([
-                    'login' => ['This account is not authorized for Super Admin access.']
+                    'login' => ['Super Admin Login is only for Super Admin accounts. Please use the correct login page for this account.']
+                ]);
+            }
+            if ($loginPortal === 'customer' && !$user->hasRole('customer')) {
+                throw ValidationException::withMessages([
+                    'login' => ['Customer Login is only for customer accounts. Please use Business Login or Super Admin Login as appropriate.']
+                ]);
+            }
+            if ($loginPortal === 'business' && (
+                $user->hasRole('customer')
+                || $user->isSuperAdmin()
+                || (!$user->store_id && !$user->hasRole('supplier'))
+            )) {
+                throw ValidationException::withMessages([
+                    'login' => ['Business Login is for store users and suppliers only. Customers should use Customer Login, and Super Admins should use Super Admin Login.']
                 ]);
             }
 
@@ -451,7 +468,7 @@ class AuthController extends Controller
             // Check email verification
             if (!$user->email_verified_at) {
                 // Issue a temporary token for OTP verification flow.
-                $tempToken = $user->createToken('otp_verification')->plainTextToken;
+                $tempToken = $user->createToken('otp_verification', ['otp:verify'])->plainTextToken;
                 $user->loadMissing('role');
 
                 return response()->json([

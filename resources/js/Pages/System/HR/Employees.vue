@@ -1,8 +1,8 @@
 <!-- views/system/HREmployees.vue -->
 <template>
-  <div class="min-h-screen p-4 text-xs">
-    <div class="mb-4 flex items-center justify-between">
-      <div><h1 class="text-lg font-bold text-gray-800">Employees</h1></div>
+  <div class="space-y-4 p-4 text-xs">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-xl font-bold text-slate-900">Employees</h1><p class="mt-1 text-xs text-slate-500">Employee profiles, roles, and employment status.</p></div>
       <div class="flex items-center gap-2">
         <!-- <Button label="Add Employee"  @click="openAddDialog" severity="warn" size="small" /> -->
       </div>
@@ -10,29 +10,33 @@
 
     <Card>
       <template #content>
-        <div class="mb-5 grid grid-cols-1 items-center gap-3 md:grid-cols-5">
-          <IconField>
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <IconField class="w-full sm:w-72">
             <InputIcon class="pi pi-search" />
             <InputText v-model="searchQuery" placeholder="Search employees" fluid size="small"/>
           </IconField>
-          <Select v-model="filterDepartment" :options="departments" showClear optionLabel="name" optionValue="value" size="small" fluid
+          <Select v-model="filterDepartment" :options="departments" showClear optionLabel="name" optionValue="value" size="small" class="w-full sm:w-48"
             placeholder="Department"  />
   
           <Select v-model="filterStatus" :options="statuses" showClear optionLabel="label" optionValue="value"
-            placeholder="All Status" fluid size="small" />
-          <div v-if="hasActiveFilters" class="flex justify-start md:justify-end">
-            <Button label="Clear" severity="secondary" outlined size="small" @click="resetFilters" />
-          </div>
+            placeholder="All Statuses" size="small" class="w-full sm:w-44" />
+          <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="resetFilters" />
         </div>
       <!-- Employee Table -->
-      <div class="border-t border-gray-100 p-3">
-        <DataTable :value="filteredEmployees" class="w-full text-xs" :loading="loading" paginator :rows="10" @row-click="({ data }) => viewEmployee(data)"
+      <div class="border-t border-slate-100 pt-3">
+        <div v-if="loading" class="space-y-2 p-2">
+          <div v-for="row in 6" :key="row" class="grid grid-cols-5 gap-3"><Skeleton v-for="cell in 5" :key="cell" height="2.5rem" class="rounded-md" /></div>
+        </div>
+        <DataTable v-else :value="filteredEmployees" class="w-full text-xs" paginator :rows="10" @row-click="({ data }) => viewEmployee(data)"
           :rowsPerPageOptions="[5, 10, 20, 50]"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees" 
           removableSort sortMode="multiple" tableStyle="min-width: 58rem" size="small" rowHover>
           <!-- ID Column -->
-          <Column field="employee_number" header="ID" style="width: 150px">
+          <Column field="hireDate" header="Hired Date" sortable style="min-width: 130px">
+            <template #body="slotProps"><span>{{ slotProps.data.hireDate ? formatDate(slotProps.data.hireDate) : 'Not set' }}</span></template>
+          </Column>
+          <Column field="employee_number" header="ID" sortable style="min-width: 130px">
             <template #body="slotProps">
               <span class="font-semibold text-sm underline text-orange-600">{{ slotProps.data.employee_number }}</span>
             </template>
@@ -42,7 +46,7 @@
           <Column field="name" header="Employee" style="min-width: 200px">
             <template #body="slotProps">
               <div class="flex items-center">
-                <Avatar :label="getInitials(slotProps.data.fname, slotProps.data.lname)" size="normal" shape="circle"
+                <Avatar :image="slotProps.data.avatar_url || undefined" :label="getInitials(slotProps.data.fname, slotProps.data.lname)" size="normal" shape="circle"
                   class="mr-3 bg-blue-100 text-blue-800" />
                 <div>
               <p class="font-medium text-xs">{{ slotProps.data.fname }} {{ slotProps.data.lname }}</p>
@@ -58,10 +62,6 @@
           <Column field="pay_type" header="Pay Type" sortable>
             <template #body="slotProps"><span class="text-xs capitalize">{{ slotProps.data.pay_type || 'monthly' }}</span></template>
           </Column>
-          <Column field="hireDate" header="Hired Date" sortable>
-            <template #body="slotProps"><span class="text-xs">{{ slotProps.data.hireDate ? formatDate(slotProps.data.hireDate) : 'Not set' }}</span></template>
-          </Column>
-  
           <!-- Department Column -->
           <Column field="department" header="Department" style="width: 150px">
             <template #body="slotProps">
@@ -92,9 +92,7 @@
           <!-- Status Column -->
           <Column field="status" header="Status" style="width: 100px">
             <template #body="slotProps">
-              <span :class="`px-2 py-1 rounded text-xs font-medium ${getStatusClass(slotProps.data.status)}`">
-                {{ slotProps.data.status }}
-              </span>
+              <Badge :value="formatEmployeeStatus(slotProps.data.status)" :severity="employeeStatusSeverity(slotProps.data.status)" />
             </template>
           </Column>
   
@@ -279,7 +277,7 @@
     <Dialog modal v-model:visible="showViewDialog" header="Employee Details" :style="{ width: '500px' }">
       <div v-if="selectedEmployee" class="space-y-4">
         <div class="flex items-center space-x-4">
-          <Avatar :label="getInitials(selectedEmployee.fname)" size="xlarge" shape="circle"
+          <Avatar :image="selectedEmployee.avatar_url || undefined" :label="getInitials(selectedEmployee.fname, selectedEmployee.lname)" size="xlarge" shape="circle"
             class="bg-blue-100 text-blue-800 text-2xl" />
           <div>
             <h3 class="text-xl font-bold">{{ selectedEmployee.fname + selectedEmployee.lname }}</h3>
@@ -330,6 +328,8 @@ import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import SelectButton from 'primevue/selectbutton'
 import DatePicker from 'primevue/datepicker'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import { showResponseDialog } from '@/utils/responseDialogBus'
 
 interface Department {
@@ -360,6 +360,7 @@ interface Employee {
   id: number
   fname: string
   lname: string
+  avatar_url?: string | null
   employee_number: string
   role_name: string
   department: string
@@ -396,7 +397,7 @@ const showRoleDialog = ref(false)
 const isEditMode = ref(false)
 const selectedEmployee = ref<Employee | null>(null)
 const employees = ref<Employee[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const savingEmployee = ref(false)
 const savingDepartment = ref(false)
 const savingRole = ref(false)
@@ -629,6 +630,15 @@ const getStatusClass = (status: string) => {
     case 'On Leave': return 'bg-yellow-100 text-yellow-800'
     default: return 'bg-gray-100 text-gray-800'
   }
+}
+
+const formatEmployeeStatus = (status: string) => String(status || 'Unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+const employeeStatusSeverity = (status: string): 'success' | 'warn' | 'secondary' | 'danger' | 'info' => {
+  const normalized = String(status || '').toLowerCase().replace(/[_\s]/g, '-')
+  if (normalized === 'active') return 'success'
+  if (normalized === 'on-leave') return 'warn'
+  if (normalized === 'inactive' || normalized === 'resigned' || normalized === 'terminated') return 'secondary'
+  return 'info'
 }
 
 const formatDate = (dateString: string) => {

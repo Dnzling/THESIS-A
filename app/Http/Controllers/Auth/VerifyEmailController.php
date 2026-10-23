@@ -7,6 +7,7 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\CustomerOtpVerificationMail;
 use App\Mail\OtpVerificationMail;
@@ -96,11 +97,14 @@ class VerifyEmailController extends Controller
         }
 
         if ($user->hasVerifiedEmail()) {
+            $session = $this->createAuthenticatedSession($request, $user, $accessToken);
             return response()->json([
                 'success' => true,
                 'message' => 'Email already verified',
                 'verified' => true,
-                'requires_login' => true,
+                'requires_login' => false,
+                'access_token' => $session['token'],
+                'user' => $session['user'],
                 'next_path' => $this->nextPathForRole($user),
             ], 200);
         }
@@ -124,26 +128,57 @@ class VerifyEmailController extends Controller
         $roleName = strtolower((string) ($user->role?->name ?? $user->role_name ?? ''));
         $nextPath = $this->nextPathForRole($user);
 
-        // OTP verification tokens are temporary; after verification, require login for a proper session token.
-        $requiresLogin = true;
-        if ($accessToken) {
-            $accessToken->delete();
-        }
+        $session = $this->createAuthenticatedSession($request, $user, $accessToken);
 
         return response()->json([
             'success' => true,
             'message' => 'Email verified successfully!',
-            'requires_login' => $requiresLogin,
+            'requires_login' => false,
+            'access_token' => $session['token'],
             'next_path' => $nextPath,
             'role' => $roleName,
-            'user' => [
-                'user_id' => $user->user_id,
-                'name' => $user->fname . ' ' . $user->lname,
-                'email' => $user->email,
-                'email_verified_at' => $user->email_verified_at,
-                'status' => $user->status
-            ]
+            'user' => $session['user'],
         ], 200);
+    }
+
+    private function createAuthenticatedSession(Request $request, $user, ?PersonalAccessToken $temporaryToken): array
+    {
+        $temporaryToken?->delete();
+
+        $deviceName = 'web_browser';
+        $user->tokens()->where('name', $deviceName)->delete();
+        $abilities = array_merge(
+            config('roles.abilities.default', ['*']),
+            config("roles.abilities.{$user->role_id}", [])
+        );
+        $token = $user->createToken($deviceName, $abilities)->plainTextToken;
+
+        Auth::guard('web')->login($user);
+        if ($request->hasSession()) {
+            $request->session()->regenerate();
+        }
+
+        $user->loadMissing(['role', 'store', 'branch']);
+
+        return [
+            'token' => $token,
+            'user' => [
+                'id' => (int) $user->id,
+                'user_id' => $user->user_id,
+                'fname' => $user->fname,
+                'lname' => $user->lname,
+                'first_name' => $user->fname,
+                'last_name' => $user->lname,
+                'full_name' => $user->full_name,
+                'email' => $user->email,
+                'role' => $user->role?->name,
+                'display_role' => $user->role?->display_name ?? $user->role?->name,
+                'store_id' => $user->store_id,
+                'branch_id' => $user->branch_id,
+                'is_active' => (bool) $user->is_active,
+                'avatar_url' => $user->avatar_url,
+            ],
+        ];
     }
 
     /**

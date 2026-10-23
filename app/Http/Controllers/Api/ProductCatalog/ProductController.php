@@ -194,7 +194,11 @@ class ProductController extends BaseController
                 $product = Product::create($data);
 
                 // Auto-register the new product in branch inventory for all active branches (zero stock).
-                $this->ensureBranchInventoryRowsForProduct($product->id, (int) $this->getStoreId());
+                $this->ensureBranchInventoryRowsForProduct(
+                    $product->id,
+                    (int) $this->getStoreId(),
+                    (int) ($product->reorder_point ?? 0),
+                );
 
                 // Create pricing history entry
             if (!is_null($product->base_price)) {
@@ -489,6 +493,17 @@ class ProductController extends BaseController
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
+                if (array_key_exists('reorder_point', $validated)) {
+                    $branchIds = Branch::query()
+                        ->where('store_id', (int) $this->getStoreId())
+                        ->pluck('id');
+
+                    ReorderRule::query()
+                        ->where('product_id', (int) $product->id)
+                        ->whereIn('branch_id', $branchIds)
+                        ->where('basis_type', 'reorder_point')
+                        ->update(['reorder_point' => (int) ($validated['reorder_point'] ?? 0)]);
+                }
                 if (array_key_exists('room_ids', $validated)) {
                     if ($product->product_type !== 'finished_good' && $validated['room_ids']) {
                         throw \Illuminate\Validation\ValidationException::withMessages(['room_ids' => 'Rooms are only available for finished goods.']);
@@ -763,7 +778,7 @@ class ProductController extends BaseController
      * Ensure each active branch has a base branch_inventory row for this product.
      * Stock starts at 0 and must move through inventory transactions.
      */
-    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId): void
+    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId, int $reorderPoint): void
     {
         $branches = Branch::query()
             ->where('store_id', $storeId)
@@ -786,7 +801,7 @@ class ProductController extends BaseController
                     'quantity_incoming' => 0,
                     // Reorder settings now live in reorder_rules (primary).
                     // Keep these columns as legacy/fallback only.
-                    'reorder_point' => 0,
+                    'reorder_point' => $reorderPoint,
                     'reorder_quantity' => 0,
                     'maximum_stock' => 1000,
                     'safety_stock' => 5,
@@ -803,7 +818,7 @@ class ProductController extends BaseController
                     'rule_type' => 'manual',
                     'trigger_type' => 'reorder_point',
                     'basis_type' => 'reorder_point',
-                    'reorder_point' => 20,
+                    'reorder_point' => $reorderPoint,
                     'reorder_quantity' => 25,
                     'priority' => 'medium',
                     'auto_generate_po' => false,

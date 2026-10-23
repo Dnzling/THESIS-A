@@ -7,11 +7,11 @@ use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\CRM\SalesReview;
 use App\Models\Core\SystemNotification;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\Hr\Employee;
 use App\Models\Logistics\ReturnPickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 class SystemNotificationController extends Controller
 {
@@ -46,25 +46,9 @@ class SystemNotificationController extends Controller
                 ->orderBy($sortBy, $sortOrder)
                 ->paginate($perPage);
 
-            $creatorIds = $notifications->getCollection()
-                ->pluck('data.created_by.id')->filter()->unique()->values();
-            if ($creatorIds->isNotEmpty()) {
-                $superAdminIds = DB::table('users')
-                    ->join('roles', 'roles.id', '=', 'users.role_id')
-                    ->whereIn('users.id', $creatorIds)
-                    ->where('roles.name', 'super_admin')
-                    ->pluck('users.id')
-                    ->map(fn ($id) => (int) $id)
-                    ->all();
-
-                foreach ($notifications->getCollection() as $notification) {
-                    $data = $notification->data ?? [];
-                    if (in_array((int) ($data['created_by']['id'] ?? 0), $superAdminIds, true)) {
-                        unset($data['created_by']);
-                        $notification->data = $data;
-                    }
-                }
-            }
+            $notifications->setCollection(
+                $this->filterEmployeeCreators($notifications->getCollection())
+            );
 
             if ($request->get('module') === 'ecommerce') {
                 $notifications->setCollection(
@@ -90,6 +74,57 @@ class SystemNotificationController extends Controller
                 'message' => 'Failed to retrieve notifications: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function filterEmployeeCreators(Collection $notifications): Collection
+    {
+        $creatorIds = $notifications
+            ->map(fn (SystemNotification $notification) => (int) data_get($notification->data, 'created_by.id', 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        $storeIds = $notifications->pluck('store_id')->filter()->unique()->values();
+
+        if ($creatorIds->isEmpty() || $storeIds->isEmpty()) {
+            return $notifications->map(function (SystemNotification $notification) {
+                $data = (array) ($notification->data ?? []);
+                unset($data['created_by']);
+                $notification->data = $data;
+                return $notification;
+            });
+        }
+
+        $employees = Employee::query()
+            ->with('user:id,fname,lname,avatar_path')
+            ->whereIn('user_id', $creatorIds)
+            ->whereIn('store_id', $storeIds)
+            ->get()
+            ->keyBy(fn (Employee $employee) => $employee->store_id . ':' . $employee->user_id);
+
+        return $notifications->map(function (SystemNotification $notification) use ($employees) {
+            $data = (array) ($notification->data ?? []);
+            $creator = (array) ($data['created_by'] ?? []);
+            $key = (int) $notification->store_id . ':' . (int) ($creator['id'] ?? 0);
+            $employee = $employees->get($key);
+            $user = $employee?->user;
+
+            if (!$employee || !$user) {
+                unset($data['created_by']);
+                $notification->data = $data;
+                return $notification;
+            }
+
+            $name = trim(implode(' ', array_filter([$user->fname, $user->lname])));
+            $data['created_by'] = [
+                'id' => (int) $user->id,
+                'name' => $name !== '' ? $name : ($creator['name'] ?? 'Store employee'),
+                'avatar_url' => $user->avatar_url,
+                'type' => 'employee',
+            ];
+            $notification->data = $data;
+
+            return $notification;
+        });
     }
 
     public function show(string $id): JsonResponse

@@ -795,6 +795,7 @@ class ReturnController extends Controller
             $available = (int) $inventory->quantity_available;
             $reorderPoint = (int) ($inventory->reorder_point ?? 0);
             $inventory->stock_status = $available <= 0 ? 'out_of_stock' : ($available <= $reorderPoint ? 'low_stock' : 'in_stock');
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
             if ($return->return_type === 'refund') {

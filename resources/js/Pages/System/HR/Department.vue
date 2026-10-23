@@ -1,37 +1,45 @@
-```vue
 <template>
-    <div class="space-y-6">
+    <div class="space-y-4">
       <ConfirmDialog />
     <!-- Header Section -->
     <div class="flex justify-between items-center">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Departments</h2>
+        <h1 class="text-xl font-bold text-slate-900">Departments</h1>
       </div>
-      <Button label="Add Department" icon="pi pi-plus" severity="warn" @click="openAddDialog" />
+      <Button label="Add Department" icon="pi pi-plus" severity="warn" size="small" @click="openAddDialog" />
     </div>
 
 
     <!-- Search and Filters -->
-    <div class="flex gap-3 flex-wrap">
-      <IconField iconPosition="left" class="flex-1">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="flex flex-wrap items-end gap-3">
+      <IconField iconPosition="left" class="w-full sm:w-72">
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
         <InputText v-model="filters.search" placeholder="Search departments..." class="w-full" size="small" />
       </IconField>
       <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-        placeholder="All Status" showClear class="w-48" size="small" />
-      <Button v-if="filters.search || filters.status" label="Clear" icon="pi pi-filter-slash" severity="secondary" text
+        placeholder="All Statuses" showClear class="w-full text-xs sm:w-48" size="small" />
+      <Button v-if="filters.search || filters.status" label="Clear Filter" icon="pi pi-filter-slash" severity="danger"
         size="small" @click="clearFilters" />
+    </div>
     </div>
 
     <!-- Departments Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <DataTable :value="filteredDepartments" :loading="loading" paginator :rows="10"
+    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div v-if="loading" class="space-y-2 p-4">
+        <div v-for="row in 5" :key="row" class="grid grid-cols-4 gap-3"><Skeleton v-for="cell in 4" :key="cell" height="2.5rem" class="rounded-md" /></div>
+      </div>
+      <DataTable v-else :value="filteredDepartments" paginator :rows="10"
         :rowsPerPageOptions="[5, 10, 20, 50]"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
-        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} departments" rowHover showGridlines
-        sortMode="multiple" class="text-sm">
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} departments" rowHover
+        removableSort sortMode="multiple" class="p-datatable-sm text-xs">
+        <Column field="created_at" header="Created Date" sortable style="min-width: 140px">
+          <template #body="{ data }">{{ formatDate(data.created_at) }}</template>
+        </Column>
+
         <Column field="name" header="Department Name" sortable style="min-width: 200px">
           <template #body="{ data }">
                 <div class="flex items-center gap-2">
@@ -50,28 +58,22 @@
 
         <Column field="employee_count" header="Employees" sortable style="width: 120px">
           <template #body="{ data }">
-            <Tag :value="data.employee_count || 0" severity="info" />
+            <Badge :value="data.employee_count || 0" severity="info" />
           </template>
         </Column>
 
         <Column field="status" header="Status" sortable style="width: 120px">
           <template #body="{ data }">
-            <Tag :value="formatDepartmentStatus(data.status)" :severity="statusSeverity(data.status)" />
-          </template>
-        </Column>
-
-        <Column field="created_at" header="Created Date" sortable style="width: 140px">
-          <template #body="{ data }">
-            {{ formatDate(data.created_at) }}
+            <Badge :value="formatDepartmentStatus(data.status)" :severity="statusSeverity(data.status)" />
           </template>
         </Column>
 
         <Column header="Actions" :exportable="false" style="width: 120px">
           <template #body="{ data }">
             <div class="flex gap-1">
-              <Button icon="pi pi-eye" severity="info" text rounded size="small" @click="viewDepartment(data)"
+              <Button label="View" icon="pi pi-eye" severity="secondary" outlined rounded size="small" @click="viewDepartment(data)"
                 v-tooltip.top="'View Details'" />
-              <Button icon="pi pi-pencil" severity="contrast" text rounded size="small" @click="editDepartment(data)"
+              <Button icon="pi pi-pencil" severity="secondary" text rounded size="small" @click="editDepartment(data)"
                 v-tooltip.top="'Edit'" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small" :loading="deletingId === data.id" :disabled="deletingId !== null"
                 @click="confirmDelete(data)" v-tooltip.top="'Delete'" />
@@ -209,6 +211,8 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
@@ -250,7 +254,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
 
-const loading = ref(false)
+const loading = ref(true)
 const saving = ref(false)
 const showFormDialog = ref(false)
 const showViewDialog = ref(false)

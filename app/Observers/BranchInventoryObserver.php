@@ -46,18 +46,23 @@ class BranchInventoryObserver
      */
     public function updated(BranchInventory $inventory): void
     {
-        // Skip auto-adjustment log when caller already creates a specific transaction
-        // (e.g., purchase from goods receipt) to avoid duplicate TXN rows.
-        if (($inventory->skip_auto_transaction_log ?? false) === true) {
+        $quantityChanged = $inventory->wasChanged('quantity_on_hand');
+        if (!$quantityChanged) {
+            if ($inventory->shouldSuppressAutomaticTransactionLog()) {
+                $inventory->clearAutomaticTransactionLogSuppression();
+            }
             return;
         }
 
-        $quantityChanged = $inventory->wasChanged('quantity_on_hand');
+        $this->manageAlerts($inventory);
 
-        if ($quantityChanged) {
-            $this->manageAlerts($inventory);
-            $this->logTransaction($inventory);
+        // The calling workflow writes a detailed reference-linked transaction.
+        if ($inventory->shouldSuppressAutomaticTransactionLog()) {
+            $inventory->clearAutomaticTransactionLogSuppression();
+            return;
         }
+
+        $this->logTransaction($inventory);
     }
 
     /**

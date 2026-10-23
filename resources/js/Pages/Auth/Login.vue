@@ -8,11 +8,6 @@
     @submit="handleLogin" 
     @error="handleFormError" 
   />
-  <Dialog v-model:visible="showAttendanceDialog" modal :closable="false" header="Welcome to work" :style="{ width: 'min(26rem, 94vw)' }">
-    <p class="text-sm text-slate-700">Hello {{ employeeName }}, {{ attendanceMessage }}</p>
-    <p v-if="lateMessage" class="mt-3 text-sm font-medium text-orange-700">{{ lateMessage }}</p>
-    <template #footer><Button label="Continue" severity="warn" size="small" @click="continueAfterLogin" /></template>
-  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -20,8 +15,6 @@ import LoginForm from '@/Components/auth/LoginForm.vue'
 import { ref, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
-import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
 import { Head, router } from '@inertiajs/vue3'
 import { LoginFormData } from '@/Components/auth/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -30,12 +23,6 @@ import axios from '@/axios'
 const toast = useToast()
 const authStore = useAuthStore()
 const isSubmitting = ref(false)
-const showAttendanceDialog = ref(false)
-const employeeName = ref('')
-const attendanceMessage = ref('')
-const lateMessage = ref('')
-const nextRoute = ref('')
-const continueAfterLogin = () => { showAttendanceDialog.value = false; router.visit(nextRoute.value) }
 const formatLate = (seconds: number) => {
   if (seconds <= 0) return ''
   if (seconds < 60) return 'Less than a minute late.'
@@ -118,16 +105,17 @@ const handleLogin = async (formData: LoginFormData) => {
 
     // Navigate immediately after authentication instead of adding an artificial delay.
     if (employeeAttendance) {
-      employeeName.value = String(authStore.user?.fname || (authStore.user as any)?.first_name || 'employee')
-      attendanceMessage.value = employeeAttendance.state === 'clocked_in' ? 'you are now clocked in.'
-        : employeeAttendance.state === 'already_clocked_in' ? 'you are already clocked in.'
-        : employeeAttendance.state === 'completed' ? 'your attendance is complete for today.'
-        : employeeAttendance.state === 'not_recorded' ? employeeAttendance.message || 'attendance could not be recorded.'
-        : 'your attendance was already recorded today.'
-      lateMessage.value = ['clocked_in', 'already_clocked_in'].includes(employeeAttendance.state) ? formatLate(Number(employeeAttendance.late_seconds || 0)) : ''
-      nextRoute.value = redirectTo
-      showAttendanceDialog.value = true
-      return
+      const attendanceMessage = employeeAttendance.state === 'clocked_in' ? 'You are now clocked in.'
+        : employeeAttendance.state === 'already_clocked_in' ? 'You are already clocked in.'
+        : employeeAttendance.state === 'completed' ? 'Your attendance is complete for today.'
+        : employeeAttendance.state === 'not_recorded' ? employeeAttendance.message || 'Attendance could not be recorded.'
+        : 'Your attendance was already recorded today.'
+      sessionStorage.setItem('employee_login_welcome', JSON.stringify({
+        employeeName: authStore.currentUser?.full_name || authStore.currentUser?.first_name || authStore.user?.fname || 'there',
+        branchName: (authStore.currentUser as any)?.branch?.name || (authStore.user as any)?.branch?.name || 'Branch not assigned',
+        attendanceMessage,
+        lateMessage: ['clocked_in', 'already_clocked_in'].includes(employeeAttendance.state) ? formatLate(Number(employeeAttendance.late_seconds || 0)) : '',
+      }))
     }
     router.visit(redirectTo)
 

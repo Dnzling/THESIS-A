@@ -171,16 +171,17 @@ class SubscriptionManagementController extends Controller
         $displayStatus = $rawStatus === 'pending' ? 'unverified' : $store->status;
         $statusDetails = $this->getStatusDetailsForStore((int) $store->id, (string) $store->status);
 
-        $subscriptionStatus = 'free';
+        $subscriptionPlan = $store->subscriptionPlan;
+        $subscriptionStatus = 'unassigned';
         $daysRemaining = null;
-        if (($store->subscriptionPlan?->plan_key ?? 'free') !== 'free') {
+        if ($subscriptionPlan && $subscriptionPlan->plan_key !== 'free') {
             if (!$endsAt) {
                 $subscriptionStatus = 'paid';
             } else {
                 $daysRemaining = $today->diffInDays($endsAt, false);
                 $subscriptionStatus = $daysRemaining < 0 ? 'overdue' : 'paid';
             }
-        } else {
+        } elseif ($subscriptionPlan) {
             $subscriptionStatus = 'unpaid';
         }
 
@@ -191,7 +192,7 @@ class SubscriptionManagementController extends Controller
             'contact_person' => $store->contact_person,
             'contact_number' => $store->contact_number,
             'status' => $displayStatus,
-            'subscription_tier' => $store->subscriptionPlan?->plan_key ?? 'free',
+            'subscription_tier' => $subscriptionPlan?->plan_key,
             'subscription_ends_at' => optional($endsAt)->toDateString(),
             'subscription_status' => $subscriptionStatus,
             'days_remaining' => $daysRemaining,

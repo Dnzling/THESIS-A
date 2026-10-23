@@ -293,7 +293,7 @@ class Store extends Model
     public function getSubscriptionTierAttribute($value)
     {
         if ($value === null || $value === '') {
-            return 'free';
+            return null;
         }
 
         if (is_numeric($value)) {
@@ -301,7 +301,7 @@ class Store extends Model
                 ? $this->getRelation('subscriptionPlan')
                 : SubscriptionPlan::query()->find((int) $value);
 
-            return $plan?->plan_key ?? 'free';
+            return $plan?->plan_key;
         }
 
         return (string) $value;

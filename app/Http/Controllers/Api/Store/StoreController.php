@@ -12,7 +12,6 @@ use App\Models\Hr\Department;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
 use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
 use App\Services\ProductCatalog\DefaultFurnitureTagService;
@@ -98,8 +97,19 @@ class StoreController extends Controller
                 }
             }
 
-            $freePlan = SubscriptionPlan::query()->where('plan_key', 'free')->firstOrFail();
-            return DB::transaction(function () use ($request, $validated, $ownerRole, $freePlan) {
+            // The store needs a valid FK while awaiting plan selection. This
+            // placeholder does not activate a subscription or start the trial.
+            $placeholderPlan = SubscriptionPlan::query()
+                ->where('is_active', true)
+                ->whereRaw('LOWER(plan_key) != ?', ['free'])
+                ->orderBy('sort_order')
+                ->first();
+
+            if (!$placeholderPlan) {
+                throw new \RuntimeException('No active subscription plans are available for selection.');
+            }
+
+            return DB::transaction(function () use ($request, $validated, $ownerRole, $placeholderPlan) {
             $payload = [
                 'name' => $validated['store_name'],
                 'type' => $validated['business_type'] ?? 'retail',
@@ -109,8 +119,8 @@ class StoreController extends Controller
                 'city' => $validated['city'],
                 'barangay' => $validated['barangay'],
                 'address' => $validated['address'],
-                'status' => 'active',
-                'subscription_status' => 'trial',
+                'status' => 'pending',
+                'subscription_status' => 'pending',
             ];
 
             $storeSettings = [
@@ -118,10 +128,10 @@ class StoreController extends Controller
             ];
 
             $payload['settings'] = $storeSettings;
-            $payload['subscription_tier'] = $freePlan->id;
+            $payload['subscription_tier'] = $placeholderPlan->id;
             $payload['subscription_ends_at'] = null;
-            $payload['trial_started_at'] = now();
-            $payload['trial_ends_at'] = now()->addMonth();
+            $payload['trial_started_at'] = null;
+            $payload['trial_ends_at'] = null;
 
             $store = Store::create($payload);
             $store->update(['store_code' => 'FS-' . now()->format('Y') . '-' . str_pad((string) $store->id, 6, '0', STR_PAD_LEFT)]);
@@ -191,16 +201,14 @@ class StoreController extends Controller
                 );
             }
 
-            app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Store successfully registered',
+                'message' => 'Store created. Choose a subscription plan to start your one-month free trial.',
                 'store' => [
                     'store_id' => $store->id,
                     'store_name' => $store->name,
                     'store_code' => $store->store_code,
-                    'trial_ends_at' => $store->trial_ends_at,
+                    'trial_ends_at' => null,
                     'contact_person' => $validated['contact_person'],
                 ]
             ], 201);
@@ -231,53 +239,62 @@ class StoreController extends Controller
             abort_unless((int) $request->user()?->store_id === (int) $store->id && $request->user()?->hasRole('owner'), 403);
             $validated = $request->validate([
                 'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
-                'setup_mode' => 'nullable|string|in:free,paid',
+                'setup_mode' => 'nullable|string|in:free,paid,trial',
                 'months' => 'nullable|integer|min:1|max:36',
                 'billing_cycle' => 'nullable|string|in:monthly,yearly',
             ]);
 
-            $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
             $planKey = strtolower((string) $validated['subscription_tier']);
-            $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->firstOrFail();
-            if ($planKey !== 'free') {
-                return response()->json(['success' => false, 'message' => 'Paid subscriptions must be activated by a successful payment.'], 403);
-            }
-            if ($store->subscription_status === 'trial') {
-                return response()->json(['success' => true, 'data' => $store], 200);
-            }
-            if ($store->subscription_status === 'expired' || $store->subscription_status === 'paid') {
-                return response()->json(['success' => false, 'message' => 'An existing subscription cannot be reset to a free trial.'], 403);
-            }
-            $months = (int) ($validated['months'] ?? (($validated['billing_cycle'] ?? '') === 'yearly' ? 12 : 1));
-            $previousPlanKey = (string) $store->subscription_tier;
-
-            $store->subscription_tier = $plan->id;
-            if ($setupMode === 'free') {
-                $store->subscription_ends_at = null;
-            } else {
-                $currentEndsAt = $previousPlanKey !== 'free' && $store->subscription_ends_at
-                    ? \Carbon\Carbon::parse($store->subscription_ends_at)
-                    : null;
-                $nextEndsAt = now()->addMonths($months);
-                $store->subscription_ends_at = ($currentEndsAt && $currentEndsAt->gt($nextEndsAt))
-                    ? $currentEndsAt->toDateString()
-                    : $nextEndsAt->toDateString();
+            $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->where('is_active', true)->firstOrFail();
+            if (($validated['setup_mode'] ?? null) === 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Paid subscriptions must be activated through checkout after payment confirmation.',
+                ], 422);
             }
 
-            if (Schema::hasColumn('stores', 'trial_started_at')) {
-                $store->trial_started_at = null;
-            }
-            if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                $store->trial_ends_at = null;
+            $activation = DB::transaction(function () use ($store, $plan): array {
+                $lockedStore = Store::query()->lockForUpdate()->findOrFail($store->id);
+
+                if ($lockedStore->subscription_status === 'trial') {
+                    if (!$lockedStore->trial_ends_at || !$lockedStore->trial_ends_at->isFuture()) {
+                        return ['error' => 'Your free trial has ended. Use checkout to activate a paid plan.'];
+                    }
+
+                    $lockedStore->subscription_tier = $plan->id;
+                    $lockedStore->save();
+
+                    return ['message' => 'Plan updated for your active free trial.'];
+                }
+
+                if (!in_array($lockedStore->subscription_status, ['free', 'pending'], true)) {
+                    return ['error' => 'A free trial is not available for this store. Use checkout to activate a paid plan.'];
+                }
+
+                if ($lockedStore->trial_started_at !== null) {
+                    return ['error' => 'This store has already used its free trial. Use checkout to activate a paid plan.'];
+                }
+
+                $lockedStore->subscription_tier = $plan->id;
+                $lockedStore->subscription_status = 'trial';
+                $lockedStore->subscription_ends_at = null;
+                $lockedStore->trial_started_at = now();
+                $lockedStore->trial_ends_at = now()->addMonth();
+                $lockedStore->save();
+
+                return ['message' => 'Your one-month free trial has started.'];
+            });
+
+            if (isset($activation['error'])) {
+                return response()->json(['success' => false, 'message' => $activation['error']], 403);
             }
 
-            $store->save();
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
             app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store subscription updated successfully',
+                'message' => $activation['message'],
                 'data' => $store->fresh(),
             ]);
         } catch (ValidationException $e) {

@@ -199,6 +199,32 @@ class DocumentAutoValidationService
         return null;
     }
 
+    public function detectGovernmentIdType(string $text): ?string
+    {
+        $normalized = strtoupper(preg_replace('/[^A-Z0-9]+/', ' ', $text));
+
+        if (preg_match('/\b(UMID|UNIFIED MULTI PURPOSE ID|UNIFIED MULTI PURPOSE IDENTIFICATION)\b/', $normalized)) {
+            return 'umid';
+        }
+        if (preg_match('/\b(SSS|SOCIAL SECURITY SYSTEM)\b/', $normalized)) {
+            return 'sss';
+        }
+        if (preg_match('/\b(TIN|BUREAU OF INTERNAL REVENUE|BIR)\b/', $normalized)) {
+            return 'tin';
+        }
+        if (preg_match('/\b(PASSPORT|DEPARTMENT OF FOREIGN AFFAIRS|DFA)\b/', $normalized)) {
+            return 'passport';
+        }
+        if (preg_match('/\b(DRIVER S LICENSE|DRIVERS LICENSE|DRIVING LICENSE|LAND TRANSPORTATION OFFICE|LTO)\b/', $normalized)) {
+            return 'driver_license';
+        }
+        if (preg_match('/\b(PHILSYS|PHILIPPINE IDENTIFICATION SYSTEM|PHILIPPINE IDENTIFICATION CARD|NATIONAL ID|PSN|PCN)\b/', $normalized)) {
+            return 'national_id';
+        }
+
+        return null;
+    }
+
     public function extractDocumentReference(string $text, string $type): ?string
     {
         $normalized = strtoupper(preg_replace('/\s+/', ' ', $text));

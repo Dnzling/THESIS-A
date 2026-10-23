@@ -58,6 +58,7 @@ class SalesOrderSettlementService
                 $inventory->stock_status = $inventory->quantity_available <= 0
                     ? 'out_of_stock'
                     : ($inventory->quantity_available <= $inventory->reorder_point ? 'low_stock' : 'in_stock');
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
 
                 $transactionCreatorId = str_starts_with((string) $lockedOrder->order_number, 'WHO-')

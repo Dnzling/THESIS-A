@@ -554,6 +554,7 @@ class ProductController extends Controller
                 $inventory->stock_status = $inventory->quantity_on_hand <= (int) ($inventory->reorder_point ?? 0)
                     ? 'low_stock'
                     : 'in_stock';
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
 
                 InventoryTransaction::create([

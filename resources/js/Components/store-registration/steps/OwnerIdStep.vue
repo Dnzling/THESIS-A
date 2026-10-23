@@ -1,10 +1,10 @@
 <template>
-  <form class="space-y-6" @submit.prevent="handleNext">
+  <form class="space-y-6" @submit.prevent="handlePrimaryAction">
     <div>
       <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 1</p>
       <h2 class="mt-1 text-2xl font-bold text-slate-950">Owner primary ID</h2>
       <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-        Select the store owner's Philippine ID and upload a clear photo. Submit it for OCR to read the reference number.
+        Select the store owner's Philippine ID and upload a clear photo with its heading visible. OCR will verify the ID type before continuing.
       </p>
     </div>
 
@@ -36,14 +36,16 @@
             />
             <p v-if="manualFallback" class="mt-1 text-xs text-slate-500">OCR could not read the reference number. Enter it exactly as printed on the ID.</p>
           </div>
-          <p v-if="localForm.primaryIdReadMessage" class="rounded-xl bg-white px-3 py-2 text-xs text-orange-700" role="status">{{ localForm.primaryIdReadMessage }}</p>
-          <Button type="button" label="Submit ID for OCR" icon="pi pi-search" :loading="reading" :disabled="!localForm.primaryIdType || !hasFrontFile || reading" @click="tryExtractIdNumber(localForm.primaryIdFront)" />
+          <p v-if="localForm.primaryIdReadMessage && !typeMismatch" class="rounded-xl bg-white px-3 py-2 text-xs text-orange-700" role="status">{{ localForm.primaryIdReadMessage }}</p>
+          <p v-if="typeMismatch" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+            {{ localForm.primaryIdReadMessage }}
+          </p>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <UploadSection
             title="ID front *"
-            description="Upload the front side. We will try to read the ID number from this image."
+            description="Upload the front side with the ID name/header clearly visible."
             :file="localForm.primaryIdFront"
             required
             @upload="handleFrontUpload"
@@ -62,7 +64,15 @@
     </section>
 
     <div class="flex justify-end border-t border-slate-200 pt-5">
-      <Button type="submit" label="Next: Business Registration" icon="pi pi-arrow-right" iconPos="right" severity="warn" :disabled="!isStepValid || reading" />
+      <Button
+        type="submit"
+        :label="actionLabel"
+        :icon="isStepValid ? 'pi pi-arrow-right' : 'pi pi-search'"
+        :iconPos="isStepValid ? 'right' : 'left'"
+        severity="warn"
+        :loading="reading"
+        :disabled="!localForm.primaryIdType || !hasFrontFile || reading || (typeVerified && manualFallback && !String(localForm.primaryIdNumber || '').trim())"
+      />
     </div>
   </form>
 </template>
@@ -95,7 +105,9 @@ const idOptions = [
 const localForm = ref({ ...props.formData })
 const reading = ref(false)
 const ocrRead = ref(Boolean(props.formData.primaryIdOcrRead))
-const manualFallback = ref(Boolean(props.formData.primaryIdOcrAttempted && !props.formData.primaryIdOcrRead))
+const manualFallback = ref(Boolean(props.formData.primaryIdTypeVerified && props.formData.primaryIdOcrAttempted && !props.formData.primaryIdOcrRead))
+const typeMismatch = ref(Boolean(props.formData.primaryIdTypeMismatch))
+const typeVerified = ref(Boolean(props.formData.primaryIdTypeVerified))
 
 const selectedId = computed(() => idOptions.find(option => option.value === localForm.value.primaryIdType))
 const numberLabel = computed(() => `${selectedId.value?.label || 'Primary ID'} number *`)
@@ -104,15 +116,28 @@ const isStepValid = computed(() =>
   Boolean(localForm.value.primaryIdType)
   && Boolean(String(localForm.value.primaryIdNumber || '').trim())
   && hasFrontFile.value
+  && typeVerified.value
+  && !typeMismatch.value
   && (ocrRead.value || manualFallback.value)
 )
+const actionLabel = computed(() => {
+  if (isStepValid.value) return 'Next: Business Registration'
+  if (typeVerified.value && manualFallback.value) return 'Enter ID Number to Continue'
+  if (typeMismatch.value) return 'Retry ID Check'
+  return 'Submit ID for OCR'
+})
 
 const syncForm = () => emit('update:formData', { ...localForm.value })
 const resetExtraction = () => {
   ocrRead.value = false
   manualFallback.value = false
+  typeMismatch.value = false
+  typeVerified.value = false
   localForm.value.primaryIdOcrRead = false
   localForm.value.primaryIdOcrAttempted = false
+  localForm.value.primaryIdTypeMismatch = false
+  localForm.value.primaryIdTypeVerified = false
+  localForm.value.primaryIdDetectedType = ''
   localForm.value.primaryIdNumber = ''
   localForm.value.primaryIdReadMessage = ''
   syncForm()
@@ -146,10 +171,18 @@ const tryExtractIdNumber = async (file: File) => {
     const response = await axiosClient.post('/api/store-verification/owner-id/extract', payload, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
-    console.log('[Store verification OCR] Owner primary ID:', response.data?.data ?? response.data)
     if (localForm.value.primaryIdFront !== file || localForm.value.primaryIdType !== idType) return
-    const extractedNumber = String(response?.data?.data?.id_number || '').trim()
-    if (extractedNumber) {
+    const ocrData = response?.data?.data || {}
+    const extractedNumber = String(ocrData.id_number || '').trim()
+    localForm.value.primaryIdDetectedType = ocrData.detected_id_type || ''
+    typeVerified.value = ocrData.id_type_matches === true
+    typeMismatch.value = !typeVerified.value
+    localForm.value.primaryIdTypeVerified = typeVerified.value
+    localForm.value.primaryIdTypeMismatch = typeMismatch.value
+    if (typeMismatch.value) {
+      localForm.value.primaryIdNumber = ''
+      localForm.value.primaryIdReadMessage = ocrData.message || 'The selected ID type does not match the uploaded document.'
+    } else if (extractedNumber) {
       localForm.value.primaryIdNumber = extractedNumber
       ocrRead.value = true
       localForm.value.primaryIdOcrRead = true
@@ -157,13 +190,19 @@ const tryExtractIdNumber = async (file: File) => {
       manualFallback.value = true
     }
     localForm.value.primaryIdOcrAttempted = true
-    localForm.value.primaryIdReadMessage = response?.data?.data?.message || 'Please confirm the ID number before submitting.'
+    if (!typeMismatch.value) {
+      localForm.value.primaryIdReadMessage = ocrData.message || 'Please confirm the ID number before continuing.'
+    }
     syncForm()
   } catch (error) {
     if (localForm.value.primaryIdFront !== file || localForm.value.primaryIdType !== idType) return
-    manualFallback.value = true
+    typeVerified.value = false
+    typeMismatch.value = true
+    manualFallback.value = false
+    localForm.value.primaryIdTypeVerified = false
+    localForm.value.primaryIdTypeMismatch = true
     localForm.value.primaryIdOcrAttempted = true
-    localForm.value.primaryIdReadMessage = 'We could not read this image clearly. Please enter the ID number manually.'
+    localForm.value.primaryIdReadMessage = 'We could not verify the ID header. Upload a clearer image showing the ID type and try again.'
     syncForm()
   } finally {
     reading.value = false
@@ -187,9 +226,9 @@ const handleFileRemove = (field: string) => {
   syncForm()
 }
 
-const handleNext = () => {
+const handlePrimaryAction = async () => {
   if (!isStepValid.value) {
-    toast.add({ severity: 'warn', summary: 'Complete owner ID', detail: 'Upload the front of the ID and submit it for OCR. If OCR fails, enter its reference number.', life: 3500 })
+    await tryExtractIdNumber(localForm.value.primaryIdFront)
     return
   }
   emit('next')

@@ -16,6 +16,8 @@ class BranchInventory extends Model
 {
     use SoftDeletes;
 
+    private bool $suppressAutomaticTransactionLog = false;
+
     protected $table = 'branch_inventory';
 
     protected $fillable = [
@@ -57,6 +59,21 @@ class BranchInventory extends Model
         'last_stock_count_date' => 'date',
         'last_counted_quantity' => 'integer',
     ];
+
+    public function suppressAutomaticTransactionLog(): void
+    {
+        $this->suppressAutomaticTransactionLog = true;
+    }
+
+    public function shouldSuppressAutomaticTransactionLog(): bool
+    {
+        return $this->suppressAutomaticTransactionLog;
+    }
+
+    public function clearAutomaticTransactionLogSuppression(): void
+    {
+        $this->suppressAutomaticTransactionLog = false;
+    }
 
     // Relationships
     public function store(): BelongsTo

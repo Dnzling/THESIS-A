@@ -10,7 +10,6 @@ use App\Models\Hr\Employee;
 use App\Models\Core\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
 use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
 
@@ -89,15 +88,7 @@ class TrialOnboardingController extends Controller
                 app(DefaultFurnitureCategoryService::class)->populateForStore((int) $store->id);
 
                 if ($setupMode === 'free') {
-                    $trialFields = [
-                        'subscription_ends_at' => null,
-                    ];
-                    if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $trialFields['trial_started_at'] = null;
-                    }
-                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $trialFields['trial_ends_at'] = null;
-                    }
+                    $trialFields = ['subscription_ends_at' => null, 'trial_ends_at' => null];
                     $store->forceFill($trialFields)->save();
                 }
 
@@ -166,21 +157,11 @@ class TrialOnboardingController extends Controller
                 if ($setupMode === 'free') {
                     $store->subscription_tier = 'free';
                     $store->subscription_ends_at = null;
-                    if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $store->trial_started_at = null;
-                    }
-                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $store->trial_ends_at = null;
-                    }
+                    $store->trial_ends_at = null;
                 } else {
                     $store->subscription_tier = $selectedPlan;
                     $store->subscription_ends_at = null;
-                    if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $store->trial_started_at = null;
-                    }
-                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $store->trial_ends_at = null;
-                    }
+                    $store->trial_ends_at = null;
                 }
                 $store->save();
                 app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);

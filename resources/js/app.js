@@ -113,6 +113,20 @@ createInertiaApp({
     setup({ el, App, props, plugin }) {
         const app = createApp({ render: () => h(App, props) });
         const pinia = createPinia();
+        let currentPageUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+        inertiaRouter.on('navigate', (event) => {
+            const nextPageUrl = event.detail.page.url;
+            if (nextPageUrl === currentPageUrl) return;
+
+            currentPageUrl = nextPageUrl;
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: 0, left: 0 });
+                document.querySelectorAll('[data-page-scroll-container]').forEach((container) => {
+                    container.scrollTo({ top: 0, left: 0 });
+                });
+            });
+        });
 
         app.use(plugin);
         app.use(ZiggyVue, Ziggy);

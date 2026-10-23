@@ -37,7 +37,8 @@
                                 <label class="block text-sm font-medium text-gray-700">
                                     Firstname <span class="text-red-500">*</span>
                                 </label>
-                                <InputText v-model="formData.fname" placeholder="Juan"
+                                <InputText :model-value="formData.fname" placeholder="Juan"
+                                    @update:model-value="formData.fname = sanitizeName($event)"
                                     :class="{ 'p-invalid': validationErrors.fname }" class="w-full mt-1" />
                                 <small v-if="validationErrors.fname || props.serverErrors?.fname" class="p-error">
                                     {{ validationErrors.fname || props.serverErrors?.fname }}
@@ -49,7 +50,8 @@
                                 <label class="block text-sm font-medium text-gray-700">
                                     Lastname <span class="text-red-500">*</span>
                                 </label>
-                                <InputText v-model="formData.lname" placeholder="Dela Cruz"
+                                <InputText :model-value="formData.lname" placeholder="Dela Cruz"
+                                    @update:model-value="formData.lname = sanitizeName($event)"
                                     :class="{ 'p-invalid': validationErrors.lname }" class="w-full mt-1" />
                                 <small v-if="validationErrors.lname || props.serverErrors?.lname" class="p-error">
                                     {{ validationErrors.lname || props.serverErrors?.lname }}
@@ -68,7 +70,8 @@
                         </div>
                         <div class="p-inputgroup">
                             <InputText id="email" type="email" v-model="formData.email" placeholder="email@example.com"
-                                :class="{ 'p-invalid': validationErrors.email }" class="w-full" />
+                                :class="{ 'p-invalid': validationErrors.email }" class="w-full"
+                                @blur="validateEmailField" @input="validationErrors.email = ''" />
                         </div>
                         <small v-if="validationErrors.email || props.serverErrors?.email" class="p-error">
                             {{ validationErrors.email || props.serverErrors?.email }}
@@ -232,6 +235,7 @@ const passwordRuleItems = reactive([
 ])
 
 const showPasswordRules = computed(() => passwordFocused.value && formData.password.length > 0)
+const sanitizeName = (value: string) => String(value || '').replace(/[^\p{L}\p{M}\s'-]/gu, '').replace(/\s{2,}/g, ' ')
 
 const updatePasswordRules = (value: string) => {
   passwordRuleItems[0].met = value.length >= 8
@@ -260,9 +264,20 @@ const minDate = computed(() => {
 })
 
 // Validation
+const validateEmailField = (): boolean => {
+  const email = formData.email.trim()
+  if (!email) {
+    validationErrors.email = 'Email is required'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    validationErrors.email = 'Please enter a valid email address (e.g., user@example.com)'
+  } else {
+    validationErrors.email = ''
+  }
+  return !validationErrors.email
+}
+
 const validateForm = (): boolean => {
   let isValid = true
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
   // Clear previous errors
   validationErrors.fname = ''
@@ -272,12 +287,15 @@ const validateForm = (): boolean => {
   validationErrors.password = ''
   validationErrors.confirmPassword = ''
 
-  if (!formData.fname.trim()) {
+  formData.fname = sanitizeName(formData.fname).trim()
+  formData.lname = sanitizeName(formData.lname).trim()
+
+  if (!formData.fname) {
     validationErrors.fname = 'Firstname is required'
     isValid = false
   }
 
-  if (!formData.lname.trim()) {
+  if (!formData.lname) {
     validationErrors.lname = 'Lastname is required'
     isValid = false
   }
@@ -287,14 +305,7 @@ const validateForm = (): boolean => {
     isValid = false
   }
 
-  // Email validation
-  if (!formData.email.trim()) {
-    validationErrors.email = 'Email is required'
-    isValid = false
-  } else if (!emailRegex.test(formData.email)) {
-    validationErrors.email = 'Please enter valid email address (e.g., user@example.com)'
-    isValid = false
-  }
+  if (!validateEmailField()) isValid = false
 
   // Password validation
   if (!formData.password) {

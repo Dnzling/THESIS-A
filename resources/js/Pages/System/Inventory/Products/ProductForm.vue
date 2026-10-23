@@ -150,6 +150,7 @@
                 <label class="mb-1 block text-sm font-medium text-gray-700">Reorder Point</label>
                 <InputNumber v-model="form.reorder_point" :min="0" class="w-full text-sm" fluid size="small"
                   placeholder="0" />
+                <small class="mt-1 block text-xs text-gray-500">Applied to this product's manual reorder rules across branches.</small>
               </div>
 
               <div>
@@ -324,7 +325,11 @@ const parentCategories = computed(() => {
     || parentIds.has(Number(category.id)))
 })
 const filteredSubcategories = computed(() =>
-  categories.value.filter(category => category.parent_category_id != null && category.is_active !== false)
+  categories.value.filter(category =>
+    category.parent_category_id != null
+    && category.is_active !== false
+    && (form.category_id == null || Number(category.parent_category_id) === Number(form.category_id))
+  )
 )
 const parentCategoryName = (parentId: number | null) =>
   categories.value.find(category => Number(category.id) === Number(parentId))?.category_name || 'Main category'

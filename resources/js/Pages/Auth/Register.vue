@@ -49,7 +49,7 @@ const handleRegister = async (formData: RegisterFormData) => {
     localStorage.removeItem('pending_subscription_plan')
     localStorage.removeItem('pending_subscription_flow')
     localStorage.removeItem('post_otp_redirect')
-    localStorage.setItem('onboarding_next_step', 'login')
+    localStorage.setItem('onboarding_next_step', 'store_setup')
 
     router.visit('/verify-otp')
 

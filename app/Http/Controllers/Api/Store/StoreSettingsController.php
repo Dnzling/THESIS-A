@@ -107,8 +107,8 @@ class StoreSettingsController extends Controller
                     ]) ?? [],
                 'attendance' => $this->resolveAttendanceSettings($store?->id),
                 'subscription' => [
-                    'tier' => $subscriptionPlan?->plan_key ?? 'free',
-                    'plan_label' => $subscriptionPlan?->name ?? 'Free',
+                    'tier' => $subscriptionPlan?->plan_key,
+                    'plan_label' => $subscriptionPlan?->name ?? 'No plan',
                     'ends_at' => $endsAt?->toDateString(),
                     'modules' => $enabledModules,
                 ],

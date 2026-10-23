@@ -264,11 +264,24 @@ class SubscriptionPlanController extends Controller
             return response()->json(['success' => false, 'message' => 'Plan not found.'], 404);
         }
 
-        $subscriptionPlan->delete();
+        $assignedStoreIds = DB::table('stores')
+            ->where('subscription_tier', $subscriptionPlan->id)
+            ->pluck('id');
+
+        DB::transaction(function () use ($assignedStoreIds, $subscriptionPlan) {
+            // Keep the non-nullable foreign key intact; the soft-deleted plan
+            // resolves to no active plan in application responses.
+            $subscriptionPlan->delete();
+        });
+
+        foreach ($assignedStoreIds as $storeId) {
+            app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $storeId);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Plan deleted successfully.',
+            'message' => 'Plan removed. Stores assigned to it now have no plan.',
+            'unassigned_stores' => $assignedStoreIds->count(),
         ]);
     }
 

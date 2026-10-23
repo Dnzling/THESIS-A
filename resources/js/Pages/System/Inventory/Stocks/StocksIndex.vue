@@ -71,6 +71,14 @@
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
               <p class="text-gray-600 mt-2">No inventory records found</p>
+              <Button
+                v-if="canCreateItems"
+                label="Add Product"
+                icon="pi pi-plus"
+                size="small"
+                class="mt-4"
+                @click="router.push({ name: 'inventory.products.create' })"
+              />
             </div>
           </template>
   

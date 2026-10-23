@@ -6,10 +6,12 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\InventoryConfiguration;
 use App\Models\Inventory\StockAlert;
+use App\Models\ProductCatalog\Product;
 use App\Support\EmployeeContext;
 use Illuminate\Database\Eloquent\Collection;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class InventoryService
 {
@@ -73,14 +75,6 @@ class InventoryService
                 'quantity_available' => $inventory->quantity_available - $quantity,
             ]);
 
-            // Log transaction
-            $this->createTransaction($storeId, $branchId, 'RESERVE', [
-                'product_id' => $productId,
-                'variation_id' => $variationId,
-                'quantity' => $quantity,
-                'reason' => 'Stock reservation',
-            ]);
-
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
@@ -110,13 +104,6 @@ class InventoryService
             $inventory->update([
                 'quantity_reserved' => max(0, $inventory->quantity_reserved - $quantity),
                 'quantity_available' => $inventory->quantity_available + $quantity,
-            ]);
-
-            $this->createTransaction($storeId, $branchId, 'RELEASE', [
-                'product_id' => $productId,
-                'variation_id' => $variationId,
-                'quantity' => $quantity,
-                'reason' => 'Reservation release',
             ]);
 
             DB::commit();
@@ -149,18 +136,22 @@ class InventoryService
                 throw new Exception("Insufficient stock for deduction");
             }
 
+            $quantityBefore = (int) $inventory->quantity_on_hand;
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->update([
-                'quantity_on_hand' => $inventory->quantity_on_hand - $quantity,
+                'quantity_on_hand' => $quantityBefore - $quantity,
                 'quantity_available' => $inventory->quantity_available - $quantity,
             ]);
 
             $inventory->updateStockStatus();
 
-            $this->createTransaction($storeId, $branchId, 'DEDUCT', [
+            $this->createTransaction($storeId, $branchId, 'sale', [
                 'product_id' => $productId,
                 'variation_id' => $variationId,
-                'quantity' => $quantity,
-                'reason' => $reason,
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => -$quantity,
+                'quantity_after' => (int) $inventory->quantity_on_hand,
+                'notes' => $reason,
             ]);
 
             DB::commit();
@@ -173,7 +164,16 @@ class InventoryService
     /**
      * Add stock (for receipts/returns)
      */
-    public function addStock(int $storeId, int $branchId, int $productId, int $quantity, string $reason = 'Receipt', ?int $variationId = null): void
+    public function addStock(
+        int $storeId,
+        int $branchId,
+        int $productId,
+        int $quantity,
+        string $reason = 'Receipt',
+        ?int $variationId = null,
+        string $transactionType = 'purchase',
+        array $transactionDetails = []
+    ): void
     {
         try {
             DB::beginTransaction();
@@ -185,6 +185,7 @@ class InventoryService
                 ->lockForUpdate()
                 ->first();
 
+            $quantityBefore = (int) ($inventory?->quantity_on_hand ?? 0);
             if (!$inventory) {
                 // Create new inventory entry if doesn't exist
                 $inventory = BranchInventory::create([
@@ -196,6 +197,7 @@ class InventoryService
                     'quantity_available' => $quantity,
                 ]);
             } else {
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->update([
                     'quantity_on_hand' => $inventory->quantity_on_hand + $quantity,
                     'quantity_available' => $inventory->quantity_available + $quantity,
@@ -204,12 +206,14 @@ class InventoryService
 
             $inventory->updateStockStatus();
 
-            $this->createTransaction($storeId, $branchId, 'ADD', [
+            $this->createTransaction($storeId, $branchId, $transactionType, array_merge([
                 'product_id' => $productId,
                 'variation_id' => $variationId,
-                'quantity' => $quantity,
-                'reason' => $reason,
-            ]);
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => $quantity,
+                'quantity_after' => (int) $inventory->quantity_on_hand,
+                'notes' => $reason,
+            ], $transactionDetails));
 
             DB::commit();
         } catch (Exception $e) {
@@ -237,11 +241,13 @@ class InventoryService
                 throw new Exception("Inventory not found");
             }
 
-            $newQuantity = $inventory->quantity_on_hand + $adjustmentQuantity;
+            $quantityBefore = (int) $inventory->quantity_on_hand;
+            $newQuantity = $quantityBefore + $adjustmentQuantity;
             if ($newQuantity < 0) {
                 throw new Exception("Adjustment would result in negative stock");
             }
 
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->update([
                 'quantity_on_hand' => $newQuantity,
                 'quantity_available' => $newQuantity - $inventory->quantity_reserved,
@@ -249,13 +255,13 @@ class InventoryService
 
             $inventory->updateStockStatus();
 
-            $this->createTransaction($storeId, $branchId, 'ADJUST', [
+            $this->createTransaction($storeId, $branchId, 'adjustment', [
                 'product_id' => $productId,
                 'variation_id' => $variationId,
-                'quantity' => $adjustmentQuantity,
-                'old_quantity' => $inventory->quantity_on_hand,
-                'new_quantity' => $newQuantity,
-                'reason' => $reason,
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => $adjustmentQuantity,
+                'quantity_after' => $newQuantity,
+                'notes' => $reason,
             ]);
 
             DB::commit();
@@ -288,6 +294,8 @@ class InventoryService
                 throw new Exception("Cannot mark more as damaged than available");
             }
 
+            $quantityBefore = (int) $inventory->quantity_on_hand;
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->update([
                 'quantity_damaged' => $inventory->quantity_damaged + $quantity,
                 'quantity_available' => $inventory->quantity_available - $quantity,
@@ -295,11 +303,13 @@ class InventoryService
 
             $inventory->updateStockStatus();
 
-            $this->createTransaction($storeId, $branchId, 'DAMAGE', [
+            $this->createTransaction($storeId, $branchId, 'damage', [
                 'product_id' => $productId,
                 'variation_id' => $variationId,
-                'quantity' => $quantity,
-                'reason' => $reason,
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => -$quantity,
+                'quantity_after' => (int) $inventory->quantity_on_hand,
+                'notes' => $reason,
             ]);
 
             DB::commit();
@@ -314,12 +324,53 @@ class InventoryService
      */
     public function createTransaction(int $storeId, int $branchId, string $type, array $details): InventoryTransaction
     {
+        $productId = (int) ($details['product_id'] ?? 0);
+        $product = Product::query()->findOrFail($productId);
+        $quantityChange = (int) ($details['quantity_change'] ?? 0);
+        $quantityBefore = (int) ($details['quantity_before'] ?? 0);
+        $allowedTypes = [
+            'purchase', 'sale', 'return_to_supplier', 'customer_return',
+            'transfer_out', 'transfer_in', 'adjustment', 'damage',
+            'expired', 'lost', 'assembly', 'sample', 'writeoff',
+        ];
+        $type = strtolower($type);
+        $type = match ($type) {
+            'deduct' => 'sale',
+            'add' => 'purchase',
+            'adjust' => 'adjustment',
+            'transfer_loss' => 'lost',
+            default => $type,
+        };
+
+        if (!in_array($type, $allowedTypes, true)) {
+            throw new Exception("Unsupported inventory transaction type: {$type}");
+        }
+
+        $employeeId = EmployeeContext::currentEmployeeId();
+        if (!$employeeId) {
+            throw new Exception('An employee account is required to record an inventory transaction.');
+        }
+
         return InventoryTransaction::create([
+            'transaction_number' => 'TXN-' . strtoupper((string) Str::uuid()),
             'store_id' => $storeId,
             'branch_id' => $branchId,
+            'product_id' => $productId,
+            'variation_id' => $details['variation_id'] ?? null,
             'transaction_type' => $type,
-            'created_by' => EmployeeContext::currentEmployeeId(),
-            'details' => $details,
+            'quantity_before' => $quantityBefore,
+            'quantity_change' => $quantityChange,
+            'quantity_after' => (int) ($details['quantity_after'] ?? ($quantityBefore + $quantityChange)),
+            'related_branch_id' => $details['related_branch_id'] ?? null,
+            'reference_type' => $details['reference_type'] ?? null,
+            'reference_id' => $details['reference_id'] ?? null,
+            'notes' => $details['notes'] ?? null,
+            'unit_cost' => $details['unit_cost'] ?? $product->cost_price,
+            'total_value' => $details['total_value'] ?? (abs($quantityChange) * (float) ($details['unit_cost'] ?? $product->cost_price ?? 0)),
+            'requires_approval' => false,
+            'approval_status' => 'not_required',
+            'created_by' => $employeeId,
+            'transaction_date' => now(),
         ]);
     }
 

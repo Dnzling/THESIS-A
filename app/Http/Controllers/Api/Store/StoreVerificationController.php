@@ -94,6 +94,24 @@ class StoreVerificationController extends Controller
                 ], 422);
             }
 
+            $tempIdPath = $request->file('gov_id_front_file')->store('store-verifications/tmp-owner-id', 'public');
+            try {
+                $ownerIdText = $this->documentAutoValidationService->extractTextFromDocument($tempIdPath);
+                $detectedIdType = $this->documentAutoValidationService->detectGovernmentIdType($ownerIdText);
+            } finally {
+                Storage::disk('public')->delete($tempIdPath);
+            }
+
+            if (!$detectedIdType || $detectedIdType !== $validated['gov_id_type']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The selected owner ID type does not match the uploaded ID header. Upload a clear image of the selected ID type.',
+                    'errors' => [
+                        'gov_id_front_file' => ['The uploaded ID header could not be verified as the selected ID type.'],
+                    ],
+                ], 422);
+            }
+
             // Upload files
             $uploads = [];
             $fileFields = [
@@ -135,6 +153,39 @@ class StoreVerificationController extends Controller
                 )
             );
 
+            $store->update([
+                'status' => 'pending',
+                'verified_at' => null,
+                'verified_by' => null,
+            ]);
+
+            $superAdminIds = User::query()
+                ->where('is_active', true)
+                ->whereHas('role', fn ($query) => $query->where('name', 'super_admin'))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if ($superAdminIds !== []) {
+                $storeName = (string) ($store->name ?: 'A store');
+
+                $this->notifyMany($superAdminIds, [
+                    'store_id' => (int) $store->id,
+                    'module' => 'admin',
+                    'entity_type' => 'store_verification',
+                    'entity_id' => (int) $verification->id,
+                    'action' => 'submitted',
+                    'title' => 'Store verification submitted',
+                    'message' => "{$storeName} submitted verification documents for review.",
+                    'data' => [
+                        'store_name' => $storeName,
+                        'submitted_at' => $verification->submitted_at?->toDateTimeString(),
+                    ],
+                    'link' => "/admin/store-validation/{$verification->id}",
+                    'severity' => 'info',
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Verification documents submitted successfully. Your store is now under review.',
@@ -167,7 +218,7 @@ class StoreVerificationController extends Controller
     {
         abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
         $request->validate([
-            'id_type' => ['nullable', 'string', 'in:' . implode(',', self::ID_TYPES)],
+            'id_type' => ['required', 'string', 'in:' . implode(',', self::ID_TYPES)],
             'id_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
         ]);
 
@@ -175,16 +226,28 @@ class StoreVerificationController extends Controller
 
         try {
             $text = $this->documentAutoValidationService->extractTextFromDocument($path);
-            $idNumber = $this->documentAutoValidationService->extractLikelyIdNumber($text, $request->input('id_type'));
+            $selectedType = $request->input('id_type');
+            $detectedType = $this->documentAutoValidationService->detectGovernmentIdType($text);
+            $typeMatches = $detectedType !== null && $detectedType === $selectedType;
+            $idNumber = $typeMatches
+                ? $this->documentAutoValidationService->extractLikelyIdNumber($text, $selectedType)
+                : null;
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id_number' => $idNumber,
+                    'selected_id_type' => $selectedType,
+                    'detected_id_type' => $detectedType,
+                    'id_type_matches' => $typeMatches,
                     'confidence' => $idNumber ? 'low' : 'none',
-                    'message' => $idNumber
-                        ? 'We found a possible ID number. Please confirm it before submitting.'
-                        : 'We could not read the ID number clearly. Please enter it manually.',
+                    'message' => !$typeMatches
+                        ? ($detectedType
+                            ? 'The uploaded document appears to be a different ID type. Select the correct type or upload the matching ID.'
+                            : 'We could not verify the ID type from its header. Upload a clear image showing the ID heading.')
+                        : ($idNumber
+                            ? 'The ID type matches. We found a possible ID number; confirm it before continuing.'
+                            : 'The ID type matches, but we could not read the number. Enter it manually.'),
                 ],
             ]);
         } finally {
@@ -480,7 +543,11 @@ class StoreVerificationController extends Controller
 
                 // Verification is independent of subscription/store operational status.
                 $store = $verification->store;
-                $store->update(['verified_at' => now(), 'verified_by' => Auth::id()]);
+                $store->update([
+                    'status' => 'active',
+                    'verified_at' => now(),
+                    'verified_by' => Auth::id(),
+                ]);
 
                 // 3. Find store owner user by store email and link to store.
                 $storeOwner = User::where('email', $store->email)->first();
@@ -541,7 +608,11 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => $validated['rejection_reason']
                 ]);
 
-                $verification->store->update(['verified_at' => null, 'verified_by' => null]);
+                $verification->store->update([
+                    'status' => 'rejected',
+                    'verified_at' => null,
+                    'verified_by' => null,
+                ]);
             });
 
             $message = 'Store verification rejected';

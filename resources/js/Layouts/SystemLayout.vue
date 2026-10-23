@@ -183,9 +183,16 @@
                 class="w-full min-w-0 text-left px-4 py-3 flex items-start gap-3 hover:bg-orange-50/50 transition"
                 @click="openNotification(notif)">
                 <div class="relative">
-                  <div
-                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center text-orange-700 font-semibold text-xs">
+                  <img v-if="!isNewEcommerceOrder(notif) && !isSupplierQuoteResponse(notif) && notif.data?.created_by?.avatar_url"
+                    :src="notif.data.created_by.avatar_url" :alt="`${notif.data.created_by.name} profile photo`"
+                    class="h-10 w-10 rounded-2xl border border-slate-200 object-cover" />
+                  <div v-else-if="!isNewEcommerceOrder(notif) && !isSupplierQuoteResponse(notif) && notif.data?.created_by?.name"
+                    class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-100 text-xs font-semibold text-orange-700">
                     {{ getNotifInitials(notif) }}
+                  </div>
+                  <div v-else class="flex h-10 w-10 items-center justify-center rounded-2xl"
+                    :class="isNewEcommerceOrder(notif) ? 'bg-orange-100 text-orange-700' : isSupplierQuoteResponse(notif) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'">
+                    <i class="text-base" :class="isNewEcommerceOrder(notif) ? 'pi pi-shopping-bag' : isSupplierQuoteResponse(notif) ? 'pi pi-warehouse' : 'pi pi-bell'"></i>
                   </div>
                   <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
                 </div>
@@ -219,7 +226,7 @@
       </header>
   
       <!-- Main Content Area -->
-      <main class="flex-1 overflow-y-auto p-6 bg-transparent">
+      <main data-page-scroll-container class="flex-1 overflow-y-auto p-6 bg-transparent">
         <slot />
       </main>
     </div>
@@ -233,6 +240,35 @@
       class="fixed inset-0 z-20 bg-black/40 lg:hidden"
       @click="sidebarOpen = false"
     ></div>
+
+    <Dialog v-model:visible="employeeWelcome.visible" modal :closable="false" :showHeader="false"
+      :style="{ width: 'min(26rem, 94vw)' }">
+      <div class="space-y-3 px-1 pb-1 pt-2">
+        <div class="flex items-center gap-3">
+          <div>
+            <p class="portal-brand text-sm uppercase text-orange-600">FURNISYNC</p>
+            <p class="text-xs text-slate-500">Employee workspace</p>
+          </div>
+        </div>
+
+        <div class="text-center p-4">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Welcome to work</p>
+          <h2 class="mt-1 text-lg font-semibold text-slate-900">Hello, {{ employeeWelcome.employeeName }}</h2>
+          <p class="mt-1 text-sm text-slate-600">{{ employeeWelcome.attendanceMessage }}</p>
+
+            <Divider/>
+            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Assigned Branch</p>
+            <p class="mt-0.5 text-sm font-medium text-slate-800">{{ employeeWelcome.branchName }}</p>
+
+        </div>
+
+        <p v-if="employeeWelcome.lateMessage" class="rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-center font-semibold text-amber-800">
+          <i class="pi pi-clock mr-1.5"></i>{{ employeeWelcome.lateMessage }}
+        </p>
+        <Button label="Continue to workspace" icon="pi pi-arrow-right" iconPos="right" severity="warn"
+          size="small" class="w-full" @click="employeeWelcome.visible = false" />
+      </div>
+    </Dialog>
   
     <!-- Global API Response Dialog -->
     <Dialog v-model:visible="responseDialog.visible" modal :closable="false" :showHeader="false" class="w-full max-w-md"
@@ -272,12 +308,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { startCase, toLower, groupBy } from 'lodash'
 import Skeleton from 'primevue/skeleton'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
 import AccordionHeader from 'primevue/accordionheader'
@@ -320,6 +357,13 @@ const responseDialog = ref({
   severity: 'success' as 'success' | 'error' | 'warn' | 'info',
   title: 'Success',
   message: ''
+})
+const employeeWelcome = ref({
+  visible: false,
+  employeeName: '',
+  branchName: '',
+  attendanceMessage: '',
+  lateMessage: '',
 })
 let responseDialogUnsub: (() => void) | null = null
 
@@ -395,6 +439,17 @@ onMounted(async () => {
   }
 
   isBooting.value = false
+
+  const pendingEmployeeWelcome = sessionStorage.getItem('employee_login_welcome')
+  if (pendingEmployeeWelcome) {
+    sessionStorage.removeItem('employee_login_welcome')
+    try {
+      Object.assign(employeeWelcome.value, JSON.parse(pendingEmployeeWelcome), { visible: true })
+      await nextTick()
+    } catch {
+      sessionStorage.removeItem('employee_login_welcome')
+    }
+  }
 
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
@@ -869,11 +924,17 @@ const openNotification = async (notif: any) => {
 }
 
 const getNotifInitials = (notif: any) => {
-  const text = notif.title || 'N'
+  const text = notif.data?.created_by?.name || notif.title || 'N'
   const parts = text.trim().split(' ')
   if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'N'
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'N'
 }
+
+const isNewEcommerceOrder = (notif: any) =>
+  notif.entity_type === 'ecommerce_order' && notif.action === 'created'
+
+const isSupplierQuoteResponse = (notif: any) =>
+  notif.entity_type === 'request_for_quotation' && notif.action === 'supplier_quote_submitted'
 
 const formatTimeAgo = (iso: string) => {
   if (!iso) return ''

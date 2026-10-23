@@ -82,7 +82,18 @@ test('store registration smoke test can create a store then activate the free tr
 
     $store->refresh();
     expect($store->subscription_tier)->toBe('simple');
-    expect($store->subscription_ends_at?->toDateString())->toBe(now()->addDays(7)->toDateString());
+    expect($store->trial_started_at)->not->toBeNull();
+    expect($store->trial_ends_at?->toDateString())->toBe(now()->addMonth()->toDateString());
+
+    $trialStartedAt = $store->trial_started_at->toISOString();
+    $store->update(['subscription_status' => 'pending']);
+    $repeatTrialResponse = $this->putJson("/api/stores/{$store->id}/subscription", [
+        'subscription_tier' => 'simple',
+        'setup_mode' => 'trial',
+    ]);
+
+    $repeatTrialResponse->assertForbidden();
+    expect($store->fresh()->trial_started_at->toISOString())->toBe($trialStartedAt);
 });
 
 test('store registration smoke test can create a store then keep the selected paid plan', function () {
@@ -109,10 +120,10 @@ test('store registration smoke test can create a store then keep the selected pa
         'setup_mode' => 'paid',
     ]);
 
-    $subscriptionResponse->assertOk();
-    $subscriptionResponse->assertJsonPath('success', true);
+    $subscriptionResponse->assertUnprocessable();
+    $subscriptionResponse->assertJsonPath('success', false);
 
     $store = Store::query()->findOrFail($storeId);
-    expect($store->subscription_tier)->toBe('premium');
-    expect($store->subscription_ends_at)->toBeNull();
+    expect($store->subscription_status)->toBe('pending');
+    expect($store->trial_started_at)->toBeNull();
 });

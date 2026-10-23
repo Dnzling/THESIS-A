@@ -3,7 +3,7 @@
     <ConfirmDialog />
     <div class="rounded-3xl border border-slate-200 bg-white/80">
       <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr]">
-        <aside class="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+        <aside class="hidden border-b border-slate-200 p-5 lg:block lg:border-b-0 lg:border-r">
           <h2 class="text-xl font-semibold text-slate-900">My Account</h2>
           <div class="mt-5 space-y-5">
             <div>
@@ -15,8 +15,6 @@
                   class="justify-start" @click="activeSection = 'address'" />
                 <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'payment'" />
-                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'warn' : 'secondary'"
-                  class="justify-start" @click="activeSection = 'verification'" />
               </div>
             </div>
   
@@ -46,6 +44,13 @@
         </aside>
   
         <section class="p-5">
+          <div class="mb-4 flex items-center justify-between gap-3 lg:hidden">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">My Account</p>
+              <h2 class="text-lg font-semibold text-slate-900">{{ sectionTitle }}</h2>
+            </div>
+            <Button label="Menu" icon="pi pi-bars" severity="secondary" outlined @click="mobileNavigationVisible = true" />
+          </div>
           <div v-if="loading" class="space-y-3">
             <Skeleton v-for="idx in 8" :key="idx" height="1.2rem" />
           </div>
@@ -53,10 +58,6 @@
           <template v-else>
             <div v-if="activeSection === 'basic'" class="space-y-4">
               <h3 class="text-2xl font-semibold text-slate-900">Basic Information</h3>
-              <div class="rounded-xl border p-3 text-sm" :class="verificationBannerClass">
-                <p class="font-semibold">Verification: {{ verificationStatusLabel }}</p>
-                <p v-if="needsVerificationFlag" class="text-xs mt-1">Your account is not verified yet. Submit valid ID + selfie with card to proceed faster during checkout review.</p>
-              </div>
   
               <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                 <div class="rounded-xl border border-slate-200 p-3">
@@ -89,7 +90,7 @@
                 <Button label="Edit" outlined @click="editDialogVisible = true" />
                 <Button label="Change Password" outlined @click="passwordDialogVisible = true" />
                 <Button label="Change Email (Verify)" severity="secondary" outlined @click="emailDialogVisible = true" />
-                <Button label="Change Mobile (Verify)" severity="secondary" outlined
+                <Button label="Change Mobile" severity="secondary" outlined
                   @click="mobileDialogVisible = true" />
               </div>
             </div>
@@ -189,75 +190,6 @@
                     “{{ notif.data.reply }}”
                   </p>
                 </button>
-              </div>
-            </div>
-
-            <div v-else-if="activeSection === 'verification'" class="space-y-4">
-              <h3 class="text-2xl font-semibold text-slate-900">Customer Verification</h3>
-
-              <div v-if="isVerificationApproved" class="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6">
-                <div class="flex flex-col items-center text-center sm:flex-row sm:text-left">
-                  <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
-                    <i class="pi pi-check-circle text-3xl" />
-                  </span>
-                  <div class="mt-4 sm:ml-5 sm:mt-0">
-                    <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                      <h4 class="text-xl font-bold text-emerald-900">Verified Account</h4>
-                      <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Approved</span>
-                    </div>
-                    <p class="mt-2 text-sm leading-6 text-emerald-800">
-                      Your identity verification has been approved. You no longer need to submit another ID or selfie.
-                    </p>
-                    <p v-if="verificationApprovedAt" class="mt-2 text-xs text-emerald-700">
-                      Verified on {{ verificationApprovedAt }}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else class="rounded-xl border p-4" :class="verificationBannerClass">
-                <p class="font-semibold">Status: {{ verificationStatusLabel }}</p>
-                <p class="text-xs mt-1">Accepted IDs: National ID, SSS, PhilHealth, Passport, Driver's License, Postal ID, UMID, Voter's ID.</p>
-              </div>
-
-              <div v-if="!isVerificationApproved" class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Primary ID Type</label>
-                  <Select v-model="verificationForm.id_type" :options="idTypeOptions" optionLabel="label" optionValue="value" placeholder="Select ID type" fluid />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">ID Number</label>
-                  <InputText v-model="verificationForm.id_number" fluid placeholder="Enter ID number" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Primary ID File</label>
-                  <input type="file" accept=".jpg,.jpeg,.png,.pdf" class="block w-full text-sm" @change="onPrimaryIdFileChange" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Selfie with ID Card</label>
-                  <input type="file" accept=".jpg,.jpeg,.png" class="block w-full text-sm" @change="onSelfieFileChange" />
-                </div>
-              </div>
-
-              <Button
-                v-if="!isVerificationApproved"
-                label="Submit Verification"
-                
-                :loading="submittingVerification"
-                @click="submitCustomerVerification"
-              />
-
-              <div v-if="!isVerificationApproved" class="space-y-2">
-                <p class="text-sm font-semibold text-slate-800">Uploaded Documents</p>
-                <p v-if="!verificationDocuments.length" class="text-sm text-slate-500">No verification documents uploaded yet.</p>
-                <div v-for="doc in verificationDocuments" :key="doc.id" class="rounded-xl border border-slate-200 p-3 text-sm">
-                  <p class="font-semibold text-slate-900">{{ doc.document_type_label || doc.document_type }}</p>
-                  <p class="text-xs text-slate-600">Status: {{ doc.status }}</p>
-                  <p v-if="doc.id_type" class="text-xs text-slate-600">ID Type: {{ formatIdType(doc.id_type) }}</p>
-                  <p v-if="doc.id_number" class="text-xs text-slate-600">ID Number: {{ doc.id_number }}</p>
-                  <button v-if="doc.file_url" type="button" class="text-xs text-blue-600 hover:underline" @click="viewVerificationDocument(doc)">View document</button>
-                  <p v-if="doc.rejection_reason" class="text-xs text-rose-600">Reason: {{ doc.rejection_reason }}</p>
-                </div>
               </div>
             </div>
 
@@ -366,16 +298,48 @@
       </div>
     </Dialog>
   
-    <Dialog v-model:visible="mobileDialogVisible" modal header="Change Mobile (Verification Required)"
+    <Dialog v-model:visible="mobileDialogVisible" modal header="Change Mobile Number"
       :style="{ width: '32rem' }">
       <div class="space-y-3">
         <InputText v-model="contactChangeForm.newMobile" fluid placeholder="New mobile number" />
-        <div class="flex gap-2">
-          <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
-          <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
+        <Button label="Save Mobile Number" :loading="savingContactChange" @click="changeMobile" />
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="mobileNavigationVisible"
+      modal
+      :closable="false"
+      :showHeader="false"
+      :style="{ width: '100vw', height: '100dvh', maxHeight: '100dvh', margin: '0' }"
+      :pt="{ mask: { class: 'p-0 lg:hidden' }, root: { class: 'mobile-account-navigation lg:hidden !m-0 !max-h-none !w-screen !rounded-none' }, content: { class: 'h-full p-0' } }"
+    >
+      <div class="flex h-full flex-col bg-white p-5">
+        <div class="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">My Account</p>
+            <h2 class="text-xl font-semibold text-slate-900">Navigate</h2>
+          </div>
+          <Button icon="pi pi-times" aria-label="Close navigation" severity="secondary" text rounded @click="mobileNavigationVisible = false" />
         </div>
-        <Button label="Verify and Change Mobile"  :loading="savingContactChange"
-          @click="verifyAndChangeMobile" />
+        <div class="flex-1 space-y-6 overflow-y-auto">
+          <div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">My Account</p>
+            <div class="space-y-1">
+              <Button label="Basic Information" icon="pi pi-user" text fluid :severity="activeSection === 'basic' ? 'warn' : 'secondary'" class="justify-start" @click="selectSection('basic')" />
+              <Button label="Address Book" icon="pi pi-map-marker" text fluid :severity="activeSection === 'address' ? 'warn' : 'secondary'" class="justify-start" @click="selectSection('address')" />
+              <Button label="Payment Methods" icon="pi pi-credit-card" text fluid :severity="activeSection === 'payment' ? 'warn' : 'secondary'" class="justify-start" @click="selectSection('payment')" />
+            </div>
+          </div>
+          <div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">My Orders</p>
+            <div class="space-y-1">
+              <Button label="Returns" icon="pi pi-replay" text fluid :severity="activeSection === 'returns' ? 'warn' : 'secondary'" class="justify-start" @click="selectSection('returns')" />
+              <Button label="Cancellations" icon="pi pi-times-circle" text fluid :severity="activeSection === 'cancellations' ? 'warn' : 'secondary'" class="justify-start" @click="selectSection('cancellations')" />
+            </div>
+          </div>
+        </div>
+        <Button label="Logout" icon="pi pi-sign-out" text fluid severity="danger" class="mt-4 justify-start border-t border-slate-200 pt-4" :loading="loggingOut" @click="logoutCustomer" />
       </div>
     </Dialog>
   
@@ -394,27 +358,6 @@
       </div>
     </Dialog>
 
-    <Dialog
-      v-model:visible="documentPreviewVisible"
-      modal
-      :header="documentPreviewTitle || 'Document Preview'"
-      :style="{ width: '78rem', maxWidth: '95vw' }"
-      @hide="closeDocumentPreview"
-    >
-      <div class="min-h-[65vh]">
-        <img
-          v-if="documentPreviewMime.startsWith('image/')"
-          :src="documentPreviewUrl"
-          alt="Document preview"
-          class="max-h-[70vh] w-full object-contain rounded"
-        />
-        <iframe
-          v-else
-          :src="documentPreviewUrl"
-          class="h-[70vh] w-full rounded border border-slate-200"
-        />
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -454,8 +397,8 @@ type AddressTemplate = {
 
 const loading = ref(false)
 const initialProfileSection = String(new URLSearchParams(window.location.search).get('section') || '').toLowerCase()
-const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>(
-  ['address', 'payment', 'verification', 'returns', 'cancellations'].includes(initialProfileSection)
+const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'returns' | 'cancellations'>(
+  ['address', 'payment', 'returns', 'cancellations'].includes(initialProfileSection)
     ? initialProfileSection as any
     : 'basic',
 )
@@ -467,7 +410,6 @@ const myOrders = ref<any[]>([])
 const profileUser = ref<any>({})
 const profileEmployee = ref<any>(null)
 const profileCustomer = ref<any>(null)
-const verificationDocuments = ref<any[]>([])
 const notifications = ref<any[]>([])
 const addressTemplates = ref<AddressTemplate[]>([])
 const editingAddressId = ref<number | null>(null)
@@ -477,6 +419,7 @@ const editDialogVisible = ref(false)
 const passwordDialogVisible = ref(false)
 const emailDialogVisible = ref(false)
 const mobileDialogVisible = ref(false)
+const mobileNavigationVisible = ref(false)
 const addAddressDialogVisible = ref(false)
 const savingProfile = ref(false)
 const changingPassword = ref(false)
@@ -484,12 +427,7 @@ const sendingOtp = ref(false)
 const savingContactChange = ref(false)
 const savingNewAddress = ref(false)
 const loggingOut = ref(false)
-const submittingVerification = ref(false)
 const notificationsLoading = ref(false)
-const documentPreviewVisible = ref(false)
-const documentPreviewUrl = ref('')
-const documentPreviewTitle = ref('')
-const documentPreviewMime = ref('')
 
 const editForm = reactive<{ fname: string; lname: string; birthday: Date | null }>({ fname: '', lname: '', birthday: null })
 const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
@@ -516,13 +454,6 @@ const addAddressForm = reactive({
 })
 const addAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 const editAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
-const verificationForm = reactive({
-  id_type: '',
-  id_number: '',
-  primary_id_file: null as File | null,
-  selfie_with_id_file: null as File | null,
-})
-
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
@@ -541,17 +472,6 @@ const cancellationOrders = computed(() => myOrders.value.filter((order: any) => 
   return cancellationOrderStatuses.has(status) || Boolean(order.cancellation_request)
 }))
 const unreadNotificationCount = computed(() => notifications.value.filter((n: any) => !n?.is_read).length)
-const idTypeOptions = [
-  { label: 'National ID', value: 'national_id' },
-  { label: 'SSS', value: 'sss' },
-  { label: 'PhilHealth', value: 'philhealth' },
-  { label: 'Passport', value: 'passport' },
-  { label: "Driver's License", value: 'drivers_license' },
-  { label: 'Postal ID', value: 'postal_id' },
-  { label: 'UMID', value: 'umid' },
-  { label: "Voter's ID", value: 'voters_id' },
-]
-
 const basicInfo = computed(() => ({
   firstName: profileUser.value?.fname || '-',
   lastName: profileUser.value?.lname || '-',
@@ -560,27 +480,14 @@ const basicInfo = computed(() => ({
   formattedBirthday: formatDate(profileUser.value?.birthday || profileEmployee.value?.date_of_birth),
   formattedCreatedAt: formatDate(profileUser.value?.created_at),
 }))
-const customerVerificationStatus = computed(() => String(profileCustomer.value?.verification_status || 'unverified').toLowerCase())
-const isVerificationApproved = computed(() => ['verified', 'approved'].includes(customerVerificationStatus.value))
-const verificationStatusLabel = computed(() => {
-  const status = customerVerificationStatus.value
-  if (status === 'verified' || status === 'approved') return 'Approved'
-  if (status === 'pending') return 'Pending Review'
-  if (status === 'rejected') return 'Rejected'
-  return 'For Verification'
-})
-const verificationApprovedAt = computed(() => {
-  const value = profileCustomer.value?.verification_reviewed_at
-  return value ? formatDate(value) : ''
-})
-const needsVerificationFlag = computed(() => !isVerificationApproved.value)
-const verificationBannerClass = computed(() => {
-  const status = customerVerificationStatus.value
-  if (status === 'verified' || status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
-  if (status === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
-  return 'border-slate-200 bg-slate-50 text-slate-700'
-})
+const sectionTitle = computed(() => ({
+  basic: 'Basic Information',
+  address: 'Address Book',
+  payment: 'Payment Methods',
+  notifications: 'Notifications',
+  returns: 'Returns',
+  cancellations: 'Cancellations',
+}[activeSection.value] || 'Basic Information'))
 const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
 const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
@@ -617,11 +524,6 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function formatIdType(value?: string | null) {
-  if (!value) return '-'
-  return String(value).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
 function getReturnedItems(order: any) {
   return (Array.isArray(order?.items) ? order.items : []).filter((item: any) => Boolean(item?.return_request))
 }
@@ -650,7 +552,6 @@ async function loadProfile() {
   profileUser.value = response.data?.data?.user || {}
   profileEmployee.value = response.data?.data?.employee || null
   profileCustomer.value = response.data?.data?.customer || null
-  verificationDocuments.value = response.data?.data?.verification_documents || []
   editForm.fname = profileUser.value?.fname || ''
   editForm.lname = profileUser.value?.lname || ''
   editForm.birthday = profileUser.value?.birthday ? new Date(profileUser.value.birthday) : (profileEmployee.value?.date_of_birth ? new Date(profileEmployee.value.date_of_birth) : null)
@@ -670,6 +571,12 @@ async function loadNotifications() {
   } finally {
     notificationsLoading.value = false
   }
+}
+
+function selectSection(section: 'basic' | 'address' | 'payment' | 'returns' | 'cancellations') {
+  activeSection.value = section
+  mobileNavigationVisible.value = false
+  router.replace({ name: 'ecommerce.profile', query: { section } })
 }
 
 function openNotificationsSection() {
@@ -700,79 +607,6 @@ async function openNotification(notif: any) {
 
   if (notif?.link) {
     router.push(notif.link)
-  }
-}
-
-function onPrimaryIdFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  verificationForm.primary_id_file = target.files?.[0] || null
-}
-
-function onSelfieFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  verificationForm.selfie_with_id_file = target.files?.[0] || null
-}
-
-async function submitCustomerVerification() {
-  if (!verificationForm.id_type || !verificationForm.id_number || !verificationForm.primary_id_file || !verificationForm.selfie_with_id_file) {
-    showAlert({ severity: 'warn', summary: 'Missing fields', detail: 'Please provide ID type, ID number, primary ID file, and selfie with ID.' })
-    return
-  }
-
-  const payload = new FormData()
-  payload.append('id_type', verificationForm.id_type)
-  payload.append('id_number', verificationForm.id_number)
-  payload.append('primary_id_file', verificationForm.primary_id_file)
-  payload.append('selfie_with_id_file', verificationForm.selfie_with_id_file)
-
-  submittingVerification.value = true
-  try {
-    await axios.post('/api/profile/verification', payload, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    verificationForm.primary_id_file = null
-    verificationForm.selfie_with_id_file = null
-    await loadProfile()
-    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Verification documents submitted. Status is now pending review.' })
-  } catch (error: any) {
-    const firstError = Object.values(error?.response?.data?.errors || {})?.[0]
-    const firstErrorMessage = Array.isArray(firstError) ? firstError[0] : null
-    showAlert({ severity: 'error', summary: 'Failed', detail: firstErrorMessage || error?.response?.data?.message || 'Unable to submit verification documents.' })
-  } finally {
-    submittingVerification.value = false
-  }
-}
-
-async function viewVerificationDocument(doc: any) {
-  if (!doc?.file_url) {
-    showAlert({ severity: 'info', summary: 'No Document', detail: 'No document file available.' })
-    return
-  }
-
-  try {
-    const response = await axiosClient.get(doc.file_url, {
-      responseType: 'blob',
-      headers: { 'X-Suppress-Dialog': '1' },
-    })
-    if (documentPreviewUrl.value) {
-      URL.revokeObjectURL(documentPreviewUrl.value)
-    }
-    documentPreviewUrl.value = URL.createObjectURL(response.data)
-    documentPreviewMime.value = response.data?.type || response.headers?.['content-type'] || ''
-    documentPreviewTitle.value = doc?.document_type_label || doc?.document_type || 'Document Preview'
-    documentPreviewVisible.value = true
-  } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to open document.' })
-  }
-}
-
-function closeDocumentPreview() {
-  documentPreviewVisible.value = false
-  documentPreviewTitle.value = ''
-  documentPreviewMime.value = ''
-  if (documentPreviewUrl.value) {
-    URL.revokeObjectURL(documentPreviewUrl.value)
-    documentPreviewUrl.value = ''
   }
 }
 
@@ -949,17 +783,15 @@ async function verifyAndChangeEmail() {
   }
 }
 
-async function verifyAndChangeMobile() {
-  if (!contactChangeForm.newMobile || !contactChangeForm.otpCode) return
+async function changeMobile() {
+  if (!contactChangeForm.newMobile.trim()) return
   savingContactChange.value = true
   try {
-    await verifyOtpCode()
     await axios.put('/api/profile', { contact_number: contactChangeForm.newMobile })
     mobileDialogVisible.value = false
     contactChangeForm.newMobile = ''
-    contactChangeForm.otpCode = ''
     await loadProfile()
-    showAlert({ severity: 'success', summary: 'Mobile Updated', detail: 'Mobile number changed after OTP verification.' })
+    showAlert({ severity: 'success', summary: 'Mobile Updated', detail: 'Mobile number updated successfully.' })
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change mobile number.' })
   } finally {
@@ -1107,10 +939,6 @@ onMounted(async () => {
 watch(
   () => String(route.query?.section || '').toLowerCase() || getSectionFromUrl(),
   async (section) => {
-    if (section === 'verification') {
-      activeSection.value = 'verification'
-      return
-    }
     if (section === 'address') {
       activeSection.value = 'address'
       return

@@ -472,6 +472,7 @@ class GoodsReceiptController extends Controller
                 }
 
                 $newCost = $poItem->unit_cost;
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
 
                     $inventory->updateStockStatus();
@@ -920,6 +921,7 @@ class GoodsReceiptController extends Controller
             }
 
             $newCost = $poItem->unit_cost ?? 0;
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
             $inventory->updateStockStatus();

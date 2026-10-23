@@ -73,7 +73,11 @@
           <Column field="order_number" header="Order #" />
           <Column field="customer_name" header="Customer" />
           <Column field="address" header="Address" />
-          <Column field="status" header="Status" />
+          <Column header="Status" style="width: 11rem">
+            <template #body="{ data }">
+              <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+            </template>
+          </Column>
           <Column header="Weight (kg)" style="width: 8rem">
             <template #body="{ data }">
               <span class="text-xs text-slate-600">{{ data.weight_kg.toFixed(2) }}</span>
@@ -175,7 +179,7 @@
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div><span class="text-slate-500">Order #:</span> <strong>{{ detailOrder.order_number }}</strong></div>
           <div><span class="text-slate-500">Status:</span>
-            <Tag :value="formatStatus(detailOrder.status)" severity="info" />
+            <Tag :value="formatStatus(detailOrder.status)" :severity="statusSeverity(detailOrder.status)" />
           </div>
           <div><span class="text-slate-500">Customer:</span> <strong>{{ detailCustomerName }}</strong></div>
           <div><span class="text-slate-500">Contact:</span> <strong>{{ detailCustomerContact }}</strong></div>
@@ -597,11 +601,13 @@ const goBack = () => {
 const formatStatus = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
 const formatStatusLabel = (value?: string) => formatStatus(value || 'ready_for_dispatch')
 const statusSeverity = (value?: string) => {
-  if (value === 'completed') return 'success'
-  if (value === 'cancelled') return 'danger'
-  if (value === 'in_transit') return 'info'
-  if (value === 'out_for_delivery') return 'info'
-  return 'warning'
+  const status = String(value || '').toLowerCase()
+  if (['completed', 'delivered', 'picked_up'].includes(status)) return 'success'
+  if (status === 'cancelled') return 'secondary'
+  if (['failed', 'failed_delivery', 'delivery_failed'].includes(status)) return 'danger'
+  if (['assigned', 'in_transit', 'out_for_delivery', 'dispatched'].includes(status)) return 'info'
+  if (['planned', 'pending', 'ready_for_dispatch', 'scheduled'].includes(status)) return 'warn'
+  return 'secondary'
 }
 const formatDateTime = (value?: string) => value ? new Date(value).toLocaleString('en-PH') : '-'
 const formatCurrency = (value?: number) => {

@@ -1653,6 +1653,11 @@ class UnifiedDeliveryController extends Controller
             ] : null;
             $deliveryStatus = strtolower((string) ($delivery?->status ?? ''));
             $orderStatus = strtolower((string) $order->status);
+            // Accept the older alias used by some Sales records while keeping
+            // the Logistics queue status canonical.
+            if ($orderStatus === 'ready_to_dispatch') {
+                $orderStatus = 'ready_for_dispatch';
+            }
             $legacyReadyStatus = $orderStatus === 'completed' && strtolower((string) $order->payment_status) === 'paid';
             $canCreate = (bool) $order->delivery_required
                 && ($orderStatus === 'ready_for_dispatch' || $legacyReadyStatus)
@@ -1663,7 +1668,7 @@ class UnifiedDeliveryController extends Controller
                 'source_type' => 'sales',
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
-                'order_status' => $order->status,
+                'order_status' => $orderStatus,
                 'customer_name' => $order->customer_name,
                 'customer_contact' => $order->customer_phone,
                 'delivery_address' => $order->delivery_address,

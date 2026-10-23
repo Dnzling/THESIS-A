@@ -45,7 +45,13 @@
 
         <div v-else-if="selectedPlan" class="grid gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-start">
           <div class="space-y-8">
-            <section class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
+            <section v-if="isTrialCheckout" class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
+              <p class="text-sm font-semibold text-orange-600">One-time free trial</p>
+              <h1 class="mt-2 text-3xl font-bold">Start your one-month trial</h1>
+              <p class="mt-3 text-sm leading-6 text-slate-600">No payment method is needed. Your amount due today is {{ formatMoney(0) }}. This store can use the free trial only once.</p>
+            </section>
+
+            <section v-else class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
               <p class="text-sm font-semibold text-orange-600">Payment method</p>
               <h1 class="mt-2 text-3xl font-bold">How would you like to pay?</h1>
               <p class="mt-2 text-sm text-slate-500">You’ll complete payment securely through PayMongo.</p>
@@ -62,7 +68,7 @@
               </div>
             </section>
 
-            <section class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
+            <section v-if="!isTrialCheckout" class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
               <div class="flex items-start justify-between gap-4">
                 <div><p class="text-sm font-semibold text-orange-600">Billing address</p><h2 class="mt-2 text-2xl font-bold">Account details</h2></div>
                 <Button :label="editingAddress ? 'Cancel' : 'Update'" text severity="warn" size="small" @click="editingAddress = !editingAddress" />
@@ -105,14 +111,16 @@
             </div>
 
             <div class="mt-8 space-y-3 border-t border-white/10 pt-6 text-sm">
-              <div class="flex justify-between gap-4 text-slate-400"><span>{{ billingCycleLabel }} subscription</span><span>{{ formatMoney(planAmount) }}</span></div>
-              <div class="flex justify-between gap-4 text-slate-400"><span>Payment method</span><span>{{ selectedMethodLabel }}</span></div>
-              <div class="flex justify-between gap-4 border-t border-white/10 pt-4 text-lg font-bold text-white"><span>Due today</span><span>{{ formatMoney(planAmount) }}</span></div>
+              <div class="flex justify-between gap-4 text-slate-400"><span>{{ isTrialCheckout ? `${billingCycleLabel} plan price` : `${billingCycleLabel} subscription` }}</span><span>{{ formatMoney(planAmount) }}</span></div>
+              <div v-if="isTrialCheckout" class="flex justify-between gap-4 text-emerald-300"><span>One-month trial</span><span>-{{ formatMoney(planAmount) }}</span></div>
+              <div v-else class="flex justify-between gap-4 text-slate-400"><span>Payment method</span><span>{{ selectedMethodLabel }}</span></div>
+              <div class="flex justify-between gap-4 border-t border-white/10 pt-4 text-lg font-bold text-white"><span>Due today</span><span>{{ formatMoney(isTrialCheckout ? 0 : planAmount) }}</span></div>
             </div>
 
-            <Button label="Continue to secure payment"  class="mt-7 w-full !py-3" :loading="paymentInitializing" :disabled="!selectedMethod" @click="subscribe" />
+            <Button :label="isTrialCheckout ? 'Activate Free Trial' : 'Continue to secure payment'" class="mt-7 w-full !py-3" :loading="paymentInitializing" :disabled="!isTrialCheckout && !selectedMethod" @click="subscribe" />
             <p v-if="paymentError" class="mt-4 text-sm leading-6 text-red-300">{{ paymentError }}</p>
-            <p class="mt-5 text-xs leading-5 text-slate-500">Your plan is activated only after PayMongo confirms a successful payment. FurniSync does not store card or wallet credentials.</p>
+            <p v-if="isTrialCheckout" class="mt-5 text-xs leading-5 text-slate-400">No payment will be collected today. After the trial, choose a paid plan to continue using paid features.</p>
+            <p v-else class="mt-5 text-xs leading-5 text-slate-500">Your plan is activated only after PayMongo confirms a successful payment. FurniSync does not store card or wallet credentials.</p>
           </aside>
         </div>
       </main>
@@ -133,6 +141,7 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 const params = new URLSearchParams(window.location.search)
 const isPaymentReturn = computed(() => params.get('payment') === 'success')
+const isTrialCheckout = computed(() => params.get('trial') === '1')
 const loading = ref(true)
 const pageError = ref('')
 const paymentError = ref('')
@@ -175,23 +184,30 @@ const loadCheckout = async () => {
     const planKey = String(params.get('plan') || '').toLowerCase()
     if (!planKey || !storeId.value) throw new Error('Choose a subscription plan before opening checkout.')
 
-    const [plansResponse, profileResponse] = await Promise.all([
-      axiosClient.get('/api/public/subscription-plans'),
-      axiosClient.get('/api/profile'),
-    ])
+    const plansResponse = await axiosClient.get('/api/public/subscription-plans')
     const plans = plansResponse.data?.data || []
     selectedPlan.value = plans.find((plan: any) => String(plan.plan_key).toLowerCase() === planKey && plan.is_active !== false) || null
-    if (!selectedPlan.value || planKey === 'free' || planAmount.value <= 0) throw new Error('This paid subscription plan is not available.')
+    if (!selectedPlan.value || planKey === 'free' || (!isTrialCheckout.value && planAmount.value <= 0)) throw new Error('This subscription plan is not available.')
 
-    const profile = profileResponse.data?.data || {}
-    const employee = profile.employee || {}
-    const user = profile.user || {}
-    billingForm.address = employee.address || ''
-    billingForm.barangay = employee.barangay || ''
-    billingForm.city = employee.city || ''
-    billingForm.province = employee.province || ''
-    billingForm.phone_number = user.phone_number || employee.phone_number || ''
-    editingAddress.value = !billingAddress.value
+    if (isTrialCheckout.value) {
+      const store = (authStore.currentUser as any)?.store || authStore.currentUser as any || {}
+      const activeTrial = store.subscription_status === 'trial' && store.trial_ends_at && new Date(store.trial_ends_at) > new Date()
+      const eligible = activeTrial || (!store.trial_started_at && ['free', 'pending'].includes(String(store.subscription_status || '').toLowerCase()))
+      if (!eligible) throw new Error('This store has already used its free trial. Continue with the paid checkout instead.')
+    }
+
+    if (!isTrialCheckout.value) {
+      const profileResponse = await axiosClient.get('/api/profile')
+      const profile = profileResponse.data?.data || {}
+      const employee = profile.employee || {}
+      const user = profile.user || {}
+      billingForm.address = employee.address || ''
+      billingForm.barangay = employee.barangay || ''
+      billingForm.city = employee.city || ''
+      billingForm.province = employee.province || ''
+      billingForm.phone_number = user.phone_number || employee.phone_number || ''
+      editingAddress.value = !billingAddress.value
+    }
   } catch (error: any) {
     pageError.value = error?.response?.data?.message || error?.message || 'Unable to load subscription checkout.'
   } finally {
@@ -224,8 +240,26 @@ const saveBillingAddress = async (): Promise<boolean> => {
 }
 
 const subscribe = async () => {
-  if (!selectedPlan.value || !selectedMethod.value || paymentInitializing.value) return
+  if (!selectedPlan.value || (!isTrialCheckout.value && !selectedMethod.value) || paymentInitializing.value) return
   paymentError.value = ''
+
+  if (isTrialCheckout.value) {
+    paymentInitializing.value = true
+    try {
+      await axiosClient.put(`/api/stores/${storeId.value}/subscription`, {
+        subscription_tier: String(selectedPlan.value.plan_key).toLowerCase(),
+        setup_mode: 'trial',
+      })
+      await authStore.fetchCurrentUser({ reloadPermissions: true })
+      router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
+    } catch (error: any) {
+      paymentError.value = error?.response?.data?.message || error?.message || 'Unable to activate the free trial.'
+    } finally {
+      paymentInitializing.value = false
+    }
+    return
+  }
+
   if (!billingAddress.value) {
     editingAddress.value = true
     paymentError.value = 'Add and save your billing address before continuing.'

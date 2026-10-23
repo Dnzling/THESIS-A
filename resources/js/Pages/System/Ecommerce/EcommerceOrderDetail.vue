@@ -270,9 +270,7 @@
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-semibold text-slate-900">{{ item.title }}</p>
                 <p class="mt-1 text-sm text-slate-600">{{ formatTimelineDescription(item.description) }}</p>
-                <p class="mt-1 text-xs text-slate-400">
-                  {{ formatDateTime(item.created_at) }}<template v-if="item.actor && String(item.actor).toLowerCase() !== 'customer'"> &middot; {{ item.actor }}</template>
-                </p>
+                <p class="mt-1 text-xs text-slate-400">{{ formatDateTime(item.created_at) }}</p>
                 <div v-if="proofUrls(item).length" class="mt-3 flex flex-wrap gap-3">
                   <button v-for="proof in proofUrls(item)" :key="proof.url" type="button"
                     class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50"

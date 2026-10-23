@@ -51,6 +51,7 @@ use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 // ========== PUBLIC ROUTES ==========
 Route::prefix('auth')->group(function () {
     Route::middleware('throttle:login')->post('login', [AuthController::class, 'login']);
+    Route::middleware('throttle:login')->post('customer/login', [AuthController::class, 'customerLogin']);
     Route::middleware('throttle:login')->post('super-admin/login', [AuthController::class, 'superAdminLogin']);
     Route::middleware('throttle:login-with-clock-in')->post('login-with-clock-in', [AuthController::class, 'loginWithClockIn']);
     Route::middleware('throttle:register')->post('register', [AuthController::class, 'register']);

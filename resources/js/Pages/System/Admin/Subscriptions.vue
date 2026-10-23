@@ -36,6 +36,18 @@
               <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
             </template>
           </Column>
+          <Column header="Actions" :exportable="false" style="width: 7rem">
+            <template #body="{ data }">
+              <Button
+                label="Remove"
+                icon="pi pi-trash"
+                severity="danger"
+                text
+                size="small"
+                @click.stop="confirmRemovePlan(data)"
+              />
+            </template>
+          </Column>
         </DataTable>
       </template>
     </Card>
@@ -462,7 +474,7 @@ const queryParams = computed(() => ({
 }))
 
 const toTitle = (value: string | null | undefined) =>
-  String(value || 'unknown')
+  String(value || 'no plan')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
@@ -494,6 +506,7 @@ const subscriptionStatusSeverity = (status: string) => {
     case 'paid': return 'success'
     case 'overdue': return 'danger'
     case 'unpaid': return 'warning'
+    case 'unassigned': return 'secondary'
     default: return 'secondary'
   }
 }
@@ -527,6 +540,7 @@ const openStatusInfoDialog = (store: any) => {
 
 const subscriptionStatusLabel = (subscriptionStatus: string, daysRemaining: number | null, tier: string) => {
   const normalized = String(subscriptionStatus || '').toLowerCase()
+  if (normalized === 'unassigned') return 'No plan assigned'
   if (normalized === 'paid') {
     if (tier === 'free') return 'Free plan'
     if (daysRemaining === null || daysRemaining === undefined) return 'Paid'
@@ -781,6 +795,31 @@ const onPlanRowClick = (event: any) => {
   if (event?.data) {
     goToPlan(event.data)
   }
+}
+
+const confirmRemovePlan = (plan: any) => {
+  confirm.require({
+    header: 'Remove subscription plan?',
+    message: `Remove ${plan.name}? Stores currently assigned to this plan must be reassigned first.`,
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Remove Plan',
+    rejectLabel: 'Keep Plan',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      try {
+        await axiosClient.delete(`/api/admin/subscription-plans/${plan.id}`)
+        toast.add({ severity: 'success', summary: 'Plan removed', detail: `${plan.name} was removed.`, life: 3000 })
+        await loadPlans()
+      } catch (error: any) {
+        toast.add({
+          severity: 'error',
+          summary: 'Unable to remove plan',
+          detail: error?.response?.data?.message || 'The plan could not be removed.',
+          life: 5000,
+        })
+      }
+    },
+  })
 }
 
 watch(() => [filters.search, filters.tier, filters.status], () => {

@@ -143,7 +143,7 @@
       </header>
   
       <!-- Scrollable content -->
-      <main class="flex-1 overflow-y-auto p-5 bg-gray-50">
+      <main data-page-scroll-container class="flex-1 overflow-y-auto p-5 bg-gray-50">
         <slot />
       </main>
     </div>

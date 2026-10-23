@@ -13,17 +13,21 @@
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-base font-semibold text-slate-900 sm:text-lg">First Name</label>
-                <InputText v-model="form.fname" fluid placeholder="First name" autocomplete="given-name" />
+                <InputText :model-value="form.fname" fluid placeholder="First name" autocomplete="given-name" @update:model-value="form.fname = sanitizeName($event)" />
+                <small v-if="validationErrors.fname" class="text-xs text-red-600">{{ validationErrors.fname }}</small>
               </div>
               <div class="space-y-2">
                 <label class="text-base font-semibold text-slate-900 sm:text-lg">Last Name</label>
-                <InputText v-model="form.lname" fluid placeholder="Last name" autocomplete="family-name" />
+                <InputText :model-value="form.lname" fluid placeholder="Last name" autocomplete="family-name" @update:model-value="form.lname = sanitizeName($event)" />
+                <small v-if="validationErrors.lname" class="text-xs text-red-600">{{ validationErrors.lname }}</small>
               </div>
             </div>
   
             <div class="space-y-2">
               <label class="text-base font-semibold text-slate-900 sm:text-lg">Email</label>
-              <InputText v-model="form.email" fluid placeholder="Email address" autocomplete="email" />
+              <InputText v-model="form.email" type="email" fluid placeholder="Email address" autocomplete="email"
+                :class="{ 'p-invalid': validationErrors.email }" @blur="validateEmail" @input="validationErrors.email = ''" />
+              <small v-if="validationErrors.email" class="text-xs text-red-600">{{ validationErrors.email }}</small>
             </div>
   
             <div class="space-y-2">
@@ -131,6 +135,17 @@ const form = reactive({
   password: '',
   confirmPassword: '',
 })
+const validationErrors = reactive({ fname: '', lname: '', email: '' })
+const sanitizeName = (value: string) => String(value || '').replace(/[^\p{L}\p{M}\s'-]/gu, '').replace(/\s{2,}/g, ' ')
+const validateEmail = () => {
+  const email = form.email.trim()
+  validationErrors.email = !email
+    ? 'Email is required.'
+    : /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
+      ? ''
+      : 'Enter a valid email address.'
+  return !validationErrors.email
+}
 
 const passwordRules = [
   'at least 8 characters',
@@ -165,6 +180,13 @@ watch(
 
 async function submitRegister() {
   if (isSubmitting.value) return
+
+  form.fname = sanitizeName(form.fname).trim()
+  form.lname = sanitizeName(form.lname).trim()
+  validationErrors.fname = form.fname ? '' : 'First name is required.'
+  validationErrors.lname = form.lname ? '' : 'Last name is required.'
+  const emailValid = validateEmail()
+  if (validationErrors.fname || validationErrors.lname || !emailValid) return
 
   if (!form.fname || !form.lname || !form.email || !form.password || !form.confirmPassword || !form.birthday) {
     toast.add({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all required fields.', life: 3000 })

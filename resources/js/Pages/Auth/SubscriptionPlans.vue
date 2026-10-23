@@ -3,7 +3,7 @@
     <div class="relative overflow-hidden py-14">
       <div class="mx-auto max-w-7xl px-4 text-center lg:px-8">
         <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">Simple plans for modern furniture teams.</h1>
-        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Pick the unlimited-duration Free plan, or choose a paid plan and complete payment securely on PayMongo.</p>
+        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Try any plan free for one month. No payment is collected during the trial.</p>
 
         <div class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <span class="text-sm font-medium" :class="!isYearly ? 'text-slate-900' : 'text-orange-500'">Monthly</span>
@@ -21,7 +21,7 @@
           <p class="mt-2 text-slate-600">Please wait while we fetch the latest offers.</p>
         </div>
 
-        <div class="grid gap-6 lg:grid-cols-4">
+        <div class="flex flex-col gap-6 sm:grid sm:grid-cols-2 lg:grid-cols-3">
           <article v-for="plan in visiblePlans" :key="plan.id" class="relative rounded-3xl border bg-white p-8 shadow-lg shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-xl" :class="plan.is_featured ? 'border-2 border-orange-500 ring-1 ring-orange-100' : 'border-slate-200'">
             <div v-if="plan.is_featured" class="absolute right-6 top-6 rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white">Most Popular</div>
             <div class="space-y-1 pr-24">
@@ -36,8 +36,8 @@
               Billed {{ isYearly ? 'yearly' : 'monthly' }}
               <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
             </p>
-            <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-orange-500 px-5 py-3 font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600" @click="plan.plan_key === 'free' || Number(plan.monthly_price || 0) === 0 ? chooseFreeTrial(plan) : openConfirmation(plan)">
-              {{ plan.plan_key === 'free' || Number(plan.monthly_price || 0) === 0 ? 'Use Free Plan' : 'Choose Plan' }}
+            <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-orange-500 px-5 py-3 font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600" @click="selectPlan(plan)">
+              {{ canStartTrial ? 'Start 1-Month Free Trial' : 'Choose Plan' }}
             </button>
             <div class="mt-6 space-y-3">
               <div v-for="feature in plan.features || []" :key="feature" class="flex items-start gap-3 text-sm text-slate-700">
@@ -106,28 +106,27 @@ const loadPlans = async () => {
   }
 }
 
-const chooseFreeTrial = async (plan: any) => {
-  const storeId = Number(storeIdFromQuery.value || (authStore.currentUser as any)?.store_id || 0)
-  if (!storeId) {
-    router.visit('/store/registration')
-    return
-  }
-  await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-    subscription_tier: String(plan.plan_key || 'free').toLowerCase(),
-    setup_mode: 'free',
-  })
-  await authStore.fetchCurrentUser({ reloadPermissions: true })
-  router.visit('/store/index')
-}
+const subscriptionStore = computed(() => {
+  const user: any = authStore.currentUser
+  return user?.store || user || {}
+})
 
-const openConfirmation = (plan: any) => {
-  const storeId = Number(storeIdFromQuery.value || (authStore.currentUser as any)?.store_id || 0)
+const canStartTrial = computed(() => {
+  const store = subscriptionStore.value
+  const activeTrial = store.subscription_status === 'trial' && store.trial_ends_at && new Date(store.trial_ends_at) > new Date()
+  return Boolean(activeTrial || (!store.trial_started_at && ['free', 'pending'].includes(String(store.subscription_status || '').toLowerCase())))
+})
+
+const selectPlan = async (plan: any) => {
+  const user: any = authStore.currentUser
+  const storeId = Number(storeIdFromQuery.value || user?.store_id || user?.store?.id || 0)
   if (!storeId) {
     router.visit('/store/registration')
     return
   }
 
-  router.visit(`/subscription-checkout?plan=${encodeURIComponent(plan.plan_key)}&cycle=${isYearly.value ? 'yearly' : 'monthly'}&store_id=${storeId}`)
+  const trialQuery = canStartTrial.value ? '&trial=1' : ''
+  router.visit(`/subscription-checkout?plan=${encodeURIComponent(plan.plan_key)}&cycle=${isYearly.value ? 'yearly' : 'monthly'}&store_id=${storeId}${trialQuery}`)
 }
 
 onMounted(async () => {

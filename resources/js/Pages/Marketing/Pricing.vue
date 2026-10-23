@@ -160,7 +160,7 @@ const faqs = [
   },
   {
     q: 'Is there a free trial?',
-    a: 'The Simple plan includes a 14-day free trial. The Unlimited plan is direct payment and activates full modules immediately.'
+    a: 'Each store can start a one-month free trial on an active plan once. No payment is collected during the trial.'
   },
   {
     q: 'What payment methods do you accept?',

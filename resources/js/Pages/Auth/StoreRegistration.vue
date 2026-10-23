@@ -5,7 +5,7 @@
         <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-100 text-orange-600"><i class="pi pi-shop text-2xl"></i></div>
         <div class="portal-brand text-2xl text-orange-500">FURNISYNC</div>
         <h2 class="mt-3 text-xl font-semibold text-slate-900">Welcome to FurniSync</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-600">Set up your store to start managing products, your team, and sales. Your free trial begins when your store is created.</p>
+        <p class="mt-2 text-sm leading-6 text-slate-600">Set up your store, then choose the plan that fits your business. Your one-month free trial starts after you select a plan.</p>
         <Button label="Set Up My Store" severity="warn" class="mt-6 w-full" @click="welcomeVisible = false" />
       </div>
     </Dialog>
@@ -13,11 +13,11 @@
       <div class="mb-8 text-center">
         
         <h1 class="mt-4 text-3xl font-bold sm:text-4xl">Create your store</h1>
-        <p class="mt-3 text-slate-600">Create your store and begin a one-month free trial. No payment required.</p>
+        <p class="mt-3 text-slate-600">Create your store first. You can choose a plan and start its one-month free trial next.</p>
       </div>
 
       <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60">
-        <div class="mb-5 rounded-xl bg-orange-50 px-4 py-3 text-sm text-orange-800">Your store code is generated automatically. No plan or payment is needed today.</div>
+        <div class="mb-5 rounded-xl bg-orange-50 px-4 py-3 text-sm text-orange-800">Your store code is generated automatically. After setup, choose a plan to begin its one-month free trial. No payment is collected during the trial.</div>
         <div class="grid gap-5 md:grid-cols-2">
           <div class="md:col-span-2">
             <h2 class="mb-3 text-base font-semibold text-slate-800">Store information</h2>
@@ -86,7 +86,7 @@
         </div>
 
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-          <Button label="Create Store & Start Trial" severity="warn" :loading="submitting" @click="submitStore" data-testid="save-store" />
+          <Button label="Create Store & Choose a Plan" severity="warn" :loading="submitting" @click="submitStore" data-testid="save-store" />
         </div>
       </div>
     </div>
@@ -231,7 +231,7 @@ const submitStore = async () => {
     }
 
     await authStore.fetchCurrentUser({ reloadPermissions: true })
-    router.visit('/store/index')
+    router.visit(`/subscription-plans?store_id=${storeId}`)
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || error?.message || 'Unable to save store.'
   } finally {
@@ -244,7 +244,10 @@ onMounted(async () => {
   if (!(authStore.currentUser as any)?.store_id) {
     await loadCities()
   } else {
-    router.visit('/store/index')
+    const user = authStore.currentUser as any
+    router.visit(user?.store?.subscription_status === 'pending'
+      ? `/subscription-plans?store_id=${user.store_id}`
+      : '/store/index')
   }
 })
 

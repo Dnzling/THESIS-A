@@ -1,25 +1,32 @@
 <template>
-  <div class="space-y-5 p-4 md:p-6">
+  <div class="space-y-4 p-4 md:p-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 class="text-xl font-semibold text-slate-900">Benefit Requests</h1><p class="text-sm text-slate-500">Review employee benefit use and record the final covered amount.</p></div>
+      <div><h1 class="text-xl font-bold text-slate-900">Benefit Requests</h1><p class="mt-1 text-xs text-slate-500">Review employee benefit use and record the final covered amount.</p></div>
       <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="load" />
     </div>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #content>
-        <div class="mb-4 flex gap-2"><Select v-model="status" :options="statuses" optionLabel="label" optionValue="value" class="w-48" @change="load" /></div>
-        <DataTable :value="rows" :loading="loading" rowHover responsiveLayout="scroll" class="p-datatable-sm">
-          <Column header="Date"><template #body="{ data }">{{ date(data.created_at) }}</template></Column>
-          <Column header="Employee"><template #body="{ data }">{{ data.employee?.user?.fname }} {{ data.employee?.user?.lname }}</template></Column>
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <Select v-model="status" :options="statuses" optionLabel="label" optionValue="value" size="small" class="w-full text-xs sm:w-52" @change="changeStatus" />
+          <Button v-if="status" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="clearStatus" />
+          <span class="ml-auto text-xs text-slate-500">{{ total }} requests</span>
+        </div>
+        <div v-if="loading" class="space-y-2">
+          <div v-for="row in 5" :key="row" class="grid grid-cols-6 gap-3"><Skeleton v-for="cell in 6" :key="cell" height="2.5rem" class="rounded-md" /></div>
+        </div>
+        <DataTable v-else :value="rows" rowHover responsiveLayout="scroll" class="p-datatable-sm text-xs">
+          <Column field="created_at" header="Date" sortable><template #body="{ data }">{{ date(data.created_at) }}</template></Column>
+          <Column header="Employee"><template #body="{ data }"><span class="font-medium text-slate-800">{{ employeeName(data) }}</span></template></Column>
           <Column field="deduction_type.name" header="Benefit" />
           <Column field="provider" header="Provider" />
           <Column header="Requested"><template #body="{ data }">{{ money(data.requested_amount) }}</template></Column>
           <Column header="Approved"><template #body="{ data }">{{ data.approved_amount ? money(data.approved_amount) : '—' }}</template></Column>
-          <Column header="Status"><template #body="{ data }"><Badge :value="data.status === 'completed' ? 'Receipt submitted' : data.status" :severity="severity(data.status)" /></template></Column>
-          <Column header="Action"><template #body="{ data }"><Button label="View" icon="pi pi-eye" size="small" outlined @click="selected = data; dialog = true; formError = ''" /></template></Column>
+          <Column header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="severity(data.status)" /></template></Column>
+          <Column header="Actions"><template #body="{ data }"><Button label="View" icon="pi pi-eye" size="small" outlined rounded @click="selected = data; dialog = true; formError = ''" /></template></Column>
           <template #empty><div class="py-10 text-center text-slate-500">No benefit requests found.</div></template>
         </DataTable>
-        <div v-if="total > 0" class="mt-4 flex items-center justify-between text-sm text-slate-500"><span>{{ total }} requests</span><div class="flex gap-2"><Button icon="pi pi-chevron-left" text :disabled="page <= 1" @click="page--; load()" /><span class="py-2">{{ page }}</span><Button icon="pi pi-chevron-right" text :disabled="page >= lastPage" @click="page++; load()" /></div></div>
+        <div v-if="total > 0 && !loading" class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>Page {{ page }} of {{ lastPage }}</span><div class="flex gap-2"><Button icon="pi pi-chevron-left" text rounded size="small" :disabled="page <= 1" @click="page--; load()" /><Button icon="pi pi-chevron-right" text rounded size="small" :disabled="page >= lastPage" @click="page++; load()" /></div></div>
       </template>
     </Card>
     <Dialog v-model:visible="dialog" modal header="Benefit request" :style="{ width: 'min(38rem, 94vw)' }">
@@ -60,15 +67,18 @@ import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
 import Textarea from 'primevue/textarea'
 import hrService from '@/services/hr.services'
 
-const rows = ref<any[]>([]), loading = ref(false), saving = ref(false), error = ref(''), formError = ref('')
+const rows = ref<any[]>([]), loading = ref(true), saving = ref(false), error = ref(''), formError = ref('')
 const selected = ref<any>(null), dialog = ref(false), page = ref(1), total = ref(0), lastPage = ref(1)
 const status = ref(''), approvedAmount = ref<number | null>(null), usedAmount = ref<number | null>(null), companyPaymentAmount = ref<number | null>(0), reviewNotes = ref('')
 const statuses = [{ label: 'All statuses', value: '' }, { label: 'Pending', value: 'pending' }, { label: 'Approved', value: 'approved' }, { label: 'Receipt submitted', value: 'completed' }, { label: 'Settled', value: 'settled' }, { label: 'Rejected', value: 'rejected' }]
 const money = (v: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 const date = (v: string) => v ? new Date(v).toLocaleDateString('en-PH') : '—'
+const employeeName = (row: any) => [row.employee?.user?.fname, row.employee?.user?.lname].filter(Boolean).join(' ') || 'Employee'
+const formatStatus = (value: string) => value === 'completed' ? 'Receipt Submitted' : String(value || 'Unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
 const assetUrl = (path: string) => `/storage/${path}`
 const severity = (v: string) => v === 'settled' ? 'success' : v === 'rejected' ? 'danger' : v === 'pending' ? 'warn' : 'info'
 const load = async () => {
@@ -77,6 +87,8 @@ const load = async () => {
   catch (e: any) { error.value = e.response?.data?.message || 'Unable to load requests.' }
   finally { loading.value = false }
 }
+const changeStatus = () => { page.value = 1; load() }
+const clearStatus = () => { status.value = ''; page.value = 1; load() }
 const review = async (decision: 'approved' | 'rejected') => {
   if (decision === 'approved' && (!approvedAmount.value || approvedAmount.value <= 0)) { formError.value = 'Enter an approved amount.'; return }
   if (decision === 'rejected' && !reviewNotes.value.trim()) { formError.value = 'Enter a rejection reason.'; return }

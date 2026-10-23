@@ -112,12 +112,18 @@
             </template>
           </Column>
   
-          <Column header="Actions" style="width: 6rem">
+          <Column header="Actions" style="width: 11rem">
             <template #body="{ data }">
               <div class="flex items-center gap-2">
                 <Button v-if="data.source_type === 'pickup' && data.can_create_delivery && canManageDeliveries"
                   label="Assign" icon="pi pi-user-plus" severity="warn" size="small" 
                   @click="assignPickup(data)" />
+                <Button v-if="data.source_type === 'sales' && data.can_create_delivery && canManageDeliveries"
+                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
+                  @click="assignSalesDelivery(data)" />
+                <Button v-if="data.source_type === 'ecommerce' && data.can_create_delivery && canManageDeliveries"
+                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
+                  @click="assignEcommerceDelivery(data)" />
                 <Button v-if="data.source_type === 'replacement' && data.can_create_delivery && canManageDeliveries"
                   label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
                   @click="openDetail(data)" />
@@ -271,6 +277,21 @@ const openDetail = (order: any) => {
 
 const assignPickup = (order: any) => {
   router.push({ name: 'logistics.supplier-pickups.assign', params: { id: order.order_id } })
+}
+
+const assignSalesDelivery = (order: any) => {
+  assignOrderToTrip(order, 'sales')
+}
+
+const assignEcommerceDelivery = (order: any) => {
+  assignOrderToTrip(order, 'ecommerce')
+}
+
+const assignOrderToTrip = (order: any, source: 'sales' | 'ecommerce') => {
+  router.push({
+    name: 'logistics.trips.create',
+    query: { source, order_id: String(order.order_id) },
+  })
 }
 
 const deliverySeverity = (status: string) => {

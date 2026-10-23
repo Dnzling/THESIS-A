@@ -128,8 +128,8 @@ class StoreSettingsController extends Controller
             'operating_hours' => is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null,
             'fulfillment_windows' => $store ? app(\App\Services\Ecommerce\FulfillmentWindowService::class)->settings($store) : null,
             'subscription' => [
-                'tier' => $subscriptionPlan?->plan_key ?? 'free',
-                'plan_label' => $subscriptionPlan?->name ?? 'Free',
+                'tier' => $subscriptionPlan?->plan_key,
+                'plan_label' => $subscriptionPlan?->name ?? 'No plan',
                 'ends_at' => $endsAt?->toDateString(),
                 'modules' => $enabledModules,
             ],

@@ -683,6 +683,7 @@ class StockTransferController extends Controller
                 $inventory->quantity_available -= $item->approved_quantity;
                 // Keep on-hand synchronized to available as single operational stock value.
                 $inventory->quantity_on_hand = $inventory->quantity_available;
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
                 $inventory->updateStockStatus();
 
@@ -826,6 +827,7 @@ class StockTransferController extends Controller
                 // Keep on-hand synchronized to available as single operational stock value.
                 $inventory->quantity_on_hand = $inventory->quantity_available;
                 $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
                 $inventory->updateStockStatus();
 

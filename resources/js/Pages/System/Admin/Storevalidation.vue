@@ -2,18 +2,12 @@
   <div class="mx-auto max-w-7xl space-y-6 pb-10">
     
 
-    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <button v-for="card in statusCards" :key="card.value" type="button"
-        class="group rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-        :class="activeView === card.value ? card.activeClass : 'border-slate-200'" @click="activeView = card.value">
-        <div class="flex items-center justify-between">
-          <span class="flex h-10 w-10 items-center justify-center rounded-xl" :class="card.iconClass">
-            <i :class="card.icon"></i>
-          </span>
-          <span class="text-2xl font-bold text-slate-900">{{ card.count }}</span>
-        </div>
-        <p class="mt-4 font-semibold text-slate-800">{{ card.label }}</p>
-        <p class="mt-1 text-xs text-slate-500">{{ card.description }}</p>
+    <section class="flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-slate-200 px-1">
+      <button v-for="filter in statusCards" :key="filter.value" type="button"
+        class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors"
+        :class="activeView === filter.value ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-600 hover:text-orange-600'"
+        :aria-pressed="activeView === filter.value" @click="activeView = filter.value">
+        {{ filter.label }}
       </button>
     </section>
 
@@ -150,10 +144,10 @@ const filteredStores = computed(() => {
 })
 
 const statusCards = computed(() => [
-  { value: 'pending', label: 'Pending review', description: 'Applications needing a decision', count: pendingStores.value.length, icon: 'pi pi-clock', iconClass: 'bg-amber-100 text-amber-700', activeClass: 'border-amber-400 ring-2 ring-amber-100' },
-  { value: 'approved', label: 'Approved', description: 'Verified stores ready to operate', count: approvedStores.value.length, icon: 'pi pi-check-circle', iconClass: 'bg-emerald-100 text-emerald-700', activeClass: 'border-emerald-400 ring-2 ring-emerald-100' },
-  { value: 'rejected', label: 'Rejected', description: 'Applications that need correction', count: rejectedStores.value.length, icon: 'pi pi-times-circle', iconClass: 'bg-rose-100 text-rose-700', activeClass: 'border-rose-400 ring-2 ring-rose-100' },
-  { value: 'all', label: 'All applications', description: 'Complete verification history', count: allStores.value.length, icon: 'pi pi-building', iconClass: 'bg-sky-100 text-sky-700', activeClass: 'border-sky-400 ring-2 ring-sky-100' },
+  { value: 'pending', label: 'Pending review' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: 'All applications' },
 ])
 
 const activeTitle = computed(() => statusCards.value.find((item) => item.value === activeView.value)?.label || 'Applications')

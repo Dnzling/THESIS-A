@@ -424,9 +424,8 @@ export const useAuthStore = defineStore('auth', () => {
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
             document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
 
-            // Load RBAC navigation immediately for roles that rely on DB permissions.
-            // (Fixes initial load showing only the account/profile nav until a reload.)
-            const shouldLoadRbac = !customerUser && normalizedRole !== 'super_admin' && !normalizedRole.includes('supplier')
+            // Load navigation before redirecting so supplier portals do not mount with an empty menu.
+            const shouldLoadRbac = !customerUser && normalizedRole !== 'super_admin'
             if (shouldLoadRbac) {
                 permissionsLoaded.value = false
                 await loadPermissions()
@@ -488,6 +487,27 @@ export const useAuthStore = defineStore('auth', () => {
                 { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
             )
         })
+    }
+
+    const establishAuthenticatedSession = async (accessToken: string, userData: User) => {
+        token.value = accessToken
+        user.value = userData
+        permissions.value = []
+        navigation.value = []
+        systemModules.value = []
+        permissionsLoaded.value = true
+        isLoadingPermissions.value = false
+        permissionsPromise = null
+
+        localStorage.setItem('auth_token', accessToken)
+        localStorage.setItem('user', JSON.stringify(userData))
+        localStorage.removeItem('permissions')
+        localStorage.removeItem('navigation')
+        localStorage.removeItem('system_modules')
+        axios.defaults.headers.common.Authorization = `Bearer ${accessToken}`
+        document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
+
+        return userData
     }
 
     /**
@@ -633,6 +653,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Auth Actions
         login,
+        establishAuthenticatedSession,
         logout,
         fetchCurrentUser,
         initialize,

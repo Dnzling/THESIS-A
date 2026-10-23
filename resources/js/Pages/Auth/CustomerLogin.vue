@@ -108,12 +108,7 @@ async function submitLogin() {
 
   isSubmitting.value = true
   try {
-    await authStore.login(form.login, form.password)
-    if (!authStore.isCustomer) {
-      await authStore.logout()
-      toast.add({ severity: 'error', summary: 'Access denied', detail: 'Customer access only.', life: 3500 })
-      return
-    }
+    await authStore.login(form.login, form.password, '/api/auth/customer/login')
 
     if (rememberMe.value) {
       localStorage.setItem('rememberedCustomerLogin', form.login)

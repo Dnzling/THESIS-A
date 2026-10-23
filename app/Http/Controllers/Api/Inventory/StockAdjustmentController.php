@@ -476,6 +476,7 @@ class StockAdjustmentController extends Controller
             $inventory->last_stock_count_date = $adjustment->adjustment_date;
             $inventory->last_counted_quantity = $item->actual_quantity;
             $inventory->last_counted_by = $approvedBy;
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
             $inventory->updateStockStatus();

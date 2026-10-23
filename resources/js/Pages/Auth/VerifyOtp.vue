@@ -101,6 +101,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
 // OTP handling
 const otpDigits = ref<string[]>(Array(6).fill(''))
@@ -113,6 +114,7 @@ const resendCooldown = ref(0)
 const resendCooldownSeconds = 60
 const accessToken = ref<string | null>(null)
 let resendInterval: ReturnType<typeof setInterval> | null = null
+const authStore = useAuthStore()
 
 // Compute full OTP from digits
 const fullOtp = computed(() => otpDigits.value.join(''))
@@ -228,43 +230,39 @@ const verifyOtp = async () => {
       const verifiedContext = otpContext.value
       const verifiedCustomer = verifiedContext === 'customer'
       const verifiedProfile = verifiedContext === 'profile_email_change'
-      const verifiedSupplier = verifiedContext === 'supplier'
+      const verifiedBusinessRegistration = verifiedContext === 'business'
 
       // Clear OTP context once verified.
       localStorage.removeItem('otp_context')
 
-      // Remove axios auth header since token is no longer needed
+      // Replace the temporary registration token with the authenticated token.
       delete axios.defaults.headers.common['Authorization']
 
-      const nextPath = String(response.data.next_path || '')
-      const requiresLogin = Boolean(response.data.requires_login ?? true)
-
-      if (verifiedCustomer) {
-        setTimeout(() => {
-          localStorage.removeItem('register_token')
-          router.get('/customer/login', {
-            registered: 'true',
-            email: response.data.user?.email || ''
-          })
-        }, 1200)
-      } else if (verifiedProfile) {
-        setTimeout(() => {
-          localStorage.removeItem('register_token')
-          router.visit('/hr/profile')
-        }, 1200)
-      } else if (verifiedSupplier) {
-        setTimeout(() => {
-          localStorage.removeItem('register_token')
-          router.visit('/login')
-        }, 1200)
-      } else {
-        setTimeout(() => {
-          localStorage.removeItem('register_token')
-          router.get('/login', {
-            registered: 'true',
-          })
-        }, 1200)
+      const token = String(response.data.access_token || '')
+      const user = response.data.user
+      if (!token || !user?.id || !user?.role) {
+        throw new Error('Verification succeeded, but we could not start your session. Please sign in once to continue.')
       }
+
+      await authStore.establishAuthenticatedSession(token, user)
+      localStorage.removeItem('register_token')
+
+      const needsStoreSetup = ['owner', 'store_owner'].includes(String(user.role).toLowerCase()) && !user.store_id
+      if (!verifiedCustomer && !needsStoreSetup) {
+        await authStore.fetchCurrentUser({ reloadPermissions: true })
+      }
+
+      const destination = verifiedCustomer
+        ? '/shop'
+        : verifiedBusinessRegistration && needsStoreSetup
+          ? '/store/registration'
+          : verifiedProfile
+            ? '/hr/profile'
+            : needsStoreSetup
+              ? '/store/registration'
+              : authStore.defaultRoute || String(response.data.next_path || '/login')
+
+      router.visit(destination)
     } else {
       // Handle verification failure from API
       errorMessage.value = response.data.message || 'Invalid verification code. Please try again.'

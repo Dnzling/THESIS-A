@@ -154,6 +154,7 @@ class StockReturnService
                 // Update branch inventory (reduce quantity)
                 $branchInventory = $item->branchInventory;
                 if ($branchInventory) {
+                    $branchInventory->suppressAutomaticTransactionLog();
                     $branchInventory->decrement('quantity_on_hand', $item->quantity_returned);
                     $branchInventory->decrement('quantity_available', $item->quantity_returned);
                 }
@@ -225,6 +226,7 @@ class StockReturnService
                     ]);
 
                     // Add quantity to destination branch
+                    $destinationInventory->suppressAutomaticTransactionLog();
                     $destinationInventory->increment('quantity_on_hand', $item->quantity_returned);
                     $destinationInventory->increment('quantity_available', $item->quantity_returned);
 

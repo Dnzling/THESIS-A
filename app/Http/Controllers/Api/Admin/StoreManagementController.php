@@ -81,6 +81,7 @@ class StoreManagementController extends Controller
         }
 
         $query = Store::query()
+            ->with('verification:id,store_id,submitted_at,reviewed_at,rejection_reason')
             ->withCount([
                 'users',
                 'products',
@@ -134,6 +135,7 @@ class StoreManagementController extends Controller
 
         $store->load([
             'products:id,store_id,sku,product_name,is_active,cost_price,created_at',
+            'verification:id,store_id,submitted_at,reviewed_at,rejection_reason',
         ]);
 
         $store->loadCount([
@@ -233,6 +235,14 @@ class StoreManagementController extends Controller
         $contactNumber = $this->read($store, ['contact_number', 'phone', 'mobile']);
         $city = $this->read($store, ['city', 'municipality']);
         $address = $this->read($store, ['address', 'street_address']);
+        $displayStatus = (string) $store->status;
+        $verification = $store->verification;
+
+        if ($verification?->reviewed_at && $verification->rejection_reason) {
+            $displayStatus = 'rejected';
+        } elseif (!$store->isVerified() && !in_array($displayStatus, ['suspended', 'banned', 'inactive', 'deactivated'], true)) {
+            $displayStatus = 'pending';
+        }
 
         return [
             'id' => $store->id,
@@ -242,7 +252,7 @@ class StoreManagementController extends Controller
             'contact_number' => $contactNumber,
             'city' => $city,
             'address' => $address,
-            'status' => $store->status,
+            'status' => $displayStatus,
             'subscription_tier' => $store->subscription_tier,
             'subscription_ends_at' => optional($store->subscription_ends_at)->toDateTimeString(),
             'users_count' => (int) ($store->users_count ?? 0),
