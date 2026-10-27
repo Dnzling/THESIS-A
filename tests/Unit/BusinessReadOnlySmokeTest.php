@@ -56,6 +56,9 @@ class BusinessReadOnlySmokeTest extends TestCase
         $this->getJson('/api/ecommerce/products/active-stock?per_page=1')
             ->assertOk()->assertJsonPath('success', true);
         $this->getJson('/api/ecommerce/categories/active-stock')->assertOk();
+        $this->getJson('/api/ecommerce/categories')
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     public function test_public_product_search_is_available(): void

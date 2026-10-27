@@ -37,6 +37,7 @@
                     size="small"
                     severity="secondary"
                     outlined
+
                     @click="toggleSelectAll(group.store_id)"
                   />
                   <Button
@@ -65,7 +66,7 @@
                   </div>
                   <Button v-if="item.is_customizable" :label="item.customization_request ? 'Edit customization' : 'Customize this item'" icon="pi pi-palette" size="small" text severity="warn" class="mt-2" @click="openCustomization(item)" />
                   <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                    <InputNumber :modelValue="Number(item.quantity)" showButtons buttonLayout="horizontal" :step="1" :min="1" class="!w-28 max-w-full" inputClass="!w-10 min-w-0 text-center" @update:modelValue="(value) => updateQty(group.store_id, item, Number(value || 1))">
+                    <InputNumber :modelValue="Number(item.quantity)" showButtons buttonLayout="horizontal" fluid :step="1" :min="1" inputClass="!w-10 min-w-0 text-center" @update:modelValue="(value) => updateQty(group.store_id, item, Number(value || 1))">
                       <template #incrementbuttonicon><span class="pi pi-plus" /></template>
                       <template #decrementbuttonicon><span class="pi pi-minus" /></template>
                     </InputNumber>

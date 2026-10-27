@@ -809,7 +809,6 @@ class EcommerceController extends Controller
             ]));
 
         $reviewCollection->transform(function (EcommerceProductReview $review) use ($replyMap) {
-            $name = trim(($review->user?->fname ?? '') . ' ' . ($review->user?->lname ?? ''));
             $reply = $replyMap->get(implode(':', [
                 (int) $review->order_id,
                 (int) $review->product_id,
@@ -831,7 +830,10 @@ class EcommerceController extends Controller
                     : null,
                 'store_reply' => $reply?->reply,
                 'replied_at' => $reply?->replied_at,
-                'customer_name' => $name !== '' ? $name : 'Customer',
+                'customer_name' => $this->maskedReviewCustomerName(
+                    $review->user?->fname,
+                    $review->user?->lname
+                ),
                 'created_at' => $review->created_at,
             ];
         });
@@ -939,6 +941,22 @@ class EcommerceController extends Controller
                 'reviews' => $reviews,
             ],
         ]);
+    }
+
+    private function maskedReviewCustomerName(?string $firstName, ?string $lastName): string
+    {
+        $firstName = trim((string) $firstName);
+        $lastName = trim((string) $lastName);
+
+        if ($firstName === '') {
+            return 'Customer';
+        }
+
+        if ($lastName === '') {
+            return $firstName;
+        }
+
+        return $firstName.' '.mb_strtoupper(mb_substr($lastName, 0, 1)).'***';
     }
 
     public function getCart()
@@ -1781,7 +1799,21 @@ class EcommerceController extends Controller
             })
             ->filter(fn ($request) => $request !== '');
 
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests) {
+        $resumedExistingOrder = false;
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests, &$resumedExistingOrder) {
+            EcommerceCart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+
+            $existingOrder = $this->findResumableEcommerceOrder(
+                (int) $user->id,
+                (int) $cart->id,
+                (int) $cart->store_id,
+                $itemsForCheckout->pluck('id')->map(fn ($id) => (int) $id)->all()
+            );
+            if ($existingOrder) {
+                $resumedExistingOrder = true;
+                return $existingOrder;
+            }
+
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
@@ -1955,6 +1987,10 @@ class EcommerceController extends Controller
             return $order->fresh('items');
         });
 
+        if ($resumedExistingOrder) {
+            return $this->resumableOrderResponse($order);
+        }
+
         try {
             $customerItems = $order->relationLoaded('items') ? $order->items : collect();
             $notifyOrderOnce = function (int $recipientId, string $module, array $payload) use ($order): void {
@@ -2024,6 +2060,56 @@ class EcommerceController extends Controller
             'success' => true,
             'message' => 'Order placed successfully.',
             'data' => $order->fresh(['assignedBranch:id,name,branch_code,city,province,latitude,longitude']),
+        ]);
+    }
+
+    private function findResumableEcommerceOrder(int $userId, int $cartId, int $storeId, array $cartItemIds): ?EcommerceOrder
+    {
+        sort($cartItemIds);
+
+        return EcommerceOrder::query()
+            ->where('user_id', $userId)
+            ->where('store_id', $storeId)
+            ->where('pending_cart_id', $cartId)
+            ->whereIn('payment_method', ['card', 'e_wallet'])
+            ->whereIn('payment_status', ['unpaid', 'failed'])
+            ->whereNotIn('status', ['cancelled', 'canceled'])
+            ->whereNotNull('pending_snapshot')
+            ->latest('id')
+            ->limit(10)
+            ->get()
+            ->first(function (EcommerceOrder $order) use ($cartItemIds) {
+                $snapshot = (array) ($order->pending_snapshot ?? []);
+                return $this->paymentSnapshotMatchesCartItems($snapshot, $cartItemIds);
+            });
+    }
+
+    private function paymentSnapshotMatchesCartItems(array $snapshot, array $cartItemIds): bool
+    {
+        if (empty($snapshot['stock_reserved']) || !is_array($snapshot['items'] ?? null)) {
+            return false;
+        }
+
+        $expectedItemIds = array_map('intval', $cartItemIds);
+        sort($expectedItemIds);
+        $snapshotItemIds = collect($snapshot['items'])
+            ->pluck('cart_item_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        return $snapshotItemIds === $expectedItemIds;
+    }
+
+    private function resumableOrderResponse(EcommerceOrder $order): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Continue payment for your existing order.',
+            'data' => $order->fresh(['assignedBranch:id,name,branch_code,city,province,latitude,longitude']),
+            'resume_payment' => true,
         ]);
     }
 

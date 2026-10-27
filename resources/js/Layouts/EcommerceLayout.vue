@@ -3,7 +3,8 @@
   <div class="min-h-screen bg-linear-to-b from-[#e0e7f5] to-[#f6f9fd]">
     <Toast />
     <ConfirmDialog />
-    <header class="sticky top-0 z-20 hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
+    <div class="sticky top-0 z-30">
+      <header class="hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
       <div
         class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2 md:px-4">
         <button link severity="secondary" @click="router.push({name: 'ecommerce.home'})"
@@ -92,9 +93,9 @@
           </div>
         </div>
       </div>
-    </header>
+      </header>
 
-    <div class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 px-3 py-2 backdrop-blur-sm md:hidden">
+      <div class="border-b border-slate-200/70 bg-white/95 px-3 py-2 backdrop-blur-sm md:hidden">
       <div class="mb-2 flex items-center justify-between gap-2">
         <button type="button" class="min-w-0 rounded-lg text-left" aria-label="Go to shop home"
           @click="router.push({ name: 'ecommerce.home' })">
@@ -134,7 +135,7 @@
         <Button label="Products" text severity="secondary" size="small" @click="toggleBrowse('products')" />
         <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
       </div>
-    </div>
+      </div>
 
     <div v-if="mobileSearchOpen" class="fixed inset-0 z-[100] flex flex-col bg-white md:hidden" role="dialog" aria-modal="true" aria-label="Search products">
       <div class="flex items-center gap-2 border-b border-slate-200 px-3 py-3">
@@ -155,27 +156,28 @@
       </div>
     </div>
 
-    <section v-if="browsePanel" class="relative z-10 border-b border-slate-200 bg-white px-4 py-4 shadow-sm">
-      <div class="mx-auto max-w-7xl">
+      <section v-if="browsePanel" class="absolute inset-x-0 top-full max-h-[calc(100vh-8rem)] overflow-y-auto border-b border-slate-200 bg-white px-4 py-4 shadow-xl">
+      <div class="mx-auto max-w-7xl rounded-2xl">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-slate-900">{{ browsePanel === 'rooms' ? 'Shop by room' : 'Explore products' }}</h2>
           <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close browse panel" @click="browsePanel = ''" />
         </div>
         <div v-if="browsePanel === 'products'" class="space-y-3">
           <div class="flex flex-wrap gap-2">
+            <Button label="All Categories" severity="warn" outlined size="small" @click="openBrowseRoute('ecommerce.categories')" />
             <Button label="New Products" severity="warn" outlined size="small" @click="openBrowseRoute('ecommerce.new-products')" />
             <Button label="Trending Products" severity="warn" outlined size="small" @click="openBrowseRoute('ecommerce.trending.view')" />
           </div>
-          <div class="flex gap-2 overflow-x-auto pb-2">
+          <div class="flex flex-wrap gap-2">
             <button v-for="category in browseCategories" :key="category.id" type="button"
-              class="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:border-orange-400"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:border-orange-400"
               @click="openBrowseCategory(category.id)">{{ category.category_name }}</button>
           </div>
         </div>
         <template v-else>
-          <div class="flex gap-3 overflow-x-auto pb-2">
+          <div class="grid max-h-80 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             <button v-for="room in browseRooms" :key="room.id" type="button"
-              class="w-32 shrink-0 overflow-hidden rounded-xl border text-left text-xs"
+              class="overflow-hidden rounded-xl border text-left text-xs"
               :class="selectedRoom?.id === room.id ? 'border-orange-500' : 'border-slate-200'"
               @click="selectedRoom = room">
               <img :src="room.image_url || '/F.svg'" :alt="room.name" class="h-24 w-full object-cover" />
@@ -184,15 +186,16 @@
           </div>
           <div v-if="selectedRoom" class="mt-3">
             <p class="mb-2 text-xs text-slate-500">Choose a category for {{ selectedRoom.name }}</p>
-            <div class="flex gap-2 overflow-x-auto pb-2">
+            <div class="flex flex-wrap gap-2">
               <button v-for="category in browseCategories" :key="category.id" type="button"
-                class="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:border-orange-400"
+                class="rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:border-orange-400"
                 @click="openBrowseCategory(category.id, selectedRoom.slug)">{{ category.category_name }}</button>
             </div>
           </div>
         </template>
       </div>
-    </section>
+      </section>
+    </div>
   
     <main class="mx-auto w-full max-w-7xl px-3 pb-6 pt-3 sm:px-4 md:px-6 md:pb-8 md:pt-4">
       <slot />

@@ -80,30 +80,30 @@
                     severity="secondary"
                     text
                     size="small"
-                    @click="goShop"
+                    @click="router.push({ name: 'ecommerce.categories' })"
                 />
             </div>
 
             <div
                 v-if="loadingCategories"
-                class="flex gap-3 overflow-x-auto pb-3"
+                class="grid grid-flow-col grid-rows-2 auto-cols-[9rem] gap-3 overflow-x-auto pb-3 sm:auto-cols-[10rem] md:grid-rows-1"
             >
                 <Skeleton
                     v-for="index in 8"
                     :key="index"
-                    class="aspect-square w-36 shrink-0 sm:w-40"
+                    class="aspect-square w-full"
                     borderRadius="1rem"
                 />
             </div>
             <div
                 v-else-if="categories.length"
-                class="flex gap-3 overflow-x-auto pb-3"
+                class="grid grid-flow-col grid-rows-2 auto-cols-[9rem] gap-3 overflow-x-auto pb-3 sm:auto-cols-[10rem] md:grid-rows-1"
             >
                 <button
                     v-for="category in categories"
                     :key="category.id"
                     type="button"
-                    class="group relative aspect-square w-36 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100 sm:w-40"
+                    class="group relative aspect-square w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100"
                     @click="goCategory(category.id)"
                 >
                     <img
@@ -169,11 +169,11 @@
                     @click="clearRecentlyViewed"
                 />
             </div>
-            <div class="flex gap-4 overflow-x-auto pb-3">
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 <article
                     v-for="product in recentlyViewed.slice(0, 5)"
                     :key="`recent-${product.id}`"
-                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:-translate-y-1 hover:shadow-xl sm:w-52"
+                    class="group w-full cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                     @click="goProduct(product.id)"
                 >
                     <div
@@ -215,7 +215,6 @@
                 class="flex flex-col gap-3 px-5 pb-2 pt-6 sm:px-7 md:flex-row md:items-end md:justify-between"
             >
                 <div>
-                   
                     <h2
                         class="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl"
                     >
@@ -234,11 +233,11 @@
                     @click="goShop"
                 />
             </div>
-            <div class="flex gap-4 overflow-x-auto px-5 pb-6 pt-3 sm:px-7">
+            <div class="grid grid-flow-col grid-rows-2 auto-cols-[9rem] gap-3 overflow-x-auto px-5 pb-6 pt-3 sm:auto-cols-[10rem] sm:px-7 md:grid-rows-1">
                 <button
                     v-for="idea in shoppingRooms"
                     :key="idea.id"
-                    class="group relative min-h-64 w-[min(82vw,22rem)] shrink-0 overflow-hidden rounded-2xl text-left shadow-sm"
+                    class="group relative aspect-square w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100"
                     @click="goRoom(idea)"
                 >
                     <img v-if="idea.image_url"
@@ -251,17 +250,7 @@
                         class="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/20 to-transparent"
                     />
                     <div class="absolute inset-x-0 bottom-0 p-5 text-white">
-                        <span
-                            class="rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur"
-                            >Room ideas</span
-                        >
-                        <h3 class="mt-3 text-xl font-bold">{{ idea.name }}</h3>
-                        <span
-                            class="mt-4 inline-flex items-center gap-2 text-sm font-semibold"
-                            >Shop this style
-                            <i
-                                class=" text-xs transition group-hover:translate-x-1"
-                        /></span>
+                        <h3 class="mt-3 text-sm font-bold">{{ idea.name }}</h3>
                     </div>
                 </button>
             </div>
@@ -293,12 +282,12 @@
 
             <div
                 v-if="loadingDeals"
-                class="flex gap-4 overflow-x-auto pb-3"
+                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
             >
                 <div
                     v-for="index in 5"
                     :key="index"
-                    class="w-48 shrink-0 rounded-2xl border border-slate-100 bg-white p-3 sm:w-52"
+                    class="w-full rounded-2xl border border-slate-100 bg-white p-3"
                 >
                     <Skeleton height="180px" borderRadius="0.75rem" />
                     <Skeleton class="mt-3" width="70%" height="16px" />
@@ -306,12 +295,12 @@
             </div>
             <div
                 v-else-if="flashDeals.length"
-                class="flex gap-4 overflow-x-auto pb-3"
+                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
             >
                 <article
                     v-for="product in flashDeals"
                     :key="`deal-${product.id}`"
-                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-rose-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-52"
+                    class="group w-full cursor-pointer overflow-hidden rounded-2xl border border-rose-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                     @click="goProduct(product.id)"
                 >
                     <div
@@ -376,12 +365,12 @@
 
             <div
                 v-if="loadingProducts"
-                class="flex gap-4 overflow-x-auto pb-3"
+                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
             >
                 <div
                     v-for="index in 10"
                     :key="index"
-                    class="w-48 shrink-0 rounded-2xl border border-slate-100 bg-white p-3 sm:w-52"
+                    class="w-full rounded-2xl border border-slate-100 bg-white p-3"
                 >
                     <Skeleton height="180px" borderRadius="0.75rem" />
                     <Skeleton class="mt-3" width="45%" height="12px" />
@@ -390,12 +379,12 @@
             </div>
             <div
                 v-else-if="topProducts.length"
-                class="flex gap-4 overflow-x-auto pb-3"
+                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
             >
                 <article
                     v-for="(product, index) in topProducts"
                     :key="product.id"
-                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-52"
+                    class="group w-full cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                     @click="goProduct(product.id)"
                 >
                     <div

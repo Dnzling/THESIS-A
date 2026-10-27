@@ -26,7 +26,9 @@ use App\Services\Sales\SalesOrderSettlementService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -209,6 +211,23 @@ class PaymongoController extends Controller
             'success_url' => 'required|url|max:500',
             'cancel_url' => 'required|url|max:500',
         ]);
+
+        if (($data['payable_type'] ?? '') === 'ecommerce_order'
+            && !empty($data['payable_id'])
+            && !$request->attributes->get('ecommerce_payment_lock_acquired')) {
+            $lock = Cache::lock('ecommerce-payment-order:'.(int) $data['payable_id'], 60);
+
+            try {
+                return $lock->block(10, function () use ($request) {
+                    $request->attributes->set('ecommerce_payment_lock_acquired', true);
+                    return $this->createCheckoutSession($request);
+                });
+            } catch (LockTimeoutException) {
+                return response()->json([
+                    'message' => 'A payment session is already being prepared for this order. Please try again shortly.',
+                ], 409);
+            }
+        }
 
         $resolvedStoreId = (int) ($data['store_id'] ?? 0);
         if ($resolvedStoreId <= 0) {
@@ -608,6 +627,16 @@ class PaymongoController extends Controller
             'payable_id' => 'required|integer|min:1',
             'sync' => 'nullable|boolean',
         ]);
+
+        if ($validated['payable_type'] === 'ecommerce_order') {
+            $ownsOrder = EcommerceOrder::query()
+                ->whereKey((int) $validated['payable_id'])
+                ->where('user_id', $request->user()?->id)
+                ->exists();
+            if (!$ownsOrder) {
+                return response()->json(['message' => 'Order not found.'], 404);
+            }
+        }
 
         $intent = PaymongoIntent::query()
             ->where('payable_type', $validated['payable_type'])

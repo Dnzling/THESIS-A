@@ -6,7 +6,7 @@
       </div>
       <div class="flex items-center gap-2">
         <Button v-if="order?.can_cancel" label="Cancel" severity="danger" outlined @click="goCancelPage" />
-        <Button label="Back" severity="secondary" outlined @click="goBack" />
+        <Button label="Orders" @click="goBack" />
       </div>
     </div>
   

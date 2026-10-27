@@ -160,16 +160,19 @@
                 <InputText v-model.trim="billingForm.street" fluid size="small" placeholder="House number and street" />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-slate-600">Barangay</label>
-                <InputText v-model.trim="billingForm.barangay" fluid size="small" placeholder="Barangay" />
+                <label class="mb-1 block text-xs font-medium text-slate-600">Province *</label>
+                <Select v-model="billingAddressSelection.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value"
+                  fluid size="small" placeholder="Select province" @change="onBillingProvinceChange" />
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">City *</label>
-                <InputText v-model.trim="billingForm.city" fluid size="small" placeholder="City or municipality" />
+                <Select v-model="billingAddressSelection.cityId" :options="billingCityOptions" optionLabel="label" optionValue="value"
+                  fluid size="small" placeholder="Select city" :disabled="!billingAddressSelection.provinceId" @change="onBillingCityChange" />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-slate-600">Province *</label>
-                <InputText v-model.trim="billingForm.province" fluid size="small" placeholder="Province" />
+                <label class="mb-1 block text-xs font-medium text-slate-600">Barangay *</label>
+                <Select v-model="billingAddressSelection.barangayCode" :options="billingBarangayOptions" optionLabel="label" optionValue="value"
+                  fluid size="small" placeholder="Select barangay" :disabled="!billingAddressSelection.cityId" @change="onBillingBarangayChange" />
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">Postal code</label>
@@ -187,8 +190,9 @@
         </div>
         <div v-else class="space-y-3">
           <div class="grid grid-cols-1 gap-2 lg:hidden">
-            <Button label="Back" icon="pi pi-arrow-left" text severity="secondary" fluid @click="checkoutStep--" />
-            <Button :label="retryOrderId ? 'Continue Payment' : 'Place Order'" severity="warn" fluid :disabled="!retryOrderId && (!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString) || !!paymentMethodsError || paymentMethodsLoading)" :loading="placing || paymongoCreating" @click="placeOrder" />
+                        <Button :label="retryOrderId ? 'Continue Payment' : 'Place Order'" severity="warn" fluid :disabled="!retryOrderId && (!selectedAddress || !fulfillmentDates.includes(fulfillmentDateString) || !!paymentMethodsError || paymentMethodsLoading)" :loading="placing || paymongoCreating" @click="placeOrder" />
+            <Button label="Back" icon="pi pi-arrow-left" outlined severity="secondary" fluid @click="checkoutStep--" />
+
           </div>
           <div class="hidden lg:block">
             <Button label="Back" icon="pi pi-arrow-left" text severity="secondary" @click="checkoutStep--" />
@@ -600,8 +604,10 @@ const pickupBranchAddress = computed(() => {
 })
 const useDifferentBillingAddress = ref(false)
 const billingForm = reactive({ name: '', street: '', barangay: '', city: '', province: '', postalCode: '' })
+const billingAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 const billingAddressIncomplete = computed(() => useDifferentBillingAddress.value &&
-  ![billingForm.name, billingForm.street, billingForm.city, billingForm.province].every((value) => value.trim().length > 0))
+  (!billingForm.name.trim() || !billingForm.street.trim() || !billingAddressSelection.provinceId ||
+    !billingAddressSelection.cityId || !billingAddressSelection.barangayCode))
 
 const PAYMONGO_PENDING_ORDER_STORAGE_KEY = 'paymongo_pending_order_id'
 const retryOrderId = ref<number | null>(null)
@@ -787,6 +793,9 @@ const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
+const billingCities = ref<any[]>([])
+const billingBarangays = ref<any[]>([])
+const billingCitiesCache = ref<Record<string, any[]>>({})
 
 const selectedPaymentMethod = ref<'gcash' | 'card' | 'paymaya'>('gcash')
 const allPaymentMethods = [
@@ -840,6 +849,8 @@ const voucherLabel = computed(() => {
 const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
 const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+const billingCityOptions = computed(() => billingCities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
+const billingBarangayOptions = computed(() => billingBarangays.value.map((b: any) => ({ label: b.name, value: b.code })))
 
 const itemsCount = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
 const subtotal = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.line_subtotal || 0), 0))
@@ -1164,6 +1175,55 @@ async function onCityChange() {
   await fetchBarangays(newAddressSelection.cityId)
 }
 
+async function onBillingProvinceChange() {
+  billingAddressSelection.cityId = ''
+  billingAddressSelection.barangayCode = ''
+  billingCities.value = []
+  billingBarangays.value = []
+  billingForm.province = provinces.value.find((province: any) =>
+    String(province.province_id) === String(billingAddressSelection.provinceId))?.name || ''
+  billingForm.city = ''
+  billingForm.barangay = ''
+
+  const provinceId = billingAddressSelection.provinceId
+  if (!provinceId) return
+
+  if (billingCitiesCache.value[provinceId]) {
+    billingCities.value = billingCitiesCache.value[provinceId]
+    return
+  }
+
+  try {
+    const response = await ecommerceService.getCities(provinceId)
+    billingCitiesCache.value[provinceId] = response.data || []
+    billingCities.value = billingCitiesCache.value[provinceId]
+  } catch {
+    billingCities.value = []
+  }
+}
+
+async function onBillingCityChange() {
+  billingAddressSelection.barangayCode = ''
+  billingBarangays.value = []
+  billingForm.city = billingCities.value.find((city: any) =>
+    String(city.city_id) === String(billingAddressSelection.cityId))?.name || ''
+  billingForm.barangay = ''
+
+  if (!billingAddressSelection.cityId) return
+
+  try {
+    const response = await ecommerceService.getBarangays(billingAddressSelection.cityId)
+    billingBarangays.value = response.data || []
+  } catch {
+    billingBarangays.value = []
+  }
+}
+
+function onBillingBarangayChange() {
+  billingForm.barangay = billingBarangays.value.find((barangay: any) =>
+    String(barangay.code) === String(billingAddressSelection.barangayCode))?.name || ''
+}
+
 const buildAddressForGeocoding = (): string => {
   const parts = [
     newAddress.address_line,
@@ -1426,6 +1486,13 @@ async function checkPaymongoResult(orderId: number): Promise<string> {
     }
 
     if (status === 'succeeded') {
+      const orderResponse = await ecommerceService.getOrder(orderId)
+      const order = orderResponse?.data?.data
+      if (String(order?.payment_status || '').toLowerCase() !== 'paid') {
+        showAlert({ severity: 'warn', summary: 'Payment Processing', detail: 'Your payment is still being confirmed. Please refresh in a moment.' })
+        return 'pending'
+      }
+
       completedPaymongoOrderId.value = orderId
       try {
         window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)

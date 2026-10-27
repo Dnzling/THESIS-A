@@ -350,9 +350,9 @@
           </div>
           <p v-else class="rounded-xl bg-slate-50 p-4 text-xs text-slate-500">No other in-stock suggestions right now.</p>
         </section>
-        <div class="border-t border-slate-200 pt-4">
-          <Button label="View Cart" severity="warn" fluid @click="cartDrawerVisible = false; router.push({ name: 'ecommerce.cart' })" />
-          <Button label="Continue shopping" severity="secondary" text fluid class="mt-2" @click="cartDrawerVisible = false" />
+        <div class="border-t border-slate-200 pt-4 y-space-2">
+           <Button label="Continue shopping" severity="secondary" outlined  fluid @click="cartDrawerVisible = false" />
+          <Button label="View Cart" severity="warn" fluid class="mt-2"  @click="cartDrawerVisible = false; router.push({ name: 'ecommerce.cart' })" />
         </div>
       </div>
     </Drawer>

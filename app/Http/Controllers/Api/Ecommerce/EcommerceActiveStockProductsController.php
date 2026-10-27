@@ -288,10 +288,19 @@ class EcommerceActiveStockProductsController extends Controller
 
     public function categories(): JsonResponse
     {
-        $categories = Category::query()
+        return $this->categoryResponse(true);
+    }
+
+    public function allCategories(): JsonResponse
+    {
+        return $this->categoryResponse(false);
+    }
+
+    private function categoryResponse(bool $quickSelectOnly): JsonResponse
+    {
+        $query = Category::query()
             ->select(['id', 'category_name', 'ecommerce_icon_path'])
             ->where('is_active', true)
-            ->where('is_ecommerce_quick_select', true)
             ->whereNull('deleted_at')
             ->whereHas('products', function ($productQuery) {
                 $productQuery
@@ -323,8 +332,13 @@ class EcommerceActiveStockProductsController extends Controller
                             ->whereIn('stock_status', ['in_stock', 'low_stock']);
                     });
             }])
-            ->orderBy('category_name')
-            ->get();
+            ->orderBy('category_name');
+
+        if ($quickSelectOnly) {
+            $query->where('is_ecommerce_quick_select', true);
+        }
+
+        $categories = $query->get();
 
         $grouped = collect();
         foreach ($categories as $category) {

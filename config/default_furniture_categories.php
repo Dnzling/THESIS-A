@@ -1,89 +1,66 @@
 <?php
 
 return [
+    // Store presets use the same two levels as products: category_id and subcategory_id.
+    // Room placement is managed separately through shopping_rooms and product_shopping_room.
     'catalog' => [
-        'Sofas & Armchairs' => [
-            'Sofas' => ['Fabric Sofas', 'Leather Sofas', 'Sofa Beds', 'Sleeper Sofas', 'Modular Sofas', 'Sectional Sofas'],
-            'Armchairs & Recliners' => ['Armchairs', 'Reclining Armchairs', 'Chaise Lounges'],
-            'Stools & Footstools' => ['Footstools', 'Pouffes', 'Ottomans'],
-            'Sofa Accessories' => ['Sofa Covers', 'Armchair Covers', 'Sofa Legs', 'Cushions for Sofas & Armchairs', 'Lumbar Support'],
+        'Seating' => [
+            'Sofas', 'Sectional Sofas', 'Loveseats', 'Sofa Beds', 'Armchairs',
+            'Accent Chairs', 'Recliners', 'Lounge Chairs', 'Rocking Chairs',
+            'Dining Chairs', 'Office Chairs', 'Gaming Chairs', 'Bar Stools',
+            'Counter Stools', 'Benches', 'Ottomans', 'Kids Chairs',
+            'Outdoor Chairs', 'Outdoor Sofas', 'Sun Loungers', 'Swings and Hammocks',
         ],
-        'Beds & Mattresses' => [
-            'Beds' => ['Bed Frames', 'Bed Bases', 'Slatted Bed Bases', 'Headboards', 'Bed Legs', 'Beds with Mattresses Included', 'Loft Beds', 'Bunk Beds', 'Daybeds'],
-            'Mattresses' => ['Mattresses', 'Mattress Protectors', 'Mattress Bases'],
-            'Bedroom Textiles' => ['Bed Linen', 'Bed Covers', 'Quilts', 'Pillows', 'Pillowcases'],
-            'Bed Accessories' => ['Bed Storage', 'Bed Canopies & Bedhead Covers'],
-            'Bedroom Sets' => ['Complete Bedroom Furniture Sets'],
+        'Tables' => [
+            'Coffee Tables', 'Side Tables', 'End Tables', 'Console Tables',
+            'Nesting Tables', 'Dining Tables', 'Breakfast Tables', 'Bar Tables',
+            'Bedside Tables', 'Activity Tables', 'Folding Tables', 'Outdoor Tables',
+            'Picnic Tables',
         ],
-        'Storage & Organization' => [
-            'Wardrobes & Clothes Storage' => ['Wardrobes', 'Clothes Organizers', 'Interior Organizers'],
-            'Drawers & Chests' => ['Chests of Drawers', 'Drawer Units'],
-            'Shelving & Bookcases' => ['Bookcases', 'Shelving Units', 'Wall Shelves'],
-            'Modular Storage Systems' => ['Modular Storage Systems', 'Cabinets & Display Cabinets'],
-            'Media Storage' => ['TV Benches & Media Furniture'],
-            'Sideboards & Consoles' => ['Sideboards, Buffets & Console Tables'],
-            'Small Storage & Organizers' => ['Boxes & Baskets', 'Paper & Media Organizers', 'Recycling Bins', 'Cable Management'],
-            'Entryway Storage' => ['Shoe Cabinets', 'Entryway Furniture Sets', 'Coat Racks & Hooks'],
-            'Garage Storage' => ['Garage Storage Solutions'],
-            "Children's Storage" => ["Children's Storage Solutions"],
+        'Beds' => [
+            'Bed Frames', 'Platform Beds', 'Upholstered Beds', 'Bunk Beds',
+            'Loft Beds', 'Daybeds', 'Trundle Beds', 'Adjustable Beds',
+            'Kids Beds', 'Cribs', 'Headboards',
         ],
-        'Tables & Desks' => [
-            'Dining Tables' => ['Dining Tables', 'Extendable Dining Tables'],
-            'Coffee & Side Tables' => ['Coffee Tables', 'Side Tables', 'Nesting Tables'],
-            'Desks' => ['Computer Desks', 'Office Desks', 'Standing Desks'],
-            "Children's Tables" => ["Children's Tables", "Children's Desks"],
-            'Table Accessories' => ['Table Legs & Tabletops'],
+        'Mattresses and Bedding' => [
+            'Mattresses', 'Mattress Toppers', 'Bed Bases', 'Box Springs',
+            'Pillows', 'Bed Sheets', 'Comforters', 'Blankets', 'Mattress Protectors',
         ],
-        'Chairs & Seating (Non-Sofa)' => [
-            'Dining Chairs' => ['Dining Chairs', 'Folding Chairs', 'Stackable Chairs'],
-            'Office Chairs' => ['Office Chairs', 'Desk Chairs', 'Conference Chairs'],
-            'Bar Stools & Benches' => ['Bar Stools', 'Counter Stools', 'Benches', 'Café Furniture'],
-            "Children's Seating" => ["Children's Chairs", 'Highchairs', 'Baby Seating'],
-            'Chair Accessories' => ['Chair Pads', 'Seat Cushions'],
+        'Storage and Organization' => [
+            'Storage Cabinets', 'Display Cabinets', 'Bookcases', 'Shelving Units',
+            'Wardrobes', 'Armoires', 'Dressers', 'Chests of Drawers',
+            'Bedside Cabinets', 'TV Stands', 'Entertainment Centers', 'Media Consoles',
+            'Sideboards', 'Buffets', 'Bar Cabinets', 'Shoe Racks', 'Shoe Cabinets',
+            'Toy Storage', 'Storage Benches', 'Storage Ottomans', 'Outdoor Storage',
         ],
-        'Kitchen & Dining Furniture' => [
-            'Kitchen Cabinets & Systems' => ['Kitchen Cabinets', 'Complete Kitchens', 'Modular Kitchens', 'Kitchen Doors & Drawer Fronts', 'Kitchen Interiors', 'Countertops', 'Kitchen Handles & Knobs'],
-            'Kitchen Islands & Carts' => ['Kitchen Islands', 'Kitchen Carts'],
-            'Dining Furniture' => ['Dining Tables', 'Dining Chairs', 'Dining Benches', 'Bar Tables & Chairs'],
-            'Kitchen Storage' => ['Kitchen Storage', 'Pantry Storage', 'Shelves & Drawers'],
+        'Desks and Workstations' => [
+            'Computer Desks', 'Writing Desks', 'Executive Desks', 'Standing Desks',
+            'Corner Desks', 'Gaming Desks', 'Study Desks', 'Office Workstations',
+            'Reception Desks', 'Conference Tables',
         ],
-        'Office Furniture' => [
-            'Office Desks' => ['Desks & Computer Desks', 'Standing Desks', 'Conference Tables'],
-            'Office Seating' => ['Office Chairs', 'Conference Chairs'],
-            'Office Storage' => ['Filing Cabinets', 'Office Shelving'],
-            'Office Sets' => ['Desk & Chair Sets', 'Conference Table & Chair Sets'],
-            'Gaming Furniture' => ['Gaming Desks', 'Gaming Chairs'],
+        'Kitchen Furniture' => [
+            'Kitchen Islands', 'Kitchen Carts', 'Pantry Cabinets', 'Kitchen Cabinets',
+            "Baker's Racks", 'Serving Carts', 'Microwave Stands',
         ],
-        "Children's & Baby Furniture" => [
-            'Baby Furniture' => ['Baby Cots', 'Changing Tables', 'Nursery Furniture'],
-            "Children's Furniture (3–7)" => ["Children's Beds", "Children's Desks", "Children's Chairs", "Children's Storage"],
-            "Children's Textiles" => ['Baby Textiles', "Children's Textiles"],
+        'Vanities and Dressing Furniture' => [
+            'Dressing Tables', 'Bedroom Vanities', 'Vanity Stools',
+            'Vanity Mirrors', 'Makeup Storage',
         ],
-        'Outdoor Furniture' => [
-            'Outdoor Seating' => ['Outdoor Sofas', 'Outdoor Armchairs', 'Outdoor Benches', 'Hammocks & Swing Seats'],
-            'Outdoor Tables' => ['Outdoor Dining Tables', 'Outdoor Coffee Tables'],
-            'Outdoor Storage' => ['Outdoor Storage Solutions', 'Deck Boxes'],
-            'Outdoor Sets' => ['Patio Dining Sets', 'Garden Conversation Sets'],
-            'Outdoor Accessories' => ['Outdoor Cushions', 'Parasols & Pavilions', 'Outdoor Flooring'],
+        'Lighting' => [
+            'Floor Lamps', 'Table Lamps', 'Desk Lamps', 'Pendant Lights',
+            'Chandeliers', 'Ceiling Lights', 'Wall Lights', 'Outdoor Lights', 'Kids Lamps',
         ],
-        'Bathroom Furniture' => [
-            'Bathroom Cabinets' => ['Bathroom Vanities', 'Tall Bathroom Cabinets', 'Wall-Mounted Bathroom Cabinets'],
-            'Bathroom Storage' => ['Bathroom Shelves', 'Towel Racks', 'Bathroom Baskets & Bins'],
-            'Bathroom Seating' => ['Bathroom Stools', 'Bathroom Benches'],
-            'Bathroom Accessories' => ['Bathroom Mirrors', 'Bathroom Carts', 'Bathroom Systems'],
+        'Mirrors' => [
+            'Wall Mirrors', 'Floor Mirrors', 'Full-Length Mirrors',
+            'Decorative Mirrors', 'Table Mirrors',
         ],
-    ],
-
-    'rooms' => [
-        'Living Room',
-        'Bedroom',
-        'Dining Room',
-        'Kitchen',
-        'Home Office',
-        'Bathroom',
-        "Children's Room & Baby",
-        'Outdoor',
-        'Entryway',
-        'Garage',
+        'Room Dividers' => [
+            'Folding Screens', 'Room Dividers', 'Office Partitions',
+            'Privacy Screens', 'Outdoor Privacy Screens',
+        ],
+        'Furniture Sets' => [
+            'Sofa Sets', 'Living Room Sets', 'Bedroom Sets', 'Dining Sets',
+            'Office Sets', 'Outdoor Sets', 'Kids Furniture Sets',
+        ],
     ],
 ];

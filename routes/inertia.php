@@ -446,6 +446,7 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 // Ecommerce storefront
 $inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
+$inertia('/categories', 'System/Ecommerce/EcommerceCategories', 'ecommerce.categories', 'Shop Categories');
 $inertia('/new-products', 'System/Ecommerce/EcommerceProducts', 'ecommerce.new-products', 'New Products');
 $inertia('/trending', 'System/Ecommerce/EcommerceProducts', 'ecommerce.trending.view', 'Trending Products');
 $inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');

@@ -56,6 +56,10 @@ const ecommerceService = {
     return ecommerceClient.get('/api/ecommerce/categories/active-stock')
   },
 
+  getCategories() {
+    return ecommerceClient.get('/api/ecommerce/categories')
+  },
+
   getTopStoresByCategory(categoryId: number | string) {
     return ecommerceClient.get(`/api/ecommerce/categories/${categoryId}/top-stores`)
   },
