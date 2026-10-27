@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\CRM\SalesReview;
 use App\Models\Core\SystemNotification;
+use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Hr\Employee;
 use App\Models\Logistics\ReturnPickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use App\Services\Core\PermissionService;
 
 class SystemNotificationController extends Controller
 {
@@ -24,7 +27,7 @@ class SystemNotificationController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $onlyUnread = $request->boolean('unread_only', false);
 
-            $query = SystemNotification::where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user);
 
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
@@ -65,7 +68,7 @@ class SystemNotificationController extends Controller
                     'per_page' => $notifications->perPage(),
                     'current_page' => $notifications->currentPage(),
                     'last_page' => $notifications->lastPage(),
-                    'unread_count' => SystemNotification::where('user_id', $user->id)->where('is_read', false)->count(),
+                    'unread_count' => $this->visibleNotificationsFor($user)->where('is_read', false)->count(),
                 ],
             ], 200);
         } catch (\Exception $e) {
@@ -131,7 +134,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             return response()->json([
@@ -155,7 +158,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             $notification->markAsRead();
@@ -182,7 +185,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
+            $query = $this->visibleNotificationsFor($user)->where('is_read', false);
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
             }
@@ -208,7 +211,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             $notification->delete();
@@ -243,7 +246,7 @@ class SystemNotificationController extends Controller
                 ], 422);
             }
 
-            $query = SystemNotification::where('user_id', $user->id)->whereIn('id', $ids);
+            $query = $this->visibleNotificationsFor($user)->whereIn('id', $ids);
             $deleted = $query->delete();
 
             return response()->json([
@@ -263,7 +266,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
+            $query = $this->visibleNotificationsFor($user)->where('is_read', false);
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
             }
@@ -279,6 +282,23 @@ class SystemNotificationController extends Controller
                 'message' => 'Failed to retrieve unread count: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function visibleNotificationsFor(User $user): Builder
+    {
+        $permissions = collect(app(PermissionService::class)->getUserPermissions($user))
+            ->flatMap(fn (string $permission) => str_ends_with($permission, '.manage')
+                ? [$permission, substr($permission, 0, -7) . '.view']
+                : [$permission])
+            ->unique()->values()->all();
+
+        return SystemNotification::query()->where('user_id', $user->id)
+            ->where(function (Builder $query) use ($permissions) {
+                $query->whereNull('data->required_permission');
+                if ($permissions !== []) {
+                    $query->orWhereIn('data->required_permission', $permissions);
+                }
+            });
     }
 
     private function enrichEcommerceNotifications(Collection $notifications, int $userId): Collection

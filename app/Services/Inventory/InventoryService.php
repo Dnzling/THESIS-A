@@ -409,6 +409,7 @@ class InventoryService
     {
         return BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->whereHas('product', fn ($product) => $product->where('store_id', $storeId))
             ->where('stock_status', 'low_stock')
             ->get();
     }
@@ -420,6 +421,7 @@ class InventoryService
     {
         return BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->whereHas('product', fn ($product) => $product->where('store_id', $storeId))
             ->where('stock_status', 'out_of_stock')
             ->get();
     }

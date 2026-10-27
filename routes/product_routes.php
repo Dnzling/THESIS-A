@@ -39,6 +39,8 @@ Route::prefix('product-catalog')->group(function () {
         ->except(['index', 'show'])
         ->middlewareFor('store', 'subscription.capacity:products')
         ;
+    Route::post('products/{productId}/3d-model', [ProductAssetController::class, 'storeForProductForm'])
+        ->name('products.3d-model.store');
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
     Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
     Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);

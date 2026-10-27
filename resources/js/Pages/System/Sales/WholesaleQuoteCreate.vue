@@ -21,14 +21,23 @@
         <Card class="border border-slate-200 shadow-sm lg:col-span-2"><template #title>Customer and
             branch</template><template #content>
             <div class="grid gap-4 md:grid-cols-2">
-              <div class="field"><label>CRM customer *</label><Select v-model="form.crm_lead_id" :options="leads"
-                  optionLabel="full_name" optionValue="id" filter fluid placeholder="Select a customer"><template
-                    #option="{ option }">
-                    <div>
-                      <p class="font-medium">{{ option.full_name }}</p>
-                      <p class="text-xs text-slate-500">{{ option.email || option.phone || 'No contact' }}</p>
-                    </div>
-                  </template></Select>
+              <div class="field">
+                <label>Customer / Business Name *</label>
+                <InputText v-model.trim="form.customer_name" fluid placeholder="Enter customer or business name"
+                  :invalid="Boolean(customerNameError)" @blur="touched.customer_name = true" />
+                <small v-if="customerNameError" class="text-red-600">{{ customerNameError }}</small>
+              </div>
+              <div class="field">
+                <label>Contact Email *</label>
+                <InputText v-model.trim="form.customer_email" type="email" fluid placeholder="name@business.com"
+                  :invalid="Boolean(customerEmailError)" @blur="touched.customer_email = true" />
+                <small v-if="customerEmailError" class="text-red-600">{{ customerEmailError }}</small>
+              </div>
+              <div class="field">
+                <label>Contact Number *</label>
+                <InputMask v-model="form.customer_phone" mask="0999 999 9999" placeholder="09XX XXX XXXX"
+                  :autoClear="false" fluid :invalid="Boolean(customerPhoneError)" @blur="touched.customer_phone = true" />
+                <small v-if="customerPhoneError" class="text-red-600">{{ customerPhoneError }}</small>
               </div>
               <div class="field"><label>Fulfilment branch *</label><Select v-model="form.branch_id" :options="branches"
                   optionLabel="name" optionValue="id" fluid placeholder="Select branch" @change="resetItems" /></div>
@@ -113,7 +122,9 @@ import salesService from '@/services/sales.service'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import DatePicker from 'primevue/datepicker'
+import InputMask from 'primevue/inputmask'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
@@ -121,7 +132,6 @@ import Textarea from 'primevue/textarea'
 const toast = useToast(),
   loading = ref(true),
   saving = ref(false),
-  leads = ref<any[]>([]),
   products = ref<any[]>([])
 const newItem = () => ({
   branch_inventory_id: null as number | null,
@@ -129,13 +139,22 @@ const newItem = () => ({
   unit_price: 0
 })
 const form = reactive({
-  crm_lead_id: null as number | null,
+  customer_name: '',
+  customer_email: '',
+  customer_phone: '',
   branch_id: null as number | null,
   valid_until: null as Date | null,
   payment_terms: 'online_payment',
   notes: '',
   items: [newItem()]
 })
+const touched = reactive({ customer_name: false, customer_email: false, customer_phone: false })
+const customerNameError = computed(() => touched.customer_name && form.customer_name.trim().length < 2
+  ? 'Enter at least 2 characters.' : '')
+const customerEmailError = computed(() => touched.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customer_email.trim())
+  ? 'Enter a valid email address.' : '')
+const customerPhoneError = computed(() => touched.customer_phone && !/^09\d{2}\s?\d{3}\s?\d{4}$/.test(form.customer_phone.trim())
+  ? 'Enter a valid 11-digit Philippine mobile number.' : '')
 const paymentTerms = [
   { label: 'PayMongo payment link', value: 'online_payment', help: 'Share a secure payment link and wait for confirmation.' },
   { label: 'Verified bank transfer', value: 'bank_transfer', help: 'Confirm the funds in your bank before releasing the order.' }
@@ -191,8 +210,11 @@ const date = (v: Date | null) =>
     )}-${String(v.getDate()).padStart(2, '0')}`
     : null
 const save = async () => {
+  touched.customer_name = true
+  touched.customer_email = true
+  touched.customer_phone = true
   if (
-    !form.crm_lead_id ||
+    customerNameError.value || customerEmailError.value || customerPhoneError.value ||
     !form.branch_id ||
     !form.payment_terms ||
     form.items.some(
@@ -202,7 +224,7 @@ const save = async () => {
     toast.add({
       severity: 'warn',
       summary: 'Complete required fields',
-      detail: 'Select a customer, branch, and valid product lines.',
+      detail: 'Enter valid customer details, choose a branch, and complete the product lines.',
       life: 3000
     })
     return
@@ -236,7 +258,6 @@ const save = async () => {
 onMounted(async () => {
   try {
     const r = await salesService.getWholesaleOptions()
-    leads.value = r.data?.leads || []
     products.value = r.data?.products || []
   } catch (e: any) {
     toast.add({

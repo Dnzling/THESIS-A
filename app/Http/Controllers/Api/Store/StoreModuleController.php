@@ -9,6 +9,7 @@ use App\Models\Store\StoreBranch;
 use App\Models\Hr\Employee;
 use App\Models\Hr\ShiftSwapRequest;
 use App\Services\Core\PermissionService;
+use App\Services\Store\CaviteLocationService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -112,7 +113,7 @@ class StoreModuleController extends Controller
         return response()->json(['success' => true, 'data' => $this->branchPayload($this->branchFor($request))]);
     }
 
-    public function updateSettings(Request $request): JsonResponse
+    public function updateSettings(Request $request, CaviteLocationService $locationService): JsonResponse
     {
         $branch = $this->branchFor($request);
         $validated = $request->validate([
@@ -129,6 +130,16 @@ class StoreModuleController extends Controller
             'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
         ]);
+
+        try {
+            if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'latitude' => 'Choose a store location inside Cavite province.',
+                ]);
+            }
+        } catch (\RuntimeException $exception) {
+            abort(503, $exception->getMessage());
+        }
 
         unset($validated['logo']);
         if ($request->hasFile('logo')) {

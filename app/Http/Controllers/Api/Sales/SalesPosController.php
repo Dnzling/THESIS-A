@@ -35,7 +35,11 @@ class SalesPosController extends Controller
         $branchId = (int) ($request->input('branch_id', $user->branch_id ?? 0));
 
         $query = BranchInventory::query()
-            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active,product_type', 'variation:id,variation_name,variation_sku'])
+            ->with([
+                'product.assets',
+                'variation.custom3dModel',
+                'variation.customImage',
+            ])
             ->where('store_id', $storeId)
             ->when($branchId > 0, fn($q) => $q->where('branch_id', $branchId))
             ->where('quantity_available', '>', 0)
@@ -203,9 +207,9 @@ class SalesPosController extends Controller
             'branch_id' => 'nullable|exists:branches,id',
             'customer_name' => 'nullable|string|max:150',
             'customer_phone' => 'nullable|string|max:50',
-            'payment_method' => 'required|in:cash,card,gcash',
+            'payment_method' => 'required|in:cash,card,gcash,paymaya',
             'discount_amount' => 'nullable|numeric|min:0',
-            'amount_tendered' => 'nullable|numeric|min:0',
+            'amount_tendered' => 'required_if:payment_method,cash|nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'return_url' => 'nullable|url|max:500',
             'delivery_required' => 'nullable|boolean',
@@ -221,6 +225,9 @@ class SalesPosController extends Controller
             'items' => 'required|array|min:1',
             'items.*.branch_inventory_id' => 'required|exists:branch_inventory,id',
             'items.*.quantity' => 'required|integer|min:1',
+            'items.*.customization_request' => 'nullable|string|max:1000',
+            'items.*.customization_fee' => 'nullable|numeric|min:0',
+            'items.*.customization_lead_time_days' => 'nullable|integer|between:1,365',
         ]);
 
         $user = $request->user();
@@ -240,10 +247,10 @@ class SalesPosController extends Controller
             return response()->json(['success' => false, 'message' => 'Select a branch before creating a delivery order.'], 422);
         }
 
-        if ($validated['payment_method'] === 'gcash' && !$this->paymongoService->isConfigured()) {
+        if ($validated['payment_method'] !== 'cash' && !$this->paymongoService->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'GCash is temporarily unavailable because PayMongo is not configured. Please select Cash or Online Payment.',
+                'message' => 'Online payments are temporarily unavailable because PayMongo is not configured. Please select Cash or try again later.',
             ], 422);
         }
 
@@ -319,9 +326,10 @@ class SalesPosController extends Controller
                 ]);
             }
 
+            $requestedByInventory = [];
             foreach ($validated['items'] as $itemRow) {
                 $inv = BranchInventory::query()
-                    ->with(['product:id,product_name,sku,base_price,discounted_price,product_type'])
+                    ->with(['product:id,product_name,sku,base_price,discounted_price,product_type,is_customizable'])
                     ->lockForUpdate()
                     ->findOrFail((int) $itemRow['branch_inventory_id']);
 
@@ -334,12 +342,27 @@ class SalesPosController extends Controller
                 }
 
                 $qty = (int) $itemRow['quantity'];
-                if ((int) $inv->quantity_available < $qty) {
+                $requestedByInventory[$inv->id] = ($requestedByInventory[$inv->id] ?? 0) + $qty;
+                if ((int) $inv->quantity_available < $requestedByInventory[$inv->id]) {
                     abort(response()->json(['success' => false, 'message' => "Insufficient stock for {$inv->product?->product_name}."], 422));
                 }
 
                 $unitPrice = (float) ($inv->product?->discounted_price ?? $inv->product?->base_price ?? 0);
-                $lineSubtotal = $qty * $unitPrice;
+                $customizationRequest = trim((string) ($itemRow['customization_request'] ?? ''));
+                $customizationFee = round((float) ($itemRow['customization_fee'] ?? 0), 2);
+                $customizationLeadTime = isset($itemRow['customization_lead_time_days'])
+                    ? (int) $itemRow['customization_lead_time_days']
+                    : null;
+                $hasCustomization = $customizationRequest !== '' || $customizationFee > 0 || $customizationLeadTime !== null;
+
+                if ($hasCustomization && !$inv->product?->is_customizable) {
+                    abort(response()->json(['success' => false, 'message' => 'This product does not allow customization.'], 422));
+                }
+                if ($hasCustomization && ($customizationRequest === '' || $customizationLeadTime === null)) {
+                    abort(response()->json(['success' => false, 'message' => 'Customization specifications and an estimated lead time are required.'], 422));
+                }
+
+                $lineSubtotal = $qty * ($unitPrice + $customizationFee);
                 $lineTax = 0.0;
                 $lineTotal = $lineSubtotal + $lineTax;
 
@@ -350,6 +373,9 @@ class SalesPosController extends Controller
                     'branch_inventory_id' => $inv->id,
                     'product_name' => $inv->product?->product_name ?? 'Product',
                     'sku' => $inv->product?->sku,
+                    'customization_request' => $hasCustomization ? $customizationRequest : null,
+                    'customization_fee' => $customizationFee,
+                    'customization_lead_time_days' => $hasCustomization ? $customizationLeadTime : null,
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
                     'line_discount' => 0,
@@ -373,6 +399,9 @@ class SalesPosController extends Controller
             $total = max(0, $subtotal + $tax + $shipping - $discount);
             $commissionAmount = $commissionRate > 0 ? round($subtotal * ($commissionRate / 100), 2) : 0.0;
             $tendered = (float) ($order->amount_tendered ?? 0);
+            if ($validated['payment_method'] === 'cash' && $tendered < $total) {
+                abort(response()->json(['success' => false, 'message' => 'Amount tendered must be at least the order total.'], 422));
+            }
             $change = max(0, $tendered - $total);
 
             $order->update([
@@ -411,7 +440,7 @@ class SalesPosController extends Controller
             report($exception);
         }
 
-        if (in_array($validated['payment_method'], ['cash', 'card'], true)) {
+        if ($validated['payment_method'] === 'cash') {
             $manualPayment = SalesPayment::create([
                 'store_id' => $storeId,
                 'branch_id' => $branchId ?: null,
@@ -454,96 +483,11 @@ class SalesPosController extends Controller
             'created_by' => $creatorEmployeeId,
         ]);
 
-        $amount = (int) round(((float) $order->total_amount) * 100);
-        $intentPayload = $this->paymongoService->createIntent([
-            'data' => [
-                'attributes' => [
-                    'amount' => max(1, $amount),
-                    'currency' => 'PHP',
-                    'capture_type' => 'automatic',
-                    'description' => "POS Order {$order->order_number}",
-                    'statement_descriptor' => "POS {$order->order_number}",
-                    'payment_method_allowed' => ['gcash'],
-                    'metadata' => [
-                        'sales_order_id' => (string) $order->id,
-                        'payment_id' => (string) $onlinePayment->id,
-                    ],
-                ],
-            ],
-        ]);
-
-        $intentId = data_get($intentPayload, 'data.id');
-        if (!$intentId) {
-            $onlinePayment->update(['status' => 'failed', 'metadata' => ['paymongo_error' => data_get($intentPayload, 'errors')]]);
-
-            return response()->json([
-                'success' => false,
-                'message' => data_get($intentPayload, 'errors.0.detail', 'Failed to initialize GCash checkout.'),
-                'errors' => data_get($intentPayload, 'errors', []),
-            ], 422);
-        }
-
-        $fallbackPhone = preg_replace('/\D+/', '', (string) ($validated['customer_phone'] ?? '09170000000'));
-        $paymentMethodPayload = $this->paymongoService->createPaymentMethod([
-            'data' => [
-                'attributes' => [
-                    'type' => 'gcash',
-                    'billing' => [
-                        'name' => (string) ($validated['customer_name'] ?? trim(($user->fname ?? '') . ' ' . ($user->lname ?? '')) ?: 'Sales Customer'),
-                        'email' => (string) ($user->email ?? ('sales+' . $order->id . '@local.test')),
-                        'phone' => $fallbackPhone ?: '09170000000',
-                    ],
-                ],
-            ],
-        ]);
-
-        $paymentMethodId = data_get($paymentMethodPayload, 'data.id');
-        if (!$paymentMethodId) {
-            $onlinePayment->update(['status' => 'failed', 'provider_reference' => $intentId]);
-
-            return response()->json([
-                'success' => false,
-                'message' => data_get($paymentMethodPayload, 'errors.0.detail', 'Unable to create GCash payment method.'),
-                'errors' => data_get($paymentMethodPayload, 'errors', []),
-            ], 422);
-        }
-
-        $attachPayload = $this->paymongoService->attachIntent($intentId, [
-            'data' => [
-                'attributes' => [
-                    'payment_method' => $paymentMethodId,
-                    'return_url' => $validated['return_url'] ?? rtrim(config('app.url'), '/') . '/sales/pos',
-                ],
-            ],
-        ]);
-
-        $redirectUrl = data_get($attachPayload, 'data.attributes.next_action.redirect.url');
-        if (!$redirectUrl) {
-            $onlinePayment->update(['status' => 'failed', 'provider_reference' => $intentId]);
-
-            return response()->json([
-                'success' => false,
-                'message' => data_get($attachPayload, 'errors.0.detail', 'Unable to open GCash checkout.'),
-                'errors' => data_get($attachPayload, 'errors', []),
-            ], 422);
-        }
-
-        $onlinePayment->update([
-            'provider_reference' => $intentId,
-            'status' => data_get($attachPayload, 'data.attributes.status', 'processing'),
-            'checkout_url' => $redirectUrl,
-            'metadata' => [
-                'payment_method_id' => $paymentMethodId,
-                'source' => 'sales_pos',
-            ],
-        ]);
-
         return response()->json([
             'success' => true,
-            'message' => 'Order created. Continue checkout to complete payment.',
+            'message' => 'Order created. Continue to secure checkout to complete payment.',
             'data' => $order->fresh(['items', 'branch', 'payment']),
-            'checkout_url' => $redirectUrl,
-            'payment_intent_id' => $intentId,
+            'requires_payment_session' => true,
         ], 201);
     }
 
@@ -576,11 +520,13 @@ class SalesPosController extends Controller
         $query = SalesOrder::query()->with([
             'branch:id,name',
             'creator:id,fname,lname,email',
-            'items.product:id,product_name,sku',
+            'items.product',
             'items.variation:id,variation_name',
             'payment',
             'receipt',
+            'refundRequest',
             'delivery',
+            'delivery.logs',
         ]);
         $this->applyStoreScope($request, $query);
         $order = $query->findOrFail($id);
@@ -593,7 +539,7 @@ class SalesPosController extends Controller
         $query = SalesOrder::query()->with([
             'store:id,name,address,city,province,phone,email',
             'branch:id,name,address,city,province',
-            'items:id,order_id,product_name,sku,quantity,unit_price,line_total',
+            'items:id,order_id,product_name,sku,customization_request,customization_fee,customization_lead_time_days,quantity,unit_price,line_total',
             'receipt',
             'payment',
             'creator:id,fname,lname',
@@ -930,10 +876,14 @@ class SalesPosController extends Controller
         $payload = $isCheckoutSession
             ? $this->paymongoService->retrieveCheckoutSession($reference)
             : $this->paymongoService->retrieveIntent($reference);
-        $status = $isCheckoutSession
-            ? (collect((array) data_get($payload, 'data.attributes.payments', []))
-                ->contains(fn ($row) => strtolower((string) data_get($row, 'attributes.status', '')) === 'paid') ? 'succeeded' : '')
-            : (string) data_get($payload, 'data.attributes.status', '');
+        if ($isCheckoutSession) {
+            $paid = collect((array) data_get($payload, 'data.attributes.payments', []))
+                ->contains(fn ($row) => strtolower((string) data_get($row, 'attributes.status', '')) === 'paid');
+            $sessionStatus = strtolower((string) data_get($payload, 'data.attributes.status', ''));
+            $status = $paid ? 'succeeded' : (in_array($sessionStatus, ['expired', 'cancelled', 'canceled'], true) ? 'cancelled' : ($sessionStatus === 'failed' ? 'failed' : ''));
+        } else {
+            $status = (string) data_get($payload, 'data.attributes.status', '');
+        }
 
         $statusMap = [
             'awaiting_payment_method' => 'awaiting_payment_method',
@@ -949,6 +899,7 @@ class SalesPosController extends Controller
             'status' => $mapped,
             'metadata' => array_merge((array) $payment->metadata, ['paymongo_status' => $status]),
             'paid_at' => $mapped === 'paid' ? now() : $payment->paid_at,
+            'checkout_url' => in_array($mapped, ['failed', 'cancelled'], true) ? null : $payment->checkout_url,
         ]);
 
         if ($mapped === 'paid') {
@@ -994,7 +945,6 @@ class SalesPosController extends Controller
                 'is_active' => true,
                 'base_fee' => 100,
                 'per_km_fee' => 10,
-                'min_delivery_fee' => 80,
                 'free_shipping_min_order' => null,
                 'max_delivery_distance_km' => null,
             ]);
@@ -1019,10 +969,7 @@ class SalesPosController extends Controller
             return ['shipping_fee' => 0.0, 'distance_km' => round($distanceKm, 2), 'free_shipping_applied' => true];
         }
 
-        $fee = max(
-            (float) $setting->min_delivery_fee,
-            (float) $setting->base_fee + ($distanceKm * (float) $setting->per_km_fee)
-        );
+        $fee = (float) $setting->base_fee + ($distanceKm * (float) $setting->per_km_fee);
 
         return ['shipping_fee' => round($fee, 2), 'distance_km' => round($distanceKm, 2), 'free_shipping_applied' => false];
     }

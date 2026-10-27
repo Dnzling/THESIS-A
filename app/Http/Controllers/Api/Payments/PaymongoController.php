@@ -14,6 +14,7 @@ use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Sales\SalesPayment;
+use App\Models\Sales\SalesOrder;
 use App\Models\Store\Store;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Hr\Employee;
@@ -244,6 +245,25 @@ class PaymongoController extends Controller
             $data['amount'] = max(1, (int) round((float) $order->total_amount * 100));
         }
 
+        $salesOrder = null;
+        if (($data['payable_type'] ?? '') === 'sales_order') {
+            $salesOrder = SalesOrder::query()
+                ->whereKey((int) $data['payable_id'])
+                ->where('store_id', $resolvedStoreId)
+                ->first();
+            $salesPayment = $salesOrder ? SalesPayment::query()
+                ->where('sales_order_id', $salesOrder->id)
+                ->where('payment_provider', 'paymongo')
+                ->whereIn('status', ['pending', 'processing', 'awaiting_payment_method', 'failed', 'cancelled'])
+                ->latest('id')
+                ->first() : null;
+
+            if (!$salesOrder || !$salesPayment || in_array(strtolower((string) $salesOrder->payment_status), ['paid', 'cancelled'], true)) {
+                return response()->json(['message' => 'This POS order is not available for online payment.'], 422);
+            }
+            $data['amount'] = max(1, (int) round((float) $salesOrder->total_amount * 100));
+        }
+
         if (($data['payable_type'] ?? '') === 'invoice') {
             $invoice = Invoice::query()
                 ->where('store_id', $resolvedStoreId)
@@ -274,7 +294,8 @@ class PaymongoController extends Controller
 
         $store = Store::query()->find($resolvedStoreId);
         $isEcommerceOrder = ($data['payable_type'] ?? '') === 'ecommerce_order';
-        $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice'], true);
+        $isSalesOrder = ($data['payable_type'] ?? '') === 'sales_order';
+        $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order'], true);
         if ($isHostedPayable && !$isEcommerceOrder && (int) ($request->user()?->store_id ?? 0) !== $resolvedStoreId
             && (int) ($store?->owner_id ?? 0) !== (int) ($request->user()?->id ?? 0)) {
             return response()->json(['message' => 'This payment does not belong to your store.'], 403);
@@ -307,8 +328,11 @@ class PaymongoController extends Controller
         $requestedAllowed = $data['payment_method_allowed'] ?? null;
         if (is_array($requestedAllowed) && count($requestedAllowed) > 0) {
             $normalized = array_values(array_unique(array_map(fn($m) => strtolower(trim((string) $m)), $requestedAllowed)));
+            if ($isSalesOrder && !in_array(strtolower((string) $salesOrder?->payment_method), $normalized, true)) {
+                return response()->json(['message' => 'The selected payment method does not match this POS order.'], 422);
+            }
             $allowed = array_values(array_intersect($normalized, $storeAllowedMethods));
-            if ($isEcommerceOrder && count($allowed) !== count($normalized)) {
+            if (($isEcommerceOrder || $isSalesOrder) && count($allowed) !== count($normalized)) {
                 return response()->json(['message' => 'This payment method is not available for this store. Please choose another method.'], 422);
             }
             $data['payment_method_allowed'] = count($allowed) ? $allowed : $storeAllowedMethods;
@@ -320,7 +344,7 @@ class PaymongoController extends Controller
             ? $storeAllowedMethods
             : ['card', 'gcash', 'grab_pay', 'paymaya'];
         $methodTypes = array_values(array_intersect($data['payment_method_allowed'], $supportedForCheckout));
-        if ($isEcommerceOrder && is_array($requestedAllowed) && count($methodTypes) !== count(array_unique($requestedAllowed))) {
+        if (($isEcommerceOrder || $isSalesOrder) && is_array($requestedAllowed) && count($methodTypes) !== count(array_unique($requestedAllowed))) {
             return response()->json(['message' => 'This payment method is not available for checkout. Please choose another method.'], 422);
         }
         if (count($methodTypes) === 0) {
@@ -457,7 +481,7 @@ class PaymongoController extends Controller
         }
 
         if ($isHostedPayable) {
-            $this->service->logIntent([
+            $loggedIntent = $this->service->logIntent([
                 'store_id' => $resolvedStoreId,
                 'payment_intent_id' => $sessionId,
                 'amount' => $data['amount'],
@@ -469,6 +493,25 @@ class PaymongoController extends Controller
                 'payable_type' => $data['payable_type'],
                 'payable_id' => (int) $data['payable_id'],
             ]);
+            if ($isSalesOrder) {
+                $salesPayment = SalesPayment::query()
+                    ->where('sales_order_id', (int) $data['payable_id'])
+                    ->where('payment_provider', 'paymongo')
+                    ->whereIn('status', ['pending', 'processing', 'awaiting_payment_method', 'failed', 'cancelled'])
+                    ->latest('id')
+                    ->first();
+                if ($salesPayment) {
+                    $salesPayment->update([
+                        'provider_reference' => $sessionId,
+                        'checkout_url' => $checkoutUrl,
+                        'status' => 'pending',
+                        'metadata' => array_merge((array) $salesPayment->metadata, [
+                            'source' => 'sales_pos',
+                            'payment_session_id' => $loggedIntent->payment_intent_id,
+                        ]),
+                    ]);
+                }
+            }
             if ($isEcommerceOrder && isset($order) && $order->payment_status === 'failed') {
                 $order->update(['payment_status' => 'unpaid']);
             }

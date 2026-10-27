@@ -13,6 +13,7 @@ use App\Models\Logistics\ReturnPickupLog;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,10 +42,141 @@ class DeliveryTripController extends Controller
             $query->where('status', (string) $request->input('status'));
         }
 
-        $trips = $query->orderByDesc('created_at')
-            ->paginate((int) $request->input('per_page', 20));
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                if (ctype_digit($search)) {
+                    $builder->orWhere('id', (int) $search);
+                }
+                $builder->orWhereHas('driver', fn ($driver) => $driver
+                    ->where('fname', 'like', "%{$search}%")
+                    ->orWhere('lname', 'like', "%{$search}%"))
+                    ->orWhereHas('vehicle', fn ($vehicle) => $vehicle
+                        ->where('vehicle_name', 'like', "%{$search}%")
+                        ->orWhere('plate_number', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->input('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->input('date_to'));
+        }
+
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortBy = in_array($sortBy, ['created_at', 'scheduled_departure_at', 'status'], true) ? $sortBy : 'created_at';
+        $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $perPage = min(100, max(1, (int) $request->input('per_page', 10)));
+
+        $trips = $query->orderBy($sortBy, $sortOrder)
+            ->paginate($perPage);
 
         return response()->json(['success' => true, 'data' => $trips]);
+    }
+
+    public function compatibleForOrder(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
+        $validated = $request->validate([
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup'])],
+            'order_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $storeId = $this->resolveStoreId($request);
+        if (!$storeId) {
+            return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
+        }
+
+        $source = $validated['source_type'];
+        if ($source === 'ecommerce') {
+            $order = EcommerceOrder::query()
+                ->with(['delivery', 'items.product:id,weight_kg'])
+                ->where('store_id', $storeId)
+                ->where('status', 'ready_for_dispatch')
+                ->findOrFail((int) $validated['order_id']);
+            $delivery = $order->delivery;
+            abort_if($delivery && ($delivery->trip_id || !in_array((string) $delivery->status, ['pending', 'ready_for_dispatch'], true)), 422, 'This order is already assigned or no longer ready for dispatch.');
+            $address = (string) $order->shipping_address;
+            $orderWeight = $this->orderWeight($order->items ?? []);
+        } elseif ($source === 'sales') {
+            $order = SalesOrder::query()
+                ->with(['delivery', 'items.product:id,weight_kg'])
+                ->where('store_id', $storeId)
+                ->where('delivery_required', true)
+                ->where(function ($query) {
+                    $query->whereIn('status', ['ready_for_dispatch', 'ready_to_dispatch'])
+                        ->orWhere(fn ($legacy) => $legacy->where('status', 'completed')->where('payment_status', 'paid'));
+                })
+                ->findOrFail((int) $validated['order_id']);
+            $delivery = $order->delivery;
+            abort_if($delivery && ($delivery->trip_id || !in_array((string) $delivery->status, ['pending', 'ready_for_dispatch'], true)), 422, 'This order is already assigned or no longer ready for dispatch.');
+            $address = (string) $order->delivery_address;
+            $orderWeight = $this->orderWeight($order->items ?? []);
+        } else {
+            $order = ReturnPickup::query()
+                ->with(['returnRequest.orderItem.product:id,weight_kg'])
+                ->where('store_id', $storeId)
+                ->whereNull('trip_id')
+                ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
+                ->findOrFail((int) $validated['order_id']);
+            $address = (string) $order->pickup_address;
+            $orderWeight = $this->returnPickupWeight($order);
+        }
+
+        $orderArea = $this->areaKey($address);
+        $query = DeliveryTrip::query()->with([
+            'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
+            'driver:id,fname,lname,email',
+            'ecommerceDeliveries.order.items.product:id,weight_kg',
+            'salesDeliveries.order.items.product:id,weight_kg',
+            'returnPickups.returnRequest.orderItem.product:id,weight_kg',
+        ])->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups'])
+            ->where('store_id', $storeId)
+            ->where('status', 'planned');
+        $this->applyTenantScope($request, $query);
+
+        $compatible = $query->orderByDesc('created_at')->get()->map(function (DeliveryTrip $trip) use ($orderArea, $orderWeight) {
+            $capacity = (float) ($trip->vehicle?->capacity_kg ?? 0);
+            $weight = $this->currentTripWeight($trip);
+            $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
+            $stops = (int) $trip->ecommerceDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
+                + (int) $trip->salesDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
+                + (int) $trip->returnPickups()->whereNotIn('status', ['delivered', 'cancelled'])->count();
+            $tripArea = $this->tripAreaKey($trip);
+
+            if ($maxStops > 0 && $stops >= $maxStops) return null;
+            if ($capacity > 0 && ($weight + $orderWeight) > $capacity) return null;
+            if ($tripArea && $tripArea !== $orderArea) return null;
+
+            $driverName = trim((string) ($trip->driver?->fname . ' ' . $trip->driver?->lname));
+            return [
+                'id' => $trip->id,
+                'created_at' => $trip->created_at,
+                'status' => $trip->status,
+                'driver_name' => $driverName ?: 'Driver not set',
+                'driver' => $trip->driver,
+                'vehicle_name' => $trip->vehicle?->vehicle_name ?? 'Vehicle not set',
+                'vehicle' => $trip->vehicle,
+                'plate_number' => $trip->vehicle?->plate_number,
+                'vehicle_type' => $trip->vehicle?->vehicle_type,
+                'scheduled_departure_at' => $trip->scheduled_departure_at,
+                'assigned_stops' => $stops,
+                'ecommerce_deliveries_count' => (int) $trip->ecommerce_deliveries_count,
+                'sales_deliveries_count' => (int) $trip->sales_deliveries_count,
+                'return_pickups_count' => (int) $trip->return_pickups_count,
+                'max_stops' => $maxStops ?: null,
+                'current_weight_kg' => round($weight, 2),
+                'order_weight_kg' => round($orderWeight, 2),
+                'remaining_capacity_kg' => $capacity > 0 ? round(max(0, $capacity - $weight), 2) : null,
+                'remaining_capacity_after_kg' => $capacity > 0 ? round(max(0, $capacity - $weight - $orderWeight), 2) : null,
+                'vehicle_capacity_kg' => $capacity ?: null,
+                'remaining_stop_slots' => $maxStops > 0 ? max(0, $maxStops - $stops) : null,
+                'remaining_stop_slots_after' => $maxStops > 0 ? max(0, $maxStops - $stops - 1) : null,
+            ];
+        })->filter()->values();
+
+        return response()->json(['success' => true, 'data' => $compatible]);
     }
 
     public function show(Request $request, int $id): JsonResponse
@@ -75,7 +207,7 @@ class DeliveryTripController extends Controller
         return response()->json(['success' => true, 'data' => $trip]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
@@ -88,6 +220,18 @@ class DeliveryTripController extends Controller
         $storeId = $this->resolveStoreId($request);
         if (!$storeId) {
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
+        }
+
+        $driver = User::query()->with('employee')
+            ->where('id', (int) $validated['driver_user_id'])
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
+            ->first();
+        if (!$driver || !$driverEligibility->userCanDrive($driver, $storeId)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'driver_user_id' => 'Select an active employee with a logistics driver permission.',
+            ]);
         }
 
         $trip = DeliveryTrip::query()->create([
@@ -372,6 +516,11 @@ class DeliveryTripController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
 
+                    if ($delivery->lalamove_order_id) {
+                        $skipped++;
+                        continue;
+                    }
+
                     if ($delivery->trip_id && (int) $delivery->trip_id === (int) $trip->id) {
                         if (in_array(strtolower((string) $delivery->status), ['', 'pending', 'ready_for_dispatch'], true)) {
                             $delivery->status = 'assigned';
@@ -384,6 +533,16 @@ class DeliveryTripController extends Controller
                     $delivery->trip_id = $trip->id;
                     $delivery->vehicle_id = $trip->vehicle_id;
                     $delivery->driver_user_id = $trip->driver_user_id;
+                    $delivery->courier_provider = 'internal';
+                    $delivery->lalamove_quotation_id = null;
+                    $delivery->lalamove_order_id = null;
+                    $delivery->lalamove_share_link = null;
+                    $delivery->lalamove_status = null;
+                    $delivery->lalamove_service_type = null;
+                    $delivery->lalamove_pickup_stop_id = null;
+                    $delivery->lalamove_dropoff_stop_id = null;
+                    $delivery->lalamove_price_breakdown = null;
+                    $delivery->lalamove_quote_expires_at = null;
                     $delivery->courier_name = $courierName;
                     $delivery->courier_contact = $courierContact;
                     $delivery->tracking_number = $delivery->tracking_number ?: $this->nextTrackingNumber();
@@ -438,6 +597,11 @@ class DeliveryTripController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
 
+                    if ($delivery->lalamove_order_id) {
+                        $skipped++;
+                        continue;
+                    }
+
                     if ($delivery->trip_id && (int) $delivery->trip_id === (int) $trip->id) {
                         if (in_array(strtolower((string) $delivery->status), ['', 'pending', 'ready_for_dispatch'], true)) {
                             $delivery->status = 'assigned';
@@ -449,6 +613,16 @@ class DeliveryTripController extends Controller
 
                     $delivery->trip_id = $trip->id;
                     $delivery->driver_user_id = $trip->driver_user_id;
+                    $delivery->courier_provider = 'internal';
+                    $delivery->lalamove_quotation_id = null;
+                    $delivery->lalamove_order_id = null;
+                    $delivery->lalamove_share_link = null;
+                    $delivery->lalamove_status = null;
+                    $delivery->lalamove_service_type = null;
+                    $delivery->lalamove_pickup_stop_id = null;
+                    $delivery->lalamove_dropoff_stop_id = null;
+                    $delivery->lalamove_price_breakdown = null;
+                    $delivery->lalamove_quote_expires_at = null;
                     $delivery->courier_name = $courierName;
                     $delivery->courier_contact = $courierContact;
                     $delivery->tracking_number = $delivery->tracking_number ?: $this->nextTrackingNumber();
@@ -482,6 +656,8 @@ class DeliveryTripController extends Controller
                     $targetArea = $targetArea ?: $pickupArea;
                     if ($pickupArea !== $targetArea) { $areaMismatch++; continue; }
                     if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
+                    $pickupWeight = $this->returnPickupWeight($pickup);
+                    if ($capacityKg > 0 && ($currentWeight + $pickupWeight) > $capacityKg) { $overCapacity++; continue; }
 
                     $pickup->trip_id = $trip->id;
                     $pickup->driver_user_id = $trip->driver_user_id;
@@ -495,6 +671,7 @@ class DeliveryTripController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
                     $added++;
+                    $currentWeight += $pickupWeight;
                     $currentStops++;
                 }
             }
@@ -580,7 +757,7 @@ class DeliveryTripController extends Controller
         }
 
         foreach ($trip->returnPickups as $pickup) {
-            if (!in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)) continue;
+            if (in_array(strtolower((string) $pickup->status), ['delivered', 'cancelled'], true)) continue;
             $weight += $this->returnPickupWeight($pickup);
         }
 

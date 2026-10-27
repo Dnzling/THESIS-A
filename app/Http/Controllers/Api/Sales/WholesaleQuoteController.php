@@ -33,6 +33,7 @@ class WholesaleQuoteController extends Controller
                 $search = trim((string) $request->input('search'));
                 $query->where(function ($nested) use ($search) {
                     $nested->where('quote_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
                         ->orWhereHas('crmLead', fn ($lead) => $lead->where('full_name', 'like', "%{$search}%"));
                 });
             })
@@ -40,14 +41,13 @@ class WholesaleQuoteController extends Controller
             ->when($request->filled('date'), fn ($query) => $query->whereDate('created_at', $request->input('date')))
             ->with('crmLead:id,full_name,email,phone')
             ->latest()->paginate(min(50, max(1, (int) $request->input('per_page', 15))));
+        $rows->getCollection()->each(fn (WholesaleQuote $quote) => $this->attachCustomerDisplay($quote));
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
     public function options(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
-        $leads = CrmLead::query()->where('store_id', $storeId)
-            ->orderBy('full_name')->get(['id', 'full_name', 'email', 'phone', 'stage']);
         $products = BranchInventory::query()->where('store_id', $storeId)
             ->whereHas('product', fn ($query) => $query->where('product_type', 'finished_good')->where('is_active', true))
             ->with(['product:id,product_name,sku,base_price', 'branch:id,name'])
@@ -60,14 +60,16 @@ class WholesaleQuoteController extends Controller
                 'available' => (int) $stock->quantity_available,
                 'base_price' => (float) ($stock->product?->base_price ?? 0),
             ]);
-        return response()->json(['success' => true, 'data' => ['leads' => $leads, 'products' => $products]]);
+        return response()->json(['success' => true, 'data' => ['products' => $products]]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
         $validated = $request->validate([
-            'crm_lead_id' => ['required', 'integer', Rule::exists('sales_crm_leads', 'id')->where('store_id', $storeId)],
+            'customer_name' => ['required', 'string', 'min:2', 'max:255'],
+            'customer_email' => ['required', 'email', 'max:255'],
+            'customer_phone' => ['required', 'string', 'regex:/^09\d{2}[ -]?\d{3}[ -]?\d{4}$/'],
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
             'valid_until' => ['nullable', 'date', 'after_or_equal:today'],
             'payment_terms' => ['required', Rule::in(['online_payment', 'bank_transfer'])],
@@ -99,7 +101,9 @@ class WholesaleQuoteController extends Controller
         }
         $quote = WholesaleQuote::create([
             'store_id' => $storeId, 'branch_id' => $validated['branch_id'],
-            'crm_lead_id' => $validated['crm_lead_id'],
+            'customer_name' => trim($validated['customer_name']),
+            'customer_email' => strtolower(trim($validated['customer_email'])),
+            'customer_phone' => preg_replace('/\s+/', ' ', trim($validated['customer_phone'])),
             'quote_number' => 'WQ-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
             'status' => 'draft', 'items' => $items,
             'subtotal' => round(array_sum(array_column($items, 'line_total')), 2),
@@ -114,6 +118,7 @@ class WholesaleQuoteController extends Controller
     {
         $quote = WholesaleQuote::query()->where('store_id', $request->user()->store_id)
             ->with('crmLead:id,full_name,email,phone')->findOrFail($id);
+        $this->attachCustomerDisplay($quote);
         if ($quote->sales_order_id) {
             $quote->setAttribute('order_payment_status', SalesOrder::query()
                 ->where('store_id', $quote->store_id)->whereKey($quote->sales_order_id)
@@ -127,6 +132,17 @@ class WholesaleQuoteController extends Controller
         return response()->json(['success' => true, 'data' => $quote]);
     }
 
+    private function attachCustomerDisplay(WholesaleQuote $quote): void
+    {
+        if (!$quote->crmLead && $quote->customer_name) {
+            $quote->setRelation('crmLead', (object) [
+                'full_name' => $quote->customer_name,
+                'email' => $quote->customer_email,
+                'phone' => $quote->customer_phone,
+            ]);
+        }
+    }
+
     public function updateStatus(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate(['status' => ['required', Rule::in(['sent', 'accepted', 'declined'])]]);
@@ -136,9 +152,6 @@ class WholesaleQuoteController extends Controller
             return response()->json(['success' => false, 'message' => 'This quotation cannot move to that status.'], 422);
         }
         $quote->update(['status' => $validated['status']]);
-        if ($validated['status'] === 'sent') {
-            CrmLead::query()->where('store_id', $quote->store_id)->whereKey($quote->crm_lead_id)->update(['stage' => 'proposal']);
-        }
         return response()->json(['success' => true, 'data' => $quote->fresh()]);
     }
 
@@ -160,14 +173,16 @@ class WholesaleQuoteController extends Controller
                     return ['error' => "Not enough stock for {$item['product_name']}."];
                 }
             }
-            $lead = CrmLead::query()->where('store_id', $quote->store_id)->findOrFail($quote->crm_lead_id);
+            $legacyLead = $quote->crmLead;
             $order = SalesOrder::create([
                 'store_id' => $quote->store_id, 'branch_id' => $quote->branch_id,
                 'order_number' => 'WHO-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
                 'status' => 'pending_payment',
                 'payment_method' => $quote->payment_terms === 'bank_transfer' ? 'bank_transfer' : 'paymongo',
                 'payment_status' => 'pending',
-                'customer_name' => $lead->full_name, 'customer_phone' => $lead->phone,
+                'customer_name' => $quote->customer_name ?: $legacyLead?->full_name,
+                'customer_phone' => $quote->customer_phone ?: $legacyLead?->phone,
+                'delivery_email' => $quote->customer_email ?: $legacyLead?->email,
                 'subtotal' => $quote->subtotal, 'total_amount' => $quote->subtotal,
                 'notes' => 'Wholesale quote ' . $quote->quote_number . ($quote->payment_terms ? ' | Terms: ' . $quote->payment_terms : '') . ($quote->notes ? ' | ' . $quote->notes : ''),
                 'created_by' => $request->user()->id,
@@ -185,7 +200,6 @@ class WholesaleQuoteController extends Controller
                 'status' => 'converted', 'sales_order_id' => $order->id,
                 'invoice_number' => 'WINV-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
             ]);
-            $lead->update(['stage' => 'won']);
             return ['quote' => $quote->fresh(), 'order' => $order];
         });
         if (isset($result['error'])) {

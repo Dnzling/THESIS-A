@@ -73,8 +73,8 @@
       <template #header>
         <div class="m-4 mt-6">
           <h2 class="mb-3 text-sm font-semibold text-gray-900">Customer Invoices</h2>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
-            <div class="space-y-2 md:col-span-2">
+          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div class="space-y-2 md:w-80">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText
                 v-model="filters.search"
@@ -84,7 +84,7 @@
               />
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Source</label>
               <Select
                 v-model="filters.source"
@@ -96,7 +96,7 @@
               />
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
               <Select
                 v-model="filters.status"
@@ -108,8 +108,9 @@
               />
             </div>
             
-          <div class="mt-5  justify-end">
-            <Button icon="pi pi-refresh" label="Apply Filters" severity="secondary" outlined size="small" :loading="loading" @click="loadReceivables" />
+          <div class="flex flex-wrap items-center gap-2">
+            <Button v-if="filters.search || filters.source !== 'all' || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+            <Button icon="pi pi-filter" label="Apply Filters" severity="secondary" outlined size="small" :loading="loading" @click="loadReceivables" />
           </div>
           </div>
 
@@ -128,7 +129,7 @@
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
 
-           <Column field="due_date" header="Date" style="width: 140px">
+           <Column field="created_at" header="Date" sortable style="width: 140px">
               <template #body="{ data }">
                 <span class="text-sm">{{ formatDate(data.created_at) }}</span>
               </template>
@@ -140,12 +141,11 @@
               </template>
             </Column>
 
-            <Column field="source_type" header="Source" class="align-center text-" style="width: 120px">
+            <Column field="source_type" header="Source" style="width: 120px">
               <template #body="{ data }">
-                <Badge
+                <Tag
                   :value="data.source_type === 'ecommerce' ? 'Ecommerce' : 'In Store'"
                   :severity="data.source_type === 'ecommerce' ? 'info' : 'success'"
-                  size="medium"
                 />
               </template>
             </Column>
@@ -192,6 +192,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Badge from 'primevue/badge'
+import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import financeService from '../../../services/finance.service'
 
@@ -278,6 +279,11 @@ const loadReceivables = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const clearFilters = () => {
+  filters.value = { search: '', source: 'all', status: '' }
+  loadReceivables()
 }
 
 const viewDetail = (row: any) => {

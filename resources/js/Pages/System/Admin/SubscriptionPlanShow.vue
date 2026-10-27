@@ -72,7 +72,7 @@
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-700">3D Model Requests per Month</label>
                 <InputNumber v-model="form.max_3d_model_requests_per_month" :min="0" size="small" fluid />
-                <small class="text-xs text-slate-500">Requires 3D manage permission. Set 0 to disable requests.</small>
+                <small class="text-xs text-slate-500">Maximum 3D model requests allowed each month. Set 0 to disable requests.</small>
               </div>
               <div class="md:col-span-2 border-t border-slate-100 pt-4"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Visibility</p></div>
               <div>

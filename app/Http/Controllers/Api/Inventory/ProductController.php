@@ -5,15 +5,18 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Inventory\ReorderRule;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -103,6 +106,7 @@ class ProductController extends Controller
             'length_cm' => $data['length_cm'] ?? null,
             'width_cm' => $data['width_cm'] ?? null,
             'height_cm' => $data['height_cm'] ?? null,
+            'weight_kg' => $data['weight_kg'] ?? null,
             'is_bulky' => $data['is_bulky'] ?? null,
             'assembly_required' => $data['assembly_required'] ?? false,
             'discounted_price' => $productType === 'finished_good' && $discountedPrice !== '' && $discountedPrice !== null
@@ -116,16 +120,13 @@ class ProductController extends Controller
             'created_by' => auth()->id(),
         ];
 
-        if (!empty($data['category_id'])) {
-            $payload['category_id'] = $data['category_id'];
+        if ($productType !== 'finished_good') {
+            $payload['category_id'] = null;
+            $payload['subcategory_id'] = null;
         } else {
-            $defaultCategoryId = $this->resolveDefaultCategoryId($storeId);
-            if ($defaultCategoryId) {
-                $payload['category_id'] = $defaultCategoryId;
-            }
+            $payload['category_id'] = $data['category_id'] ?? $this->resolveDefaultCategoryId($storeId);
+            $payload['subcategory_id'] = $data['subcategory_id'] ?? null;
         }
-
-        $payload['subcategory_id'] = $data['subcategory_id'] ?? null;
 
         return $payload;
     }
@@ -235,6 +236,10 @@ class ProductController extends Controller
                     'base_price',
                     'cost_price',
                     'cost_price as inventory_cost_price',
+                    'length_cm',
+                    'width_cm',
+                    'height_cm',
+                    'weight_kg',
                     'unit_of_measurement',
                     'supplier_name',
                     'initial_stock',
@@ -454,6 +459,7 @@ class ProductController extends Controller
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
                 'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'nullable|array|max:3',
@@ -468,6 +474,7 @@ class ProductController extends Controller
                     Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
                 ],
                 'initial_stock' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
                 'variations' => 'nullable|array',
                 'variations.*.variation_name' => 'required|string|max:255',
@@ -511,6 +518,12 @@ class ProductController extends Controller
                 ], 422);
             }
 
+            if (($validated['product_type'] ?? 'finished_good') === 'finished_good'
+                && empty($validated['category_id'])
+                && !$this->resolveDefaultCategoryId($context['store_id'])) {
+                throw ValidationException::withMessages(['category_id' => 'Select a category for finished goods.']);
+            }
+
             DB::beginTransaction();
 
             $product = Product::create($this->buildProductPayload($validated, $context['store_id']));
@@ -539,7 +552,7 @@ class ProductController extends Controller
                     'quantity_available' => 0,
                     'quantity_damaged' => 0,
                     'quantity_incoming' => 0,
-                    'reorder_point' => (int) ($product->reorder_point ?? 0),
+                    'reorder_point' => (int) ($validated['reorder_point'] ?? 10),
                     'reorder_quantity' => 0,
                     'maximum_stock' => 0,
                     'safety_stock' => 0,
@@ -622,6 +635,11 @@ class ProductController extends Controller
             throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Failed to create inventory product', [
+                'store_id' => $context['store_id'] ?? null,
+                'user_id' => auth()->id(),
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create product',
@@ -654,6 +672,7 @@ class ProductController extends Controller
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
                 'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'sometimes|array|max:3',
@@ -668,6 +687,7 @@ class ProductController extends Controller
                     Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
                 ],
                 'initial_stock' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
                 'product_image' => 'nullable|image|max:5120',
             ]);
@@ -684,17 +704,26 @@ class ProductController extends Controller
                 ], 422);
             }
 
+            $productType = $validated['product_type'] ?? $product->product_type;
+            if ($productType === 'finished_good' && empty($validated['category_id']) && !$product->category_id) {
+                throw ValidationException::withMessages(['category_id' => 'Select a category for finished goods.']);
+            }
+
             DB::beginTransaction();
 
             $updates = [
                 'product_name' => $validated['product_name'],
                 'sku' => $validated['sku'] ?? $product->sku,
-                'description' => $validated['description'] ?? null,
-                'category_id' => $validated['category_id'] ?? $product->category_id,
-                'subcategory_id' => array_key_exists('subcategory_id', $validated)
-                    ? $validated['subcategory_id']
-                    : $product->subcategory_id,
-                'product_type' => $validated['product_type'] ?? $product->product_type ?? 'finished_good',
+                'description' => array_key_exists('description', $validated)
+                    ? $validated['description']
+                    : $product->description,
+                'category_id' => $productType === 'finished_good'
+                    ? ($validated['category_id'] ?? $product->category_id)
+                    : null,
+                'subcategory_id' => $productType === 'finished_good'
+                    ? ($validated['subcategory_id'] ?? $product->subcategory_id)
+                    : null,
+                'product_type' => $productType,
                 'brand' => array_key_exists('brand', $validated) ? $validated['brand'] : $product->brand,
                 'base_price' => (float) ($validated['base_price'] ?? $validated['unit_cost'] ?? $product->base_price ?? 0),
                 'discounted_price' => array_key_exists('discounted_price', $validated)
@@ -703,6 +732,7 @@ class ProductController extends Controller
                 'length_cm' => $validated['length_cm'] ?? $product->length_cm,
                 'width_cm' => $validated['width_cm'] ?? $product->width_cm,
                 'height_cm' => $validated['height_cm'] ?? $product->height_cm,
+                'weight_kg' => array_key_exists('weight_kg', $validated) ? $validated['weight_kg'] : $product->weight_kg,
                 'is_bulky' => array_key_exists('is_bulky', $validated) ? $validated['is_bulky'] : $product->is_bulky,
                 'assembly_required' => $validated['assembly_required'] ?? $product->assembly_required,
                 'cost_price' => $validated['cost_price'] ?? $validated['unit_cost'] ?? $product->cost_price,
@@ -714,6 +744,14 @@ class ProductController extends Controller
             ];
 
             $product->update($updates);
+            if (array_key_exists('reorder_point', $validated)) {
+                $this->syncBranchReorderPoint(
+                    (int) $context['store_id'],
+                    (int) $context['branch_id'],
+                    (int) $product->id,
+                    (int) $validated['reorder_point']
+                );
+            }
             if (array_key_exists('tag_ids', $validated)) {
                 $this->syncProductTags($product, $validated['tag_ids'] ?? [], $context['store_id']);
             }
@@ -768,27 +806,79 @@ class ProductController extends Controller
         }
     }
 
+    private function syncBranchReorderPoint(int $storeId, int $branchId, int $productId, int $reorderPoint): void
+    {
+        BranchInventory::query()
+            ->where('store_id', $storeId)
+            ->where('branch_id', $branchId)
+            ->where('product_id', $productId)
+            ->whereNull('variation_id')
+            ->update(['reorder_point' => $reorderPoint]);
+
+        $rule = ReorderRule::query()
+            ->where('branch_id', $branchId)
+            ->where('product_id', $productId)
+            ->where('is_active', true)
+            ->first();
+
+        if ($rule && ($rule->basis_type ?? 'reorder_point') === 'reorder_point') {
+            $rule->update(['reorder_point' => $reorderPoint]);
+        }
+    }
+
+    public function archive(int $id, PermissionService $permissions): JsonResponse
+    {
+        $context = $this->getUserContext();
+        $user = auth()->user();
+
+        if (!$user || !$permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])) {
+            return response()->json(['success' => false, 'message' => 'You cannot archive products.'], 403);
+        }
+
+        $product = Product::query()
+            ->where('store_id', $context['store_id'])
+            ->findOrFail($id);
+
+        if ($product->is_active) {
+            $product->update(['is_active' => false]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item archived. Its stock and history were preserved.',
+            'data' => ['id' => $product->id, 'is_active' => false],
+        ]);
+    }
+
     /**
      * Delete product
      * DELETE /api/inventory/products/{id}
      */
-    public function destroy(int $id): JsonResponse
+    public function destroy(int $id, PermissionService $permissions): JsonResponse
     {
-        try {
-            $context = $this->getUserContext();
+        $context = $this->getUserContext();
+        $user = auth()->user();
 
+        if (!$user || !$permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])) {
+            return response()->json(['success' => false, 'message' => 'You cannot delete products.'], 403);
+        }
+
+        try {
             $product = Product::where('store_id', $context['store_id'])->findOrFail($id);
 
             // Check if product has inventory
             $hasInventory = BranchInventory::where('product_id', $id)
                 ->where('store_id', $context['store_id'])
-                ->where('quantity_on_hand', '>', 0)
+                ->where(function ($query) {
+                    $query->where('quantity_on_hand', '>', 0)
+                        ->orWhere('quantity_reserved', '>', 0);
+                })
                 ->exists();
 
             if ($hasInventory) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot delete product with existing inventory',
+                    'message' => 'This item still has stock or reserved units in a branch. Adjust stock to zero or archive it instead.',
                 ], 422);
             }
 

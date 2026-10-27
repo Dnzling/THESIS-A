@@ -20,6 +20,9 @@ import { Ziggy } from './ziggy';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useAuthStore } from '@/stores/auth';
 import axios from 'axios';
+import { captureDevConsole } from './utils/devConsoleCapture';
+
+captureDevConsole();
 
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
@@ -316,7 +319,6 @@ createInertiaApp({
         const authStore = useAuthStore(pinia);
         if (authStore.token) {
             axios.defaults.headers.common.Authorization = `Bearer ${authStore.token}`;
-            console.log('Auth token initialized:', authStore.token);
             if (authStore.user) {
                 authStore.initialize().catch((err) => {
                     console.warn('Failed to initialize auth store:', err);

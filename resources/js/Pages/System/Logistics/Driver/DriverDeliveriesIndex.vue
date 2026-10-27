@@ -277,7 +277,7 @@ const sources = [
 const statuses = [
     { label: "All statuses", value: "" },
     { label: "Pending", value: "pending" },
-    { label: "Ready for Dispatch", value: "ready_for_dispatch" },
+    { label: "For Dispatch", value: "ready_for_dispatch" },
     { label: "Assigned", value: "assigned" },
     { label: "Packed", value: "packed" },
     { label: "In Transit", value: "in_transit" },

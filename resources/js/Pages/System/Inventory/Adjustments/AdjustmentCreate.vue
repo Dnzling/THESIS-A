@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class=" mx-auto space-y-6 pb-6">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
@@ -449,7 +449,7 @@ const getProductSku = (inventoryItemId: number) => {
 const getProductTypeLabel = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const labels: Record<string, string> = {
-    finished_good: 'Finished Good',
+    finished_good: 'Product',
     raw_material: 'Raw Material',
     supply: 'Supply'
   }

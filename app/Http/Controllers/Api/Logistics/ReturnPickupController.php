@@ -8,6 +8,7 @@ use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Logistics\ReturnPickupLog;
 use App\Models\Store\Branch;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -80,6 +81,10 @@ class ReturnPickupController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $dateFilters = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
         $storeId = (int) ($request->user()?->store_id ?? 0);
 
         $query = ReturnPickup::query()
@@ -105,8 +110,15 @@ class ReturnPickupController extends Controller
             });
         }
 
-        $sortBy = (string) $request->input('sort_by', 'scheduled_at');
-        $sortOrder = strtolower((string) $request->input('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
+        if (!empty($dateFilters['date_from'])) {
+            $query->whereDate('created_at', '>=', $dateFilters['date_from']);
+        }
+        if (!empty($dateFilters['date_to'])) {
+            $query->whereDate('created_at', '<=', $dateFilters['date_to']);
+        }
+
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
         if (!in_array($sortBy, ['scheduled_at', 'created_at', 'status', 'id'], true)) {
             $sortBy = 'scheduled_at';
         }
@@ -171,7 +183,7 @@ class ReturnPickupController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
-    public function assignDriver(Request $request, ReturnPickup $pickup): JsonResponse
+    public function assignDriver(Request $request, ReturnPickup $pickup, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
         if ($storeId > 0 && (int) $pickup->store_id !== $storeId) {
@@ -201,9 +213,8 @@ class ReturnPickupController extends Controller
             ->where('is_active', true)
             ->first();
         if (!$driver || $driver->employee?->status !== 'active'
-            || (strtolower((string) $driver->role?->name) !== 'driver'
-                && strtolower((string) $driver->employee?->role?->name) !== 'driver')) {
-            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+            || !$driverEligibility->userCanDrive($driver, $storeId)) {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with a logistics driver permission.'], 422);
         }
 
         $vehicle = EcommerceDeliveryVehicle::query()
@@ -214,7 +225,9 @@ class ReturnPickupController extends Controller
         $branch = Branch::query()->where('id', $validated['destination_branch_id'])->where('store_id', $storeId)->firstOrFail();
 
         $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->reject(fn ($id) => $id === (int) $driver->id)->values();
-        $validAssistantCount = User::query()->where('store_id', $storeId)->where('is_active', true)->whereIn('id', $assistantIds)->count();
+        $validAssistantCount = User::query()->with('employee')->where('store_id', $storeId)->where('is_active', true)
+            ->whereIn('id', $assistantIds)->whereHas('employee', fn ($query) => $query->where('status', 'active'))
+            ->get()->filter(fn (User $assistant) => $driverEligibility->userCanDrive($assistant, $storeId))->count();
         if ($validAssistantCount !== $assistantIds->count()) {
             return response()->json(['success' => false, 'message' => 'One or more delivery assistants are invalid.'], 422);
         }

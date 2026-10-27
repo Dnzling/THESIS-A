@@ -247,6 +247,7 @@ Route::prefix('inventory')->group(function () {
         Route::get('/', [ProductController::class, 'index']);
         Route::get('/{id}', [ProductController::class, 'show']);
         Route::post('/', [ProductController::class, 'store'])->middleware('subscription.capacity:products');
+        Route::post('/{id}/archive', [ProductController::class, 'archive'])->whereNumber('id');
         Route::put('/{id}', [ProductController::class, 'update']);
         Route::delete('/{id}', [ProductController::class, 'destroy']);
         Route::get('/{id}/variations', [ProductController::class, 'getVariations']);
@@ -339,6 +340,7 @@ Route::prefix('inventory')->group(function () {
     // Reorder Suggestions Management
     Route::prefix('reorder-suggestions')->group(function () {
         Route::get('/', [ReorderSuggestionController::class, 'index']);
+        Route::post('/create-grouped-prs', [ReorderSuggestionController::class, 'createGroupedPrs']);
         Route::post('/', [ReorderSuggestionController::class, 'store']);
         Route::get('/{suggestion}', [ReorderSuggestionController::class, 'show']);
         Route::put('/{suggestion}', [ReorderSuggestionController::class, 'update']);

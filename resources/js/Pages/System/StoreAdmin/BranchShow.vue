@@ -165,6 +165,9 @@
         <div class="h-80 rounded-xl overflow-hidden border border-slate-200">
           <div id="branch-map" class="h-full w-full"></div>
         </div>
+        <small v-if="locationError" class="text-xs text-red-600">{{ locationError }}</small>
+        <small v-else-if="locationChecking" class="text-xs text-slate-500">Checking that the pin is inside Cavite...</small>
+        <small v-else-if="locationValid" class="text-xs text-emerald-700">Pin confirmed inside Cavite province.</small>
         <small v-if="mapError" class="text-xs text-red-600">{{ mapError }}</small>
       </div>
       <template #footer>
@@ -205,6 +208,10 @@ const showEdit = ref(false)
 const saving = ref(false)
 const searching = ref(false)
 const mapError = ref('')
+const locationError = ref('')
+const locationChecking = ref(false)
+const locationValid = ref(false)
+let locationValidationRequest = 0
 const isProvincesLoading = ref(false)
 const isCitiesLoading = ref(false)
 const isBarangaysLoading = ref(false)
@@ -515,8 +522,7 @@ const initMap = async () => {
       redrawShapes()
     })
     activeMap.on('click', (event) => {
-      form.value.latitude = event.lngLat.lat.toFixed(6)
-      form.value.longitude = event.lngLat.lng.toFixed(6)
+      void setBranchLocation(event.lngLat.lat, event.lngLat.lng)
     })
     activeMap.on('error', (event) => {
       mapError.value = event.error?.message || 'Mapbox could not load the map. Check the token and network connection.'
@@ -573,8 +579,7 @@ const redrawShapes = () => {
     .addTo(map)
   marker.on('dragend', () => {
     const point = marker!.getLngLat()
-    form.value.latitude = point.lat.toFixed(6)
-    form.value.longitude = point.lng.toFixed(6)
+    void setBranchLocation(point.lat, point.lng)
   })
   const geofenceSource = map.getSource('branch-geofence') as GeoJSONSource | undefined
   geofenceSource?.setData(getGeofenceFeature())
@@ -604,6 +609,11 @@ const saveBranch = async () => {
       title: 'Missing Branch Details',
       message: 'Please enter the branch name and address, and select a city.',
     })
+    return
+  }
+
+  if (form.value.latitude && form.value.longitude && !(await validateBranchLocation(Number(form.value.latitude), Number(form.value.longitude)))) {
+    redrawShapes()
     return
   }
 
@@ -641,8 +651,7 @@ async function searchLocation() {
       })
       return
     }
-    form.value.latitude = result.latitude.toFixed(6)
-    form.value.longitude = result.longitude.toFixed(6)
+    if (!(await setBranchLocation(result.latitude, result.longitude))) return
     if (result.address) form.value.address = result.address
     redrawShapes()
   } catch (error: any) {
@@ -654,6 +663,39 @@ async function searchLocation() {
   } finally {
     searching.value = false
   }
+}
+
+async function validateBranchLocation(latitude: number, longitude: number) {
+  const requestId = ++locationValidationRequest
+  locationChecking.value = true
+  locationValid.value = false
+  locationError.value = ''
+  try {
+    const response = await axiosClient.post('/api/stores/validate-location', { latitude, longitude }, { headers: { 'X-Suppress-Dialog': '1' } })
+    if (requestId !== locationValidationRequest) return false
+    if (!response.data?.valid) {
+      locationError.value = response.data?.message || 'Choose a location inside Cavite province.'
+      return false
+    }
+    locationValid.value = true
+    return true
+  } catch (error: any) {
+    if (requestId !== locationValidationRequest) return false
+    locationError.value = error?.response?.data?.message || 'Could not validate this pin. Please try again.'
+    return false
+  } finally {
+    if (requestId === locationValidationRequest) locationChecking.value = false
+  }
+}
+
+async function setBranchLocation(latitude: number, longitude: number) {
+  if (!(await validateBranchLocation(latitude, longitude))) {
+    redrawShapes()
+    return false
+  }
+  form.value.latitude = latitude.toFixed(6)
+  form.value.longitude = longitude.toFixed(6)
+  return true
 }
 
 onMounted(loadBranch)

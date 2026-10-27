@@ -32,7 +32,7 @@ class ReturnChargeService
         $weightFee = $setting && $setting->is_active ? $totalWeight * (float) $setting->per_kg_fee : 0.0;
         $bulkyFee = $setting && $setting->is_active && $isBulky ? $quantity * (float) $setting->bulky_item_surcharge : 0.0;
         $raw = $base + $distanceFee + $weightFee + $bulkyFee;
-        $calculated = $setting && $setting->is_active ? max($raw, (float) $setting->min_delivery_fee) : 0.0;
+        $calculated = $setting && $setting->is_active ? $raw : 0.0;
         $charged = $responsibility === 'customer' ? round($calculated, 2) : 0.0;
 
         return [
@@ -50,7 +50,6 @@ class ReturnChargeService
                 'bulky' => $isBulky,
                 'bulky_quantity' => $isBulky ? $quantity : 0,
                 'bulky_surcharge' => round($bulkyFee, 2),
-                'minimum_applied' => $calculated > $raw,
             ],
         ];
     }

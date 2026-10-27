@@ -67,7 +67,12 @@ class SalesService {
   }
 
   async estimatePosShipping(payload: any) {
-    const res = await axiosClient.post('/api/sales/pos/shipping-estimate', payload)
+    const res = await axiosClient.post('/api/sales/pos/shipping-estimate', payload, {
+      headers: {
+        'X-Suppress-Dialog': '1',
+        'X-Suppress-Success-Dialog': '1',
+      },
+    })
     return res.data
   }
 
@@ -88,6 +93,11 @@ class SalesService {
 
   async getPosOrderReceiptUrl(id: number | string) {
     return `/api/sales/pos/orders/${id}/receipt`
+  }
+
+  async getPosOrderReceipt(id: number | string): Promise<Blob> {
+    const response = await axiosClient.get(`/api/sales/pos/orders/${id}/receipt`, { responseType: 'blob' })
+    return response.data
   }
 
   async sendPosOrderToLogistics(id: number | string) {
@@ -154,6 +164,11 @@ class SalesService {
 
   async getEcommerceOrderReceiptUrl(id: number | string) {
     return `/api/sales/ecommerce-orders/${id}/receipt`
+  }
+
+  async getEcommerceOrderReceipt(id: number | string): Promise<Blob> {
+    const response = await axiosClient.get(`/api/sales/ecommerce-orders/${id}/receipt`, { responseType: 'blob' })
+    return response.data
   }
 
   async updateEcommerceOrderStatus(id: number | string, payload: any) {

@@ -11,7 +11,7 @@ class WholesaleQuote extends Model
     protected $table = 'sales_wholesale_quotes';
 
     protected $fillable = [
-        'store_id', 'branch_id', 'crm_lead_id', 'quote_number', 'status', 'items',
+        'store_id', 'branch_id', 'crm_lead_id', 'customer_name', 'customer_email', 'customer_phone', 'quote_number', 'status', 'items',
         'subtotal', 'valid_until', 'payment_terms', 'notes', 'sales_order_id', 'invoice_number', 'created_by',
     ];
 

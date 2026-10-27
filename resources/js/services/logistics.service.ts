@@ -45,6 +45,26 @@ class LogisticsService {
     return response.data
   }
 
+  async getLalamoveServices() {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/lalamove/services`)
+    return response.data
+  }
+
+  async requestLalamoveQuote(source: 'ecommerce' | 'sales', orderId: string | number, payload: { service_type: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/lalamove/quote`, payload)
+    return response.data
+  }
+
+  async bookLalamoveDelivery(source: 'ecommerce' | 'sales', orderId: string | number) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/lalamove/book`)
+    return response.data
+  }
+
+  async refreshLalamoveDelivery(source: 'ecommerce' | 'sales', orderId: string | number) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/lalamove/refresh`)
+    return response.data
+  }
+
   async updateUnifiedDeliveryStatus(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer', orderId: string | number, payload: any) {
     if (payload instanceof FormData) {
       const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/status`, payload, {
@@ -194,6 +214,13 @@ class LogisticsService {
 
   async getTrips(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/trips`, { params })
+    return response.data
+  }
+
+  async getCompatibleTripsForOrder(sourceType: 'ecommerce' | 'sales' | 'return_pickup', orderId: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/trips/compatible`, {
+      params: { source_type: sourceType, order_id: orderId },
+    })
     return response.data
   }
 

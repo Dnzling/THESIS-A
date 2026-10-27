@@ -15,6 +15,11 @@ class SalesOrder extends Model
 {
     protected $table = 'sales_pos_orders';
 
+    public function refundRequest(): HasOne
+    {
+        return $this->hasOne(SalesRefund::class, 'order_id')->where('order_type', 'sales')->latestOfMany();
+    }
+
     protected $fillable = [
         'store_id',
         'branch_id',

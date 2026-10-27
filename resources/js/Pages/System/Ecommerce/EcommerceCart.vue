@@ -60,8 +60,10 @@
                       <p class="text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                       <p class="text-xs text-slate-500">{{ item.variation_name || item.variation_sku || 'Standard' }}</p>
                       <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatMoney(item.unit_price) }}</p>
+                      <p v-if="item.customization_request" class="mt-1 line-clamp-2 text-xs text-orange-700">Customization: {{ item.customization_request }}</p>
                     </div>
                   </div>
+                  <Button v-if="item.is_customizable" :label="item.customization_request ? 'Edit customization' : 'Customize this item'" icon="pi pi-palette" size="small" text severity="warn" class="mt-2" @click="openCustomization(item)" />
                   <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                     <InputNumber :modelValue="Number(item.quantity)" showButtons buttonLayout="horizontal" :step="1" :min="1" class="!w-28 max-w-full" inputClass="!w-10 min-w-0 text-center" @update:modelValue="(value) => updateQty(group.store_id, item, Number(value || 1))">
                       <template #incrementbuttonicon><span class="pi pi-plus" /></template>
@@ -94,6 +96,7 @@
                           <div class="min-w-0">
                             <p class="truncate text-sm font-semibold text-slate-900">{{ data.product_name }}</p>
                             <p class="truncate text-xs text-slate-500">Variant: {{ data.variation_name || data.variation_sku || 'Standard' }}</p>
+                            <p v-if="data.customization_request" class="mt-1 line-clamp-1 text-xs text-orange-700">Customization: {{ data.customization_request }}</p>
                           </div>
                         </div>
                         <p class="shrink-0 text-sm font-semibold text-slate-900">
@@ -101,6 +104,7 @@
                           <span class="font-normal text-slate-500">/ {{ formatUom(data.unit_of_measurement) }}</span>
                         </p>
                       </div>
+                      <Button v-if="data.is_customizable" :label="data.customization_request ? 'Edit customization' : 'Customize'" icon="pi pi-palette" size="small" text severity="warn" class="mt-2" @click="openCustomization(data)" />
                     </template>
                   </Column>
 
@@ -178,6 +182,30 @@
         </template>
       </Card>
     </div>
+
+    <Dialog v-model:visible="customizationDialogVisible" modal :closable="false" :closeOnEscape="false" :dismissableMask="false" class="mx-4 w-full max-w-xl" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
+      <template #header>
+        <div class="flex min-w-0 items-center gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><i class="pi pi-palette" /></div>
+          <div class="min-w-0"><p class="font-semibold text-slate-900">Customize your item</p><p class="truncate text-xs font-normal text-slate-500">{{ activeCustomizationItem?.product_name }}</p></div>
+        </div>
+      </template>
+      <div class="space-y-4">
+        <div class="rounded-xl border border-orange-100 bg-orange-50/70 p-4 text-sm text-orange-900">
+          <p class="font-medium">Tell the store what you would like customized.</p>
+          <p class="mt-1 text-xs leading-5 text-orange-800">Your request will be reviewed by the store before it is confirmed.</p>
+        </div>
+        <div>
+          <label for="cart-customization-request" class="mb-1.5 block text-sm font-medium text-slate-700">Customization instructions</label>
+          <Textarea id="cart-customization-request" v-model="customizationDraft" rows="5" maxlength="1000" fluid autoResize placeholder="Describe the color, finish, dimensions, or other changes you are requesting..." />
+          <p class="mt-1 text-right text-xs text-slate-400">{{ customizationDraft.length }}/1000</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined :disabled="savingCustomization" @click="cancelCustomization" />
+        <Button label="Save instructions" icon="pi pi-check" severity="warn" :loading="savingCustomization" @click="saveCustomization" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -185,6 +213,8 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import Dialog from 'primevue/dialog'
+import Textarea from 'primevue/textarea'
 import ecommerceService from '@/services/ecommerce.service'
 import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
@@ -195,6 +225,11 @@ defineOptions({
 const router = useRouter()
 const loading = ref(false)
 const checkingOutStoreId = ref<number | null>(null)
+const customizationDialogVisible = ref(false)
+const activeCustomizationItem = ref<any | null>(null)
+const customizationDraft = ref('')
+const originalCustomization = ref('')
+const savingCustomization = ref(false)
 
 type CartGroup = {
   store_id: number
@@ -210,6 +245,49 @@ const dirtyItemIds = reactive(new Set<number>())
 const quantityVersions = new Map<number, number>()
 const quantitySaveTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const activeQuantitySaves = new Map<number, { version: number; promise: Promise<boolean> }>()
+
+function openCustomization(item: any) {
+  activeCustomizationItem.value = item
+  customizationDraft.value = item.customization_request || ''
+  originalCustomization.value = customizationDraft.value
+  customizationDialogVisible.value = true
+}
+
+async function cancelCustomization() {
+  if (savingCustomization.value) return
+  if (customizationDraft.value.trim() !== originalCustomization.value.trim()) {
+    const confirmed = await confirmAlert({
+      title: 'Discard customization changes?',
+      text: 'Your unsaved customization instructions will be lost.',
+      confirmText: 'Discard changes',
+      cancelText: 'Keep editing',
+    })
+    if (!confirmed) return
+  }
+  customizationDialogVisible.value = false
+  activeCustomizationItem.value = null
+}
+
+async function saveCustomization() {
+  const item = activeCustomizationItem.value
+  if (!item) return
+  savingCustomization.value = true
+  try {
+    const value = customizationDraft.value.trim()
+    const response = await ecommerceService.updateCartItem(Number(item.id), { customization_request: value || null })
+    const updatedItem = response.data?.data?.items?.find((candidate: any) => Number(candidate.id) === Number(item.id))
+    if (updatedItem) Object.assign(item, updatedItem)
+    else item.customization_request = value || null
+    customizationDialogVisible.value = false
+    activeCustomizationItem.value = null
+    window.dispatchEvent(new Event('ecommerce-cart-updated'))
+    showAlert({ severity: 'success', summary: value ? 'Customization saved' : 'Customization removed', detail: value ? 'Your instructions will be sent with the order.' : 'The customization instructions were cleared.' })
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Unable to save', detail: error?.response?.data?.errors?.customization_request?.[0] || error?.response?.data?.message || 'Please try again.' })
+  } finally {
+    savingCustomization.value = false
+  }
+}
 
 const formatMoney = (value: number | string | null | undefined) => new Intl.NumberFormat('en-PH', {
   style: 'currency',

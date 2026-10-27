@@ -1,6 +1,6 @@
 <template>
   <div class="mx-auto max-w-5xl space-y-6 p-4 text-slate-900 sm:p-8">
-    <div><p class="text-sm font-semibold uppercase tracking-wider text-orange-600">First paid subscription</p><h1 class="mt-1 text-2xl font-semibold">Set up your team positions</h1><p class="mt-2 text-sm text-slate-600">Choose the roles you need now. Departments are created when you save a selected role, and you can manage permissions later.</p></div>
+    <div><p class="text-sm font-semibold uppercase tracking-wider text-orange-600">Your plan is ready</p><h1 class="mt-1 text-2xl font-semibold">Choose role presets for your team</h1><p class="mt-2 text-sm text-slate-600">Select the roles you need. Each preset creates a role and department with permissions included in your selected plan. You can customize them later.</p></div>
     <div v-if="loading" class="rounded-xl border bg-white p-8 text-sm text-slate-500">Loading positions for your plan…</div>
     <div v-else-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ error }}</div>
     <template v-else>
@@ -13,7 +13,7 @@
           </label>
         </div>
       </div>
-      <div class="flex items-center justify-end gap-3"><span class="text-sm text-slate-500">{{ selected.length }} selected</span><Button label="Save & Continue" severity="warn" :loading="saving" @click="save" /></div>
+      <div class="flex items-center justify-end gap-3"><span class="text-sm text-slate-500">{{ selected.length }} selected</span><Button label="Add Roles & Continue" severity="warn" :loading="saving" @click="save" /></div>
     </template>
   </div>
 </template>

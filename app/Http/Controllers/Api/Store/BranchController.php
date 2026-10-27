@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Hr\Employee;
+use App\Services\Store\CaviteLocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -229,7 +230,7 @@ class BranchController extends Controller
         return response()->json(['success' => true, 'data' => $employees]);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, CaviteLocationService $locationService, $id)
     {
         $branch = Branch::query()
             ->where('store_id', $request->user()?->store_id)
@@ -246,6 +247,18 @@ class BranchController extends Controller
             'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
             'geofence_enabled' => 'nullable|boolean',
         ]);
+
+        if (isset($validated['latitude'], $validated['longitude'])) {
+            try {
+                if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                    throw ValidationException::withMessages([
+                        'latitude' => 'Choose a branch location inside Cavite province.',
+                    ]);
+                }
+            } catch (\RuntimeException $exception) {
+                abort(503, $exception->getMessage());
+            }
+        }
 
         $branch->fill($validated);
         $branch->save();

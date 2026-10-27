@@ -275,7 +275,7 @@
               <div>
                 <label class="text-sm font-medium text-slate-700">3D Model Requests per Month</label>
                 <InputNumber v-model="planForm.max_3d_model_requests_per_month" :min="0" fluid />
-                <small class="text-xs text-slate-500">Requires 3D manage permission. 0 disables requests.</small>
+                <small class="text-xs text-slate-500">Maximum 3D model requests allowed each month. 0 disables requests.</small>
               </div>
             </div>
           </div>

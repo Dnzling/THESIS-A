@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -141,7 +142,7 @@ class EcommerceDeliveryController extends Controller
         ]);
     }
 
-    public function drivers(Request $request): JsonResponse
+    public function drivers(Request $request, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $user = $request->user();
         if (!$user->store_id && !$user->hasRole('super_admin')) {
@@ -153,21 +154,16 @@ class EcommerceDeliveryController extends Controller
             : (int) $user->store_id;
         $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
 
-        $roleIds = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
-            ->pluck('role_permissions.role_id')
-            ->unique();
-
         $drivers = User::query()
             ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
-            ->when($roleIds->isNotEmpty(), fn ($q) => $q->whereIn('role_id', $roleIds))
+            ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
             ->when($branchId, fn ($q) => $q->whereHas('employee', fn ($employee) => $employee->where('branch_id', $branchId)))
             ->orderBy('fname')
             ->orderBy('lname')
             ->get()
+            ->filter(fn (User $driver) => $driverEligibility->userCanDrive($driver, $storeId))
             ->map(fn(User $driver) => [
                 'id' => $driver->id,
                 'name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
@@ -181,7 +177,7 @@ class EcommerceDeliveryController extends Controller
         return response()->json(['success' => true, 'data' => $drivers]);
     }
 
-    public function assignDriver(Request $request, int $id): JsonResponse
+    public function assignDriver(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $validated = $request->validate([
             'driver_user_id' => 'required|exists:users,id',
@@ -191,18 +187,15 @@ class EcommerceDeliveryController extends Controller
         $this->applyStoreScope($request, $query);
         $delivery = $query->findOrFail($id);
 
-        $roleIds = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
-            ->pluck('role_permissions.role_id')
-            ->unique();
-
         $driver = User::query()
+            ->with('employee')
             ->where('id', (int) $validated['driver_user_id'])
             ->where('store_id', $delivery->store_id)
             ->where('is_active', true)
-            ->when($roleIds->isNotEmpty(), fn ($q) => $q->whereIn('role_id', $roleIds))
             ->firstOrFail();
+        if ($driver->employee?->status !== 'active' || !$driverEligibility->userCanDrive($driver, (int) $delivery->store_id)) {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with a logistics driver permission.'], 422);
+        }
 
         $delivery->driver_user_id = $driver->id;
         $delivery->updated_by = $request->user()->id;

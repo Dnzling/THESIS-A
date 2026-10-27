@@ -17,12 +17,12 @@
           </div>
 
           <div class="space-y-2">
-            <label class="text-sm font-semibold text-slate-700">Reason</label>
-            <Textarea v-model="form.reason" rows="3" fluid placeholder="Tell us why you want to cancel this order." />
+            <label class="text-sm font-semibold text-slate-700">Reason *</label>
+            <Select v-model="form.reason" :options="cancellationReasons" placeholder="Select a reason" fluid />
           </div>
 
           <div class="space-y-2">
-            <label class="text-sm font-semibold text-slate-700">Additional details (optional)</label>
+            <label class="text-sm font-semibold text-slate-700">Additional details {{ form.reason === 'Other' ? '*' : '(optional)' }}</label>
             <Textarea v-model="form.details" rows="3" fluid placeholder="Add more context about your cancellation." />
           </div>
 
@@ -40,6 +40,7 @@ import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
+import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
@@ -56,6 +57,14 @@ const loading = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
 const form = reactive({ reason: '', details: '' })
+const cancellationReasons = [
+  'Changed my mind',
+  'Ordered the wrong item or quantity',
+  'Placed a duplicate order',
+  'Delivery date no longer works',
+  'Payment issue',
+  'Other',
+]
 
 async function loadOrder() {
   loading.value = true
@@ -76,7 +85,11 @@ async function loadOrder() {
 
 function confirmCancellation() {
   if (!form.reason.trim()) {
-    showAlert({ severity: 'warn', summary: 'Required', detail: 'Please provide a reason.' })
+    showAlert({ severity: 'warn', summary: 'Required', detail: 'Please select a cancellation reason.' })
+    return
+  }
+  if (form.reason === 'Other' && !form.details.trim()) {
+    showAlert({ severity: 'warn', summary: 'Required', detail: 'Please describe your cancellation reason.' })
     return
   }
 
@@ -85,7 +98,10 @@ function confirmCancellation() {
     message: 'This will cancel the order immediately. This action cannot be undone.',
     rejectProps: { label: 'Keep Order', outlined: true },
     acceptProps: { label: 'Cancel Order', severity: 'danger' },
-    accept: submitCancellation,
+    accept: () => {
+      confirm.close()
+      void submitCancellation()
+    },
   })
 }
 

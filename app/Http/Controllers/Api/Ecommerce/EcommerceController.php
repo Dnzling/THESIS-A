@@ -37,12 +37,14 @@ use App\Models\CRM\SalesReview;
 use App\Services\Ecommerce\PromotionPricingService;
 use App\Services\Ecommerce\EcommerceStockReservationService;
 use App\Services\Payment\PaymongoService;
+use App\Services\Payment\EcommerceRefundRoutingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -1187,8 +1189,13 @@ class EcommerceController extends Controller
     public function updateCartItem(Request $request, int $itemId)
     {
         $validated = $request->validate([
-            'quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'quantity' => ['sometimes', 'required', 'integer', 'min:1', 'max:999'],
+            'customization_request' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
+
+        if (!array_key_exists('quantity', $validated) && !array_key_exists('customization_request', $validated)) {
+            throw ValidationException::withMessages(['cart_item' => 'Provide a quantity or customization update.']);
+        }
 
         $user = Auth::user();
         $item = EcommerceCartItem::query()
@@ -1205,22 +1212,36 @@ class EcommerceController extends Controller
         }
         $cart = $item->cart;
 
-        $inventory = BranchInventory::query()
-            ->sellableInEcommerce()
-            ->where('store_id', $cart->store_id)
-            ->where('product_id', $item->product_id)
-            ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
-            ->orderByDesc('quantity_available')
-            ->first();
+        $updates = [];
+        if (array_key_exists('quantity', $validated)) {
+            $inventory = BranchInventory::query()
+                ->sellableInEcommerce()
+                ->where('store_id', $cart->store_id)
+                ->where('product_id', $item->product_id)
+                ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
+                ->orderByDesc('quantity_available')
+                ->first();
 
-        if (!$inventory || $inventory->quantity_available < $validated['quantity']) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Not enough stock available for requested quantity.',
-            ], 422);
+            if (!$inventory || $inventory->quantity_available < $validated['quantity']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Not enough stock available for requested quantity.',
+                ], 422);
+            }
+
+            $updates['quantity'] = (int) $validated['quantity'];
         }
 
-        $item->update(['quantity' => (int) $validated['quantity']]);
+        if (array_key_exists('customization_request', $validated)) {
+            $item->loadMissing('product');
+            $customizationRequest = trim((string) ($validated['customization_request'] ?? ''));
+            if ($customizationRequest !== '' && !$item->product?->is_customizable) {
+                throw ValidationException::withMessages(['customization_request' => 'This product does not allow customization requests.']);
+            }
+            $updates['customization_request'] = $customizationRequest !== '' ? $customizationRequest : null;
+        }
+
+        $item->update($updates);
         $cart->load([
             'items.product.store:id,name',
             'items.product.assets' => function ($q) {
@@ -1481,7 +1502,6 @@ class EcommerceController extends Controller
                     'bulk_trip' => $bulkTrip,
                     'bulk_discount_rate' => $bulkTrip ? $bulkDiscountRate : 0.0,
                     'bulk_discount_amount' => $discountAmount,
-                    'minimum_applied' => (bool) ($fallback['minimum_applied'] ?? false),
                 ],
             ],
         ]);
@@ -1536,7 +1556,7 @@ class EcommerceController extends Controller
             'shipping_address' => ['nullable', 'string'],
             'billing_name' => ['nullable', 'string', 'max:120'],
             'billing_address' => ['nullable', 'string', 'max:1000'],
-            'payment_method' => ['required', Rule::in(['cod', 'bank_transfer', 'card', 'e_wallet'])],
+            'payment_method' => ['required', Rule::in(['card', 'e_wallet'])],
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'fulfillment_method' => ['nullable', Rule::in(['delivery', 'pickup'])],
             'requested_fulfillment_date' => ['required', 'date_format:Y-m-d'],
@@ -1749,8 +1769,16 @@ class EcommerceController extends Controller
             $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
         }
 
-        $customizationRequests = collect($validated['customization_requests'] ?? [])
-            ->mapWithKeys(fn ($request, $cartItemId) => [(int) $cartItemId => trim((string) $request)])
+        $submittedCustomizations = $validated['customization_requests'] ?? [];
+        $customizationRequests = $itemsForCheckout
+            ->mapWithKeys(function (EcommerceCartItem $item) use ($submittedCustomizations) {
+                $itemId = (int) $item->id;
+                $request = array_key_exists($itemId, $submittedCustomizations)
+                    ? $submittedCustomizations[$itemId]
+                    : $item->customization_request;
+
+                return [$itemId => trim((string) ($request ?? ''))];
+            })
             ->filter(fn ($request) => $request !== '');
 
         $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests) {
@@ -2050,6 +2078,7 @@ class EcommerceController extends Controller
                 'assignedBranch:id,name,branch_code,city,province,latitude,longitude',
                 'delivery',
                 'cancellationRequests',
+                'cancellationRefund',
                 'items.product.assets',
                 'items.product.category',
                 'items.returnRequests.financeRefund',
@@ -2104,7 +2133,7 @@ class EcommerceController extends Controller
     {
         $validated = $request->validate([
             'reason' => ['required', 'string', 'max:1000'],
-            'details' => ['nullable', 'string', 'max:2000'],
+            'details' => ['nullable', 'required_if:reason,Other', 'string', 'max:2000'],
         ]);
 
         $user = Auth::user();
@@ -2199,7 +2228,11 @@ class EcommerceController extends Controller
                 $fresh->save();
 
                 if ($fresh->payment_status === 'paid') {
-                    SalesRefund::query()->firstOrCreate(
+                    $refundRouting = app(EcommerceRefundRoutingService::class);
+                    $refundMethod = $refundRouting->canRefundToOriginal($fresh)
+                        ? $refundRouting->originalMethod($fresh)
+                        : null;
+                    FinanceRefund::query()->firstOrCreate(
                         ['order_type' => 'ecommerce_order', 'order_id' => $fresh->id],
                         [
                             'store_id' => $fresh->store_id,
@@ -2210,6 +2243,8 @@ class EcommerceController extends Controller
                             'amount' => (float) $fresh->total_amount,
                             'status' => 'pending',
                             'requested_by' => $user->id,
+                            'refund_method' => $refundMethod,
+                            'notes' => $refundMethod ? 'Refund to the original payment method.' : 'Customer payout destination is required.',
                         ]
                     );
                 }
@@ -2235,11 +2270,78 @@ class EcommerceController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        try {
+            $recipients = $this->userIdsWithAnyPermission(
+                (int) $order->store_id,
+                ['sales.ecommerce-orders.view']
+            );
+            foreach ($recipients as $recipientId) {
+                if (SystemNotification::query()->where('user_id', $recipientId)
+                    ->where('module', 'sales')->where('entity_type', 'ecommerce_order')
+                    ->where('entity_id', $order->id)->where('action', 'cancelled')->exists()) {
+                    continue;
+                }
+
+                $this->notify($recipientId, [
+                    'store_id' => (int) $order->store_id,
+                    'branch_id' => $order->assigned_branch_id,
+                    'module' => 'sales',
+                    'entity_type' => 'ecommerce_order',
+                    'entity_id' => (int) $order->id,
+                    'action' => 'cancelled',
+                    'title' => 'Customer cancelled an order',
+                    'message' => "Order {$order->order_number} was cancelled by the customer. Reason: {$validated['reason']}.",
+                    'severity' => 'warn',
+                    'link' => "/sales/ecommerce-orders/{$order->id}",
+                    'data' => [
+                        'order_number' => (string) $order->order_number,
+                        'required_permission' => 'sales.ecommerce-orders.view',
+                    ],
+                ]);
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Order cancelled successfully.',
+            'message' => $order->payment_status === 'paid'
+                ? 'Order cancelled. Your refund is awaiting Finance approval.'
+                : 'Order cancelled successfully.',
             'data' => $requestRecord,
         ], 201);
+    }
+
+    public function updateCancellationRefundPaymentMethod(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'refund_method' => ['required', Rule::in(['gcash', 'maya'])],
+            'refund_account_name' => ['required', 'string', 'min:2', 'max:255', "regex:/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*$/u"],
+            'refund_account_number' => ['required', 'string', 'regex:/^09[0-9]{9}$/'],
+        ]);
+
+        $order = EcommerceOrder::query()->where('user_id', $request->user()->id)
+            ->where('status', 'cancelled')->where('payment_status', 'paid')->findOrFail($id);
+        $refundRouting = app(EcommerceRefundRoutingService::class);
+        if ($refundRouting->canRefundToOriginal($order)) {
+            throw ValidationException::withMessages(['refund_method' => ['This order is eligible for a refund to its original payment method; no payout destination is needed.']]);
+        }
+        $refund = DB::transaction(function () use ($order, $data) {
+            $refund = FinanceRefund::query()->where('store_id', $order->store_id)
+                ->where('order_type', 'ecommerce_order')->where('order_id', $order->id)
+                ->lockForUpdate()->firstOrFail();
+            if (!in_array($refund->status, ['pending', 'approved'], true)) {
+                throw ValidationException::withMessages(['refund_method' => ['This refund can no longer be edited.']]);
+            }
+            $refund->update([...$data,
+                'refund_account_name' => trim($data['refund_account_name']),
+                'refund_account_number' => trim($data['refund_account_number']),
+            ]);
+
+            return $refund;
+        });
+
+        return response()->json(['message' => 'Refund destination saved.', 'data' => $refund->fresh()]);
     }
 
     public function requestOrderReturn(Request $request, int $itemId)
@@ -2367,9 +2469,9 @@ class EcommerceController extends Controller
         abort_unless((int) $return->user_id === (int) $request->user()->id, 403, 'Unauthorized access to return request.');
 
         $validated = $request->validate([
-            'refund_method' => ['required', Rule::in(['gcash', 'card'])],
-            'refund_account_name' => ['required', 'string', 'max:255'],
-            'refund_account_number' => ['required', 'string', 'max:100'],
+            'refund_method' => ['required', Rule::in(['gcash', 'maya'])],
+            'refund_account_name' => ['required', 'string', 'min:2', 'max:255', "regex:/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*$/u"],
+            'refund_account_number' => ['required', 'string', 'regex:/^09[0-9]{9}$/'],
         ]);
 
         if ((string) $return->return_type !== 'refund' || !in_array((string) $return->status, ['approved', 'received', 'refund_pending'], true)) {
@@ -2377,6 +2479,10 @@ class EcommerceController extends Controller
         }
 
         $return->loadMissing(['order', 'orderItem']);
+        $refundRouting = app(EcommerceRefundRoutingService::class);
+        if ($return->order && $refundRouting->canRefundToOriginal($return->order)) {
+            throw ValidationException::withMessages(['refund_method' => ['This order is eligible for a refund to its original payment method; no payout destination is needed.']]);
+        }
         $refund = FinanceRefund::query()->firstOrCreate(
             [
                 'store_id' => (int) $return->store_id,
@@ -3201,6 +3307,7 @@ class EcommerceController extends Controller
                 'variation_name' => $item->variation_name ?: $item->variation?->variation_name,
                 'variation_sku' => $item->variation?->variation_sku,
                 'is_customizable' => (bool) ($item->product?->is_customizable ?? false),
+                'customization_request' => $item->product?->is_customizable ? $item->customization_request : null,
                 'image' => $item->product ? $this->selectBestProductImage($item->product)?->url : null,
                 'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
@@ -3400,6 +3507,11 @@ class EcommerceController extends Controller
         }
 
         $primaryStatus = $this->resolvePrimaryStatus($orderStatus, $latestCancellation, $latestReturn);
+        $cancellationRefund = $orderStatus === 'cancelled' ? $order->cancellationRefund : null;
+        $needsRefundRouting = $cancellationRefund || $latestReturn?->return_type === 'refund';
+        $refundRouting = $needsRefundRouting ? app(EcommerceRefundRoutingService::class) : null;
+        $originalRefundMethod = $refundRouting?->originalMethod($order);
+        $automaticOriginalRefund = $refundRouting?->canRefundToOriginal($order) ?? false;
 
         return [
             'id' => $order->id,
@@ -3417,7 +3529,15 @@ class EcommerceController extends Controller
                 'created_at' => $latestCancellation->created_at,
             ] : null,
             'payment_method' => $order->payment_method,
+            'original_refund_method' => $originalRefundMethod,
+            'automatic_refund_available' => $automaticOriginalRefund,
             'payment_status' => $order->payment_status,
+            'cancellation_refund' => $cancellationRefund ? array_merge($cancellationRefund->toArray(), [
+                'original_payment_method' => $originalRefundMethod,
+                'automatic_refund_available' => $automaticOriginalRefund,
+                'refund_destination_required' => !$automaticOriginalRefund
+                    && (!$cancellationRefund->refund_method || !$cancellationRefund->refund_account_name || !$cancellationRefund->refund_account_number),
+            ]) : null,
             'shipping_name' => $order->shipping_name,
             'shipping_phone' => $order->shipping_phone,
             'shipping_email' => $order->shipping_email,
@@ -3464,6 +3584,12 @@ class EcommerceController extends Controller
                 'tracking_number' => $order->delivery->tracking_number,
                 'courier_name' => $order->delivery->courier_name,
                 'courier_contact' => $order->delivery->courier_contact,
+                'courier_provider' => $order->delivery->courier_provider,
+                'lalamove_order_id' => $order->delivery->lalamove_order_id,
+                'lalamove_status' => $order->delivery->lalamove_status,
+                'lalamove_share_link' => $order->delivery->lalamove_share_link,
+                'lalamove_service_type' => $order->delivery->lalamove_service_type,
+                'lalamove_price_breakdown' => $order->delivery->lalamove_price_breakdown,
                 'current_latitude' => $order->delivery->current_latitude,
                 'current_longitude' => $order->delivery->current_longitude,
                 'current_address' => $order->delivery->current_address,
@@ -3472,7 +3598,7 @@ class EcommerceController extends Controller
                 'proof_signature_url' => $order->delivery->proof_signature_path ? Storage::disk('public')->url($order->delivery->proof_signature_path) : null,
             ] : null,
             'timeline' => $this->formatOrderTimeline($order),
-            'items' => $order->items->map(function ($item) use ($orderStatus, $primaryStatus, $order) {
+            'items' => $order->items->map(function ($item) use ($orderStatus, $primaryStatus, $order, $automaticOriginalRefund, $originalRefundMethod) {
                 $latestReturn = $item->relationLoaded('returnRequests')
                     ? $item->returnRequests->sortByDesc('created_at')->first()
                     : null;
@@ -3522,12 +3648,21 @@ class EcommerceController extends Controller
                         'refund_exception_reason' => $latestReturn->refund_exception_reason,
                         'refund_eta' => $latestReturn->return_type === 'refund' ? 'less than 30 days after Finance sends the refund' : null,
                         'refund_method_required' => $latestReturn->return_type === 'refund'
-                            && !$latestReturn->financeRefund?->refund_method,
+                            && !$automaticOriginalRefund
+                            && (!$latestReturn->financeRefund?->refund_method
+                                || !$latestReturn->financeRefund?->refund_account_name
+                                || !$latestReturn->financeRefund?->refund_account_number),
                         'created_at' => $latestReturn->created_at,
                         'refund' => $latestReturn->financeRefund ? [
                             'id' => (int) $latestReturn->financeRefund->id,
                             'status' => $latestReturn->financeRefund->status,
                             'refund_method' => $latestReturn->financeRefund->refund_method,
+                            'original_payment_method' => $originalRefundMethod,
+                            'automatic_refund_available' => $automaticOriginalRefund,
+                            'refund_destination_required' => !$automaticOriginalRefund
+                                && (!$latestReturn->financeRefund->refund_method
+                                    || !$latestReturn->financeRefund->refund_account_name
+                                    || !$latestReturn->financeRefund->refund_account_number),
                             'refund_account_name' => $latestReturn->financeRefund->refund_account_name,
                             'refund_account_number' => $latestReturn->financeRefund->refund_account_number,
                             'payout_provider' => $latestReturn->financeRefund->payout_provider,
@@ -4006,7 +4141,6 @@ class EcommerceController extends Controller
                 'base_fee' => 100,
                 'per_km_fee' => 10,
                 'per_kg_fee' => 0,
-                'min_delivery_fee' => 80,
                 'free_shipping_min_order' => null,
                 'bulky_item_surcharge' => 0,
                 'remote_area_surcharge' => 0,
@@ -4025,7 +4159,6 @@ class EcommerceController extends Controller
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
                 'bulky_item_surcharge' => 0.0,
-                'minimum_applied' => false,
             ];
         }
 
@@ -4038,7 +4171,6 @@ class EcommerceController extends Controller
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
                 'bulky_item_surcharge' => 0.0,
-                'minimum_applied' => false,
             ];
         }
 
@@ -4052,7 +4184,6 @@ class EcommerceController extends Controller
                 'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
                 'weight_fee' => round($totalWeightKg * (float) $setting->per_kg_fee, 2),
                 'bulky_item_surcharge' => round($bulkyQuantity * (float) $setting->bulky_item_surcharge, 2),
-                'minimum_applied' => false,
             ];
         }
 
@@ -4061,8 +4192,7 @@ class EcommerceController extends Controller
         $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
         $bulkyFee = $bulkyQuantity * (float) $setting->bulky_item_surcharge;
         $raw = $base + $distanceFee + $weightFee + $bulkyFee;
-        $min = (float) $setting->min_delivery_fee;
-        $applied = max($raw, $min);
+        $applied = $raw;
 
         return [
             'shipping_fee' => round($applied, 2),
@@ -4072,7 +4202,6 @@ class EcommerceController extends Controller
             'distance_fee' => round($distanceFee, 2),
             'weight_fee' => round($weightFee, 2),
             'bulky_item_surcharge' => round($bulkyFee, 2),
-            'minimum_applied' => $applied > $raw,
         ];
     }
 

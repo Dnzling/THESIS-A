@@ -114,18 +114,6 @@
             </template>
           </Column>
 
-          <Column header="Supplier">
-            <template #body="{ data }">
-              <div v-if="getPreferredSupplier(data)" class="flex items-center gap-2">
-                <div>
-                  <p class="text-xs text-gray-800">{{ getSupplierName(data) }}</p>
-                  <p class="text-[11px] text-gray-500">{{ getSupplierNumber(data) }}</p>
-                </div>
-              </div>
-              <span v-else class="text-xs text-gray-400">No supplier</span>
-            </template>
-          </Column>
-  
           <Column field="is_active" header="Status">
             <template #body="{ data }">
               <Tag :severity="data.is_active ? 'success' : 'secondary'">

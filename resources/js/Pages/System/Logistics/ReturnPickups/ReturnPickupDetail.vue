@@ -211,6 +211,48 @@
         <Button icon="pi pi-save" label="Save" :loading="savingSchedule" @click="saveSchedule" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="tripChoiceVisible" modal header="Assign Return Pickup to a Trip" class="w-full max-w-2xl">
+      <div class="space-y-4">
+        <div v-if="pickup" class="rounded-xl border border-orange-100 bg-orange-50/70 p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Return pickup</p>
+          <p class="mt-1 font-semibold text-slate-900">{{ returnIdLabel }}</p>
+          <p class="text-sm text-slate-600">{{ pickup.pickup_name || 'Customer' }} · {{ pickup.pickup_address || 'No pickup address' }}</p>
+          <p class="mt-1 text-xs text-slate-500">Estimated item weight: {{ returnPickupWeightKg.toFixed(2) }} kg</p>
+        </div>
+
+        <div v-if="loadingCompatibleTrips" class="space-y-3">
+          <Skeleton height="5.5rem" borderRadius="12px" />
+          <Skeleton height="5.5rem" borderRadius="12px" />
+        </div>
+        <div v-else-if="compatibleTrips.length" class="space-y-3">
+          <p class="text-sm font-medium text-slate-700">Select a compatible planned trip</p>
+          <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-slate-900">Trip #{{ trip.id }} · {{ trip.driver_name }}</p>
+              <p class="mt-1 text-sm text-slate-600">{{ trip.vehicle_name }}<span v-if="trip.plate_number"> · {{ trip.plate_number }}</span></p>
+              <p class="mt-1 text-xs text-slate-500">
+                {{ trip.assigned_stops }}{{ trip.max_stops ? ` / ${trip.max_stops}` : '' }} stops
+                <span v-if="trip.remaining_capacity_after_kg !== null"> · {{ trip.remaining_capacity_after_kg }} kg remaining after adding</span>
+                <span v-if="trip.scheduled_departure_at"> · Departs {{ formatDateTime(trip.scheduled_departure_at) }}</span>
+              </p>
+            </div>
+            <Button label="Select Trip" icon="pi pi-plus" size="small" severity="warn"
+              :loading="assigningTripId === trip.id" :disabled="Boolean(assigningTripId)"
+              @click="addPickupToTrip(trip)" />
+          </article>
+        </div>
+        <div v-else-if="!loadingCompatibleTrips" class="rounded-xl border border-dashed border-slate-300 p-5 text-center">
+          <i class="pi pi-inbox text-2xl text-slate-400" />
+          <p class="mt-2 text-sm font-semibold text-slate-700">No compatible planned trips</p>
+          <p class="mt-1 text-xs text-slate-500">A trip may not have enough vehicle capacity or stop slots, or may serve a different pickup area.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined :disabled="Boolean(assigningTripId)" @click="tripChoiceVisible = false" />
+        <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId) || !pickup" @click="createTripForPickup" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -224,6 +266,7 @@ import Column from 'primevue/column'
 import Chip from 'primevue/chip'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
 
 const route = useRoute()
 const router = useRouter()
@@ -232,6 +275,10 @@ const toast = useToast()
 const id = computed(() => Number((route as any).params?.id))
 const loading = ref(false)
 const pickup = ref<any>(null)
+const tripChoiceVisible = ref(false)
+const loadingCompatibleTrips = ref(false)
+const compatibleTrips = ref<any[]>([])
+const assigningTripId = ref<number | null>(null)
 
 const returnIdLabel = computed(() => pickup.value?.return_request?.return_number || 'Return number unavailable')
 
@@ -263,6 +310,7 @@ const loadPickup = async () => {
 
 const formatStatus = (status?: string) => {
   if (!status) return '-'
+  if (status === 'ready_for_dispatch') return 'For Dispatch'
   return String(status).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
 const formatLogMessage = (message?: string) => String(message || '').replace(/\b(ready_for_dispatch|out_for_delivery|in_transit|assigned|delivered)\b/g, value => formatStatus(value))
@@ -299,10 +347,52 @@ const formatMoney = (value: any) => {
   return num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const openAssignment = () => router.push({
-  name: 'logistics.trips.create',
-  query: { source: 'return_pickup', order_id: String(id.value) },
+const returnPickupWeightKg = computed(() => {
+  const product = pickup.value?.return_request?.order_item?.product || pickup.value?.return_request?.orderItem?.product
+  return Number(product?.weight_kg || 0) * Number(pickup.value?.return_request?.requested_quantity || 0)
 })
+
+const openAssignment = async () => {
+  tripChoiceVisible.value = true
+  loadingCompatibleTrips.value = true
+  compatibleTrips.value = []
+  try {
+    const response = await logisticsService.getCompatibleTripsForOrder('return_pickup', id.value)
+    compatibleTrips.value = response?.data || []
+  } catch (error: any) {
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'error', summary: 'Could Not Load Trips', detail: error?.response?.data?.message || 'Unable to check planned trips for this return pickup.', life: 3500 })
+  } finally {
+    loadingCompatibleTrips.value = false
+  }
+}
+
+const addPickupToTrip = async (trip: any) => {
+  if (!pickup.value || assigningTripId.value) return
+  assigningTripId.value = Number(trip.id)
+  try {
+    const response = await logisticsService.addOrdersToTrip(trip.id, {
+      source_type: 'return_pickup',
+      order_ids: [id.value],
+    })
+    if (Number(response?.data?.added || 0) !== 1) {
+      throw new Error(response?.message || 'The return pickup could not be added to this trip.')
+    }
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'success', summary: 'Trip Updated', detail: 'The return pickup was added to the selected trip.', life: 3000 })
+    await loadPickup()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add the return pickup to this trip.', life: 4000 })
+  } finally {
+    assigningTripId.value = null
+  }
+}
+
+const createTripForPickup = () => {
+  if (!pickup.value) return
+  tripChoiceVisible.value = false
+  router.push({ name: 'logistics.trips.create', query: { source: 'return_pickup', order_id: String(id.value) } })
+}
 
 const evidenceDialogVisible = ref(false)
 const activeEvidenceIndex = ref(0)

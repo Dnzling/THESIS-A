@@ -24,19 +24,35 @@ class FinanceDashboardController extends Controller
     {
         $storeId = $request->user()?->store_id;
 
+        $currentEnd = now()->endOfDay();
+        $currentStart = now()->startOfDay()->subDays(27);
+        $previousEnd = $currentStart->copy()->subSecond();
+        $previousStart = $currentStart->copy()->subDays(28);
+        $sumPeriod = static fn ($query, string $dateColumn, string $amountColumn, $start, $end) =>
+            (clone $query)->whereBetween($dateColumn, [$start, $end])->sum($amountColumn);
+
         $payables = Schema::hasTable('purchase_orders')
             ? PurchaseOrder::where('store_id', $storeId)
                 ->where('payment_status', 'pending')
+                ->whereBetween('order_date', [$currentStart, $currentEnd])
                 ->sum('total_amount')
+            : 0;
+        $previousPayables = Schema::hasTable('purchase_orders')
+            ? $sumPeriod(PurchaseOrder::where('store_id', $storeId)->where('payment_status', 'pending'), 'order_date', 'total_amount', $previousStart, $previousEnd)
             : 0;
 
         $invoicesDue = Schema::hasTable('invoices')
             ? Invoice::where('store_id', $storeId)
                 ->whereIn('status', ['pending', 'approved'])
+                ->whereBetween('invoice_date', [$currentStart, $currentEnd])
                 ->sum('net_amount')
+            : 0;
+        $previousInvoicesDue = Schema::hasTable('invoices')
+            ? $sumPeriod(Invoice::where('store_id', $storeId)->whereIn('status', ['pending', 'approved']), 'invoice_date', 'net_amount', $previousStart, $previousEnd)
             : 0;
 
         $paymentsCompleted = 0;
+        $previousPaymentsCompleted = 0;
         if (Schema::hasTable('supplier_payments')) {
             $paymentsQuery = SupplierPayment::query()->where('status', 'completed');
             if (Schema::hasColumn('supplier_payments', 'store_id')) {
@@ -48,19 +64,30 @@ class FinanceDashboardController extends Controller
             } else {
                 $paymentsQuery = null;
             }
-            $paymentsCompleted = $paymentsQuery ? $paymentsQuery->sum('payment_amount') : 0;
+            if ($paymentsQuery && Schema::hasColumn('supplier_payments', 'payment_date')) {
+                $paymentsCompleted = $sumPeriod(clone $paymentsQuery, 'payment_date', 'payment_amount', $currentStart, $currentEnd);
+                $previousPaymentsCompleted = $sumPeriod(clone $paymentsQuery, 'payment_date', 'payment_amount', $previousStart, $previousEnd);
+            }
         }
 
         $expensesPending = Schema::hasTable('finance_expenses')
             ? FinanceExpense::where('store_id', $storeId)
                 ->where('status', 'pending_approval')
+                ->whereBetween('expense_date', [$currentStart, $currentEnd])
                 ->sum('amount')
+            : 0;
+        $previousExpensesPending = Schema::hasTable('finance_expenses')
+            ? $sumPeriod(FinanceExpense::where('store_id', $storeId)->where('status', 'pending_approval'), 'expense_date', 'amount', $previousStart, $previousEnd)
             : 0;
 
         $payrollPending = Schema::hasTable('payrolls')
             ? Payroll::byUserStore()
                 ->whereIn('status', ['pending', 'submitted', 'processing'])
+                ->whereBetween('created_at', [$currentStart, $currentEnd])
                 ->sum('net_salary')
+            : 0;
+        $previousPayrollPending = Schema::hasTable('payrolls')
+            ? $sumPeriod(Payroll::byUserStore()->whereIn('status', ['pending', 'submitted', 'processing']), 'created_at', 'net_salary', $previousStart, $previousEnd)
             : 0;
 
         $hrPayrollForFinanceApprovalCount = Schema::hasTable('payrolls')
@@ -144,6 +171,19 @@ class FinanceDashboardController extends Controller
                 'payments_completed' => $paymentsCompleted,
                 'expenses_pending' => $expensesPending,
                 'payroll_pending' => $payrollPending,
+                'period' => [
+                    'start' => $currentStart->toDateString(),
+                    'end' => $currentEnd->toDateString(),
+                    'previous_start' => $previousStart->toDateString(),
+                    'previous_end' => $previousEnd->toDateString(),
+                ],
+                'comparisons' => [
+                    'payables' => $previousPayables,
+                    'invoices_due' => $previousInvoicesDue,
+                    'payments_completed' => $previousPaymentsCompleted,
+                    'expenses_pending' => $previousExpensesPending,
+                    'payroll_pending' => $previousPayrollPending,
+                ],
                 'approvals_needed' => $approvalsNeeded,
             ],
         ]);

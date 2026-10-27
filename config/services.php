@@ -50,4 +50,13 @@ return [
         'timeout' => (int) env('OCR_SPACE_TIMEOUT', 45),
     ],
 
+    'lalamove' => [
+        'base_url' => env('LALAMOVE_BASE_URL', 'https://rest.sandbox.lalamove.com'),
+        'api_key' => env('LALAMOVE_API_KEY'),
+        'api_secret' => env('LALAMOVE_API_SECRET'),
+        'market' => env('LALAMOVE_MARKET', 'PH'),
+        'language' => env('LALAMOVE_LANGUAGE', 'en_PH'),
+        'timeout' => (int) env('LALAMOVE_TIMEOUT', 20),
+    ],
+
 ];

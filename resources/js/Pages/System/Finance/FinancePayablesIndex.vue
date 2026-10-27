@@ -73,21 +73,22 @@
       <template #header>
         <div class="m-4 mt-6">
           <h2 class="mb-3 text-sm font-semibold text-gray-900">Payables & Supplier Payments</h2>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div class="space-y-2 md:col-span-2">
+          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div class="space-y-2 md:w-80">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText v-model="filters.search" placeholder="Search invoice/payment/supplier" fluid size="small"
                 @keyup.enter="reloadAll" />
             </div>
   
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
               <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
                 placeholder="All Statuses" fluid size="small" />
             </div>
   
-            <div class="flex items-end">
-              <Button fluid icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading || loadingPayments"
+            <div class="flex items-end gap-2">
+              <Button v-if="filters.search || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+              <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading || loadingPayments"
                 @click="reloadAll" />
             </div>
           </div>
@@ -100,6 +101,9 @@
               <div v-if="loading" class="space-y-3 pb-4"><div v-for="row in 6" :key="`payable-${row}`" class="grid grid-cols-6 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 6" :key="cell" height="1.25rem" /></div></div>
               <DataTable v-else :value="filteredPayables" rowHover responsiveLayout="scroll"
                 class="p-datatable-sm text-xs" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
+                <Column field="invoice_created_at" header="Date" sortable style="width: 150px">
+                  <template #body="{ data }">{{ formatDate(data.invoice_created_at) }}</template>
+                </Column>
                 <Column field="reference" header="Invoice #" style="min-width: 130px">
                   <template #body="{ data }">
                     <span class="text-sm font-medium text-blue-600">{{ data.reference }}</span>
@@ -115,11 +119,6 @@
                     <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.amount) }}</span>
                   </template>
                 </Column>
-                <Column field="invoice_created_at" header="Invoice Created" style="width: 150px">
-                  <template #body="{ data }">
-                    <span class="text-sm">{{ formatDate(data.invoice_created_at) }}</span>
-                  </template>
-                </Column>
                 <Column field="status" header="Status" style="width: 130px">
                   <template #body="{ data }">
                     <div class="flex flex-col gap-1">
@@ -132,7 +131,7 @@
                 <Column header="Actions" style="width: 110px" headerStyle="text-align: center">
                   <template #body="{ data }">
                     <div class="flex justify-center gap-1">
-                      <Button icon="pi pi-eye" text rounded size="small" @click="viewInvoice(data)" />
+                      <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewInvoice(data)" />
   
                     </div>
                   </template>
@@ -148,6 +147,9 @@
               <DataTable v-else :value="filteredSupplierPayments" rowHover
                 responsiveLayout="scroll" class="p-datatable-sm text-xs" paginator :rows="10"
                 :rowsPerPageOptions="[5, 10, 20, 50]">
+                <Column field="payment_date" header="Date" sortable style="width: 120px">
+                  <template #body="{ data }">{{ formatDate(data.payment_date) }}</template>
+                </Column>
                 <Column field="payment_number" header="Payment #" style="min-width: 130px">
                   <template #body="{ data }">
                     <span class="text-sm font-medium text-blue-600">{{ data.payment_number }}</span>
@@ -161,11 +163,6 @@
                 <Column field="payment_amount" header="Amount" style="width: 130px">
                   <template #body="{ data }">
                     <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.payment_amount) }}</span>
-                  </template>
-                </Column>
-                <Column field="payment_date" header="Date" style="width: 120px">
-                  <template #body="{ data }">
-                    <span class="text-sm">{{ formatDate(data.payment_date) }}</span>
                   </template>
                 </Column>
                 <Column field="status" header="Status" style="width: 130px">
@@ -357,6 +354,11 @@ const formatPaymentStatus = (status: string) => {
 const reloadAll = () => {
   loadPayables()
   loadSupplierPayments()
+}
+
+const clearFilters = () => {
+  filters.value = { search: '', status: '' }
+  reloadAll()
 }
 
 onMounted(() => {

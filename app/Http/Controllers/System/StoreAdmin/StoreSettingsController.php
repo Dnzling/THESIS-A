@@ -10,6 +10,7 @@ use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\Store\CaviteLocationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -440,7 +441,7 @@ class StoreSettingsController extends Controller
         $store->save();
     }
 
-    public function updateAttendanceSettings(Request $request)
+    public function updateAttendanceSettings(Request $request, CaviteLocationService $locationService)
     {
         $user = $request->user();
         $store = $this->resolveStoreForUser($user);
@@ -450,6 +451,16 @@ class StoreSettingsController extends Controller
         }
 
         $validated = $request->validate($this->attendanceUpdateRules());
+
+        try {
+            if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'latitude' => 'Choose an attendance location inside Cavite province.',
+                ]);
+            }
+        } catch (\RuntimeException $exception) {
+            abort(503, $exception->getMessage());
+        }
 
         $this->applyAttendanceUpdate($store, $validated);
 

@@ -39,7 +39,7 @@
             <p class="mt-2 text-slate-600">Please wait while we fetch the latest offers.</p>
           </div>
 
-          <div class="grid gap-6 lg:grid-cols-4">
+          <div class="grid gap-6 lg:grid-cols-3">
             <article
               v-for="plan in visiblePlans"
               :key="plan.id"

@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\Finance\FinanceRefund;
 
 use App\Models\Core\User;
 use App\Models\Store\Branch;
@@ -92,6 +93,12 @@ class EcommerceOrder extends Model
     public function cancellationRequests(): HasMany
     {
         return $this->hasMany(EcommerceOrderCancellation::class, 'order_id');
+    }
+
+    public function cancellationRefund(): HasOne
+    {
+        return $this->hasOne(FinanceRefund::class, 'order_id')
+            ->where('order_type', 'ecommerce_order');
     }
 
     public function returnRequests(): HasMany

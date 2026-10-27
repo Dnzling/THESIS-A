@@ -102,26 +102,20 @@
       </Column>
   
       <!-- Deductions -->
-      <Column class="text-xs font-semibold" header="Gov't Deductions" style="min-width: 180px">
+      <Column class="text-xs font-semibold" header="Itemized Deductions" style="min-width: 220px">
         <template #body="{ data }">
-          <div class="text-xs space-y-1">
-            <div class="flex items-center gap-1">
-              <span class="w-16">Tax:</span>
-              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.tax) }}</span>
+          <div v-if="data.deductionItems.length || data.governmentDeductions.tax > 0" class="space-y-1 py-1 text-xs">
+            <div v-for="(deduction, index) in data.deductionItems" :key="`${deduction.name}-${index}`"
+              class="flex items-start justify-between gap-3 border-b border-slate-100 pb-1 last:border-0 last:pb-0">
+              <span class="min-w-0 text-slate-600">{{ deduction.name }}</span>
+              <span class="shrink-0 font-medium">{{ formatCurrency(deduction.amount) }}</span>
             </div>
-            <div class="flex items-center gap-1">
-              <span class="w-16">SSS:</span>
-              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.sss) }}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="w-16">PhilHealth:</span>
-              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.philhealth) }}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="w-16">Pag-IBIG:</span>
-              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.pagibig) }}</span>
+            <div v-if="data.governmentDeductions.tax > 0" class="flex items-start justify-between gap-3">
+              <span class="text-slate-600">Income Tax</span>
+              <span class="shrink-0 font-medium">{{ formatCurrency(data.governmentDeductions.tax) }}</span>
             </div>
           </div>
+          <span v-else class="text-xs font-normal text-slate-500">None</span>
         </template>
       </Column>
   
@@ -227,6 +221,7 @@ interface PayrollItem {
   lateMinutes: number
   overtimeHours: number
   governmentDeductions: GovernmentDeductions
+  deductionItems: { name: string; amount: number }[]
   lateDeductions: number
   absenceDeduction: number
   halfDayDeduction: number
@@ -571,10 +566,8 @@ const submitBatchForApproval = async () => {
 const printPayslip = (item: PayrollItem) => {
   const period = batchInfo.value
   const listedDeductions = [
+    ...item.deductionItems.map(deduction => ({ label: deduction.name, amount: deduction.amount })),
     { label: 'Income tax', amount: item.governmentDeductions.tax },
-    { label: 'SSS', amount: item.governmentDeductions.sss },
-    { label: 'PhilHealth', amount: item.governmentDeductions.philhealth },
-    { label: 'Pag-IBIG', amount: item.governmentDeductions.pagibig },
     { label: 'Late deduction', amount: item.lateDeductions },
     { label: 'Absence deduction', amount: item.absenceDeduction },
     { label: 'Half-day deduction', amount: item.halfDayDeduction },

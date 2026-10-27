@@ -81,7 +81,6 @@
           </div>
   
           <div class="space-y-4">
-            <Tag v-if="!product?.variations?.length" :value="stockLabel" :severity="stockSeverity" />
             <div class="space-y-2">
               <h1 class="text-2xl md:text-3xl font-semibold text-slate-900">{{ product.product_name }}</h1>
               <div class="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
@@ -113,7 +112,7 @@
               </div>
               <p class="text-xs font-medium text-slate-500"></p>
               <p class="text-sm text-slate-500">
-                <span v-if="!product?.variations?.length">{{ product.quantity_available || 0 }} stocks available</span>
+                <Tag v-if="!product?.variations?.length" :value="stockLabel" :severity="stockSeverity" />
                 <span v-if="!product?.variations?.length && product.assembly_required" class="mx-2 text-slate-300">•</span>
                 <span v-if="product.assembly_required">Assembly required</span>
               </p>

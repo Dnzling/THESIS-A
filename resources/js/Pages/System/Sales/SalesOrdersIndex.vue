@@ -125,6 +125,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import salesService from '@/services/sales.service'
+import { openReceiptPreview } from '@/utils/receiptPreview'
 import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -300,11 +301,14 @@ const sendToLogistics = async (order: UnifiedOrder) => {
   }
 }
 
-const printReceipt = (order: UnifiedOrder) => {
-  const url = order.channel === 'Online'
-    ? `/api/sales/ecommerce-orders/${order.id}/receipt`
-    : `/api/sales/pos/orders/${order.id}/receipt`
-  window.open(url, '_blank')
+const printReceipt = async (order: UnifiedOrder) => {
+  try {
+    await openReceiptPreview(() => order.channel === 'Online'
+      ? salesService.getEcommerceOrderReceipt(order.id)
+      : salesService.getPosOrderReceipt(order.id))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Receipt Unavailable', detail: error?.response?.data?.message || error?.message || 'Unable to prepare the receipt for printing.', life: 3500 })
+  }
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

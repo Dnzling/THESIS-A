@@ -1,5 +1,6 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <!-- Toast notifications -->
     <Toast />
 
@@ -14,7 +15,7 @@
 
     <Card>
       <template #content>
-        <form class="space-y-6" @submit.prevent="submitForm">
+        <form class="space-y-6" @submit.prevent="requestReceiptConfirmation(false)">
           <!-- Section 1: Purchase Order -->
           <div class="border-b pb-6">
             <h3 class="mb-4 text-lg font-semibold text-gray-800">Reference Purchase Order</h3>
@@ -126,10 +127,11 @@
                     <td class="p-3 text-center">{{ item.quantity_ordered }}</td>
                     <td class="p-3 text-center">
                       <InputNumber
-                        v-model="item.quantity_received"
+                        :modelValue="item.quantity_received"
                         :min="0" fluid
                         class="w-16 text-center"
-                        @blur="calculateVariance(index)"
+                        @update:modelValue="onReceivedQuantityUpdate(index, $event)"
+                        @blur="onReceivedQuantityBlur(index)"
                       />
                       <p v-if="item.quantityError" class="mt-1 text-xs text-red-600">{{ item.quantityError }}</p>
                     </td>
@@ -225,13 +227,13 @@
               severity="secondary"
               type="button"
               :loading="saving"
-              @click="saveDraft = true; submitForm()"
+              @click="requestReceiptConfirmation(true)"
             />
             <Button
               label="Complete Receipt"
               type="button"
               :loading="saving"
-              @click="saveDraft = false; submitForm()"
+              @click="requestReceiptConfirmation(false)"
             />
           </div>
         </form>
@@ -241,16 +243,19 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import inventoryService from '../../../../services/inventory.service'
 import axiosClient from '@/axios'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
 const isInventoryFlow = window.location.pathname.startsWith('/inventory/')
 
 // Form State
@@ -497,6 +502,18 @@ const addByBarcode = async () => {
     if (item.status === 'short' || item.status === 'complete') item.status = item.variance === 0 ? 'complete' : 'short'
   }
 
+  const onReceivedQuantityUpdate = (index: number, value: number | null) => {
+    const item = receivedItems.value[index]
+    if (!item) return
+    item.quantity_received = value
+    calculateVariance(index)
+  }
+
+  const onReceivedQuantityBlur = async (index: number) => {
+    await nextTick()
+    calculateVariance(index)
+  }
+
 
   const getVarianceColor = (item: any) => {
     if (item.variance === 0) return 'text-green-600'
@@ -517,6 +534,24 @@ const addByBarcode = async () => {
     if (status === 'wrong') return 'defective'
     return 'good'
   }
+
+const requestReceiptConfirmation = (asDraft: boolean) => {
+  confirm.require({
+    header: asDraft ? 'Save receipt as draft?' : 'Complete this goods receipt?',
+    message: asDraft
+      ? 'The receipt will be saved as a draft and will not update inventory yet.'
+      : 'Confirm the received quantities and complete this receipt. Inventory will be updated based on the verified quantities.',
+    icon: asDraft ? 'pi pi-save' : 'pi pi-check-circle',
+    acceptLabel: asDraft ? 'Save Draft' : 'Complete Receipt',
+    rejectLabel: 'Review Again',
+    acceptProps: { severity: asDraft ? 'secondary' : 'warn' },
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: () => {
+      saveDraft.value = asDraft
+      submitForm()
+    },
+  })
+}
 
 const submitForm = async () => {
   receivedItems.value.forEach((_, index) => calculateVariance(index))

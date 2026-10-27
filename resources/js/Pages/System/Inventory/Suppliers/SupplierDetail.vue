@@ -25,7 +25,6 @@
                 <i class="pi pi-building text-4xl" />
               </div>
               <h2 class="mt-3 text-lg font-bold text-gray-900">{{ supplier.supplier_name }}</h2>
-              <p class="text-xs text-gray-500">{{ supplier.supplier_code }}</p>
               <Tag class="mt-2" :value="humanize(supplier.supplier_type)" severity="info" />
               <Button label="Edit" icon="pi pi-pencil" size="small" severity="warn" outlined
                 class="mt-4" @click="editSupplier" />

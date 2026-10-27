@@ -16,15 +16,15 @@
 
     <Card class="overflow-hidden rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
-        <div class="m-4 mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div class="space-y-2 md:col-span-2"><label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label><InputText v-model="filters.search" placeholder="Advance number, purpose, requester" size="small" fluid @keyup.enter="load" /></div>
-          <div class="space-y-2"><label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label><Select v-model="filters.status" :options="statuses" optionLabel="label" optionValue="value" size="small" fluid @change="load" /></div>
+        <div class="m-4 mt-6 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+          <div class="space-y-2 md:w-80"><label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label><InputText v-model="filters.search" placeholder="Advance number, purpose, requester" size="small" fluid @keyup.enter="load" /></div>
+          <div class="space-y-2 md:w-44"><label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label><Select v-model="filters.status" :options="statuses" optionLabel="label" optionValue="value" size="small" fluid @change="load" /></div>
           <div class="flex items-end"><Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" fluid :loading="loading" @click="load" /></div>
         </div>
       </template>
       <template #content>
         <DataTable :value="rows" :loading="loading" rowHover responsiveLayout="scroll" class="p-datatable-sm m-4 text-xs" paginator :rows="15" :rowsPerPageOptions="[15,20,50]">
-          <Column header="Date"><template #body="{ data }">{{ date(data.created_at) }}</template></Column>
+          <Column field="created_at" header="Date" sortable style="min-width: 140px"><template #body="{ data }">{{ date(data.created_at) }}</template></Column>
           <Column header="Advance No."><template #body="{ data }"><button class="font-medium text-blue-600 hover:underline" @click="open(data)">{{ data.advance_number }}</button></template></Column>
           <Column field="purpose" header="Purpose" style="min-width:220px" />
           <Column header="Requested By"><template #body="{ data }">{{ person(data.requester) }}</template></Column>

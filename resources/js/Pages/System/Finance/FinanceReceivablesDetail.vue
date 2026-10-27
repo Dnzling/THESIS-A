@@ -1,113 +1,140 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-gray-100 bg-linear-to-r from-slate-50 via-white to-blue-50 p-5 shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+  <div class="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+    <header class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" rounded text @click="goBack" />
-        <div>
-          <h1 class="text-xl font-semibold tracking-tight text-gray-900">Receivable Detail</h1>
-          <p class="mt-0.5 text-sm text-gray-500">Full order and invoice details for customer billing.</p>
+        <Button icon="pi pi-arrow-left" aria-label="Go back" rounded text @click="goBack" />
+        <div class="min-w-0">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-600">Finance / Receivables</p>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900">Receivable Details</h1>
+            <span class="break-all text-sm font-medium text-slate-500">{{ detail?.reference || '' }}</span>
+            <Tag v-if="detail" :value="formatStatus(detail.status)" :severity="statusSeverity(detail.status)" />
+          </div>
+          <p class="mt-0.5 text-sm text-slate-500">{{ detail?.source_type === 'ecommerce' ? 'Ecommerce order' : 'Sales order' }}</p>
         </div>
       </div>
-
-      <Button icon="pi pi-print" label="Print Invoice" :disabled="!detail" @click="printInvoice" />
+      <div class="flex flex-wrap items-center gap-4">
+        <div v-if="detail" class="text-right">
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Total amount</p>
+          <p class="text-lg font-bold text-slate-900">PHP {{ formatMoney(grandTotal) }}</p>
+        </div>
+        <Button icon="pi pi-print" label="Print receipt" severity="warn" outlined :disabled="!detail" @click="printInvoice" />
       </div>
-    </div>
+    </header>
 
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+    <div v-if="loading" class="space-y-4" aria-label="Loading receivable details">
+      <div class="h-36 animate-pulse rounded-2xl border border-slate-200 bg-slate-100" />
+      <div class="h-48 animate-pulse rounded-2xl border border-slate-200 bg-slate-100" />
+    </div>
+    <Card v-else-if="!detail" class="rounded-2xl border border-slate-200 shadow-sm">
       <template #content>
-        <div v-if="loading" class="p-6 text-sm text-gray-500">Loading receivable details...</div>
-        <div v-else-if="!detail" class="p-6 text-sm text-gray-500">Receivable record not found.</div>
-        <div v-else class="grid grid-cols-1 gap-4 p-6 md:grid-cols-3">
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Invoice Reference</p>
-            <p class="mt-1 font-semibold text-gray-900">{{ detail.reference }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Source</p>
-            <Tag :value="detail.source_type === 'ecommerce' ? 'Ecommerce' : 'Sales'" :severity="detail.source_type === 'ecommerce' ? 'info' : 'secondary'" />
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Customer</p>
-            <p class="mt-1 font-semibold text-gray-900">{{ detail.customer?.name || '-' }}</p>
-            <p class="text-sm text-gray-500">{{ detail.customer?.phone || '-' }}</p>
-            <p class="text-sm text-gray-500">{{ detail.customer?.email || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Address</p>
-            <p class="mt-1 text-sm text-gray-700">{{ detail.billing?.address || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Payment Method</p>
-            <p class="mt-1 text-sm text-gray-700">{{ detail.payment?.method || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Payment Status</p>
-            <Tag :value="formatStatus(detail.status)" :severity="statusSeverity(detail.status)" />
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Receipt Number</p>
-            <p class="mt-1 text-sm text-gray-700">{{ detail.receipt?.receipt_number || '-' }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Created Date</p>
-            <p class="mt-1 text-sm text-gray-700">{{ formatDate(detail.dates?.created_at) }}</p>
-          </div>
-          <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Due Date</p>
-            <p class="mt-1 text-sm text-gray-700">{{ formatDate(detail.dates?.due_date) }}</p>
-          </div>
+        <div class="py-10 text-center">
+          <i class="pi pi-file-excel text-3xl text-slate-300" />
+          <p class="mt-3 font-medium text-slate-700">Receivable record not found</p>
+          <p class="mt-1 text-sm text-slate-500">It may have been removed or is no longer available.</p>
         </div>
       </template>
     </Card>
+    <template v-else>
+      <section v-if="false" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="flex flex-col gap-5 bg-gradient-to-r from-orange-50 via-white to-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs font-medium uppercase tracking-wider text-slate-500">{{ detail.source_type === 'ecommerce' ? 'Ecommerce order' : 'Sales order' }}</span>
+              <Tag :value="formatStatus(detail.status)" :severity="statusSeverity(detail.status)" />
+            </div>
+            <h2 class="mt-2 break-all text-lg font-semibold text-slate-900">{{ detail.reference || 'Receivable' }}</h2>
+            <p class="mt-1 text-sm text-slate-500">Created {{ formatDate(detail.dates?.created_at) }}<span v-if="detail.receipt?.receipt_number"> · Receipt {{ detail.receipt.receipt_number }}</span></p>
+          </div>
+          <div class="sm:min-w-52 sm:text-right">
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Total amount</p>
+            <p class="mt-1 text-2xl font-bold tracking-tight text-slate-900">PHP {{ formatMoney(grandTotal) }}</p>
+            <p class="mt-1 text-xs text-slate-500">Due {{ formatDate(detail.dates?.due_date) }}</p>
+          </div>
+        </div>
+      </section>
 
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+      <div class="grid gap-4 lg:grid-cols-3">
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Customer</span></template>
+          <template #content>
+            <p class="font-semibold text-slate-900">{{ detail.customer?.name || 'Walk-in customer' }}</p>
+            <div class="mt-3 space-y-2 text-sm text-slate-600">
+              <p v-if="detail.customer?.phone" class="flex items-center gap-2"><i class="pi pi-phone text-slate-400" />{{ detail.customer.phone }}</p>
+              <p v-if="detail.customer?.email" class="flex items-center gap-2 break-all"><i class="pi pi-envelope text-slate-400" />{{ detail.customer.email }}</p>
+              <p v-if="detail.billing?.address" class="flex items-start gap-2"><i class="pi pi-map-marker mt-0.5 text-slate-400" /><span>{{ detail.billing.address }}</span></p>
+              <p v-if="!detail.customer?.phone && !detail.customer?.email && !detail.billing?.address" class="text-slate-400">No additional customer details.</p>
+            </div>
+          </template>
+        </Card>
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Payment</span></template>
+          <template #content>
+            <div class="space-y-3 text-sm">
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Method</span><span class="font-medium capitalize text-slate-800">{{ detail.payment?.method || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Status</span><Tag :value="formatStatus(detail.status)" :severity="statusSeverity(detail.status)" /></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Receipt</span><span class="text-right font-medium text-slate-800">{{ detail.receipt?.receipt_number || '-' }}</span></div>
+            </div>
+          </template>
+        </Card>
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Invoice dates</span></template>
+          <template #content>
+            <div class="space-y-3 text-sm">
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Created</span><span class="font-medium text-slate-800">{{ formatDate(detail.dates?.created_at) }}</span></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Due date</span><span class="font-medium text-slate-800">{{ formatDate(detail.dates?.due_date) }}</span></div>
+            </div>
+          </template>
+        </Card>
+      </div>
+
+      <Card v-if="String(detail.delivery?.tracking_number || '').trim()" class="rounded-2xl border border-slate-200 shadow-sm">
       <template #header>
         <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Delivery Details</h2>
+          <h2 class="text-base font-semibold text-slate-900">Delivery details</h2>
         </div>
       </template>
       <template #content>
-        <div class="grid grid-cols-1 gap-4 p-6 pt-2 md:grid-cols-3">
+        <div class="grid grid-cols-1 gap-4 p-6 pt-2 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Tracking #</p>
-            <p class="mt-1 text-sm font-medium text-gray-900">{{ detail?.delivery?.tracking_number || '-' }}</p>
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Tracking number</p>
+            <p class="mt-1 break-all text-sm font-semibold text-slate-900">{{ detail.delivery.tracking_number }}</p>
           </div>
           <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Courier</p>
-            <p class="mt-1 text-sm text-gray-700">{{ detail?.delivery?.courier_name || '-' }}</p>
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Courier</p>
+            <p class="mt-1 text-sm font-medium text-slate-800">{{ detail.delivery.courier_name || '-' }}</p>
           </div>
           <div>
-            <p class="text-xs uppercase tracking-wide text-gray-500">Courier Contact</p>
-            <p class="mt-1 text-sm text-gray-700">{{ detail?.delivery?.courier_contact || '-' }}</p>
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Courier contact</p>
+            <p class="mt-1 text-sm text-slate-700">{{ detail.delivery.courier_contact || '-' }}</p>
           </div>
-          <div class="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <p class="text-xs uppercase tracking-wide text-gray-500">Distance</p>
-            <p class="mt-1 text-sm font-semibold text-gray-900">{{ formatDecimal(displayDistanceKm) }} km</p>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Distance</p>
+            <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatDecimal(displayDistanceKm) }} km</p>
           </div>
           <div class="rounded-xl border border-gray-200 bg-gray-50 p-3">
             <p class="text-xs uppercase tracking-wide text-gray-500">Per KM Charge</p>
             <p class="mt-1 text-sm font-semibold text-gray-900">₱ {{ formatMoney(detail?.delivery?.per_km_charge || 0) }}</p>
           </div>
-          <div class="rounded-xl border border-blue-200 bg-blue-50 p-3">
-            <p class="text-xs uppercase tracking-wide text-blue-700">Delivery Fee</p>
-            <p class="mt-1 text-base font-semibold text-blue-900">₱ {{ formatMoney(detail?.delivery?.estimated_fee || 0) }}</p>
+          <div class="rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <p class="text-xs font-medium uppercase tracking-wide text-orange-700">Delivery fee</p>
+            <p class="mt-1 text-base font-semibold text-orange-900">₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</p>
           </div>
         </div>
       </template>
     </Card>
 
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
       <template #header>
         <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Order Items</h2>
+          <h2 class="text-base font-semibold text-slate-900">Order items</h2>
         </div>
       </template>
       <template #content>
         <div class="p-6 pt-2">
-          <DataTable :value="detail?.items || []" stripedRows responsiveLayout="scroll" class="p-datatable-sm">
+          <DataTable :value="detail?.items || []" rowHover responsiveLayout="scroll" class="p-datatable-sm">
             <Column field="sku" header="SKU" style="min-width: 130px" />
-            <Column field="name" header="Item" style="min-width: 220px" />
+            <Column field="name" header="Product" style="min-width: 220px" />
             <Column field="quantity" header="Qty" style="width: 90px" />
             <Column field="unit_price" header="Unit Price" style="width: 140px">
               <template #body="{ data }">₱ {{ formatMoney(data.unit_price) }}</template>
@@ -120,20 +147,21 @@
             </template>
           </DataTable>
 
-          <div v-if="detail" class="mt-4 grid grid-cols-1 gap-2 text-sm md:ml-auto md:max-w-sm">
+          <div v-if="detail" class="mt-5 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:ml-auto sm:max-w-md">
             <div class="flex items-center justify-between"><span class="text-gray-500">Subtotal</span><span>₱ {{ formatMoney(detail.amounts?.subtotal) }}</span></div>
-            <div class="flex items-center justify-between"><span class="text-gray-500">Discount</span><span>₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
+            <div v-if="Number(detail.amounts?.discount || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">Discount</span><span class="text-rose-600">- ₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">VATable Sales</span><span>₱ {{ formatMoney(vatableSales) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (Included)</span><span>₱ {{ formatMoney(detail.amounts?.tax) }}</span></div>
             <div v-if="detail.source_type !== 'ecommerce'" class="flex items-center justify-between"><span class="text-gray-500">Platform Commission ({{ formatDecimal(detail.amounts?.commission_percentage) }}%)</span><span>- ₱ {{ formatMoney(detail.amounts?.commission) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Order Total</span><span>₱ {{ formatMoney(detail.amounts?.total) }}</span></div>
             <div class="flex items-center justify-between font-medium"><span class="text-gray-600">Store Net Proceeds</span><span>₱ {{ formatMoney(detail.amounts?.store_net) }}</span></div>
-            <div class="flex items-center justify-between"><span class="text-gray-500">Delivery Fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
-            <div class="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-semibold"><span>Grand Total</span><span>₱ {{ formatMoney(grandTotal) }}</span></div>
+            <div v-if="Number(detail.delivery?.estimated_fee || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">Delivery fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
+            <div class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-3 text-base font-semibold text-white"><span>Grand total</span><span>₱ {{ formatMoney(grandTotal) }}</span></div>
           </div>
         </div>
       </template>
-    </Card>
+      </Card>
+    </template>
   </div>
 </template>
 
@@ -194,7 +222,9 @@ const formatDate = (date: string) => {
 
 const formatStatus = (status: string) => {
   if (!status) return '-'
-  return status.charAt(0).toUpperCase() + status.slice(1)
+  return status
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
 const statusSeverity = (status: string) => {

@@ -124,7 +124,7 @@ const actionLabel = computed(() => {
   if (isStepValid.value) return 'Next: Business Registration'
   if (typeVerified.value && manualFallback.value) return 'Enter ID Number to Continue'
   if (typeMismatch.value) return 'Retry ID Check'
-  return 'Submit ID for OCR'
+  return 'Submit ID'
 })
 
 const syncForm = () => emit('update:formData', { ...localForm.value })

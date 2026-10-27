@@ -10,6 +10,7 @@
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-3xl font-semibold tracking-tight text-gray-900">{{ detailTitle }}</h2>
             <Badge v-if="product?.is_active" value="Active" severity="success" />
+            <Badge v-else-if="product" value="Inactive" severity="secondary" />
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <Tag :value="displayItem?.variation_sku || product?.sku || '-'" severity="secondary" class="font-mono" />
@@ -34,14 +35,24 @@
           size="small"
           @click="goToEdit"
         />
-        <!-- <Button
+        <Button
+          v-if="product?.is_active && !selectedVariation && canManageProducts"
           label="Archive"
-          icon="pi pi-briefcase"
+          icon="pi pi-box"
+          severity="secondary"
+          outlined
+          size="small"
+          @click="confirmArchive"
+        />
+        <Button
+          v-if="product && !selectedVariation && canManageProducts"
+          label="Remove"
+          icon="pi pi-trash"
           severity="danger"
           outlined
           size="small"
           @click="confirmDelete"
-        /> -->
+        />
       </div>
     </div>
 
@@ -356,16 +367,26 @@
       />
     </div>
 
-    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
-      <div class="flex items-center gap-3">
-        <div>
-          <p class="font-semibold">Are you sure you want to delete this item?</p>
-          <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
-        </div>
+    <Dialog v-model:visible="archiveDialogVisible" header="Archive Item" :modal="true" class="w-[min(92vw,26rem)]" :closable="!archiving">
+      <div class="space-y-3">
+        <p class="text-sm font-semibold text-gray-900">Archive {{ product?.product_name }}?</p>
+        <p class="text-sm text-gray-600">It will no longer appear in active shopping listings. Stock and transaction history will be preserved. You can reactivate it from Edit.</p>
+        <p v-if="archiveError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ archiveError }}</p>
       </div>
       <template #footer>
-        <Button @click="deleteDialogVisible = false" label="Cancel" severity="secondary" text />
-        <Button @click="deleteProduct" label="Delete" severity="danger" :loading="deleting" />
+        <Button @click="archiveDialogVisible = false" label="Keep Item" severity="secondary" text :disabled="archiving" />
+        <Button @click="archiveProduct" label="Archive Item" severity="warn" :loading="archiving" :disabled="archiving" />
+      </template>
+    </Dialog>
+    <Dialog v-model:visible="deleteDialogVisible" header="Remove Item" :modal="true" class="w-[min(92vw,26rem)]" :closable="!deleting">
+      <div class="space-y-3">
+        <p class="text-sm font-semibold text-gray-900">Remove {{ product?.product_name }}?</p>
+        <p class="text-sm text-gray-600">This removes the item from the catalog. Every branch must have zero stock and no reserved units. Otherwise, archive it instead.</p>
+        <p v-if="deleteError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ deleteError }}</p>
+      </div>
+      <template #footer>
+        <Button label="Keep Item" severity="secondary" text :disabled="deleting" @click="deleteDialogVisible = false" />
+        <Button label="Remove Item" severity="danger" :loading="deleting" :disabled="deleting" @click="deleteProduct" />
       </template>
     </Dialog>
   </div>
@@ -396,8 +417,13 @@ const authStore = useAuthStore()
 
 const productId = computed(() => Number(route.params.id))
 const loading = ref(false)
+const archiving = ref(false)
+const archiveDialogVisible = ref(false)
+const archiveError = ref('')
 const deleting = ref(false)
 const deleteDialogVisible = ref(false)
+const deleteError = ref('')
+const canManageProducts = computed(() => authStore.hasPermission('inventory.products.manage'))
 const view3DModalVisible = ref(false)
 const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)
@@ -640,21 +666,47 @@ const downloadModel = () => {
   showActionResponse('success', 'Download Started', `Downloading ${primary3DModel.value.file_name}`)
 }
 
+const confirmArchive = () => {
+  archiveError.value = ''
+  archiveDialogVisible.value = true
+}
+
+const archiveProduct = async () => {
+  if (!product.value?.is_active || selectedVariation.value || !canManageProducts.value) return
+  archiving.value = true
+  archiveError.value = ''
+  try {
+    const response = await inventoryService.archiveProduct(productId.value)
+    if (response?.success === false) throw new Error(response.message || 'Failed to archive item')
+    product.value.is_active = false
+    archiveDialogVisible.value = false
+    showActionResponse('success', 'Item Archived', response.message || 'Item archived successfully')
+  } catch (error: any) {
+    archiveError.value = error.response?.data?.message || error.message || 'Failed to archive item'
+  } finally {
+    archiving.value = false
+  }
+}
+
 const confirmDelete = () => {
+  deleteError.value = ''
   deleteDialogVisible.value = true
 }
 
 const deleteProduct = async () => {
+  if (!product.value || selectedVariation.value || !canManageProducts.value) return
   deleting.value = true
+  deleteError.value = ''
   try {
-    await inventoryService.deleteProduct(productId.value)
-    showActionResponse('success', 'Item Deleted', 'Item deleted successfully')
+    const response = await inventoryService.deleteProduct(productId.value, true)
+    if (response?.success === false) throw new Error(response.message || 'Failed to delete item')
+    deleteDialogVisible.value = false
+    showActionResponse('success', 'Item Deleted', response.message || 'Item deleted successfully')
     router.push({ name: 'inventory.products.index' })
   } catch (error: any) {
-    showActionResponse('error', 'Delete Failed', error.response?.data?.message || 'Failed to delete item')
+    deleteError.value = error.response?.data?.message || error.message || 'Failed to delete item'
   } finally {
     deleting.value = false
-    deleteDialogVisible.value = false
   }
 }
 

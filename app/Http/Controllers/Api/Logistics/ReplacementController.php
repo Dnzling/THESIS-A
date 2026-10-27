@@ -9,6 +9,7 @@ use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Store\Branch;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -58,7 +59,7 @@ class ReplacementController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
-    public function show(Request $request, int $id): JsonResponse
+    public function show(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $return = $this->scopedReturn($request, $id);
         $return->load(['orderItem.product', 'pickup.destinationBranch']);
@@ -71,8 +72,9 @@ class ReplacementController extends Controller
             ->whereIn('branch_id', $branches->pluck('id'))
             ->get(['id', 'branch_id', 'quantity_available', 'quantity_reserved']);
         $drivers = User::query()->where('store_id', $return->store_id)->where('is_active', true)
-            ->whereHas('role', fn ($query) => $query->where('name', 'driver'))
-            ->get(['id', 'fname', 'lname']);
+            ->with('employee')->whereHas('employee', fn ($query) => $query->where('status', 'active'))
+            ->get(['id', 'fname', 'lname', 'role_id', 'store_id']);
+        $drivers = $drivers->filter(fn (User $driver) => $driverEligibility->userCanDrive($driver, (int) $return->store_id))->values();
         $vehicles = EcommerceDeliveryVehicle::query()->where('store_id', $return->store_id)
             ->where('is_active', true)->get(['id', 'vehicle_name', 'plate_number']);
 
@@ -122,7 +124,7 @@ class ReplacementController extends Controller
             ? 'Replacement stock reserved.' : 'Not enough stock. Case is awaiting stock.', 'data' => $result['case']]);
     }
 
-    public function assign(Request $request, int $id): JsonResponse
+    public function assign(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $this->authorizeLogistics($request);
         $validated = $request->validate([
@@ -130,9 +132,12 @@ class ReplacementController extends Controller
             'vehicle_id' => ['required', 'integer', 'exists:ecommerce_delivery_vehicles,id'],
         ]);
         $return = $this->scopedReturn($request, $id);
-        User::query()->where('store_id', $return->store_id)->where('is_active', true)
-            ->whereHas('role', fn ($query) => $query->where('name', 'driver'))
+        $driver = User::query()->with('employee')->where('store_id', $return->store_id)->where('is_active', true)
+            ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
             ->findOrFail($validated['driver_user_id']);
+        if (!$driverEligibility->userCanDrive($driver, (int) $return->store_id)) {
+            throw ValidationException::withMessages(['driver_user_id' => 'Select an active employee with a logistics driver permission.']);
+        }
         EcommerceDeliveryVehicle::query()->where('store_id', $return->store_id)
             ->where('is_active', true)->findOrFail($validated['vehicle_id']);
         DB::transaction(function () use ($return, $validated): void {

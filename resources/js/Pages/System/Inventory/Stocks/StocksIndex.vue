@@ -99,8 +99,8 @@
           <Column field="product_name" header="Product" style="min-width: 230px">
             <template #body="{ data }">
               <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                  <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name" class="h-full w-full object-cover" />
+                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name" class="block h-full w-full object-contain" />
                   <i v-else class="pi pi-image text-slate-300"></i>
                 </div>
                 <div>
@@ -109,6 +109,12 @@
                   <p v-if="data.variant_rows?.length" class="text-[11px] text-orange-600">{{ data.variant_rows.length }} variants</p>
                 </div>
               </div>
+            </template>
+          </Column>
+
+          <Column header="Type" style="min-width: 120px">
+            <template #body="{ data }">
+              <Tag :value="getTypeLabel(data.product?.product_type)" :severity="getTypeSeverity(data.product?.product_type)" class="text-xs" />
             </template>
           </Column>
 
@@ -183,6 +189,7 @@ import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
+import Tag from 'primevue/tag'
 
 const loading = ref(true)
 const items = ref<any[]>([])
@@ -261,7 +268,7 @@ const hasActiveFilters = computed(() => {
 })
 
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' }
@@ -380,6 +387,16 @@ const getTypeLabel = (type?: string) => {
   return labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'Other'
 }
 
+const getTypeSeverity = (type?: string) => {
+  const normalized = String(type || '').toLowerCase()
+  const severities: Record<string, string> = {
+    finished_good: 'success',
+    supply: 'info',
+    raw_material: 'warn'
+  }
+  return severities[normalized] || 'secondary'
+}
+
 const getUnitCost = (data: any) => {
   return Number(data.variation?.cost_price ?? data.product?.inventory_cost_price ?? data.product?.cost_price ?? 0)
 }
@@ -413,8 +430,10 @@ const getBranchName = (data: any) => {
 
 const getProductImage = (data: any) => {
   const assets = Array.isArray(data?.product?.assets) ? data.product.assets : []
-  const image = assets.find((asset: any) => asset.is_primary && asset.url)
-    || assets.find((asset: any) => asset.url)
+  const image = assets
+    .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type) && (asset.thumbnail_url || asset.url))
+    .sort((a: any, b: any) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
+      || Number(a.display_order || 0) - Number(b.display_order || 0))[0]
   return image?.thumbnail_url || image?.url || null
 }
 

@@ -352,6 +352,13 @@ class MerchandisingService {
         return response.data
     }
 
+    async uploadProduct3DModel(productId: number, formData: FormData) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/3d-model`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        return response.data
+    }
+
     async updateAsset(id: number, data: Partial<ProductAsset>) {
         const response = await axiosClient.put(`${this.baseUrl}/assets/${id}`, data)
         return response.data

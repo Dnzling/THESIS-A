@@ -77,6 +77,27 @@
             <label class="mb-2 block text-sm font-medium text-slate-700">Address</label>
             <Textarea v-model="form.address" rows="3" class="w-full" placeholder="Street, building, landmark" data-testid="address" />
           </div>
+
+          <div class="md:col-span-2">
+            <div class="mb-2 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <label class="block text-sm font-semibold text-slate-800">Store location *</label>
+                <p class="mt-1 text-xs text-slate-500">Click the map or drag the pin to your store. Only locations inside Cavite are allowed.</p>
+              </div>
+              <span v-if="form.latitude !== null && form.longitude !== null" class="text-xs text-slate-500">
+                {{ form.latitude.toFixed(6) }}, {{ form.longitude.toFixed(6) }}
+              </span>
+            </div>
+            <div class="mb-2 flex flex-col gap-2 sm:flex-row">
+              <InputText v-model="locationSearch" class="min-w-0 flex-1" placeholder="Search your store address in Cavite" @keydown.enter.prevent="searchStoreLocation" />
+              <Button label="Find location" icon="pi pi-search" severity="secondary" outlined :loading="searchingLocation" @click="searchStoreLocation" />
+            </div>
+            <div ref="mapEl" class="h-72 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100" role="application" aria-label="Map for choosing store location" />
+            <p v-if="mapError || pinError" class="mt-2 text-sm text-red-600" role="alert">{{ mapError || pinError }}</p>
+            <p v-else-if="pinStatus === 'checking'" class="mt-2 text-sm text-slate-500">Checking the pin location...</p>
+            <p v-else-if="pinStatus === 'valid'" class="mt-2 text-sm text-green-700"><i class="pi pi-check-circle mr-1" />Location confirmed inside Cavite.</p>
+            <p v-else class="mt-2 text-sm text-slate-500">Select and confirm a pin before creating your store.</p>
+          </div>
         </div>
 
         <div class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"><div class="font-semibold text-slate-800">Review & create</div><p class="mt-1">{{ form.store_name || 'Your store' }} · {{ form.business_type }} · {{ form.address || 'Address not entered' }}</p></div>
@@ -86,7 +107,7 @@
         </div>
 
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-          <Button label="Create Store & Choose a Plan" severity="warn" :loading="submitting" @click="submitStore" data-testid="save-store" />
+          <Button label="Create Store & Choose a Plan" severity="warn" :loading="submitting" :disabled="pinStatus !== 'valid'" @click="submitStore" data-testid="save-store" />
         </div>
       </div>
     </div>
@@ -94,15 +115,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
 import { useAuthStore } from '@/stores/auth'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
 const authStore = useAuthStore()
 const submitting = ref(false)
@@ -113,6 +138,17 @@ const barangaysLoading = ref(false)
 const provinceId = ref<string>('')
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
+const mapEl = ref<HTMLDivElement | null>(null)
+const mapError = ref('')
+const pinError = ref('')
+const pinStatus = ref<'none' | 'checking' | 'valid' | 'invalid'>('none')
+const locationSearch = ref('')
+const searchingLocation = ref(false)
+let map: MapboxMap | null = null
+let marker: MapboxMarker | null = null
+let mapboxLibrary: typeof import('mapbox-gl').default | null = null
+let locationRequest = 0
+let mapResizeTimer: ReturnType<typeof setTimeout> | null = null
 
 const businessTypeOptions = [
   { label: 'Retail', value: 'retail' },
@@ -129,7 +165,85 @@ const form = ref({
   city_id: '',
   barangay: '',
   address: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
 })
+
+const selectPin = async (latitude: number, longitude: number) => {
+  const requestId = ++locationRequest
+  form.value.latitude = Number(latitude.toFixed(7))
+  form.value.longitude = Number(longitude.toFixed(7))
+  pinStatus.value = 'checking'
+  pinError.value = ''
+  const activeMap = map
+  if (activeMap && !activeMap.loaded()) {
+    await new Promise<void>((resolve) => activeMap.once('load', () => resolve()))
+  }
+  if (requestId !== locationRequest || !activeMap || map !== activeMap) return
+
+  const coordinates: [number, number] = [longitude, latitude]
+  if (!marker && mapboxLibrary) {
+    marker = new mapboxLibrary.Marker({ color: '#f97316', draggable: true })
+      .setLngLat(coordinates)
+      .addTo(activeMap)
+    marker.on('dragend', () => {
+      const position = marker?.getLngLat()
+      if (position) void selectPin(position.lat, position.lng)
+    })
+  } else {
+    marker?.setLngLat(coordinates)
+  }
+
+  try {
+    const response = await axiosClient.post('/api/stores/validate-location', {
+      latitude: form.value.latitude,
+      longitude: form.value.longitude,
+    }, { headers: { 'X-Suppress-Dialog': '1' } })
+    if (requestId !== locationRequest) return
+    pinStatus.value = response.data?.valid ? 'valid' : 'invalid'
+    if (!response.data?.valid) pinError.value = response.data?.message || 'Place the store pin inside Cavite province.'
+  } catch (error: any) {
+    if (requestId !== locationRequest) return
+    pinStatus.value = 'invalid'
+    pinError.value = error?.response?.data?.message || 'Could not verify the pin. Please try again.'
+  }
+}
+
+const initMap = async () => {
+  if (!mapEl.value || map) return
+  try {
+    const mapboxgl = (await import('mapbox-gl')).default
+    mapboxLibrary = mapboxgl
+    mapboxgl.accessToken = requireMapboxToken()
+    map = new mapboxgl.Map({
+      container: mapEl.value,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [120.95, 14.35],
+      zoom: 10,
+    })
+    map.on('click', (event) => void selectPin(event.lngLat.lat, event.lngLat.lng))
+    map.on('load', () => map?.resize())
+  } catch (error: any) {
+    mapError.value = error?.message || 'Unable to load the location map.'
+  }
+}
+
+const searchStoreLocation = async () => {
+  if (!locationSearch.value.trim()) return
+  searchingLocation.value = true
+  pinError.value = ''
+  try {
+    const result = await forwardGeocodeMapbox(`${locationSearch.value.trim()}, Cavite, Philippines`)
+    if (!result) throw new Error('Location not found. Try a more specific address in Cavite.')
+    if (!map) throw new Error('The map is not ready. Please try again.')
+    map.flyTo({ center: [result.longitude, result.latitude], zoom: 15 })
+    await selectPin(result.latitude, result.longitude)
+  } catch (error: any) {
+    pinError.value = error?.message || 'Unable to find that address.'
+  } finally {
+    searchingLocation.value = false
+  }
+}
 
 const contactPerson = computed(() => {
   const user = authStore.currentUser as any
@@ -207,6 +321,14 @@ const submitStore = async () => {
     errorMessage.value = 'Barangay is required.'
     return
   }
+  if (!form.value.address.trim()) {
+    errorMessage.value = 'Store address is required.'
+    return
+  }
+  if (pinStatus.value !== 'valid' || form.value.latitude === null || form.value.longitude === null) {
+    errorMessage.value = 'Choose a store pin inside Cavite and wait for it to be confirmed.'
+    return
+  }
   
   submitting.value = true
   try {
@@ -220,6 +342,8 @@ const submitStore = async () => {
       city: selectedCity?.name || selectedCity?.city_name || '',
       barangay: selectedBarangay?.name || selectedBarangay?.barangay_name || '',
       address: form.value.address,
+      latitude: form.value.latitude,
+      longitude: form.value.longitude,
       email: (authStore.currentUser as any)?.email || null,
       contact_number: (authStore.currentUser as any)?.contact_number || null,
     }
@@ -233,7 +357,8 @@ const submitStore = async () => {
     await authStore.fetchCurrentUser({ reloadPermissions: true })
     router.visit(`/subscription-plans?store_id=${storeId}`)
   } catch (error: any) {
-    errorMessage.value = error?.response?.data?.message || error?.message || 'Unable to save store.'
+    const fields = error?.response?.data?.errors
+    errorMessage.value = fields ? String(Object.values(fields).flat()[0]) : (error?.response?.data?.message || error?.message || 'Unable to save store.')
   } finally {
     submitting.value = false
   }
@@ -249,6 +374,27 @@ onMounted(async () => {
       ? `/subscription-plans?store_id=${user.store_id}`
       : '/store/index')
   }
+})
+
+watch(welcomeVisible, async (visible) => {
+  if (visible || (authStore.currentUser as any)?.store_id) return
+  await nextTick()
+  await initMap()
+  if (mapResizeTimer) clearTimeout(mapResizeTimer)
+  mapResizeTimer = setTimeout(() => {
+    map?.resize()
+    map?.triggerRepaint()
+  }, 250)
+})
+
+onBeforeUnmount(() => {
+  locationRequest++
+  if (mapResizeTimer) clearTimeout(mapResizeTimer)
+  marker?.remove()
+  map?.remove()
+  marker = null
+  map = null
+  mapboxLibrary = null
 })
 
 watch(

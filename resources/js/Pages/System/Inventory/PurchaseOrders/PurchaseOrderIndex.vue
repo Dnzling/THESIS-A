@@ -129,9 +129,7 @@
                             ><div class="font-medium">
                                 {{ data.supplier?.supplier_name || "—" }}
                             </div>
-                            <div class="text-xs text-slate-500">
-                                {{ data.supplier?.supplier_code }}
-                            </div></template
+                            </template
                         ></Column
                     >
                     <Column header="Branch"

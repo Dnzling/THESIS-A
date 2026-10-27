@@ -463,29 +463,43 @@ class InventoryService {
     return response.data
   }
 
-  async createProduct(data: any) {
-    const response = await axiosClient.post(`${this.baseUrl}/products`, data)
+  async createProduct(data: any, suppressDialog = false) {
+    const response = await axiosClient.post(`${this.baseUrl}/products`, data, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
     return response.data
   }
 
-  async updateProduct(id: number, data: any) {
+  async updateProduct(id: number, data: any, suppressDialog = false) {
     const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
     const body = isFormData ? data : data
     if (isFormData) {
       body.append('_method', 'PUT')
       const response = await axiosClient.post(`${this.baseUrl}/products/${id}`, body, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          ...(suppressDialog ? { 'X-Suppress-Dialog': '1' } : {})
         }
       })
       return response.data
     }
-    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, body)
+    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, body, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
     return response.data
   }
 
-  async deleteProduct(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/products/${id}`)
+  async deleteProduct(id: number, suppressDialog = false) {
+    const response = await axiosClient.delete(`${this.baseUrl}/products/${id}`, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
+    return response.data
+  }
+
+  async archiveProduct(id: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/products/${id}/archive`, undefined, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
     return response.data
   }
 
@@ -931,6 +945,11 @@ class InventoryService {
   // ==================== REORDER SUGGESTIONS ====================
   async getReorderSuggestions(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/reorder-suggestions`, { params })
+    return response.data
+  }
+
+  async createGroupedReorderPrs(suggestionIds: number[]) {
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/create-grouped-prs`, { suggestion_ids: suggestionIds })
     return response.data
   }
 

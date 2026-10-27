@@ -5,8 +5,7 @@
         <h1 class="text-xl font-bold text-gray-800">Stock Adjustments</h1>
         <p class="text-xs text-gray-500">Review stock corrections, physical counts, and approvals across your branches.</p>
       </div>
-      <SplitButton v-if="canCreateAdjustments" label="Create Adjustment" icon="pi pi-plus" severity="warn" size="small"
-        :model="createAdjustmentItems" @click="openCreate()" />
+        <Button v-if="canCreateAdjustments" label="Create Adjustment" icon="pi pi-plus" severity="warn" size="small" @click="openCreate()" />
     </div>
 
     <Card>

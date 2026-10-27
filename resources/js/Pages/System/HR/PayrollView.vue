@@ -12,7 +12,10 @@
         </div>
         <div class="flex gap-2">
           <Badge :severity="getStatusSeverity(batchInfo.status)" :value="batchInfo.status" class="capitalize" />
-
+          <Button label="Edit" icon="pi pi-pencil" size="small" outlined
+            :disabled="['completed', 'locked'].includes(batchInfo.status)" @click="editBatch" />
+          <Button v-if="batchInfo.status === 'draft'" label="Delete" icon="pi pi-trash" severity="danger"
+            size="small" outlined @click="showDeleteDialog = true" />
         </div>
       </div>
     </div>
@@ -255,6 +258,17 @@
         <Button label="Print" icon="pi pi-print" severity="secondary" @click="selectedPayslip && printPayslip(selectedPayslip)" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="showDeleteDialog" header="Delete Draft Payroll Period?" :style="{ width: 'min(440px, 95vw)' }" modal>
+      <div class="space-y-3 text-sm text-slate-700">
+        <p>Delete <strong>{{ batchInfo?.name }}</strong> and its draft or calculated employee payroll records?</p>
+        <p class="text-xs text-slate-500">This cannot be undone. Periods with submitted or paid payroll cannot be deleted.</p>
+      </div>
+      <template #footer>
+        <Button label="Keep Period" severity="secondary" outlined :disabled="deletingPeriod" @click="showDeleteDialog = false" />
+        <Button label="Delete Period" icon="pi pi-trash" severity="danger" :loading="deletingPeriod" @click="deletePeriod" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -354,6 +368,8 @@ const bulkMarkingPaid = ref(false)
 const selectedItems = ref<PayrollItem[]>([])
 const showPayslipDialog = ref(false)
 const selectedPayslip = ref<PayrollItem | null>(null)
+const showDeleteDialog = ref(false)
+const deletingPeriod = ref(false)
 
 // Get batch ID from route params if not passed as prop
 const batchId = computed(() => props.batchId || route.params.id as string)
@@ -630,6 +646,32 @@ const applyFilters = () => {
 
 const goBack = () => {
   router.push({ name: 'hr.payroll.list' })
+}
+
+const editBatch = () => {
+  if (!batchInfo.value || ['completed', 'locked'].includes(batchInfo.value.status)) return
+  router.push({ name: 'hr.payroll.edit', params: { id: String(batchInfo.value.id) } })
+}
+
+const deletePeriod = async () => {
+  if (!batchInfo.value || batchInfo.value.status !== 'draft') return
+
+  deletingPeriod.value = true
+  try {
+    await hrService.api.delete(`/api/payroll/periods/${batchInfo.value.id}`)
+    toast.add({ severity: 'success', summary: 'Deleted', detail: 'Draft payroll period deleted.', life: 3000 })
+    showDeleteDialog.value = false
+    goBack()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to delete',
+      detail: error?.response?.data?.message || 'Failed to delete this payroll period.',
+      life: 4000,
+    })
+  } finally {
+    deletingPeriod.value = false
+  }
 }
 
 const submitForApproval = async (item: PayrollItem) => {

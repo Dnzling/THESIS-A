@@ -79,13 +79,20 @@
               </div>
 
 
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-700">Brand</label>
+                <InputText v-model="form.brand" class="w-full text-sm" size="small"
+                  placeholder="e.g. IKEA, Mandaue Foam" />
+                <small v-if="errors.brand" class="text-red-500">{{ errors.brand }}</small>
+              </div>
+              <div v-if="form.product_type !== 'finished_good'" class="md:col-span-2">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                <Textarea v-model="form.description" class="w-full text-sm" rows="3" autoResize
+                  placeholder="Describe this product, supply, or raw material" />
+                <small v-if="errors.description" class="text-red-500">{{ errors.description }}</small>
+              </div>
+
               <template v-if="showFinishedGoodFields">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">Brand</label>
-                  <InputText v-model="form.brand" class="w-full text-sm" size="small"
-                    placeholder="e.g. IKEA, Mandaue Foam" />
-                  <small v-if="errors.brand" class="text-red-500">{{ errors.brand }}</small>
-                </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">Category <span
                       class="text-red-500">*</span></label>
@@ -150,7 +157,7 @@
                 <label class="mb-1 block text-sm font-medium text-gray-700">Reorder Point</label>
                 <InputNumber v-model="form.reorder_point" :min="0" class="w-full text-sm" fluid size="small"
                   placeholder="0" />
-                <small class="mt-1 block text-xs text-gray-500">Applied to this product's manual reorder rules across branches.</small>
+                <small class="mt-1 block text-xs text-gray-500">Used as this branch's default. Branch-specific forecast rules remain in effect.</small>
               </div>
 
               <div>
@@ -174,7 +181,6 @@
                       </div>
                       <div class="min-w-0">
                         <p class="truncate text-sm font-medium text-gray-800">{{ supplierDisplayName(slotProps.option) }}</p>
-                        <p class="text-xs text-gray-500">Supplier No. {{ slotProps.option.supplier_code || `#${slotProps.option.id}` }}</p>
                       </div>
                     </div>
                   </template>
@@ -188,7 +194,6 @@
                   </div>
                   <div>
                     <p class="text-sm font-medium text-gray-800">{{ supplierDisplayName(selectedSupplier) }}</p>
-                    <p class="text-xs text-gray-500">Supplier No. {{ selectedSupplier.supplier_code || `#${selectedSupplier.id}` }}</p>
                   </div>
                 </div>
                 <small v-else-if="!loadingSuppliers && suppliers.length === 0" class="text-amber-600">
@@ -199,10 +204,11 @@
               <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Shipping details</p>
                 <div class="md:col-span-2">
                   <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
-                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <InputNumber v-model="form.length_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Length" suffix=" cm" />
                     <InputNumber v-model="form.width_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Width" suffix=" cm" />
                     <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
+                    <InputNumber v-model="form.weight_kg" class="w-full text-sm" fluid size="small" :min="0" placeholder="Weight" suffix=" kg" />
                   </div>
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
                 </div>
@@ -214,15 +220,26 @@
               </div>
             </div>
 
+            <div v-if="submitError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {{ submitError }}
+            </div>
+            <p v-if="submitting" role="status" class="text-sm text-gray-600">Saving item, please wait...</p>
             <div class="flex justify-end gap-2 pt-2">
-              <Button label="Cancel" severity="secondary" outlined size="small" class="text-sm" @click="goBack" />
+              <Button type="button" label="Cancel" severity="secondary" outlined size="small" class="text-sm" @click="goBack" />
               <Button type="submit" :label="isEditMode ? 'Update Item' : 'Create Item'" icon="pi pi-check"
-                :loading="submitting" severity="warn" size="small" class="text-sm" />
+                :loading="submitting" :disabled="submitting" severity="warn" size="small" class="text-sm" />
             </div>
           </div>
         </form>
       </template>
     </Card>
+
+    <Dialog v-model:visible="successVisible" modal :closable="false" header="Item saved" :style="{ width: 'min(92vw, 26rem)' }">
+      <p class="text-sm text-gray-600">{{ isEditMode ? 'Your changes were saved successfully.' : 'The item was created successfully.' }}</p>
+      <template #footer>
+        <Button label="View Products" severity="warn" size="small" @click="router.push({ name: 'inventory.products.index' })" />
+      </template>
+    </Dialog>
 
   </div>
 </template>
@@ -231,10 +248,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Dialog from 'primevue/dialog'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import Chip from 'primevue/chip'
 import Popover from 'primevue/popover'
+import Textarea from 'primevue/textarea'
 
 const route = useRoute()
 const router = useRouter()
@@ -242,6 +261,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 const submitting = ref(false)
+const successVisible = ref(false)
 const errors = ref<Record<string, string>>({})
 const submitError = ref('')
 const isEditMode = computed(() => Boolean(route.params.id))
@@ -250,7 +270,7 @@ const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
 const removePhotoPopover = ref<any>(null)
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' },
@@ -281,6 +301,7 @@ const form = reactive({
   product_type: 'finished_good',
   custom_product_type: '',
   brand: '',
+  description: '',
   category_id: null as number | null,
   subcategory_id: null as number | null,
   supplier_id: null as number | null,
@@ -289,11 +310,12 @@ const form = reactive({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  weight_kg: null as number | null,
   is_bulky: null as boolean | null,
   unit_of_measurement: '',
   initial_stock: null as number | null,
   reorder_point: 10 as number | null,
-  is_active: false,
+  is_active: true,
 })
 const bulkyOptions = [{ label: 'Auto-detect', value: null }, { label: 'Bulky — special handling', value: true }, { label: 'Not bulky', value: false }]
 
@@ -370,6 +392,7 @@ const loadProduct = async (id: number) => {
     const response = await inventoryService.getProduct(id)
     const product = response.data
     form.product_name = product.product_name || ''
+    form.description = product.description || ''
     const knownTypes = ['finished_good', 'supply', 'raw_material']
     form.product_type = knownTypes.includes(product.product_type) ? product.product_type : 'others'
     form.custom_product_type = knownTypes.includes(product.product_type) ? '' : (product.product_type || '')
@@ -385,11 +408,16 @@ const loadProduct = async (id: number) => {
     form.length_cm = product.length_cm != null ? Number(product.length_cm) : null
     form.width_cm = product.width_cm != null ? Number(product.width_cm) : null
     form.height_cm = product.height_cm != null ? Number(product.height_cm) : null
+    form.weight_kg = product.weight_kg != null ? Number(product.weight_kg) : null
     form.is_bulky = product.is_bulky == null ? null : Boolean(product.is_bulky)
     form.unit_of_measurement = product.unit_of_measurement || ''
-    form.reorder_point = product.reorder_point ?? 10
+    form.reorder_point = product.inventory?.[0]?.reorder_point ?? 10
     form.is_active = product.is_active !== false
-    imagePreview.value = product.primary_3d_model?.url || product.assets?.[0]?.thumbnail_url || null
+    const imageAssets = (Array.isArray(product.assets) ? product.assets : [])
+      .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type))
+      .sort((a: any, b: any) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
+        || Number(a.display_order || 0) - Number(b.display_order || 0))
+    imagePreview.value = imageAssets[0]?.thumbnail_url || imageAssets[0]?.url || null
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load Item', life: 3000 })
   }
@@ -456,7 +484,11 @@ const validate = () => {
       : 'Category is required for a finished good'
   }
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
-  return Object.keys(errors.value).length === 0
+  if (Object.keys(errors.value).length > 0) {
+    submitError.value = 'Please correct the highlighted fields before saving.'
+    return false
+  }
+  return true
 }
 
 const handleSubmit = async () => {
@@ -467,7 +499,8 @@ const handleSubmit = async () => {
     const payload = new FormData()
     payload.append('product_name', form.product_name)
     payload.append('product_type', form.product_type === 'others' ? form.custom_product_type.trim() : form.product_type)
-    if (showFinishedGoodFields.value) payload.append('brand', form.brand.trim())
+    payload.append('brand', form.brand.trim())
+    if (form.product_type !== 'finished_good') payload.append('description', form.description.trim())
     if (showFinishedGoodFields.value) {
       if (form.category_id != null) payload.append('category_id', String(form.category_id))
       payload.append('subcategory_id', form.subcategory_id != null ? String(form.subcategory_id) : '')
@@ -475,11 +508,12 @@ const handleSubmit = async () => {
     if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
     if (showFinishedGoodFields.value) {
       if (form.base_price != null) payload.append('base_price', String(form.base_price))
-      if (form.length_cm != null) payload.append('length_cm', String(form.length_cm))
-      if (form.width_cm != null) payload.append('width_cm', String(form.width_cm))
-      if (form.height_cm != null) payload.append('height_cm', String(form.height_cm))
       payload.append('is_bulky', form.is_bulky === null ? '' : form.is_bulky ? '1' : '0')
     }
+    payload.append('length_cm', form.length_cm == null ? '' : String(form.length_cm))
+    payload.append('width_cm', form.width_cm == null ? '' : String(form.width_cm))
+    payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
+    payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
     payload.append('supplier_id', form.supplier_id != null ? String(form.supplier_id) : '')
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
     if (!isEditMode.value && form.initial_stock != null) {
@@ -492,12 +526,13 @@ const handleSubmit = async () => {
     }
 
     if (isEditMode.value) {
-      await inventoryService.updateProduct(Number(route.params.id), payload)
-      toast.add({ severity: 'success', summary: 'Saved', detail: 'Item updated successfully', life: 3000 })
-      goBack()
+      const response = await inventoryService.updateProduct(Number(route.params.id), payload, true)
+      if (response?.success === false) throw new Error(response.message || 'Unable to update item.')
+      successVisible.value = true
     } else {
-      await inventoryService.createProduct(payload)
-      router.push({ name: 'inventory.products.index' })
+      const response = await inventoryService.createProduct(payload, true)
+      if (response?.success === false) throw new Error(response.message || 'Unable to create item.')
+      successVisible.value = true
     }
   } catch (error: any) {
     const apiErrors = error.response?.data?.errors || {}
@@ -513,15 +548,18 @@ const handleSubmit = async () => {
       }
     }
     submitError.value =
+      (error.response?.status === 422 && Object.keys(apiErrors).length
+        ? 'Please correct the highlighted fields before saving.'
+        : null) ||
       error.response?.data?.message ||
       error.response?.data?.error ||
+      error.message ||
       (Object.keys(apiErrors).length
         ? Object.entries(apiErrors)
           .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
           .join('\n')
         : 'Failed to save Item')
 
-    toast.add({ severity: 'error', summary: 'Error', detail: submitError.value, life: 4000 })
   } finally {
     submitting.value = false
   }

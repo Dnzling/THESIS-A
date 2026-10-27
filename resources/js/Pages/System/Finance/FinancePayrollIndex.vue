@@ -64,6 +64,9 @@
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+            <Column field="periodStart" header="Date" sortable style="min-width: 140px">
+              <template #body="{ data }">{{ data.periodStart ? formatDate(data.periodStart) : '-' }}</template>
+            </Column>
             <Column header="Pay Period" style="min-width: 220px">
               <template #body="{ data }">
                 <div>
@@ -90,7 +93,7 @@
                   <Badge v-if="data.counts.submitted" :value="`Submitted ${data.counts.submitted}`" severity="warn" />
                   <Badge v-if="data.counts.processing" :value="`Processing ${data.counts.processing}`" severity="warn" />
                   <Badge v-if="data.counts.approved" :value="`Approved ${data.counts.approved}`" severity="success" />
-                  <Badge v-if="data.counts.paid" :value="`Paid ${data.counts.paid}`" severity="info" />
+                  <Badge v-if="data.counts.paid" :value="`Paid ${data.counts.paid}`" severity="success" />
                   <Badge v-if="data.counts.draft" :value="`Draft ${data.counts.draft}`" severity="secondary" />
                 </div>
               </template>
@@ -99,7 +102,7 @@
             <Column header="Actions" style="width: 120px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button icon="pi pi-eye" text rounded severity="secondary" @click="openPeriodDetail(data)" />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="openPeriodDetail(data)" />
                 </div>
               </template>
             </Column>
@@ -145,6 +148,7 @@ const payPeriods = computed(() => {
       groups.set(periodId, {
         pay_period_id: periodId,
         payPeriodName: row?.pay_period?.name || row?.payPeriod?.name || `Pay Period ${periodId}`,
+        periodStart: row?.pay_period?.start_date || row?.payPeriod?.start_date || null,
         employeeCount: 0,
         totalNetSalary: 0,
         counts: { draft: 0, submitted: 0, processing: 0, approved: 0, paid: 0 },

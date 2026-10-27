@@ -122,7 +122,7 @@ const ecommerceService = {
     return ecommerceClient.post('/api/ecommerce/cart/items', payload)
   },
 
-  updateCartItem(itemId: number, payload: { quantity: number }) {
+  updateCartItem(itemId: number, payload: { quantity?: number; customization_request?: string | null }) {
     return ecommerceClient.put(`/api/ecommerce/cart/items/${itemId}`, payload)
   },
 
@@ -213,7 +213,7 @@ const ecommerceService = {
     customer_latitude?: number
     customer_longitude?: number
     bulk_trip?: boolean
-    payment_method: 'cod' | 'bank_transfer' | 'card' | 'e_wallet'
+    payment_method: 'card' | 'e_wallet'
     shipping_fee?: number
     fulfillment_method?: 'delivery' | 'pickup'
     requested_fulfillment_date: string
@@ -245,6 +245,14 @@ const ecommerceService = {
     return ecommerceClient.post(`/api/ecommerce/orders/${orderId}/cancel-requests`, payload)
   },
 
+    updateCancellationRefundPaymentMethod(orderId: number | string, payload: {
+      refund_method: 'gcash' | 'maya' | 'card'
+      refund_account_name?: string
+      refund_account_number?: string
+    }) {
+      return ecommerceClient.put(`/api/ecommerce/orders/${orderId}/refund-payment-method`, payload)
+    },
+
   requestOrderReturn(itemId: number | string, payload: {
     reason: string
     details?: string
@@ -263,9 +271,9 @@ const ecommerceService = {
   },
 
   updateRefundPaymentMethod(returnId: number | string, payload: {
-    refund_method: 'gcash' | 'card'
-    refund_account_name: string
-    refund_account_number: string
+    refund_method: 'gcash' | 'maya' | 'card'
+    refund_account_name?: string
+    refund_account_number?: string
   }) {
     return ecommerceClient.put(`/api/ecommerce/returns/${returnId}/refund-payment-method`, payload)
   },

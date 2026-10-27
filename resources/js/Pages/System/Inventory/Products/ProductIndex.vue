@@ -116,24 +116,11 @@
             <template #body="{ data }">
               <div class="flex items-center gap-3">
                 <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                  <Carousel
-                    v-if="getProductImages(data).length > 1"
-                    :value="getProductImages(data)"
-                    :numVisible="1"
-                    :numScroll="1"
-                    :showNavigators="true"
-                    :showIndicators="false"
-                    class="product-index-carousel h-full"
-                  >
-                    <template #item="{ data: image }">
-                      <img :src="image.url" :alt="image.alt_text || data.product_name" class="h-14 w-14 object-cover" />
-                    </template>
-                  </Carousel>
                   <img
-                    v-else-if="getProductImages(data).length === 1"
+                    v-if="getProductImages(data).length"
                     :src="getProductImages(data)[0].url"
                     :alt="getProductImages(data)[0].alt_text || data.product_name"
-                    class="h-full w-full object-cover"
+                    class="block h-full w-full object-contain"
                   />
                   <div v-else class="flex h-full w-full items-center justify-center">
                     <i class="pi pi-image text-lg text-slate-300"></i>
@@ -189,7 +176,6 @@
               <div v-if="getPreferredSupplier(data)" class="flex items-center gap-2">
                 <div>
                   <p class="text-xs text-gray-800">{{ getSupplierName(data) }}</p>
-                  <p class="text-[11px] text-gray-500">{{ getSupplierNumber(data) }}</p>
                 </div>
               </div>
               <span v-else class="text-xs text-gray-400">No supplier</span>
@@ -241,7 +227,6 @@ import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRouter } from 'vue-router'
-import Carousel from 'primevue/carousel'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -504,12 +489,6 @@ const getSupplierName = (data: any) => {
 const getPreferredSupplier = (data: any) => {
   const suppliers = Array.isArray(data?.suppliers) ? data.suppliers : []
   return suppliers.find((supplier: any) => Boolean(supplier?.pivot?.is_preferred_supplier)) || suppliers[0] || null
-}
-
-const getSupplierNumber = (data: any) => {
-  const supplier = getPreferredSupplier(data)
-  if (!supplier) return ''
-  return supplier.supplier_code ? `${supplier.supplier_code}` : `Supplier ID #${supplier.id}`
 }
 
 const formatPrice = (price: number) => {

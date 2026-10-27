@@ -18,6 +18,7 @@ use App\Models\Hr\Payroll;
 use App\Models\Hr\Shift;
 use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\ShiftSchedule;
+use App\Models\Store\Store;
 use App\Services\Store\DocumentAutoValidationService;
 use App\Services\Core\PermissionService;
 use Carbon\Carbon;
@@ -124,7 +125,7 @@ class EmployeeController extends Controller
                     'pay_type' => $employee->pay_type ?? 'monthly',
                     'email' => $employee->user->email ?? null,
                     'branch' => $employee->user->branch->name ?? null,
-                    'phone' => $employee->phone
+                    'phone' => $employee->phone ?: $employee->user?->phone_number
                 ];
             });
 
@@ -170,6 +171,53 @@ class EmployeeController extends Controller
         return response()->json([
             'success' => true,
             'data' => $employee
+        ]);
+    }
+
+    public function weeklyScheduleCoverage(Request $request)
+    {
+        $user = $request->user();
+        if (!$user?->store_id) {
+            return response()->json(['success' => false, 'message' => 'User is not associated with any store.'], 403);
+        }
+
+        $validated = $request->validate(['date' => 'required|date']);
+        $date = Carbon::parse($validated['date'])->toDateString();
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+
+        $employees = Employee::query()
+            ->where('store_id', $user->store_id)
+            ->where('status', 'active')
+            ->with(['user:id,fname,lname', 'branch:id,name', 'weeklySchedules' => function ($query) use ($date, $dayOfWeek) {
+                $query->where('day_of_week', $dayOfWeek)
+                    ->where(function ($effective) use ($date) {
+                        $effective->whereNull('effective_to')->orWhereDate('effective_to', '>=', $date);
+                    })
+                    ->orderByDesc('effective_from')
+                    ->orderByDesc('id');
+            }])
+            ->orderBy('department')
+            ->get();
+
+        $rows = $employees->map(function (Employee $employee) {
+            $schedule = $employee->weeklySchedules->first();
+
+            return [
+                'id' => $employee->id,
+                'name' => trim("{$employee->fname} {$employee->lname}"),
+                'department' => $employee->department ?: 'Unassigned',
+                'branch' => $employee->branch?->name,
+                'is_scheduled' => $schedule && !$schedule->is_off && $schedule->start_time && $schedule->end_time,
+                'start_time' => $schedule?->start_time,
+                'end_time' => $schedule?->end_time,
+            ];
+        })->sortBy(fn (array $row) => mb_strtolower($row['department'] . ' ' . $row['name']))->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+            'active_employees' => $employees->count(),
+            'scheduled_employees' => $rows->where('is_scheduled', true)->count(),
         ]);
     }
 
@@ -297,6 +345,7 @@ class EmployeeController extends Controller
                 'fname' => 'required|string|max:100',
                 'lname' => 'required|string|max:100',
                 'email' => 'required|email|unique:users,email',
+                'phone_number' => ['nullable', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
                 'role_id' => ['required', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
                     $query->where(function ($scoped) use ($storeId) {
                         $scoped->whereNull('store_id')->orWhere('store_id', $storeId);
@@ -308,8 +357,8 @@ class EmployeeController extends Controller
                 'contract_end_date' => 'nullable|required_if:employment_type,contract|date|after_or_equal:hire_date',
                 'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
-                'pay_type' => 'nullable|in:monthly,hourly,hybrid',
-                'salary' => $simpleStaff ? 'nullable|numeric|min:0' : 'required|numeric|min:0',
+                'pay_type' => 'nullable|in:monthly,hourly,daily,hybrid',
+                'salary' => $simpleStaff ? 'required|numeric|min:0.01' : 'required|numeric|min:0',
                 'status' => 'required|in:active,on_leave,suspended,terminated'
             ]);
 
@@ -324,6 +373,7 @@ class EmployeeController extends Controller
                 'fname' => $validated['fname'],
                 'lname' => $validated['lname'],
                 'email' => $validated['email'],
+                'phone_number' => $validated['phone_number'] ?? null,
                 'birthday' => $validated['date_of_birth'] ?? null,
                 'password' => Hash::make($temporaryPassword),
                 'role_id' => $validated['role_id'],
@@ -348,6 +398,7 @@ class EmployeeController extends Controller
                 'lname' => $validated['lname'],
                 'date_of_birth' => $validated['date_of_birth'] ?? null,
                 'gender' => $validated['gender'] ?? null,
+                'phone' => $validated['phone_number'] ?? null,
                 'hire_date' => $validated['hire_date'],
                 'contract_end_date' => $validated['contract_end_date'] ?? null,
                 'department' => $validated['department'] ?? null,
@@ -417,7 +468,7 @@ class EmployeeController extends Controller
 
                 // Employee fields
                 'employee_number' => 'sometimes|string|unique:employees,employee_number,' . $id,
-                'phone' => 'sometimes|nullable|string|max:50',
+                'phone' => ['sometimes', 'nullable', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
                 'address' => 'sometimes|nullable|string|max:255',
                 'province' => 'sometimes|nullable|string|max:255',
                 'city' => 'sometimes|nullable|string|max:255',
@@ -428,7 +479,7 @@ class EmployeeController extends Controller
                 'contract_end_date' => 'sometimes|nullable|date',
                 'department' => 'sometimes|string|max:255',
                 'employment_type' => 'sometimes|in:full_time,part_time,contract,intern',
-                'pay_type' => 'sometimes|in:monthly,hourly,hybrid',
+                'pay_type' => 'sometimes|in:monthly,hourly,daily,hybrid',
                 'salary' => 'sometimes|numeric|min:0',
                 'deduction_type_id' => 'sometimes|nullable|exists:deduction_types,id',
                 'government_id_number' => 'sometimes|nullable|string|max:100',
@@ -1052,6 +1103,12 @@ class EmployeeController extends Controller
             'schedules.*.notes' => 'nullable|string|max:1000',
         ]);
 
+        $storeSettings = Store::query()->find($user->store_id)?->settings ?? [];
+        $payrollConfiguration = $storeSettings['hr_payroll_configuration'] ?? [];
+        $workforceRules = $storeSettings['hr_workforce_rules'] ?? [];
+        $maximumPaidHours = max(1, min(24, (float) ($payrollConfiguration['paidHours'] ?? $workforceRules['dailyHours'] ?? 8)));
+        $unpaidBreakMinutes = max(0, (int) ($payrollConfiguration['lunchBreak'] ?? $payrollConfiguration['lunchDuration'] ?? $workforceRules['breakMinutes'] ?? 60));
+
         $workingDays = 0;
         $seenDays = [];
         foreach ($validated['schedules'] as $schedule) {
@@ -1068,8 +1125,10 @@ class EmployeeController extends Controller
             if (!$start || !$end || strtotime($end) <= strtotime($start)) {
                 throw ValidationException::withMessages(['schedules' => "{$day} needs a valid start and end time."]);
             }
-            if ((strtotime($end) - strtotime($start)) > 8 * 3600) {
-                throw ValidationException::withMessages(['schedules' => "{$day} exceeds the 8-hour daily limit."]);
+            $elapsedSeconds = strtotime($end) - strtotime($start);
+            $paidSeconds = max(0, $elapsedSeconds - ($unpaidBreakMinutes * 60));
+            if ($paidSeconds > ($maximumPaidHours * 3600)) {
+                throw ValidationException::withMessages(['schedules' => "{$day} exceeds the {$maximumPaidHours}-hour paid daily limit."]);
             }
         }
         if ($workingDays > 6) {

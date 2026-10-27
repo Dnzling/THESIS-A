@@ -73,14 +73,14 @@
           </div>
         </div>
         <DataTable v-else :value="rows" rowHover responsiveLayout="scroll" class="p-datatable-sm text-xs" :emptyMessage="'No tax transactions found.'">
-          <Column field="date" header="Date" style="min-width: 125px">
+          <Column field="date" header="Date" sortable style="min-width: 125px">
             <template #body="{ data }">{{ formatDate(data.date) }}</template>
           </Column>
           <Column field="reference" header="Reference" style="min-width: 150px">
             <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.reference }}</span></template>
           </Column>
           <Column field="source_label" header="Source" style="min-width: 130px">
-            <template #body="{ data }"><Badge :value="data.source_label" :severity="sourceSeverity(data.source)" /></template>
+            <template #body="{ data }"><Tag :value="data.source_label" :severity="sourceSeverity(data.source)" /></template>
           </Column>
           <Column field="branch" header="Branch" style="min-width: 170px" />
           <Column field="counterparty" header="Customer / Supplier" style="min-width: 190px" />
@@ -121,6 +121,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
+import Tag from 'primevue/tag'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import DatePicker from 'primevue/datepicker'

@@ -1,37 +1,19 @@
 <template>
   <div class="mx-auto max-w-7xl space-y-6 pb-6">
-        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div class="flex items-center gap-2">
-            <Button text rounded severity="secondary" icon="pi pi-arrow-left" @click="goBack" />
-            <div>
-              <h1 class="text-2xl font-semibold text-gray-900">Ecommerce Order Details</h1>
-              <p class="mt-1 text-sm text-gray-500">View complete order, payment, inventory, and delivery information</p>
-            </div>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <Button
-              v-if="canSendToLogistics"
-       size="small"
-              icon="pi pi-send"
-              label="Mark Ready for Dispatch"
-              :loading="sendingToLogistics"
-              @click="confirmReadyForDispatch"
-            />
-            <Button
-              v-if="order && Number(order.shipping_fee || 0) <= 0"
-              size="small"
-              icon="pi pi-calendar"
-              :label="order.pickup_date ? 'Change Pickup Date' : 'Select Pickup Date'"
-              @click="openPickupDateDialog"
-            />
-            <Button
-              severity="secondary" size="small" text
-              icon="pi pi-print"
-              label="Print Receipt"
-              @click="printReceipt"
-            />
-          </div>
+    <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div class="flex items-center gap-2">
+        <Button text rounded severity="secondary" icon="pi pi-arrow-left" @click="goBack" />
+        <div>
+          <h1 class="text-2xl font-semibold text-gray-900">Ecommerce Order Details</h1>
+          <p class="mt-1 text-sm text-gray-500">View complete order, payment, inventory, and delivery information</p>
         </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button severity="secondary" outlined size="small" icon="pi pi-history" label="Timeline" :disabled="!order"
+          @click="timelineDialogVisible = true" />
+        <Button severity="secondary" size="small" text icon="pi pi-print" label="Print Receipt" @click="printReceipt" />
+      </div>
+    </div>
 
     <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Skeleton height="12rem" />
@@ -47,66 +29,113 @@
         </div>
         <div class="rounded-lg border border-gray-200 bg-white p-4">
           <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Order Date</p>
-          <p class="mt-1 text-lg font-semibold text-gray-900">{{ formatDateTime(order.placed_at || order.created_at) }}</p>
+          <p class="mt-1 text-lg font-semibold text-gray-900">{{ formatDateTime(order.placed_at || order.created_at) }}
+          </p>
         </div>
         <div class="rounded-lg border border-gray-200 bg-white p-4">
           <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Order Status</p>
-          <Tag class="mt-2" :value="formatStatus(order.primary_status || order.status || 'pending')" :severity="statusSeverity(order.primary_status || order.status || 'pending')" />
+          <Tag class="mt-2" :value="formatStatus(order.primary_status || order.status || 'pending')"
+            :severity="statusSeverity(order.primary_status || order.status || 'pending')" />
         </div>
       </div>
 
 
-        <Card class="rounded-2xl border border-gray-100 shadow-sm lg:col-span-2">
-          <template #title><span class="text-base font-semibold text-gray-800">Customer &amp; Shipping Information</span></template>
-          <template #content>
-            <div class="grid grid-cols-1 gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
-              <div><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Customer</p><p class="mt-1 font-medium text-gray-900">{{ order?.shipping_name || customerName }}</p></div>
-              <div><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Email</p><p class="mt-1 font-medium text-gray-900">{{ order?.shipping_email || order?.user?.email || '—' }}</p></div>
-              <div><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Contact Number</p><p class="mt-1 font-medium text-gray-900">{{ order?.shipping_phone || '—' }}</p></div>
-              <div><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Assigned Branch</p><p class="mt-1 font-medium text-gray-900">{{ order?.assigned_branch?.name || '—' }}</p></div>
-              <div class="sm:col-span-2">
-                <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Delivery Address</p>
-                <p class="mt-1 font-medium leading-6 text-gray-900">{{ order?.shipping_address || '—' }}</p>
-              </div>
-              <div v-if="order?.pickup_date" class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Pickup Date</p><p class="mt-1 font-semibold text-gray-900">{{ formatPickupDate(order.pickup_date) }}</p></div>
+      <Card class="rounded-2xl border border-gray-100 shadow-sm lg:col-span-2">
+        <template #title><span class="text-base font-semibold text-gray-800">Customer &amp; Shipping
+            Information</span></template>
+        <template #content>
+          <div class="grid grid-cols-1 gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Customer</p>
+              <p class="mt-1 font-medium text-gray-900">{{ order?.shipping_name || customerName }}</p>
             </div>
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Email</p>
+              <p class="mt-1 font-medium text-gray-900">{{ order?.shipping_email || order?.user?.email || '—' }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Contact Number</p>
+              <p class="mt-1 font-medium text-gray-900">{{ order?.shipping_phone || '—' }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Assigned Branch</p>
+              <p class="mt-1 font-medium text-gray-900">{{ order?.assigned_branch?.name || '—' }}</p>
+            </div>
+            <div class="sm:col-span-2">
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Delivery Address</p>
+              <p class="mt-1 font-medium leading-6 text-gray-900">{{ order?.shipping_address || '—' }}</p>
+            </div>
+            <div v-if="order?.pickup_date && !isCancelledOrder" class="sm:col-span-2">
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Pickup Date</p>
+              <p class="mt-1 font-semibold text-gray-900">{{ formatPickupDate(order.pickup_date) }}</p>
+            </div>
+          </div>
 
+          <template v-if="String(order?.delivery?.tracking_number || '').trim()">
             <Divider />
-
             <div class="flex items-center justify-between mb-2">
               <h4 class="text-sm font-semibold text-gray-900">Delivery Information</h4>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div><span class="text-gray-500">Delivery Status:</span> <Tag :value="formatStatus(order?.delivery?.status || 'not_assigned')" :severity="deliverySeverity(order?.delivery?.status || 'assigned')" /></div>
-              <div><span class="text-gray-500">Tracking:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.tracking_number || '-' }}</span></div>
-              <div><span class="text-gray-500">Courier:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.courier_name || '-' }}</span></div>
-              <div><span class="text-gray-500">Courier Contact:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.courier_contact || '-' }}</span></div>
+              <div><span class="text-gray-500">Delivery Status:</span>
+                <Tag :value="formatStatus(order?.delivery?.status || 'not_assigned')"
+                  :severity="deliverySeverity(order?.delivery?.status || 'assigned')" />
+              </div>
+              <div><span class="text-gray-500">Tracking:</span> <span class="font-medium text-gray-900">{{
+                order?.delivery?.tracking_number || '-' }}</span></div>
+              <div><span class="text-gray-500">Courier:</span> <span class="font-medium text-gray-900">{{
+                order?.delivery?.courier_name || '-' }}</span></div>
+              <div><span class="text-gray-500">Courier Contact:</span> <span class="font-medium text-gray-900">{{
+                order?.delivery?.courier_contact || '-' }}</span></div>
               <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3 md:col-span-2">
                 <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Assigned Driver</p>
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div><span class="text-xs text-gray-500">Name</span><p class="font-semibold text-gray-900">{{ driverName }}</p></div>
-                  <div><span class="text-xs text-gray-500">Employee No.</span><p class="font-medium text-gray-900">{{ order?.delivery?.driver?.employee?.employee_number || '—' }}</p></div>
-                  <div><span class="text-xs text-gray-500">Contact</span><p class="font-medium text-gray-900">{{ order?.delivery?.driver?.phone_number || order?.delivery?.courier_contact || '—' }}</p></div>
-                  <div><span class="text-xs text-gray-500">Email / Role</span><p class="font-medium text-gray-900">{{ order?.delivery?.driver?.email || '—' }} · {{ driverRole }}</p></div>
+                  <div><span class="text-xs text-gray-500">Name</span>
+                    <p class="font-semibold text-gray-900">{{ driverName }}</p>
+                  </div>
+                  <div><span class="text-xs text-gray-500">Employee No.</span>
+                    <p class="font-medium text-gray-900">{{ order?.delivery?.driver?.employee?.employee_number || '—' }}
+                    </p>
+                  </div>
+                  <div><span class="text-xs text-gray-500">Contact</span>
+                    <p class="font-medium text-gray-900">{{ order?.delivery?.driver?.phone_number ||
+                      order?.delivery?.courier_contact || '—' }}</p>
+                  </div>
+                  <div><span class="text-xs text-gray-500">Email / Role</span>
+                    <p class="font-medium text-gray-900">{{ order?.delivery?.driver?.email || '—' }} · {{ driverRole }}
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div><span class="text-gray-500">Vehicle:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.vehicle ? `${order.delivery.vehicle.vehicle_name} (${order.delivery.vehicle.plate_number})` : '-' }}</span></div>
-              <div><span class="text-gray-500">ETA:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.estimated_delivery_at ? formatDateTime(order.delivery.estimated_delivery_at) : '-' }}</span></div>
+              <div><span class="text-gray-500">Vehicle:</span> <span class="font-medium text-gray-900">{{
+                order?.delivery?.vehicle ? `${order.delivery.vehicle.vehicle_name}
+                  (${order.delivery.vehicle.plate_number})` : '-' }}</span></div>
+              <div><span class="text-gray-500">ETA:</span> <span class="font-medium text-gray-900">{{
+                order?.delivery?.estimated_delivery_at ? formatDateTime(order.delivery.estimated_delivery_at) : '-'
+                  }}</span></div>
             </div>
           </template>
-        </Card>
+        </template>
+      </Card>
 
-        <Card v-if="latestCancellation" class="rounded-2xl border border-gray-100 shadow-sm">
-          <template #title>Cancellation Details</template>
-          <template #content>
-            <div class="space-y-3 text-sm">
-              <div><span class="text-gray-500">Status:</span> <Tag :value="latestCancellation.status === 'approved' ? 'Cancelled' : formatStatus(latestCancellation.status)" :severity="latestCancellation.status === 'approved' ? 'danger' : 'warning'" /></div>
-              <div><span class="text-gray-500">Reason:</span> <span class="font-medium text-gray-900">{{ latestCancellation.reason || '-' }}</span></div>
-              <div><span class="text-gray-500">Details:</span> <span class="font-medium text-gray-900">{{ latestCancellation.details || '-' }}</span></div>
-              <div v-if="latestCancellation.review_notes"><span class="text-gray-500">Notes:</span> <span class="font-medium text-gray-900">{{ latestCancellation.review_notes }}</span></div>
+      <Card v-if="latestCancellation" class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>Cancellation Details</template>
+        <template #content>
+          <div class="space-y-3 text-sm">
+            <div><span class="text-gray-500">Status:</span>
+              <Tag
+                :value="latestCancellation.status === 'approved' ? 'Cancelled' : formatStatus(latestCancellation.status)"
+                :severity="latestCancellation.status === 'approved' ? 'danger' : 'warning'" />
             </div>
-          </template>
-        </Card>
+            <div><span class="text-gray-500">Reason:</span> <span class="font-medium text-gray-900">{{
+              latestCancellation.reason || '-' }}</span></div>
+            <div><span class="text-gray-500">Details:</span> <span class="font-medium text-gray-900">{{
+              latestCancellation.details || '-' }}</span></div>
+            <div v-if="latestCancellation.review_notes"><span class="text-gray-500">Notes:</span> <span
+                class="font-medium text-gray-900">{{ latestCancellation.review_notes }}</span></div>
+          </div>
+        </template>
+      </Card>
 
 
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -123,28 +152,46 @@
               <template #body="{ data }">
                 <p class="font-medium text-gray-900">{{ data.product_name || data.product?.product_name || '—' }}</p>
                 <p class="mt-1 text-xs text-gray-500">SKU: {{ data.sku || data.product?.sku || '—' }}</p>
-                <p v-if="data.branch_inventory?.variation" class="mt-1 text-xs text-orange-600">{{ data.branch_inventory.variation.variation_name }}</p>
-                <div v-if="data.customization_request" class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-900">
-                  <div class="flex flex-wrap items-center justify-between gap-2"><p class="font-semibold"><i class="pi pi-palette mr-1" />Customer customization request</p><Tag :value="customizationStatusLabel(data.customization_status)" :severity="customizationStatusSeverity(data.customization_status)" /></div>
+                <p v-if="data.branch_inventory?.variation" class="mt-1 text-xs text-orange-600">{{
+                  data.branch_inventory.variation.variation_name }}</p>
+                <div v-if="String(data.customization_request || '').trim()"
+                  class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-900">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-semibold"><i class="pi pi-palette mr-1" />Customer customization request</p>
+                    <Tag :value="customizationStatusLabel(data.customization_status)"
+                      :severity="customizationStatusSeverity(data.customization_status)" />
+                  </div>
                   <p class="mt-1 whitespace-pre-line">{{ data.customization_request }}</p>
-                  <p v-if="data.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span class="font-semibold">Response:</span> {{ data.customization_response }}</p>
+                  <p v-if="data.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span
+                      class="font-semibold">Response:</span> {{ data.customization_response }}</p>
                   <div v-if="canManageCustomization(data)" class="mt-3 flex flex-wrap gap-2">
-                    <Button label="Approve" size="small" severity="success" @click="openCustomizationDialog(data, 'approved')" />
-                    <Button label="Not Available" size="small" severity="danger" outlined @click="openCustomizationDialog(data, 'rejected')" />
+                    <Button label="Approve" size="small" severity="success"
+                      @click="openCustomizationDialog(data, 'approved')" />
+                    <Button label="Not Available" size="small" severity="danger" outlined
+                      @click="openCustomizationDialog(data, 'rejected')" />
                     <Button label="Message Customer" size="small" severity="secondary" text @click="openSalesChat" />
                   </div>
                 </div>
               </template>
             </Column>
             <Column header="Quantity / Unit" style="min-width: 145px">
-              <template #body="{ data }"><span class="font-medium">{{ Number(data.quantity || 0).toLocaleString() }} {{ data.product?.unit_of_measurement || 'unit' }}</span></template>
+              <template #body="{ data }"><span class="font-medium">{{ Number(data.quantity || 0).toLocaleString() }} {{
+                data.product?.unit_of_measurement || 'unit' }}</span></template>
             </Column>
             <Column header="Stock Status" style="min-width: 125px">
-              <template #body="{ data }"><Tag :value="formatStatus(data.branch_inventory?.stock_status || 'unknown')" :severity="stockSeverity(data.branch_inventory?.stock_status)" /></template>
+              <template #body="{ data }">
+                <Tag :value="formatStatus(data.branch_inventory?.stock_status || 'unknown')"
+                  :severity="stockSeverity(data.branch_inventory?.stock_status)" />
+              </template>
             </Column>
-            <Column header="Unit Price" style="min-width: 125px"><template #body="{ data }"><span class="font-mono">{{ formatMoney(data.unit_price) }}</span></template></Column>
-            <Column header="Line Total" style="min-width: 135px"><template #body="{ data }"><span class="font-mono font-semibold text-gray-900">{{ formatMoney(data.line_total) }}</span></template></Column>
-            <template #empty><div class="py-8 text-center text-sm text-gray-500">No order items found.</div></template>
+            <Column header="Unit Price" style="min-width: 125px"><template #body="{ data }"><span class="font-mono">{{
+              formatMoney(data.unit_price) }}</span></template></Column>
+            <Column header="Line Total" style="min-width: 135px"><template #body="{ data }"><span
+                  class="font-mono font-semibold text-gray-900">{{ formatMoney(data.line_total) }}</span></template>
+            </Column>
+            <template #empty>
+              <div class="py-8 text-center text-sm text-gray-500">No order items found.</div>
+            </template>
           </DataTable>
         </div>
 
@@ -154,72 +201,108 @@
             <h3 class="font-semibold text-slate-900">Order Cost Summary</h3>
           </div>
           <div class="space-y-3 text-sm">
-            <div class="flex justify-between gap-4 text-slate-600"><span>Subtotal</span><span class="font-medium text-slate-900">{{ formatMoney(order?.subtotal) }}</span></div>
-            <div class="flex justify-between gap-4 text-slate-600"><span>Discount</span><span class="font-medium text-slate-900">- {{ formatMoney(order?.discount_amount) }}</span></div>
-            <div class="flex justify-between gap-4 text-slate-600"><span>VAT</span><span class="font-medium text-slate-900">{{ formatMoney(order?.tax_amount) }}</span></div>
-            <div class="flex justify-between gap-4 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ formatMoney(order?.shipping_fee) }}</span></div>
-            <div class="flex justify-between gap-4 text-slate-600"><span>Payment Method</span><span class="font-medium text-slate-900">{{ formatStatus(order?.payment_method || '—') }}</span></div>
-            <div class="flex items-center justify-between gap-4 text-slate-600"><span>Payment Status</span><Tag :value="formatStatus(order?.payment_status || 'pending')" :severity="paymentSeverity(order?.payment_status)" /></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>Subtotal</span><span
+                class="font-medium text-slate-900">{{ formatMoney(order?.subtotal) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>Discount</span><span
+                class="font-medium text-slate-900">- {{ formatMoney(order?.discount_amount) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>VAT</span><span
+                class="font-medium text-slate-900">{{
+                  formatMoney(order?.tax_amount) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>Shipping Fee</span><span
+                class="font-medium text-slate-900">{{ formatMoney(order?.shipping_fee) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>Payment Method</span><span
+                class="font-medium text-slate-900">{{ formatStatus(order?.payment_method || '—') }}</span></div>
+            <div class="flex items-center justify-between gap-4 text-slate-600"><span>Payment Status</span>
+              <Tag :value="formatStatus(order?.payment_status || 'pending')"
+                :severity="paymentSeverity(order?.payment_status)" />
+            </div>
           </div>
           <div class="my-5 border-t border-slate-200"></div>
           <div class="flex items-center justify-between gap-4 rounded-xl bg-slate-900 px-4 py-3 text-white">
-            <span class="font-semibold">Total Amount</span><span class="text-xl font-bold">{{ formatMoney(order?.total_amount) }}</span>
+            <span class="font-semibold">Total Amount</span><span class="text-xl font-bold">{{
+              formatMoney(order?.total_amount)
+              }}</span>
           </div>
         </aside>
       </div>
 
-    
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #title>Order Timeline</template>
-        <template #content>
-          <ol v-if="(order?.timeline || []).length" class="divide-y divide-slate-100">
-            <li v-for="(item, index) in order.timeline" :key="item.id || `${item.created_at}-${index}`" class="flex gap-4 py-4 first:pt-0 last:pb-0">
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                <i :class="index === 0 ? 'pi pi-circle-fill text-xs' : 'pi pi-check text-sm'" />
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <p class="text-sm font-semibold text-gray-900">{{ item.title }}</p>
-                  <Tag v-if="item.status_to" :value="formatStatus(item.status_to)" severity="secondary" class="text-xs" />
-                </div>
-                <p class="mt-1 text-xs text-gray-600">{{ item.description || '-' }}</p>
-                <p v-if="item.meta?.location_address" class="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                  <i class="pi pi-map-marker mr-1" />{{ item.meta.location_address }}
-                </p>
-                <a v-if="item.meta?.proof_photo_url" :href="item.meta.proof_photo_url" target="_blank" rel="noopener"
-                  class="group relative mt-3 block w-fit overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <img :src="item.meta.proof_photo_url" alt="Delivery proof"
-                    class="h-28 w-36 object-cover transition group-hover:scale-105" />
-                  <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View attachment</span>
-                </a>
-                <p class="mt-2 text-xs text-gray-400">{{ formatDateTime(item.created_at) }} · {{ item.actor || 'System' }}</p>
-              </div>
-            </li>
-          </ol>
-          <div v-else class="text-sm text-gray-500">No timeline entries yet.</div>
-        </template>
-      </Card>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <Button v-if="canSendToLogistics" size="small" icon="pi pi-send" label="Mark Ready for Dispatch"
+          :loading="sendingToLogistics" @click="confirmReadyForDispatch" />
+        <Button v-if="order && !isCancelledOrder && Number(order.shipping_fee || 0) <= 0" size="small"
+          icon="pi pi-calendar" :label="order.pickup_date ? 'Change Pickup Date' : 'Select Pickup Date'"
+          @click="openPickupDateDialog" />
+      </div>
+
+
     </template>
 
     <ConfirmDialog />
 
+    <Dialog v-model:visible="timelineDialogVisible" modal header="Order Timeline" class="w-full max-w-2xl">
+      <div class="max-h-[70vh] overflow-y-auto">
+        <ol v-if="(order?.timeline || []).length" class="divide-y divide-slate-100">
+          <li v-for="(item, index) in order.timeline" :key="item.id || `${item.created_at}-${index}`"
+            class="flex gap-4 py-4 first:pt-0 last:pb-0">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+              <i :class="index === 0 ? 'pi pi-circle-fill text-xs' : 'pi pi-check text-sm'" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-sm font-semibold text-gray-900">{{ item.title }}</p>
+                <Tag v-if="item.status_to" :value="formatStatus(item.status_to)" severity="secondary" class="text-xs" />
+              </div>
+              <p class="mt-1 text-xs text-gray-600">{{ item.description || '-' }}</p>
+              <p v-if="item.meta?.location_address" class="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <i class="pi pi-map-marker mr-1" />{{ item.meta.location_address }}
+              </p>
+              <a v-if="item.meta?.proof_photo_url" :href="item.meta.proof_photo_url" target="_blank" rel="noopener"
+                class="group relative mt-3 block w-fit overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                <img :src="item.meta.proof_photo_url" alt="Delivery proof"
+                  class="h-28 w-36 object-cover transition group-hover:scale-105" />
+                <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View
+                  attachment</span>
+              </a>
+              <p class="mt-2 text-xs text-gray-400">{{ formatDateTime(item.created_at) }} · {{ item.actor || 'System' }}
+              </p>
+            </div>
+          </li>
+        </ol>
+        <p v-else class="py-8 text-center text-sm text-gray-500">No timeline entries yet.</p>
+      </div>
+    </Dialog>
+
     <Dialog v-model:visible="pickupDateDialogVisible" header="Select Pickup Date" modal class="w-full max-w-md">
       <div class="space-y-2">
         <label class="text-sm font-medium text-slate-700">Pickup date</label>
-        <DatePicker v-model="pickupDate" :minDate="todayDate" dateFormat="MM dd, yy" showIcon fluid placeholder="Select a date"/>
+        <DatePicker v-model="pickupDate" :minDate="todayDate" dateFormat="MM dd, yy" showIcon fluid
+          placeholder="Select a date" />
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" outlined @click="pickupDateDialogVisible = false" />
-        <Button label="Save Date" icon="pi pi-check" :loading="savingPickupDate" :disabled="!pickupDate" @click="savePickupDate" />
+        <Button label="Save Date" icon="pi pi-check" :loading="savingPickupDate" :disabled="!pickupDate"
+          @click="savePickupDate" />
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="customizationDialog.visible" modal class="w-full max-w-lg" :header="customizationDialog.status === 'approved' ? 'Approve customization request' : 'Decline customization request'">
+    <Dialog v-model:visible="customizationDialog.visible" modal class="w-full max-w-lg"
+      :header="customizationDialog.status === 'approved' ? 'Approve customization request' : 'Decline customization request'">
       <div class="space-y-3">
-        <div class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><p class="font-semibold">{{ customizationDialog.item?.product_name }}</p><p class="mt-1 whitespace-pre-line">{{ customizationDialog.item?.customization_request }}</p></div>
-        <div><label class="text-sm font-medium text-slate-700">Message for customer <span class="font-normal text-slate-500">(optional)</span></label><Textarea v-model="customizationDialog.response" rows="4" autoResize class="mt-1 w-full" :placeholder="customizationDialog.status === 'approved' ? 'Confirm what will be customized...' : 'Explain why this request is unavailable...'" /></div>
+        <div class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+          <p class="font-semibold">{{ customizationDialog.item?.product_name }}</p>
+          <p class="mt-1 whitespace-pre-line">{{ customizationDialog.item?.customization_request }}</p>
+        </div>
+        <div><label class="text-sm font-medium text-slate-700">Message for customer <span
+              class="font-normal text-slate-500">(optional)</span></label><Textarea
+            v-model="customizationDialog.response" rows="4" autoResize class="mt-1 w-full"
+            :placeholder="customizationDialog.status === 'approved' ? 'Confirm what will be customized...' : 'Explain why this request is unavailable...'" />
+        </div>
       </div>
-      <template #footer><Button label="Cancel" severity="secondary" outlined @click="customizationDialog.visible = false" /><Button :label="customizationDialog.status === 'approved' ? 'Approve request' : 'Decline request'" :severity="customizationDialog.status === 'approved' ? 'success' : 'danger'" :loading="reviewingCustomization" @click="submitCustomizationReview" /></template>
+      <template #footer><Button label="Cancel" severity="secondary" outlined
+          @click="customizationDialog.visible = false" /><Button
+          :label="customizationDialog.status === 'approved' ? 'Approve request' : 'Decline request'"
+          :severity="customizationDialog.status === 'approved' ? 'success' : 'danger'" :loading="reviewingCustomization"
+          @click="submitCustomizationReview" /></template>
     </Dialog>
   </div>
 </template>
@@ -231,6 +314,7 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import SystemLayout from '@/Layouts/SystemLayout.vue'
 import salesService from '@/services/sales.service'
+import { openReceiptPreview } from '@/utils/receiptPreview'
 import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -255,6 +339,9 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const order = ref<any>(null)
+const isCancelledOrder = computed(() => ['cancelled', 'canceled'].includes(
+  String(order.value?.primary_status || order.value?.status || '').toLowerCase(),
+))
 const sendingToLogistics = ref(false)
 const reviewingCustomization = ref(false)
 const customizationDialog = ref<{ visible: boolean; status: 'approved' | 'rejected'; item: any | null; response: string }>({
@@ -264,6 +351,7 @@ const customizationDialog = ref<{ visible: boolean; status: 'approved' | 'reject
   response: '',
 })
 const pickupDateDialogVisible = ref(false)
+const timelineDialogVisible = ref(false)
 const pickupDate = ref<Date | null>(null)
 const savingPickupDate = ref(false)
 const todayDate = new Date()
@@ -433,9 +521,13 @@ const sendToLogistics = async () => {
   }
 }
 
-const printReceipt = () => {
+const printReceipt = async () => {
   if (!order.value) return
-  window.open(`/api/sales/ecommerce-orders/${order.value.id}/receipt`, '_blank')
+  try {
+    await openReceiptPreview(() => salesService.getEcommerceOrderReceipt(order.value.id))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Receipt Unavailable', detail: error?.response?.data?.message || error?.message || 'Unable to prepare the receipt for printing.', life: 3500 })
+  }
 }
 
 const formatStatus = (status: string) => String(status || '—').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

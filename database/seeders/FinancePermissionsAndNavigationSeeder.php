@@ -51,6 +51,18 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             }
         }
 
+        DB::table('permissions')->updateOrInsert(
+            ['name' => 'finance.basic.payroll'],
+            [
+                'display_name' => 'Finance Basic Payroll',
+                'module' => 'finance',
+                'description' => 'View and manage basic employee payroll from Finance.',
+                'is_active' => 1,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+
         // Compatibility aliases still used in some legacy checks.
         $compat = [
             'finance.purchase_orders.view' => 'finance.purchase-orders.view',
@@ -98,6 +110,16 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
 
         // Ensure finance cashflow and price-approval navigation entries exist.
         $navItems = [
+            [
+                'name' => 'finance.basic.payroll',
+                'display_name' => 'Basic Payroll',
+                'module' => 'finance',
+                'section' => 'payroll',
+                'route_name' => 'finance.payroll.basic',
+                'route_path' => '/finance/payroll/basic',
+                'icon' => 'pi pi-wallet',
+                'display_order' => 5,
+            ],
             [
                 'name' => 'finance.refunds',
                 'display_name' => 'Refunds',
@@ -160,6 +182,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
 
         $navPermissionMap = [
             'finance.dashboard' => 'finance.dashboard.view',
+            'finance.basic.payroll' => 'finance.basic.payroll',
             'finance.payables' => 'finance.payables.view',
             'finance.receivables' => 'finance.receivables.view',
             'finance.expenses' => 'finance.expenses.view',

@@ -1,113 +1,104 @@
 <!-- views/system/HREmployees.vue -->
 <template>
   <div class="space-y-4 p-4 text-xs">
-    <div class="flex items-center justify-between">
-      <div><h1 class="text-xl font-bold text-slate-900">Employees</h1><p class="mt-1 text-xs text-slate-500">Employee profiles, roles, and employment status.</p></div>
-      <div class="flex items-center gap-2">
-        <!-- <Button label="Add Employee"  @click="openAddDialog" severity="warn" size="small" /> -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold text-slate-900">Employees</h1>
+        <p class="mt-1 text-xs text-slate-500">Employee profiles, roles, and employment status.</p>
       </div>
     </div>
 
-    <Card>
+    <Card class="overflow-hidden border border-slate-200 shadow-sm">
       <template #content>
-        <div class="mb-4 flex flex-wrap items-end gap-3">
-          <IconField class="w-full sm:w-72">
+        <div class="flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <IconField class="w-full sm:w-64">
             <InputIcon class="pi pi-search" />
-            <InputText v-model="searchQuery" placeholder="Search employees" fluid size="small"/>
+            <InputText v-model="searchQuery" placeholder="Search employees..." fluid size="small" />
           </IconField>
           <Select v-model="filterDepartment" :options="departments" showClear optionLabel="name" optionValue="value" size="small" class="w-full sm:w-48"
-            placeholder="Department"  />
-  
+            placeholder="All Departments" />
           <Select v-model="filterStatus" :options="statuses" showClear optionLabel="label" optionValue="value"
             placeholder="All Statuses" size="small" class="w-full sm:w-44" />
           <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="resetFilters" />
         </div>
-      <!-- Employee Table -->
-      <div class="border-t border-slate-100 pt-3">
-        <div v-if="loading" class="space-y-2 p-2">
-          <div v-for="row in 6" :key="row" class="grid grid-cols-5 gap-3"><Skeleton v-for="cell in 5" :key="cell" height="2.5rem" class="rounded-md" /></div>
+        <div v-if="loading" class="space-y-2 pt-3">
+          <div v-for="row in 6" :key="row" class="grid grid-cols-4 gap-3">
+            <Skeleton v-for="cell in 4" :key="cell" height="2.5rem" class="rounded-md" />
+          </div>
         </div>
-        <DataTable v-else :value="filteredEmployees" class="w-full text-xs" paginator :rows="10" @row-click="({ data }) => viewEmployee(data)"
+        <DataTable v-else :value="filteredEmployees" class="mt-3 w-full text-xs" paginator :rows="10" @row-click="({ data }) => viewEmployee(data)"
           :rowsPerPageOptions="[5, 10, 20, 50]"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees" 
-          removableSort sortMode="multiple" tableStyle="min-width: 58rem" size="small" rowHover>
-          <!-- ID Column -->
-          <Column field="hireDate" header="Hired Date" sortable style="min-width: 130px">
-            <template #body="slotProps"><span>{{ slotProps.data.hireDate ? formatDate(slotProps.data.hireDate) : 'Not set' }}</span></template>
-          </Column>
-          <Column field="employee_number" header="ID" sortable style="min-width: 130px">
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees"
+          removableSort sortMode="multiple" scrollable scrollDirection="horizontal" tableStyle="min-width: 68rem" size="small" rowHover>
+          <Column field="fname" header="Employee" sortable style="min-width: 220px">
             <template #body="slotProps">
-              <span class="font-semibold text-sm underline text-orange-600">{{ slotProps.data.employee_number }}</span>
-            </template>
-          </Column>
-  
-          <!-- Employee Column -->
-          <Column field="name" header="Employee" style="min-width: 200px">
-            <template #body="slotProps">
-              <div class="flex items-center">
-                <Avatar :image="slotProps.data.avatar_url || undefined" :label="getInitials(slotProps.data.fname, slotProps.data.lname)" size="normal" shape="circle"
-                  class="mr-3 bg-blue-100 text-blue-800" />
-                <div>
-              <p class="font-medium text-xs">{{ slotProps.data.fname }} {{ slotProps.data.lname }}</p>
-              <p class="text-xs text-gray-500">{{ slotProps.data.role_name || 'No Role' }}</p>
+              <div class="flex items-center gap-3">
+                <img
+                  v-if="slotProps.data.avatar_url"
+                  :src="slotProps.data.avatar_url"
+                  :alt="`${slotProps.data.fname} ${slotProps.data.lname} profile photo`"
+                  class="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                  @error="slotProps.data.avatar_url = null"
+                />
+                <Avatar
+                  v-else
+                  :label="getInitials(slotProps.data.fname, slotProps.data.lname)"
+                  size="small"
+                  shape="circle"
+                  class="shrink-0 bg-orange-100 text-orange-800"
+                />
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">{{ slotProps.data.fname }} {{ slotProps.data.lname }}</p>
+                  <p class="truncate text-slate-500">{{ slotProps.data.role_name || 'No Role' }}</p>
                 </div>
               </div>
             </template>
           </Column>
+          <Column field="employee_number" header="Employee ID" sortable style="min-width: 130px">
+            <template #body="slotProps"><span class="font-medium text-slate-700">{{ slotProps.data.employee_number }}</span></template>
+          </Column>
 
           <Column field="monthly_salary" header="Salary / Rate" sortable>
-            <template #body="slotProps"><span class="text-xs">₱{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</span></template>
+            <template #body="slotProps"><span class="text-xs">₱{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
           </Column>
           <Column field="pay_type" header="Pay Type" sortable>
-            <template #body="slotProps"><span class="text-xs capitalize">{{ slotProps.data.pay_type || 'monthly' }}</span></template>
+            <template #body="slotProps"><span class="text-xs capitalize">{{ formatPayType(slotProps.data.pay_type) }}</span></template>
           </Column>
           <!-- Department Column -->
-          <Column field="department" header="Department" style="width: 150px">
-            <template #body="slotProps">
-              <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
-                {{ slotProps.data.department || 'N/A' }}
-              </span>
-            </template>
+          <Column field="department" header="Department" sortable style="min-width: 140px">
+            <template #body="slotProps"><span class="text-slate-700">{{ slotProps.data.department || 'Unassigned' }}</span></template>
           </Column>
   
           <!-- Branch Column -->
-          <Column field="branch" header="Branch" style="width: 150px">
-            <template #body="slotProps">
-              <span class="text-xs">
-                {{ slotProps.data.branch || 'N/A' }}
-              </span>
-            </template>
+          <Column field="branch" header="Branch" sortable style="min-width: 140px">
+            <template #body="slotProps"><span class="text-slate-700">{{ slotProps.data.branch || 'Unassigned' }}</span></template>
           </Column>
   
           <!-- Email Column -->
-          <Column field="email" header="Email" style="min-width: 180px">
-            <template #body="slotProps">
-              <p class="text-xs truncate" :title="slotProps.data.email">
-                {{ slotProps.data.email || 'No email' }}
-              </p>
-            </template>
+          <Column field="email" header="Email" sortable style="min-width: 190px">
+            <template #body="slotProps"><p class="truncate text-slate-700" :title="slotProps.data.email">{{ slotProps.data.email || 'No email' }}</p></template>
+          </Column>
+          <Column field="hireDate" header="Hire Date" sortable style="min-width: 120px">
+            <template #body="slotProps"><span class="text-slate-700">{{ slotProps.data.hireDate ? formatDate(slotProps.data.hireDate) : 'Not set' }}</span></template>
           </Column>
   
           <!-- Status Column -->
-          <Column field="status" header="Status" style="width: 100px">
+          <Column field="status" header="Status" sortable style="min-width: 110px">
             <template #body="slotProps">
               <Badge :value="formatEmployeeStatus(slotProps.data.status)" :severity="employeeStatusSeverity(slotProps.data.status)" />
             </template>
           </Column>
   
         
-          <!-- Empty State Template -->
           <template #empty>
-            <div class="text-center py-12">
-              <i class="pi pi-users text-4xl text-gray-400 mb-3"></i>
-              <p class="text-gray-500 text-lg">No employees found</p>
-              <p class="text-gray-400 text-sm mb-4">Try adjusting your search or filter criteria</p>
-              <!-- <Button label="Add New Employee" icon="pi pi-plus" severity="warn" @click="openAddDialog" /> -->
+            <div class="py-10 text-center">
+              <i class="pi pi-users mb-2 text-2xl text-slate-300"></i>
+              <p class="font-medium text-slate-700">No employees found</p>
+              <p class="mt-1 text-slate-500">Try adjusting the search or filters.</p>
             </div>
           </template>
         </DataTable>
-      </div>
       </template>
     </Card>
   
@@ -165,8 +156,8 @@
 
         <div class="grid gap-4 md:grid-cols-4 md:items-end">
           <div class="col-span-3">
-            <label class="block text-sm font-medium mb-1">Salary / Rate *</label>
-            <p class="mb-1 text-xs text-slate-500">Pay computation follows the selected monthly or hourly type.</p>
+            <label class="block text-sm font-medium mb-1">{{ employeeForm.payType === 'daily' ? 'Daily Rate *' : employeeForm.payType === 'hourly' ? 'Hourly Rate *' : 'Monthly Salary *' }}</label>
+            <p class="mb-1 text-xs text-slate-500">{{ employeeForm.payType === 'daily' ? 'One rate covers a standard paid workday. Its hourly equivalent uses the store payroll setting for paid hours; unpaid breaks are excluded.' : 'Pay is calculated using the selected salary type and recorded attendance.' }}</p>
             <InputNumber v-model="employeeForm.salary" class="w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" />
        
           </div>
@@ -181,6 +172,11 @@
           <InputText v-model="employeeForm.email" class="w-full" />
           <small v-if="employeeForm.email && !isValidEmail" class="text-red-600">Enter a valid email address.</small>
           <p class="mt-1 text-xs text-gray-500">A temporary password will be generated and emailed to this address.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Contact Number</label>
+          <InputMask v-model="employeeForm.phoneNumber" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" class="w-full" />
+          <small v-if="employeeForm.phoneNumber && !isValidPhone" class="text-red-600">Enter a complete Philippine mobile number starting with 09.</small>
         </div>
 
         <div class="rounded-2xl border border-slate-200 p-4">
@@ -325,6 +321,7 @@ import { useAuthStore } from '../../../stores/auth'
 import hrService from '../../../services/hr.services'
 import { useRouter } from 'vue-router'
 import InputNumber from 'primevue/inputnumber'
+import InputMask from 'primevue/inputmask'
 import Textarea from 'primevue/textarea'
 import SelectButton from 'primevue/selectbutton'
 import DatePicker from 'primevue/datepicker'
@@ -348,9 +345,10 @@ interface EmployeeFormState {
   lastName: string
   role: RoleOption | null
   email: string
+  phoneNumber: string
   department: string
   branchId: number | null
-  payType: 'monthly' | 'hourly'
+  payType: 'monthly' | 'hourly' | 'daily'
   salary: number
   employmentType: 'full_time' | 'part_time' | 'contract' | 'intern'
   hireDate: Date | null
@@ -407,6 +405,7 @@ const loadingBranches = ref(false)
 const payTypeOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Hourly', value: 'hourly' },
+  { label: 'Daily', value: 'daily' },
 ]
 const employmentTypeOptions = [
   { label: 'Full Time', value: 'full_time' },
@@ -426,6 +425,7 @@ const employeeForm = ref<EmployeeFormState>({
   lastName: '',
   role: null,
   email: '',
+  phoneNumber: '',
   department: '',
   branchId: null,
   payType: 'monthly',
@@ -464,12 +464,14 @@ const weeklyPlanner = ref([
 const totalWeeklyHours = computed(() => weeklyPlanner.value.reduce((sum, row) => sum + Number(row.hours || 0), 0))
 const workingDaysCount = computed(() => weeklyPlanner.value.filter(row => row.is_working).length)
 const isValidEmail = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeForm.value.email.trim()))
+const isValidPhone = computed(() => !employeeForm.value.phoneNumber || /^09\d{2}-\d{3}-\d{4}$/.test(employeeForm.value.phoneNumber))
+const formatPayType = (value?: string) => ({ monthly: 'Monthly', hourly: 'Hourly', daily: 'Daily', hybrid: 'Hybrid' }[String(value || 'monthly')] || 'Monthly')
 const scheduleError = computed(() => validateScheduleRules())
 const canSaveEmployee = computed(() => Boolean(
   employeeForm.value.firstName.trim() && employeeForm.value.lastName.trim()
   && employeeForm.value.role && employeeForm.value.branchId && employeeForm.value.hireDate
   && employeeForm.value.employmentType && isValidEmail.value
-  && Number(employeeForm.value.salary) > 0 && !scheduleError.value
+  && Number(employeeForm.value.salary) > 0 && isValidPhone.value && !scheduleError.value
 ))
 
 // Status options
@@ -598,7 +600,7 @@ const filteredEmployees = computed(() => {
   // Status filter
   if (filterStatus.value) {
     filtered = filtered.filter(emp =>
-      emp.status === filterStatus.value
+      normalizeEmployeeStatus(emp.status) === normalizeEmployeeStatus(filterStatus.value)
     )
   }
 
@@ -633,8 +635,9 @@ const getStatusClass = (status: string) => {
 }
 
 const formatEmployeeStatus = (status: string) => String(status || 'Unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+const normalizeEmployeeStatus = (status: string) => String(status || '').toLowerCase().replace(/[_\s]+/g, '-')
 const employeeStatusSeverity = (status: string): 'success' | 'warn' | 'secondary' | 'danger' | 'info' => {
-  const normalized = String(status || '').toLowerCase().replace(/[_\s]/g, '-')
+  const normalized = normalizeEmployeeStatus(status)
   if (normalized === 'active') return 'success'
   if (normalized === 'on-leave') return 'warn'
   if (normalized === 'inactive' || normalized === 'resigned' || normalized === 'terminated') return 'secondary'
@@ -825,6 +828,7 @@ const resetEmployeeForm = () => {
     lastName: '',
     role: null,
     email: '',
+    phoneNumber: '',
     department: '',
     branchId: null,
     payType: 'monthly',
@@ -1004,6 +1008,7 @@ const saveEmployee = async () => {
         fname: employeeForm.value.firstName,
         lname: employeeForm.value.lastName,
         email: employeeForm.value.email,
+        phone_number: employeeForm.value.phoneNumber || null,
         role_id: selectedRole.id,
         branch_id: employeeForm.value.branchId,
         hire_date: employeeForm.value.hireDate ? formatLocalDate(employeeForm.value.hireDate) : null,

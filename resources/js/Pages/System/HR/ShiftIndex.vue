@@ -4,19 +4,15 @@
     <!-- Header with HR-focused actions -->
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-lg font-semibold text-slate-900">Shift Management</h1>
-      </div>
-      <div class="flex gap-2">
-        <Button v-if="activeTab === 'assignments'" :loading="assignmentDialog" label="New Assignment" 
- size="small" @click="openAssignmentDialog" />
+        <h1 class="text-lg font-semibold text-slate-900">Weekly Schedule Management</h1>
       </div>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div class="text-xs uppercase tracking-wide text-gray-500">Unfilled Shifts</div>
-        <div class="mt-1 text-2xl font-semibold text-red-500">{{ dashboardStats.unfilledShifts }}</div>
-        <div class="mt-1 text-xs text-gray-400">Needs attention in the selected coverage period</div>
+        <div class="text-xs uppercase tracking-wide text-gray-500">Active Employees</div>
+        <div class="mt-1 text-2xl font-semibold text-slate-900">{{ dashboardStats.activeEmployees }}</div>
+        <div class="mt-1 text-xs text-gray-400">Active employee records in this store</div>
       </div>
       <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div class="text-xs uppercase tracking-wide text-gray-500">Pending Swap Requests</div>
@@ -47,7 +43,6 @@
       <Tabs v-model:value="activeTab">
         <TabList class="px-4 pt-2 border-b border-gray-100">
           <Tab value="coverage">Coverage</Tab>
-          <Tab value="assignments">Assignments</Tab>
           <Tab value="swaps">Swap Requests</Tab>
         </TabList>
   
@@ -74,7 +69,7 @@
                 No staff are scheduled for this date.
               </div>
               <div v-else class="space-y-3">
-                <p class="text-xs text-slate-500">Staff with a shift on this date, grouped by department. This is not a staffing target.</p>
+                <p class="text-xs text-slate-500">Active employees scheduled to work on this date, grouped by department.</p>
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div v-for="dept in departments" :key="dept.id" class="rounded-xl border border-slate-200 bg-white p-4">
                     <div class="flex items-start justify-between gap-3">
@@ -92,63 +87,6 @@
                   </div>
                 </div>
               </div>
-            </div>
-          </TabPanel>
-  
-          <!-- SHIFT ASSIGNMENT TAB -->
-          <TabPanel value="assignments">
-            <div class="space-y-4">
-              <div class="flex gap-3 mb-4">
-                <IconField>
-                  <InputIcon class="pi pi-search" />
-                  <InputText v-model="assignmentFilters.search" placeholder="Search Employee..." size="small"
-                    @input="fetchAssignments" />
-                </IconField>
-                <Select v-model="assignmentFilters.type" :options="assignmentTypeOptions" option-label="label"
-                  option-value="value" size="small"
-                  placeholder="Assignment Type" showClear @change="fetchAssignments" />
-              </div>
-  
-              <DataTable :value="assignments" :paginator="true" :rows="10" :loading="assignmentsLoading" @row-click="openAssignmentDetails"
-                paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink" class="text-sm">
-                <template #loading><div class="space-y-3 p-3"><Skeleton v-for="n in 5" :key="n" height="2rem" /></div></template>
-                <template #empty><div class="py-8 text-center text-sm text-gray-500">No assignments found. Create an assignment to schedule an employee.</div></template>
-                <Column field="employee.full_name" header="Employee" sortable>
-                  <template #body="{ data }">
-                    <div class="flex items-center gap-2">
-  
-                      {{ data.employee?.fname || 'N/A' }} {{ data.employee?.lname || 'N/A' }}
-                    </div>
-                  </template>
-                </Column>
-                <Column field="shift.name" header="Shift" sortable>
-                  <template #body="{ data }">
-                    <Tag :value="data.shift?.name" :severity="getShiftSeverity(data.shift?.name)" rounded />
-                  </template>
-                </Column>
-                <Column field="start_date" header="Start Date" sortable>
-                  <template #body="{ data }">
-                    {{ formatDate(data.start_date) }}
-                  </template>
-                </Column>
-                <Column field="end_date" header="End Date" sortable>
-                  <template #body="{ data }">
-                    {{ data.end_date ? formatDate(data.end_date) : 'Permanent' }}
-                  </template>
-                </Column>
-                <Column field="assignment_type" header="Type">
-                  <template #body="{ data }">
-                    <Tag :value="data.assignment_type"
-                      :severity="data.assignment_type === 'permanent' ? 'success' : 'warning'" rounded />
-                  </template>
-                </Column>
-                <Column header="Actions" style="width: 100px">
-                  <template #body="{ data }">
-                    <Button icon="pi pi-trash" text rounded severity="danger" size="small"
-                      @click="confirmDeleteAssignment(data)" />
-                  </template>
-                </Column>
-              </DataTable>
             </div>
           </TabPanel>
   
@@ -281,48 +219,6 @@
       </Tabs>
     </div>
   
-    <!-- Create Assignment Dialog -->
-    <Dialog v-model:visible="assignmentDialogVisible" modal header="Create Assignment" :style="{ width: '50vw' }">
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Employee</label>
-            <Select v-model="assignmentForm.employee_id" :options="employeeOptions" optionLabel="label"
-              optionValue="value" placeholder="Select Employee" class="w-full" />
-          </div>
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Shift</label>
-            <Select v-model="assignmentForm.shift_id" :options="shiftOptions" optionLabel="label" optionValue="value"
-              placeholder="Select Shift" class="w-full" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Start Date</label>
-            <DatePicker v-model="assignmentForm.start_date" :minDate="new Date()" showIcon class="w-full" />
-          </div>
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">End Date (Optional)</label>
-            <DatePicker v-model="assignmentForm.end_date" :minDate="assignmentForm.start_date" showIcon class="w-full" />
-          </div>
-        </div>
-        <div class="field">
-          <label class="block text-sm font-medium mb-1">Assignment Type</label>
-          <Select v-model="assignmentForm.assignment_type" :options="assignmentTypeOptions" option-label="label"
-            option-value="value" placeholder="Select Type" class="w-full" />
-  
-        </div>
-        <div class="field">
-          <label class="block text-sm font-medium mb-1">Notes</label>
-          <Textarea v-model="assignmentForm.notes" rows="3" class="w-full" />
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="assignmentDialogVisible = false" />
-        <Button label="Create" icon="pi pi-check" @click="createAssignment" :loading="formLoading" />
-      </template>
-    </Dialog>
-  
     <!-- Create Swap Request Dialog -->
     <Dialog v-model:visible="swapDialogVisible" modal header="Request Shift Swap" :style="{ width: '50vw' }">
       <div class="space-y-4">
@@ -359,14 +255,6 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="assignmentDetailsVisible" modal header="Assignment Details" :style="{ width: '34rem' }">
-      <div v-if="selectedAssignment" class="space-y-4 text-sm">
-        <div class="rounded-lg bg-slate-50 p-4"><div class="text-xs uppercase text-slate-400">Employee</div><div class="mt-1 text-lg font-semibold text-slate-900">{{ employeeName(selectedAssignment.employee) }}</div></div>
-        <div class="grid grid-cols-2 gap-3"><div><span class="text-xs text-slate-400">Shift</span><div class="font-semibold">{{ selectedAssignment.shift?.name || 'Not set' }}</div></div><div><span class="text-xs text-slate-400">Assignment type</span><div class="font-semibold capitalize">{{ selectedAssignment.assignment_type || 'Not set' }}</div></div><div><span class="text-xs text-slate-400">Start date</span><div class="font-semibold">{{ formatDate(selectedAssignment.start_date) }}</div></div><div><span class="text-xs text-slate-400">End date</span><div class="font-semibold">{{ selectedAssignment.end_date ? formatDate(selectedAssignment.end_date) : 'Permanent' }}</div></div></div>
-      </div>
-      <template #footer><Button label="Close" severity="secondary" outlined @click="assignmentDetailsVisible = false" /></template>
-    </Dialog>
-
     <Dialog v-model:visible="swapDetailsVisible" modal header="Swap Request Details" :style="{ width: '38rem' }">
       <div v-if="selectedSwap" class="space-y-4 text-sm">
         <div class="flex items-center justify-between"><div><div class="text-xs text-slate-400">Status</div><Tag :value="String(selectedSwap.status || '').toUpperCase()" :severity="getSwapStatusSeverity(selectedSwap.status)" /></div><div class="text-right"><div class="text-xs text-slate-400">Request type</div><div class="font-semibold">{{ selectedSwap.swap_type || 'Not set' }}</div></div></div>
@@ -508,7 +396,6 @@ const toast = useToast()
 const activeTab = ref(route.query.tab === 'swaps' ? 'swaps' : 'coverage')
 const selectedDate = ref(new Date())
 const loading = ref(true)
-const assignmentDialog = ref(false)
 const error = ref('')
 const shiftsData = ref<any[]>([])
 const authStore = useAuthStore()
@@ -537,26 +424,6 @@ const departmentOptions = ref<{ label: string; value: string }[]>([])
 const shiftTypeOptions = ref<{ label: string; value: string }[]>([])
 const shiftOptions = ref<{ label: string; value: number }[]>([])
 
-// --- Assignment State ---
-const assignments = ref<any[]>([])
-const assignmentDetailsVisible = ref(false)
-const selectedAssignment = ref<any | null>(null)
-const assignmentsLoading = ref(false)
-const assignmentFilters = ref({ search: '', type: null as string | null })
-const assignmentTypeOptions = ref([
-  { label: 'Permanent', value: 'permanent' },
-  { label: 'Temporary', value: 'temporary' },
-  { label: 'Cover', value: 'cover' }
-])
-const assignmentDialogVisible = ref(false)
-const assignmentForm = ref({
-  employee_id: null as number | null,
-  shift_id: null as number | null,
-  start_date: null as Date | null,
-  end_date: null as Date | null,
-  assignment_type: null as string | null,
-  notes: ''
-})
 const employeeOptions = ref<{ label: string; value: number }[]>([])
 const myShiftOptions = ref<{ label: string; value: number }[]>([])
 const receiverShiftOptions = ref<{ label: string; value: number }[]>([])
@@ -674,9 +541,6 @@ const filteredShiftDefinitions = computed(() => {
 
 // --- Watchers ---
 watch(activeTab, (newTab) => {
-  if (newTab === 'assignments' && assignments.value.length === 0) {
-    fetchAssignments()
-  }
   if (newTab === 'swaps' && swapRequests.value.length === 0) {
     fetchSwapRequests()
   }
@@ -848,16 +712,6 @@ const showConfirmation = (title: string, message: string, buttonLabel: string, b
   confirmDialogVisible.value = true
 }
 
-const confirmDeleteAssignment = (data: any) => {
-  pendingAction.value = { type: 'assignment', data }
-  showConfirmation(
-    'Delete Assignment',
-    `Are you sure you want to delete the assignment for ${data.employee?.full_name}?`,
-    'Delete',
-    'danger'
-  )
-}
-
 const confirmSwapAction = (data: any, action: string) => {
   pendingAction.value = { type: 'swap', data, action }
 
@@ -886,9 +740,7 @@ const confirmSwapAction = (data: any, action: string) => {
 const executeConfirmedAction = () => {
   confirmDialogVisible.value = false
 
-  if (pendingAction.value?.type === 'assignment') {
-    deleteAssignment(pendingAction.value.data)
-  } else if (pendingAction.value?.type === 'swap') {
+  if (pendingAction.value?.type === 'swap') {
     executeSwapAction(pendingAction.value.action!, pendingAction.value.data)
   }
 }
@@ -948,32 +800,21 @@ const fetchCoverageData = async () => {
   coverageUnavailable.value = false
   try {
     const date = formatDateForAPI(selectedDate.value)
-    const records: any[] = []
-    let page = 1
-    let lastPage = 1
-    do {
-      const response = await hrService.api.get('api/shift-schedules', {
-        headers: { Authorization: `Bearer ${authStore.token}` },
-        params: { date, page }
-      })
-      const result = response.data.data
-      records.push(...(result.data || []))
-      lastPage = result.last_page || 1
-      page++
-    } while (page <= lastPage)
-
+    const response = await hrService.api.get('api/employees/weekly-schedule-coverage', {
+      headers: { Authorization: `Bearer ${authStore.token}` },
+      params: { date }
+    })
+    const employees: any[] = response.data?.data || []
+    dashboardStats.value.activeEmployees = Number(response.data?.active_employees || 0)
     const deptMap = new Map<string, any>()
-    records.filter((record: any) => record.status !== 'cancelled').forEach((record: any) => {
-      const employee = record.employee || {}
-      if (!employee.id) return
+    employees.filter((employee) => employee.is_scheduled).forEach((employee: any) => {
       const name = employee.department || 'Unassigned'
       if (!deptMap.has(name)) deptMap.set(name, { id: name, name, scheduled: 0, scheduledEmployees: [] })
       const department = deptMap.get(name)
-      if (department.scheduledEmployees.some((person: any) => person.id === employee.id)) return
       department.scheduledEmployees.push({
         id: employee.id,
-        name: `${employee.fname || ''} ${employee.lname || ''}`.trim() || 'Unknown employee',
-        shiftType: record.shift?.name || ''
+        name: employee.name || 'Unknown employee',
+        shiftType: `${formatTime(employee.start_time)} - ${formatTime(employee.end_time)}`
       })
       department.scheduled++
     })
@@ -991,103 +832,7 @@ const filterShifts = () => {
   // Filtering is handled by computed property
 }
 
-// --- API Calls: Assignments ---
-const fetchAssignments = async () => {
-  assignmentsLoading.value = true
-  try {
-    const params: any = {}
-    if (assignmentFilters.value.type) params.assignment_type = assignmentFilters.value.type
-    if (assignmentFilters.value.search) params.fname = assignmentFilters.value.search
-
-    const response = await hrService.api.get('api/shift-assignments', {
-      headers: { 'Authorization': `Bearer ${authStore.token}` }, params
-    })
-    if (response.data.success) {
-      assignments.value = response.data.data.data || response.data.data
-    }
-  } catch (err: any) {
-    showError(err.response?.data?.message || 'Failed to load assignments')
-  } finally {
-    assignmentsLoading.value = false
-  }
-}
-
-const createAssignment = async () => {
-  if (!assignmentForm.value.employee_id || !assignmentForm.value.shift_id || !assignmentForm.value.start_date || !assignmentForm.value.assignment_type) {
-    showError('Please fill in all required fields')
-    return
-  }
-
-  formLoading.value = true
-  try {
-    const payload = {
-      employee_id: assignmentForm.value.employee_id,
-      shift_id: assignmentForm.value.shift_id,
-      start_date: formatDateForAPI(assignmentForm.value.start_date),
-      end_date: assignmentForm.value.end_date ? formatDateForAPI(assignmentForm.value.end_date) : null,
-      assignment_type: assignmentForm.value.assignment_type,
-      notes: assignmentForm.value.notes
-    }
-
-    const response = await hrService.api.post('api/shift-assignments', payload, {
-      headers: { 'Authorization': `Bearer ${authStore.token}` }
-    })
-
-    if (response.data.success) {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'Assignment created successfully', life: 3000 })
-      assignmentDialogVisible.value = false
-      resetAssignmentForm()
-      fetchAssignments()
-    }
-  } catch (err: any) {
-    showError(err.response?.data?.message || 'Failed to create assignment')
-  } finally {
-    formLoading.value = false
-  }
-}
-
-const deleteAssignment = async (assignment: any) => {
-  actionLoading.value = true
-  try {
-    await hrService.api.delete(`api/shift-assignments/${assignment.id}`, {
-      headers: { 'Authorization': `Bearer ${authStore.token}` }
-    })
-    toast.add({ severity: 'success', summary: 'Deleted', detail: 'Assignment removed successfully', life: 3000 })
-    fetchAssignments()
-  } catch (err: any) {
-    showError(err.response?.data?.message || 'Failed to delete assignment')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const resetAssignmentForm = () => {
-  assignmentForm.value = {
-    employee_id: null,
-    shift_id: null,
-    start_date: null,
-    end_date: null,
-    assignment_type: null,
-    notes: ''
-  }
-}
-
-
-
-const openAssignmentDialog = async () => {
-  assignmentDialog.value = true
-  resetAssignmentForm()
-  await fetchEmployeeOptions()
-  await fetchShiftOptions()
-  assignmentDialogVisible.value = true
-  assignmentDialog.value = false
-}
-
 const employeeName = (employee: any) => employee?.full_name || `${employee?.fname || ''} ${employee?.lname || ''}`.trim() || 'Not set'
-const openAssignmentDetails = (event: any) => {
-  selectedAssignment.value = event.data
-  assignmentDetailsVisible.value = true
-}
 const openSwapDetails = (event: any) => {
   selectedSwap.value = event.data
   swapDetailsVisible.value = true
@@ -1416,7 +1161,6 @@ const exportReport = () => {
 onMounted(async () => {
   await fetchEmployeeOptions()
   await fetchData()
-  fetchAssignments()
   await fetchSwapRequests()
   const swapId = Number(route.query.swap)
   if (activeTab.value === 'swaps' && Number.isInteger(swapId) && swapId > 0) {

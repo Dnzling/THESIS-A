@@ -277,7 +277,6 @@
                 <div class="flex justify-between"><span>Weight fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.weight_fee, 2) }}</span></div>
                 <div class="flex justify-between"><span>Distance</span><span>{{ formatNumber(shippingFeeBreakdown.distance_km, 2) }} km</span></div>
                 <div class="flex justify-between"><span>Weight</span><span>{{ formatNumber(shippingFeeBreakdown.weight_kg, 2) }} kg</span></div>
-                <div v-if="shippingFeeBreakdown.minimum_applied" class="text-amber-600">Minimum fee applied.</div>
                 <div v-if="shippingFeeBreakdown.bulk_trip" class="flex justify-between text-emerald-600">
                   <span>Bulk trip discount</span>
                   <span>- ₱ {{ formatNumber(shippingFeeBreakdown.bulk_discount_amount, 2) }}</span>
@@ -1009,8 +1008,8 @@ async function loadCheckoutItems() {
     : allItems
 
   checkoutItems.value.filter((item: any) => item.is_customizable).forEach((item: any) => {
-    if (customizationRequests[item.id] === undefined) customizationRequests[item.id] = ''
-    if (customizationEnabled[item.id] === undefined) customizationEnabled[item.id] = false
+    if (customizationRequests[item.id] === undefined) customizationRequests[item.id] = item.customization_request || ''
+    if (customizationEnabled[item.id] === undefined) customizationEnabled[item.id] = Boolean(item.customization_request)
   })
 
   if (!checkoutItems.value.length) {
@@ -1331,7 +1330,7 @@ async function placeOrder() {
       billing_address: useDifferentBillingAddress.value
         ? [billingForm.street, billingForm.barangay, billingForm.city, billingForm.province, billingForm.postalCode].map((part) => part.trim()).filter(Boolean).join(', ')
         : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
-      payment_method: toBackendPaymentMethod(selectedPaymentMethod.value) as 'cod' | 'bank_transfer' | 'card' | 'e_wallet',
+      payment_method: toBackendPaymentMethod(selectedPaymentMethod.value),
       shipping_fee: shippingFeeTotal.value,
       fulfillment_method: serviceMethod.value,
       requested_fulfillment_date: fulfillmentDateString.value,
@@ -1340,9 +1339,12 @@ async function placeOrder() {
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
       customization_requests: Object.fromEntries(
-        Object.entries(customizationRequests)
-          .filter(([itemId, request]) => customizationEnabled[Number(itemId)] && Boolean(String(request || '').trim()))
-          .map(([itemId, request]) => [Number(itemId), String(request).trim()]),
+        checkoutItems.value
+          .filter((item: any) => item.is_customizable)
+          .map((item: any) => [
+            Number(item.id),
+            customizationEnabled[item.id] ? String(customizationRequests[item.id] || '').trim() : '',
+          ]),
       ),
       customer_latitude: serviceMethod.value === 'pickup' ? undefined : (customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined),
       customer_longitude: serviceMethod.value === 'pickup' ? undefined : (customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined),

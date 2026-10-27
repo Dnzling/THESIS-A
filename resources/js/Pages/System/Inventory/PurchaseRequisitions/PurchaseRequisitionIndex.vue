@@ -6,6 +6,7 @@
           <h1 class="text-2xl font-bold text-gray-800">Purchase Requisitions</h1>
         </div>
         <div class="flex items-center gap-2">
+          <Button v-if="!props.warehouseMode && canManage" label="From Reorder Suggestions" icon="pi pi-list" outlined size="small" @click="openSuggestions" />
           <Button
             v-if="!props.warehouseMode && canManage"
             label="Receipts"
@@ -164,6 +165,23 @@
           </DataTable>
           </template>
       </Card>
+      <Dialog v-model:visible="suggestionsVisible" modal header="Create PR from Reorder Suggestions" :style="{ width: 'min(94vw, 720px)' }">
+        <p class="mb-3 text-sm text-slate-600">Select pending items. Suggestions from different branches or procurement routes become separate draft PRs.</p>
+        <div v-if="suggestionsLoading" class="space-y-2"><Skeleton v-for="n in 4" :key="n" height="3rem" /></div>
+        <template v-else>
+          <div v-if="!suggestions.length" class="py-6 text-center text-sm text-slate-500">No pending reorder suggestions are available.</div>
+          <DataTable v-else v-model:selection="selectedSuggestions" :value="suggestions" dataKey="id" size="small" scrollable scrollHeight="360px">
+            <Column selectionMode="multiple" headerStyle="width: 3rem" />
+            <Column header="Item"><template #body="{ data }"><div class="font-medium">{{ data.variation?.variation_name || data.product?.product_name || data.product?.name || `Item #${data.product_id}` }}</div><div class="text-xs text-slate-500">{{ data.variation?.variation_sku || data.product?.sku || '' }}</div></template></Column>
+            <Column header="Branch"><template #body="{ data }">{{ data.branch?.name || `Branch #${data.branch_id}` }}</template></Column>
+            <Column field="suggested_quantity" header="Suggested Qty" />
+          </DataTable>
+        </template>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text @click="suggestionsVisible = false" />
+          <Button :label="`Create Draft PR (${selectedSuggestions.length})`" severity="warn" :loading="creatingGroupedPr" :disabled="!selectedSuggestions.length" @click="createGroupedPr" />
+        </template>
+      </Dialog>
     </div>
   </div>
 </template>
@@ -191,6 +209,39 @@ const page = ref(1)
 const perPage = ref(15)
 const sortField = ref('created_at')
 const sortOrder = ref(-1)
+const suggestionsVisible = ref(false)
+const suggestionsLoading = ref(false)
+const creatingGroupedPr = ref(false)
+const suggestions = ref<any[]>([])
+const selectedSuggestions = ref<any[]>([])
+
+const openSuggestions = async () => {
+  suggestionsVisible.value = true
+  suggestionsLoading.value = true
+  selectedSuggestions.value = []
+  try {
+    const response = await inventoryService.getReorderSuggestions({ status: 'pending', expired: false, per_page: 100 })
+    suggestions.value = response?.data?.data || []
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load suggestions', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    suggestionsLoading.value = false
+  }
+}
+
+const createGroupedPr = async () => {
+  creatingGroupedPr.value = true
+  try {
+    const response = await inventoryService.createGroupedReorderPrs(selectedSuggestions.value.map((item) => item.id))
+    suggestionsVisible.value = false
+    toast.add({ severity: 'success', summary: 'Draft PRs created', detail: response.message, life: 4000 })
+    load()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to create PR', detail: error?.response?.data?.errors?.suggestion_ids?.[0] || error?.response?.data?.message || 'Please try again.', life: 5000 })
+  } finally {
+    creatingGroupedPr.value = false
+  }
+}
 
 const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
 const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status || filters.date_range?.length))

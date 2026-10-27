@@ -121,7 +121,7 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         $storeId = Auth::user()->store_id;
-        $globalAllowed = ['owner', 'driver'];
+        $globalAllowed = ['owner'];
 
         $roles = DB::table('roles')
             ->select('roles.*')
@@ -144,7 +144,7 @@ class RoleController extends Controller
     public function storeSpecific(Request $request): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);
-        $globalAllowed = ['owner', 'driver'];
+        $globalAllowed = ['owner'];
 
         if (empty($storeId)) {
             return response()->json(['data' => [], 'store_id' => null]);
@@ -305,7 +305,7 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $globalAllowed = ['owner', 'driver'];
+        $globalAllowed = ['owner'];
         $role = Role::where(function ($q) use ($storeId) {
                 $q->whereNull('store_id')->orWhere('store_id', $storeId);
             })
@@ -342,7 +342,7 @@ class RoleController extends Controller
         $role = Role::query()->where('store_id', $storeId)->find($roleId);
         if (! $role) {
             $sharedRole = Role::query()->whereNull('store_id')
-                ->whereIn('name', ['owner', 'driver'])->find($roleId);
+                ->where('name', 'owner')->find($roleId);
             if ($sharedRole) {
                 return response()->json([
                     'message' => 'This is a shared system role. Create a store-specific role to customize its permissions.',
@@ -415,7 +415,7 @@ class RoleController extends Controller
             return [];
         }
 
-        return DB::table('stores')
+        $allowedIds = DB::table('stores')
             ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
             ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
             ->join('role_permissions as owner_permissions', 'owner_permissions.permission_id', '=', 'permissions.id')
@@ -430,5 +430,17 @@ class RoleController extends Controller
             ->pluck('permissions.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+
+        // Driver portal permissions must remain assignable to store roles even when
+        // the role or plan permission pivots have not been backfilled yet.
+        $driverPermissionIds = DB::table('permissions')
+            ->where('name', 'like', 'logistics.driver.%')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return array_values(array_unique(array_merge($allowedIds, $driverPermissionIds)));
     }
 }

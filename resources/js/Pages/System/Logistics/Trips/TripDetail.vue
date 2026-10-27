@@ -185,9 +185,19 @@
           <div><span class="text-slate-500">Contact:</span> <strong>{{ detailCustomerContact }}</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ detailAddress }}</strong>
           </div>
+          <div class="md:col-span-2">
+            <span class="text-slate-500">Map pin:</span>
+            <strong v-if="detailCoordinates">{{ detailCoordinates.latitude.toFixed(6) }}, {{ detailCoordinates.longitude.toFixed(6) }}</strong>
+            <span v-else class="text-slate-500">No saved map pin for this order.</span>
+          </div>
           <div><span class="text-slate-500">Total:</span> <strong>{{ formatCurrency(detailOrder.total_amount) }}</strong>
           </div>
           <div><span class="text-slate-500">Source:</span> <strong>{{ detailSourceLabel }}</strong></div>
+        </div>
+
+        <div v-if="detailCoordinates" class="space-y-1">
+          <div ref="detailMapElement" class="h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-100" aria-label="Order delivery location map" />
+          <p v-if="detailMapError" class="text-xs text-amber-700">The map could not load. The saved pin coordinates are shown above.</p>
         </div>
   
         <div>
@@ -214,7 +224,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
@@ -228,6 +238,8 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
 import logisticsService from '@/services/logistics.service'
 import { useAuthStore } from '@/stores/auth'
+import { requireMapboxToken } from '@/utils/mapbox'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
 const route = useRoute()
 const router = useRouter()
@@ -255,6 +267,10 @@ const detailDialog = ref(false)
 const detailLoading = ref(false)
 const detailOrder = ref<any>(null)
 const detailSource = ref<'ecommerce' | 'sales' | 'pickup'>('ecommerce')
+const detailMapElement = ref<HTMLElement | null>(null)
+const detailMapError = ref(false)
+let detailMap: any = null
+let detailMapRenderId = 0
 
 const sourceOptions = [
   { label: 'Ecommerce', value: 'ecommerce' },
@@ -448,7 +464,7 @@ const addSelected = async () => {
 const removeOrder = async (row: any) => {
   if (!trip.value || !row?.order_id) return
   confirm.require({
-    message: 'Remove this order from the trip? This will delete the delivery assignment and reset the order to Ready for Dispatch.',
+    message: 'Remove this order from the trip? This will delete the delivery assignment and reset the order to For Dispatch.',
     header: 'Confirm Removal',
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Remove',
@@ -598,7 +614,7 @@ const goBack = () => {
   else router.push({ name: 'logistics.trips' })
 }
 
-const formatStatus = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
+const formatStatus = (value?: string) => value === 'ready_for_dispatch' ? 'For Dispatch' : value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
 const formatStatusLabel = (value?: string) => formatStatus(value || 'ready_for_dispatch')
 const statusSeverity = (value?: string) => {
   const status = String(value || '').toLowerCase()
@@ -635,10 +651,78 @@ const detailAddress = computed(() => {
     : detailOrder.value.shipping_address
 })
 
+const detailCoordinates = computed(() => {
+  if (!detailOrder.value) return null
+  const order = detailOrder.value
+  const latitude = Number(detailSource.value === 'sales'
+    ? order.delivery_latitude ?? order.customer_latitude ?? order.latitude
+    : order.customer_latitude ?? order.delivery_latitude ?? order.latitude)
+  const longitude = Number(detailSource.value === 'sales'
+    ? order.delivery_longitude ?? order.customer_longitude ?? order.longitude
+    : order.customer_longitude ?? order.delivery_longitude ?? order.longitude)
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0
+    ? { latitude, longitude }
+    : null
+})
+
+const destroyDetailMap = () => {
+  detailMapRenderId++
+  detailMap?.remove()
+  detailMap = null
+}
+
+const renderDetailMap = async () => {
+  const coordinates = detailCoordinates.value
+  if (!detailDialog.value || !coordinates || !detailMapElement.value) return
+
+  const renderId = ++detailMapRenderId
+  detailMap?.remove()
+  detailMap = null
+  detailMapError.value = false
+
+  try {
+    const mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    if (renderId !== detailMapRenderId || !detailMapElement.value) return
+
+    const map = new mapboxgl.Map({
+      container: detailMapElement.value,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [coordinates.longitude, coordinates.latitude],
+      zoom: 14,
+      attributionControl: true,
+    })
+    detailMap = map
+    new mapboxgl.Marker({ color: '#f97316' })
+      .setLngLat([coordinates.longitude, coordinates.latitude])
+      .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(detailAddress.value))
+      .addTo(map)
+    map.once('load', () => {
+      if (detailMap === map) map.resize()
+    })
+    window.setTimeout(() => {
+      if (detailMap === map) map.resize()
+    }, 150)
+  } catch {
+    detailMapError.value = true
+  }
+}
+
+watch([detailDialog, detailCoordinates], async ([visible, coordinates]) => {
+  if (!visible || !coordinates) {
+    destroyDetailMap()
+    return
+  }
+  await nextTick()
+  await renderDetailMap()
+}, { flush: 'post' })
+
 onMounted(async () => {
   await loadTrip()
   await loadAvailableOrders()
 })
+
+onBeforeUnmount(destroyDetailMap)
 
 watch(availableSource, () => {
   availablePage.value = 1

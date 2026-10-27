@@ -56,10 +56,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width: 50%">Product</th>
-            <th style="width: 12%">Qty</th>
-            <th style="width: 19%">Unit Price</th>
-            <th style="width: 19%">Line Total</th>
+            <th style="width: 42%">Product</th>
+            <th style="width: 10%">Qty</th>
+            <th style="width: 16%">Base Unit</th>
+            <th style="width: 16%">Custom Fee / Unit</th>
+            <th style="width: 16%">Line Total</th>
           </tr>
         </thead>
         <tbody>
@@ -68,14 +69,19 @@
               <td>
                 {{ $item->product_name ?? 'Product' }}
                 <div class="muted">{{ $item->sku ?? '' }}</div>
+                @if (!empty($item->customization_request))
+                  <div><strong>Upholstery:</strong> {{ $item->customization_request }}</div>
+                  <div class="muted">Estimated lead time: {{ $item->customization_lead_time_days }} days</div>
+                @endif
               </td>
               <td>{{ $item->quantity }}</td>
               <td>{{ number_format((float) $item->unit_price, 2) }}</td>
+              <td>{{ number_format((float) ($item->customization_fee ?? 0), 2) }}</td>
               <td>{{ number_format((float) $item->line_total, 2) }}</td>
             </tr>
           @empty
             <tr>
-              <td colspan="4" class="muted">No items recorded.</td>
+              <td colspan="5" class="muted">No items recorded.</td>
             </tr>
           @endforelse
         </tbody>

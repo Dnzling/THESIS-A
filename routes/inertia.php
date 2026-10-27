@@ -27,6 +27,9 @@ $inertia = function (string $uri, string $page, ?string $name = null, ?string $t
 
 Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group(function () use ($inertia) {
 
+    // Store staff messaging
+    $inertia('/staff-chats', 'System/StaffChats/Index', 'staff-chats', 'Staff Chats');
+
     // Store module (the signed-in user's assigned branch)
     $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
@@ -379,7 +382,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/crm/returns/{id}', 'System/CRM/Return/ReturnDetail', 'crm.returns.view', 'Return Detail');
 
     // Merchandising
-    Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');
+    Route::redirect('/merchandising', '/products')->name('merchandising');
     Route::get('/merchandising/delivery-fees', fn() => redirect('/logistics/delivery-fees'));
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
     $inertia('/merchandising/products', 'System/Merchandising/products/ProductIndex', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');

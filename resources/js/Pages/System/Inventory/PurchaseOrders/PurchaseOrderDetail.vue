@@ -52,7 +52,6 @@
                             <p class="font-semibold text-slate-900">
                                 {{ order.supplier?.supplier_name || "—" }}
                             </p>
-                            <p>{{ order.supplier?.supplier_code || "—" }}</p>
                             <p v-if="order.supplier?.contact_person">
                                 Contact: {{ order.supplier.contact_person }}
                             </p>

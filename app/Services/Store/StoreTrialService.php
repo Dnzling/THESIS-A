@@ -29,7 +29,7 @@ class StoreTrialService
     public function needsPositionSetup(Store $store): bool
     {
         return $store->trial_started_at !== null
-            && $store->subscription_status === 'paid'
+            && in_array($store->subscription_status, ['trial', 'paid'], true)
             && $store->position_setup_completed_at === null;
     }
 }

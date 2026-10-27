@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Merchandising\Model3dRequest;
 use App\Models\Core\SystemNotification;
 use App\Models\Core\User;
-use App\Services\Core\PermissionService;
 use App\Models\ProductCatalog\ProductAsset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +24,7 @@ class Model3dRequestController extends Controller
         if (!$admin) $query->where('owner_store_id', $request->user()->store_id);
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         $response = ['success' => true, 'data' => $query->latest()->paginate(15)];
-        if (!$admin) $response['monthly_allowance'] = $this->monthlyAllowance($request, (int) $request->user()->store_id);
+        if (!$admin) $response['monthly_allowance'] = $this->monthlyAllowance((int) $request->user()->store_id);
         return response()->json($response);
     }
 
@@ -48,7 +47,6 @@ class Model3dRequestController extends Controller
         abort_if($request->user()->hasRole('super_admin'), 403);
         $storeId = (int) $request->user()->store_id;
         abort_unless($storeId > 0, 403);
-        abort_unless(app(PermissionService::class)->userHasPermission($request->user(), 'merchandising.3d.manage', $storeId), 403, 'Your subscription does not include 3D model requests.');
         $data = $request->validate([
             'product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)->where('product_type', 'finished_good')],
             'materials' => ['nullable', 'string', 'max:2000'],
@@ -168,7 +166,7 @@ class Model3dRequestController extends Controller
 
     private function authorizeAdmin(Request $request): void { abort_unless($request->user()->hasRole('super_admin'), 403); }
 
-    private function monthlyAllowance(Request $request, int $storeId): array
+    private function monthlyAllowance(int $storeId): array
     {
         $planId = DB::table('stores')->where('id', $storeId)->value('subscription_tier');
         $limit = DB::table('subscription_plans')->where('id', $planId)->where('is_active', true)->value('max_3d_model_requests_per_month');
@@ -179,8 +177,7 @@ class Model3dRequestController extends Controller
             'limit' => (int) $limit,
             'used' => $used,
             'remaining' => max(0, (int) $limit - $used),
-            'can_request' => $limit !== null && $used < (int) $limit
-                && app(PermissionService::class)->userHasPermission($request->user(), 'merchandising.3d.manage', $storeId),
+            'can_request' => $limit !== null && $used < (int) $limit,
         ];
     }
     private function authorizeStore(Request $request, Model3dRequest $modelRequest): void { abort_unless(!$request->user()->hasRole('super_admin') && (int) $request->user()->store_id === (int) $modelRequest->owner_store_id, 403); }

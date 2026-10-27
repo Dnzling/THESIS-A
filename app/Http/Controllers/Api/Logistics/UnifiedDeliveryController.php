@@ -14,6 +14,7 @@ use App\Models\Logistics\ReturnPickup;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
+use App\Services\Logistics\DriverPermissionEligibility;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
@@ -74,7 +75,7 @@ class UnifiedDeliveryController extends Controller
             $rows = $rows->merge($this->getReplacementRows($request));
         }
 
-        if (in_array($source, ['all', 'return_pickup'], true)) {
+        if (in_array($source, ['all', 'return_pickup'], true) && !$request->boolean('exclude_return_pickups')) {
             $rows = $rows->merge($this->getReturnPickupRows($request));
         }
 
@@ -558,7 +559,7 @@ class UnifiedDeliveryController extends Controller
         return Storage::disk($driver)->response($path, basename($path));
     }
 
-    public function logisticsEmployees(Request $request): JsonResponse
+    public function logisticsEmployees(Request $request, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);
         if (!$storeId) {
@@ -584,8 +585,7 @@ class UnifiedDeliveryController extends Controller
                 'branch' => $employee->employee?->branch?->name ?? 'No branch assigned',
                 'employee_number' => $employee->employee?->employee_number,
                 'role' => $employee->role?->display_name ?? $employee->role?->name ?? 'N/A',
-                'is_driver' => strtolower((string) ($employee->role?->name ?? '')) === 'driver'
-                    || strtolower((string) ($employee->employee?->role?->name ?? '')) === 'driver',
+                'is_driver' => $driverEligibility->userCanDrive($employee, $storeId),
                 'is_same_branch' => $branchId && (int) $employee->employee?->branch_id === $branchId,
             ])
             ->sortBy(fn (array $employee) => [$employee['is_same_branch'] ? 0 : 1, strtolower($employee['name'])])
@@ -634,7 +634,7 @@ class UnifiedDeliveryController extends Controller
         ], 422);
     }
 
-    public function assign(Request $request): JsonResponse
+    public function assign(Request $request, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $validated = $request->validate([
             'source_type' => ['required', Rule::in(['ecommerce', 'sales'])],
@@ -667,23 +667,19 @@ class UnifiedDeliveryController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        $isDriver = strtolower((string) $driver->role?->name) === 'driver'
-            || strtolower((string) $driver->employee?->role?->name) === 'driver';
-        if (!$isDriver || $driver->employee?->status !== 'active') {
-            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+        if (!$driverEligibility->userCanDrive($driver, $storeId) || $driver->employee?->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with a logistics driver permission.'], 422);
         }
 
         $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
         if ($assistantIds->contains($driver->id)) {
             return response()->json(['success' => false, 'message' => 'The selected driver cannot also be a delivery assistant.'], 422);
         }
-        $validAssistantCount = User::query()->where('store_id', $storeId)->where('is_active', true)
+        $validAssistantCount = User::query()->with('employee')->where('store_id', $storeId)->where('is_active', true)
             ->whereIn('id', $assistantIds)
             ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
-            ->where(function ($query) {
-                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
-                    ->orWhereHas('employee.role', fn ($role) => $role->where('name', 'driver'));
-            })
+            ->get()
+            ->filter(fn (User $assistant) => $driverEligibility->userCanDrive($assistant, $storeId))
             ->count();
         if ($validAssistantCount !== $assistantIds->count()) {
             return response()->json(['success' => false, 'message' => 'One or more delivery assistants are invalid.'], 422);
@@ -1780,7 +1776,7 @@ class UnifiedDeliveryController extends Controller
         if ($withDelivery) {
             $query->with([
                 'branch:id,name,latitude,longitude',
-                'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
+                'items:id,order_id,product_id,product_name,sku,customization_request,customization_fee,customization_lead_time_days,quantity,unit_price,line_total',
                 'items.product:id,product_name,sku,weight_kg,unit_of_measurement',
                 'delivery.driver:id,fname,lname,email,phone_number',
                 'delivery.vehicle',

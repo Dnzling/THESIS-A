@@ -27,7 +27,7 @@
 
       <div class="grid gap-4 md:grid-cols-2">
         <Card class="border border-slate-200 shadow-sm"><template #title>Contact Information</template><template #content><div class="space-y-4 text-sm"><Info label="Email" :value="employee.email" /><Info label="Phone" :value="employee.phone_number" /></div></template></Card>
-        <Card class="border border-slate-200 shadow-sm"><template #title>Employment Information</template><template #content><div class="grid grid-cols-2 gap-4 text-sm"><Info label="Position" :value="employee.role" /><Info label="Branch" :value="employee.branch" /><Info label="Employment Type" :value="employmentLabel" /><Info label="Hire Date" :value="displayDate(employee.hire_date)" /><Info v-if="employee.employment_type === 'contract'" label="End Contract" :value="displayDate(employee.contract_end_date)" /><Info v-if="employee.resignation_date" label="Resignation Date" :value="displayDate(employee.resignation_date)" /><Info v-if="employee.last_working_day" label="Last Working Day" :value="displayDate(employee.last_working_day)" /></div></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title>Employment Information</template><template #content><div class="grid grid-cols-2 gap-4 text-sm"><Info label="Position" :value="employee.role" /><Info label="Branch" :value="employee.branch" /><Info label="Employment Type" :value="employmentLabel" /><Info :label="employee.pay_type === 'daily' ? 'Daily Rate' : 'Monthly Salary'" :value="money(employee.salary)" /><Info label="Salary Type" :value="salaryTypeLabel" /><Info label="Hire Date" :value="displayDate(employee.hire_date)" /><Info v-if="employee.employment_type === 'contract'" label="End Contract" :value="displayDate(employee.contract_end_date)" /><Info v-if="employee.resignation_date" label="Resignation Date" :value="displayDate(employee.resignation_date)" /><Info v-if="employee.last_working_day" label="Last Working Day" :value="displayDate(employee.last_working_day)" /></div></template></Card>
       </div>
     </template>
 
@@ -36,15 +36,18 @@
         <div><label class="field-label">First name</label><InputText v-model="form.fname" fluid /></div>
         <div><label class="field-label">Last name</label><InputText v-model="form.lname" fluid /></div>
         <div class="sm:col-span-2"><label class="field-label">Email</label><InputText :model-value="employee?.email" disabled fluid /><small class="text-slate-500">The employee can change their email from their own profile.</small></div>
-        <div class="sm:col-span-2"><label class="field-label">Phone</label><InputText v-model="form.phone_number" fluid /></div>
+        <div class="sm:col-span-2"><label class="field-label">Contact number</label><InputMask v-model="form.phone_number" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" fluid /><small v-if="form.phone_number && !isValidPhone(form.phone_number)" class="text-red-600">Enter a complete Philippine mobile number starting with 09.</small></div>
         <div><label class="field-label">Position</label><Select v-model="form.role_id" :options="roles" optionLabel="display_name" optionValue="id" fluid /></div>
         <div><label class="field-label">Branch</label><Select v-model="form.branch_id" :options="branches" optionLabel="name" optionValue="id" fluid /></div>
         <div><label class="field-label">Hire date</label><DatePicker v-model="form.hire_date" dateFormat="MM d, yy" showIcon fluid /></div>
         <div><label class="field-label">Employment type</label><Select v-model="form.employment_type" :options="employmentTypes" optionLabel="label" optionValue="value" fluid /></div>
+        <div><label class="field-label">Salary type</label><Select v-model="form.pay_type" :options="salaryTypes" optionLabel="label" optionValue="value" fluid /></div>
+        <div><label class="field-label">{{ form.pay_type === 'daily' ? 'Daily rate' : 'Monthly salary' }}</label><InputNumber v-model="form.salary" mode="currency" currency="PHP" locale="en-PH" :min="0.01" fluid /></div>
+        <p v-if="form.pay_type === 'daily'" class="sm:col-span-2 -mt-2 text-xs text-slate-500">One daily rate covers a standard paid workday. The store's paid-hours setting (8 hours if unset) determines its hourly equivalent.</p>
         <div v-if="form.employment_type === 'contract'"><label class="field-label">End Contract *</label><DatePicker v-model="form.contract_end_date" :minDate="form.hire_date || undefined" dateFormat="MM d, yy" showIcon fluid /></div>
         <div class="sm:col-span-2"><label class="field-label">Status</label><Select v-model="form.status" :options="statuses" optionLabel="label" optionValue="value" fluid /></div>
       </div>
-      <template #footer><Button label="Cancel" severity="secondary" outlined @click="showEdit = false" /><Button label="Save Changes" :loading="saving" @click="saveEmployee" /></template>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="showEdit = false" /><Button label="Save Changes" :loading="saving" :disabled="saving || !isValidPhone(form.phone_number) || Number(form.salary) <= 0" @click="saveEmployee" /></template>
     </Dialog>
     <Dialog v-model:visible="showResign" modal header="Record Resignation" :style="{ width: 'min(32rem, 95vw)' }">
       <div class="space-y-4 text-sm">
@@ -71,6 +74,8 @@ import Card from 'primevue/card'
 import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
+import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
@@ -95,16 +100,20 @@ const resignationReasons = [{ label: 'Personal', value: 'personal' }, { label: '
 const handoverOptions = [{ label: 'Not Started', value: 'not_started' }, { label: 'In Progress', value: 'in_progress' }, { label: 'Complete', value: 'complete' }]
 const minimumLastDay = computed(() => { const day = new Date(resign.resignation_date); day.setDate(day.getDate() + 7); return day })
 const error = ref('')
-const form = reactive({ fname: '', lname: '', phone_number: '', role_id: null as number | null, branch_id: null as number | null, hire_date: null as Date | null, employment_type: 'full_time', contract_end_date: null as Date | null, status: 'active' })
+const form = reactive({ fname: '', lname: '', phone_number: '', role_id: null as number | null, branch_id: null as number | null, hire_date: null as Date | null, employment_type: 'full_time', contract_end_date: null as Date | null, pay_type: 'monthly', salary: 0, status: 'active' })
 const employmentTypes = [{ label: 'Full Time', value: 'full_time' }, { label: 'Part Time', value: 'part_time' }, { label: 'Contract', value: 'contract' }, { label: 'Intern', value: 'intern' }]
+const salaryTypes = [{ label: 'Monthly', value: 'monthly' }, { label: 'Daily', value: 'daily' }]
 const statuses = [{ label: 'Active', value: 'active' }, { label: 'On Leave', value: 'on_leave' }, { label: 'Suspended', value: 'suspended' }]
 const fullName = computed(() => `${employee.value?.fname || ''} ${employee.value?.lname || ''}`.trim())
 const initials = computed(() => `${employee.value?.fname?.[0] || ''}${employee.value?.lname?.[0] || ''}`.toUpperCase())
 const statusLabel = computed(() => statuses.find(item => item.value === employee.value?.status)?.label || employee.value?.status || 'Unknown')
 const employmentLabel = computed(() => employmentTypes.find(item => item.value === employee.value?.employment_type)?.label || '—')
+const salaryTypeLabel = computed(() => employee.value?.pay_type === 'daily' ? 'Daily' : 'Monthly')
+const money = (value?: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const displayDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'
 const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const errorText = (err: any) => String(Object.values(err?.response?.data?.errors || {}).flat()[0] || err?.response?.data?.message || 'Please try again.')
+const isValidPhone = (value?: string | null) => !value || /^09\d{2}-\d{3}-\d{4}$/.test(value)
 
 async function loadEmployee() {
   try { employee.value = (await axios.get(`/api/store/simple-staff/employees/${route.params.id}`)).data.data }
@@ -112,11 +121,12 @@ async function loadEmployee() {
   finally { loading.value = false }
 }
 function openEdit() {
-  Object.assign(form, { fname: employee.value.fname || '', lname: employee.value.lname || '', phone_number: employee.value.phone_number || '', role_id: employee.value.role_id, branch_id: employee.value.branch_id, hire_date: employee.value.hire_date ? new Date(`${employee.value.hire_date.slice(0, 10)}T00:00:00`) : new Date(), employment_type: employee.value.employment_type, contract_end_date: employee.value.contract_end_date ? new Date(`${employee.value.contract_end_date}T00:00:00`) : null, status: employee.value.status })
+  Object.assign(form, { fname: employee.value.fname || '', lname: employee.value.lname || '', phone_number: employee.value.phone_number || '', role_id: employee.value.role_id, branch_id: employee.value.branch_id, hire_date: employee.value.hire_date ? new Date(`${employee.value.hire_date.slice(0, 10)}T00:00:00`) : new Date(), employment_type: employee.value.employment_type, contract_end_date: employee.value.contract_end_date ? new Date(`${employee.value.contract_end_date}T00:00:00`) : null, pay_type: employee.value.pay_type || 'monthly', salary: Number(employee.value.salary || 0), status: employee.value.status })
   showEdit.value = true
 }
 async function saveEmployee() {
-  if (!form.hire_date || (form.employment_type === 'contract' && (!form.contract_end_date || form.contract_end_date < form.hire_date))) return
+  if (!isValidPhone(form.phone_number)) return
+  if (!form.hire_date || Number(form.salary) <= 0 || (form.employment_type === 'contract' && (!form.contract_end_date || form.contract_end_date < form.hire_date))) return
   saving.value = true
   try {
     employee.value = (await axios.put(`/api/store/simple-staff/employees/${route.params.id}`, { ...form, hire_date: dateString(form.hire_date), contract_end_date: form.employment_type === 'contract' && form.contract_end_date ? dateString(form.contract_end_date) : null })).data.data

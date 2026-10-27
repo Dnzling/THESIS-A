@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Logistics\DeliveryZoneController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use App\Http\Controllers\Api\Logistics\ReplacementController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
+use App\Http\Controllers\Api\Logistics\LalamoveDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
 use App\Http\Controllers\Api\Logistics\SupplierPickupAssignmentController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
@@ -37,6 +38,10 @@ Route::prefix('logistics')->group(function () {
     });
 
     Route::prefix('delivery-orders')->group(function () {
+        Route::get('/lalamove/services', [LalamoveDeliveryController::class, 'services']);
+        Route::post('/{source}/{orderId}/lalamove/quote', [LalamoveDeliveryController::class, 'quote'])->whereNumber('orderId');
+        Route::post('/{source}/{orderId}/lalamove/book', [LalamoveDeliveryController::class, 'book'])->whereNumber('orderId');
+        Route::post('/{source}/{orderId}/lalamove/refresh', [LalamoveDeliveryController::class, 'refresh'])->whereNumber('orderId');
         Route::get('/logistics-employees', [UnifiedDeliveryController::class, 'logisticsEmployees']);
         Route::post('/distance-estimate', [UnifiedDeliveryController::class, 'estimateDistance']);
         Route::post('/assign', [UnifiedDeliveryController::class, 'assignmentMovedToTrips']);
@@ -88,6 +93,7 @@ Route::prefix('logistics')->group(function () {
     // Delivery Trips
     Route::prefix('trips')->group(function () {
         Route::get('/', [DeliveryTripController::class, 'index']);
+        Route::get('/compatible', [DeliveryTripController::class, 'compatibleForOrder']);
         Route::post('/', [DeliveryTripController::class, 'store']);
         Route::get('/{id}/suggestions', [DeliveryTripController::class, 'suggestions']);
         Route::get('/{id}', [DeliveryTripController::class, 'show']);

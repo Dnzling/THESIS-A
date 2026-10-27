@@ -22,14 +22,13 @@
         <div class="flex items-center gap-3">
           <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="goBack" />
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Employee Profile</p>
             <h1 class="text-2xl font-semibold text-slate-900">Employee Information</h1>
             <p class="text-sm text-slate-500">Complete record, activity, and payroll summary in one view.</p>
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <Button label="Change Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
-          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Offboard" severity="warn" outlined @click="showResignationDialog = true" />
+          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Record Resignation" severity="warn" outlined @click="showResignationDialog = true" />
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
@@ -362,7 +361,7 @@
             <div class="mb-4 grid gap-4 lg:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
-                <DatePicker v-model="editWeekStart" class="w-full" fluid />
+                <DatePicker v-model="editWeekStart" class="w-full" fluid @update:model-value="setEditScheduleWeek" />
               </div>
               <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 Fill each day manually. Use 12-hour time like <code>08:00 AM</code>. Start time will auto-calculate a 9-hour shift, and the end time stays editable.
@@ -487,7 +486,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showGovernmentIdDialog = false" />
-          <Button label="Save ID" icon="pi pi-save" severity="info" :loading="savingGovernmentId" @click="submitGovernmentId" />
+          <Button label="Save ID" icon="pi pi-save"  :loading="savingGovernmentId" @click="submitGovernmentId" />
         </template>
       </Dialog>
 
@@ -529,7 +528,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showCreditCardDialog = false" />
-          <Button label="Save Card" icon="pi pi-save" severity="info" :loading="savingCreditCard" @click="submitCreditCard" />
+          <Button label="Save Card" icon="pi pi-save"  :loading="savingCreditCard" @click="submitCreditCard" />
         </template>
       </Dialog>
     </template>
@@ -650,7 +649,7 @@ const savingEdit = ref(false)
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
-const payrollScheduleDefaults = ref({ workStart: '08:00', paidHours: 8 })
+const payrollScheduleDefaults = ref({ workStart: '08:00', workEnd: '17:00', lunchBreak: 60, paidHours: 8 })
 const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
 const showCreditCardDialog = ref(false)
@@ -696,7 +695,6 @@ const employeeInfo = ref<EmployeeDetails | any>({
 const editForm = ref({
   fname: '',
   lname: '',
-  phone: '',
   address: '',
   branch_id: null as number | null,
   department_id: null as number | null,
@@ -723,6 +721,7 @@ const weeklyScheduleForm = ref<Array<{
 const payTypeOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Hourly', value: 'hourly' },
+  { label: 'Daily', value: 'daily' },
   { label: 'Hybrid', value: 'hybrid' },
 ]
 const filteredRoleOptions = computed(() => {
@@ -843,8 +842,11 @@ const loadPayrollScheduleDefaults = async () => {
   try {
     const response = await hrService.getHrSettings()
     const configuration = response?.data?.payroll_configuration || {}
+    const lunchBreak = configuration.lunchBreak ?? configuration.lunchDuration ?? 60
     payrollScheduleDefaults.value = {
       workStart: configuration.workStart || '08:00',
+      workEnd: configuration.workEnd || '17:00',
+      lunchBreak: Math.max(0, Number(lunchBreak) || 0),
       paidHours: Number(configuration.paidHours) || 8,
     }
   } catch (err) {
@@ -1027,13 +1029,28 @@ const toIsoDate = (value: Date | string) => {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const addDays = (value: Date | string, days: number) => {
   const date = value instanceof Date ? new Date(value) : new Date(value)
   date.setDate(date.getDate() + days)
   return date
+}
+
+const mondayOfWeek = (value: Date) => {
+  const date = new Date(value)
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  return date
+}
+
+const setEditScheduleWeek = (value: Date | null) => {
+  if (!value) return
+  editWeekStart.value = mondayOfWeek(value)
+  weeklyScheduleForm.value.forEach((row, index) => {
+    row.effective_from = toIsoDate(addDays(editWeekStart.value!, index))
+  })
 }
 
 const calculateGrossPay = (payslip: any) => {
@@ -1072,13 +1089,13 @@ const goBack = () => {
   router.push('/hr/employees')
 }
 
-const openEditDialog = () => {
+const openEditDialog = async () => {
+  await loadPayrollScheduleDefaults()
   activeEditStep.value = 0
-  editWeekStart.value = new Date()
+  editWeekStart.value = mondayOfWeek(new Date())
   editForm.value = {
     fname: employeeInfo.value?.basic_info?.first_name || '',
     lname: employeeInfo.value?.basic_info?.last_name || '',
-    phone: employeeInfo.value?.contact_info?.phone || '',
     address: employeeInfo.value?.contact_info?.address || '',
     branch_id: employeeInfo.value?.employment_details?.branch_id || null,
     department_id: departmentOptions.value.find((department) => department.name === employeeInfo.value?.employment_details?.department)?.value || null,
@@ -1117,8 +1134,7 @@ const openEditDialog = () => {
     } : row
   })
   weeklyScheduleForm.value.forEach((row, index) => {
-    const effectiveDate = addDays(editWeekStart.value || new Date(), index)
-    row.effective_from = row.effective_from || toIsoDate(effectiveDate)
+    row.effective_from = toIsoDate(addDays(editWeekStart.value || mondayOfWeek(new Date()), index))
     row.effective_to = row.effective_to || ''
   })
   showEditDialog.value = true
@@ -1164,7 +1180,8 @@ const calculateHours = (start?: string, end?: string) => {
   const endMinutes = parseTimeToMinutes(end)
   if (startMinutes === null || endMinutes === null) return 0
   const diff = endMinutes - startMinutes
-  return diff > 0 ? diff / 60 : 0
+  if (diff <= 0) return 0
+  return Math.max(0, (diff - Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)) / 60)
 }
 
 const onEditStartTimeChange = (row: any, value: string) => {
@@ -1178,7 +1195,8 @@ const onEditStartTimeChange = (row: any, value: string) => {
   }
 
   row.is_off = false
-  row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60)
+  const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+  row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
   row.hours = maximumDailyShiftHours.value
 }
 
@@ -1191,10 +1209,18 @@ const onEditEndTimeChange = (row: any, value: string) => {
 const onEditWorkingToggle = (row: any, checked: boolean) => {
   row.is_off = !checked
   if (checked) {
-    const defaultStart = formatShiftTime(row.start_time || payrollScheduleDefaults.value.workStart)
+    const existingStartIsValid = parseTimeToMinutes(row.start_time) !== null
+    const existingEndIsValid = parseTimeToMinutes(row.end_time) !== null
+    const defaultStart = formatShiftTime(existingStartIsValid ? row.start_time : payrollScheduleDefaults.value.workStart)
     row.start_time = defaultStart
     const startMinutes = parseTimeToMinutes(defaultStart)
-    row.end_time = startMinutes === null ? '' : formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60)
+    row.end_time = existingEndIsValid
+      ? formatShiftTime(row.end_time)
+      : formatShiftTime(payrollScheduleDefaults.value.workEnd)
+    if (startMinutes !== null && parseTimeToMinutes(row.end_time) === null) {
+      const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+      row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
+    }
     row.hours = calculateHours(row.start_time, row.end_time) || maximumDailyShiftHours.value
     return
   }
@@ -1399,7 +1425,6 @@ const submitEditEmployee = async () => {
     const payload: any = {
       fname: editForm.value.fname,
       lname: editForm.value.lname,
-      phone: editForm.value.phone || null,
       address: editForm.value.address || null,
       branch_id: editForm.value.branch_id || null,
       role_id: editForm.value.role_id,
@@ -1434,7 +1459,6 @@ const submitEditEmployee = async () => {
     savingEdit.value = false
   }
 }
-
 const validateEditWeeklySchedule = () => {
   if (!editForm.value.role_id) {
     editDialogError.value = 'Please select a role before saving changes.'

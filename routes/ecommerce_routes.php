@@ -28,6 +28,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/orders', [EcommerceController::class, 'orders']);
     Route::get('/orders/{id}', [EcommerceController::class, 'orderShow']);
     Route::post('/orders/{id}/cancel-requests', [EcommerceController::class, 'requestOrderCancellation']);
+    Route::put('/orders/{id}/refund-payment-method', [EcommerceController::class, 'updateCancellationRefundPaymentMethod']);
     Route::post('/order-items/{itemId}/return-requests', [EcommerceController::class, 'requestOrderReturn']);
     Route::put('/returns/{return}/refund-payment-method', [EcommerceController::class, 'updateRefundPaymentMethod']);
     Route::post('/order-items/{itemId}/reviews', [EcommerceController::class, 'submitItemReview']);

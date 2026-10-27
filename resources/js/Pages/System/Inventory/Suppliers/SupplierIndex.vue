@@ -95,7 +95,6 @@
                 </div>
                 <div>
                   <p class="font-semibold text-gray-900">{{ data.supplier_name || data.company_name || '-' }}</p>
-                  <p class="text-xs text-gray-500">{{ data.supplier_code || 'No supplier code' }}</p>
                 </div>
               </div>
             </template>

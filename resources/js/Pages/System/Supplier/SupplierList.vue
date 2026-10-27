@@ -382,8 +382,6 @@ const getCategoryColor = (category: string): string => {
 
 const formatCategory = (category: string) => category ? category.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : 'Uncategorized'
 
-const formatStatus = (status: string) => status ? status.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : 'Unknown'
-
 const viewSupplier = (id: number) => {
   router.push({ name: 'supplier-detail', params: { id } })
 }

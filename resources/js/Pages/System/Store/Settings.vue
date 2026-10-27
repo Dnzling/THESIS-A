@@ -58,6 +58,8 @@
             </div>
             <div ref="mapContainer" class="h-80 w-full overflow-hidden rounded-xl border border-slate-200"></div>
             <small class="text-xs text-slate-500">Click the map or drag the marker to set the store location.</small>
+            <Message v-if="locationError" severity="error" :closable="false">{{ locationError }}</Message>
+            <Message v-else-if="locationStatus === 'valid'" severity="success" :closable="false">Location is inside Cavite province.</Message>
             <Message v-if="mapError" severity="error" :closable="false">{{ mapError }}</Message>
           </div>
         </template>
@@ -74,6 +76,7 @@ import Button from 'primevue/button'; import Card from 'primevue/card'; import F
 import { useToast } from 'primevue/usetoast'
 import { storeModuleService } from '@/services/store-module.service'
 import ecommerceService from '@/services/ecommerce.service'
+import axiosClient from '@/axios'
 import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 import type { GeoJSONSource, Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -83,6 +86,7 @@ const toast = useToast(); const loading = ref(false); const saving = ref(false);
 const form = reactive<any>({ name: '', branch_code: '', contact_number: '', email: '', address: '', barangay: '', city: '', province: 'Cavite', latitude: null, longitude: null, geofence_enabled: false, geofence_radius_m: 100, logo_url: '' })
 const provinceId = ref(''); const cityId = ref(''); const provinces = ref<any[]>([]); const cities = ref<any[]>([]); const barangays = ref<any[]>([])
 const loadingCities = ref(false); const loadingBarangays = ref(false); const searchQuery = ref(''); const searching = ref(false); const mapError = ref(''); const mapContainer = ref<HTMLElement | null>(null)
+const locationStatus = ref<'unchecked' | 'checking' | 'valid' | 'invalid'>('unchecked'); const locationError = ref(''); let locationRequest = 0
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase()
 const cityOptions = computed(() => cities.value.map((item: any) => ({ label: item.name || item.city_name, value: String(item.city_id || item.code || item.id || '') })))
 const barangayOptions = computed(() => {
@@ -108,7 +112,20 @@ const loadBarangays = async (id: string) => { loadingBarangays.value = true; try
 const onCityChange = async () => { const selected = cityOptions.value.find((item) => item.value === cityId.value); form.city = selected?.label || ''; form.barangay = ''; barangays.value = []; if (cityId.value) await loadBarangays(cityId.value) }
 const load = async () => { loading.value = true; error.value = ''; try { applyData((await storeModuleService.getSettings()).data); await loadAddresses() } catch (err: any) { error.value = err?.response?.data?.message || 'Unable to load store settings.' } finally { loading.value = false; await nextTick(); await initMap() } }
 const selectLogo = (event: any) => { const file = event.files?.[0]; if (!file) return; logoFile.value = file; if (logoPreview.value) URL.revokeObjectURL(logoPreview.value); logoPreview.value = URL.createObjectURL(file) }
-const useCurrentLocation = () => { if (!navigator.geolocation) return toast.add({ severity: 'warn', summary: 'Location unavailable', detail: 'This browser does not support geolocation.', life: 3000 }); locating.value = true; navigator.geolocation.getCurrentPosition(position => { form.latitude = position.coords.latitude; form.longitude = position.coords.longitude; locating.value = false; redrawMap(true) }, () => { locating.value = false; toast.add({ severity: 'error', summary: 'Location unavailable', detail: 'Allow location access and try again.', life: 3500 }) }, { enableHighAccuracy: true, timeout: 15000 }) }
+const setLocation = async (latitude: number, longitude: number) => {
+  const requestId = ++locationRequest
+  locationStatus.value = 'checking'; locationError.value = ''
+  try {
+    const response = await axiosClient.post('/api/stores/validate-location', { latitude, longitude }, { headers: { 'X-Suppress-Dialog': '1' } })
+    if (requestId !== locationRequest) return false
+    if (!response.data?.valid) { locationStatus.value = 'invalid'; locationError.value = response.data?.message || 'Choose a location inside Cavite province.'; redrawMap(true); return false }
+    form.latitude = latitude; form.longitude = longitude; locationStatus.value = 'valid'; redrawMap(true); return true
+  } catch (err: any) {
+    if (requestId !== locationRequest) return false
+    locationStatus.value = 'invalid'; locationError.value = err?.response?.data?.message || 'Could not validate the location. Try again.'; redrawMap(true); return false
+  }
+}
+const useCurrentLocation = () => { if (!navigator.geolocation) return toast.add({ severity: 'warn', summary: 'Location unavailable', detail: 'This browser does not support geolocation.', life: 3000 }); locating.value = true; navigator.geolocation.getCurrentPosition(position => { locating.value = false; void setLocation(position.coords.latitude, position.coords.longitude) }, () => { locating.value = false; toast.add({ severity: 'error', summary: 'Location unavailable', detail: 'Allow location access and try again.', life: 3500 }) }, { enableHighAccuracy: true, timeout: 15000 }) }
 const geofenceData = () => {
   const lat = Number(form.latitude), lng = Number(form.longitude), radius = Number(form.geofence_radius_m)
   if (form.latitude === null || form.latitude === '' || form.longitude === null || form.longitude === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || radius <= 0) return { type: 'FeatureCollection' as const, features: [] }
@@ -121,7 +138,7 @@ const redrawMap = (recenter = false) => {
   const lat = Number(form.latitude) || 14.2794, lng = Number(form.longitude) || 120.8786
   if (!marker) {
     marker = new mapboxgl.Marker({ draggable: true }).setLngLat([lng, lat]).addTo(map)
-    marker.on('dragend', () => { const point = marker!.getLngLat(); form.latitude = point.lat; form.longitude = point.lng })
+    marker.on('dragend', () => { const point = marker!.getLngLat(); void setLocation(point.lat, point.lng) })
   } else {
     marker.setLngLat([lng, lat])
   }
@@ -129,9 +146,9 @@ const redrawMap = (recenter = false) => {
   if (recenter) map.easeTo({ center: [lng, lat], zoom: 14 })
   setTimeout(() => map?.resize(), 100)
 }
-const initMap = async () => { if (!mapContainer.value || map) return; try { mapError.value = ''; mapboxgl = (await import('mapbox-gl')).default; mapboxgl.accessToken = requireMapboxToken(); map = new mapboxgl.Map({ container: mapContainer.value, style: 'mapbox://styles/mapbox/streets-v12', center: [Number(form.longitude) || 120.8786, Number(form.latitude) || 14.2794], zoom: 14 }); map.on('load', () => { map!.addSource('store-geofence', { type: 'geojson', data: geofenceData() }); map!.addLayer({ id: 'store-geofence-fill', type: 'fill', source: 'store-geofence', paint: { 'fill-color': '#f97316', 'fill-opacity': 0.16 } }); map!.addLayer({ id: 'store-geofence-outline', type: 'line', source: 'store-geofence', paint: { 'line-color': '#f97316', 'line-width': 2 } }); redrawMap(true) }); map.on('click', event => { form.latitude = event.lngLat.lat; form.longitude = event.lngLat.lng }); map.on('error', event => { mapError.value = event.error?.message || 'Mapbox could not load the map.' }) } catch (err: any) { mapError.value = err?.message || 'Unable to load the Mapbox map.' } }
-const searchLocation = async () => { if (!searchQuery.value.trim()) return; searching.value = true; try { const result = await forwardGeocodeMapbox(searchQuery.value.trim()); if (!result) return toast.add({ severity: 'warn', summary: 'Location not found', detail: 'Try a more specific address.', life: 3000 }); form.latitude = result.latitude; form.longitude = result.longitude; if (result.address) form.address = result.address; redrawMap(true) } catch (err: any) { toast.add({ severity: 'error', summary: 'Mapbox search failed', detail: err?.message || 'Unable to search this location.', life: 4000 }) } finally { searching.value = false } }
-const save = async () => { saving.value = true; try { const payload = new FormData(); ['name', 'branch_code', 'contact_number', 'email', 'address', 'barangay', 'city', 'province', 'latitude', 'longitude', 'geofence_radius_m'].forEach(key => payload.append(key, form[key] ?? '')); payload.append('geofence_enabled', form.geofence_enabled ? '1' : '0'); if (logoFile.value) payload.append('logo', logoFile.value); const response = await storeModuleService.updateSettings(payload); applyData(response.data); logoFile.value = null; if (logoPreview.value) URL.revokeObjectURL(logoPreview.value); logoPreview.value = ''; toast.add({ severity: 'success', summary: 'Store updated', detail: response.message, life: 3000 }) } catch (err: any) { toast.add({ severity: 'error', summary: 'Unable to save', detail: err?.response?.data?.message || 'Check the information and try again.', life: 4000 }) } finally { saving.value = false } }
+const initMap = async () => { if (!mapContainer.value || map) return; try { mapError.value = ''; mapboxgl = (await import('mapbox-gl')).default; mapboxgl.accessToken = requireMapboxToken(); map = new mapboxgl.Map({ container: mapContainer.value, style: 'mapbox://styles/mapbox/streets-v12', center: [Number(form.longitude) || 120.8786, Number(form.latitude) || 14.2794], zoom: 14 }); map.on('load', () => { map!.addSource('store-geofence', { type: 'geojson', data: geofenceData() }); map!.addLayer({ id: 'store-geofence-fill', type: 'fill', source: 'store-geofence', paint: { 'fill-color': '#f97316', 'fill-opacity': 0.16 } }); map!.addLayer({ id: 'store-geofence-outline', type: 'line', source: 'store-geofence', paint: { 'line-color': '#f97316', 'line-width': 2 } }); redrawMap(true) }); map.on('click', event => { void setLocation(event.lngLat.lat, event.lngLat.lng) }); map.on('error', event => { mapError.value = event.error?.message || 'Mapbox could not load the map.' }) } catch (err: any) { mapError.value = err?.message || 'Unable to load the Mapbox map.' } }
+const searchLocation = async () => { if (!searchQuery.value.trim()) return; searching.value = true; try { const result = await forwardGeocodeMapbox(searchQuery.value.trim()); if (!result) return toast.add({ severity: 'warn', summary: 'Location not found', detail: 'Try a more specific address.', life: 3000 }); if (await setLocation(result.latitude, result.longitude) && result.address) form.address = result.address } catch (err: any) { toast.add({ severity: 'error', summary: 'Mapbox search failed', detail: err?.message || 'Unable to search this location.', life: 4000 }) } finally { searching.value = false } }
+const save = async () => { if (form.latitude !== null && form.longitude !== null && !await setLocation(Number(form.latitude), Number(form.longitude))) return; if (form.geofence_enabled && (form.latitude === null || form.longitude === null)) { locationError.value = 'Set a valid location inside Cavite before enabling the geofence.'; return } saving.value = true; try { const payload = new FormData(); ['name', 'branch_code', 'contact_number', 'email', 'address', 'barangay', 'city', 'province', 'latitude', 'longitude', 'geofence_radius_m'].forEach(key => payload.append(key, form[key] ?? '')); payload.append('geofence_enabled', form.geofence_enabled ? '1' : '0'); if (logoFile.value) payload.append('logo', logoFile.value); const response = await storeModuleService.updateSettings(payload); applyData(response.data); logoFile.value = null; if (logoPreview.value) URL.revokeObjectURL(logoPreview.value); logoPreview.value = ''; toast.add({ severity: 'success', summary: 'Store updated', detail: response.message, life: 3000 }) } catch (err: any) { toast.add({ severity: 'error', summary: 'Unable to save', detail: err?.response?.data?.message || 'Check the information and try again.', life: 4000 }) } finally { saving.value = false } }
 watch(() => [form.latitude, form.longitude, form.geofence_radius_m], redrawMap)
 onMounted(load); onBeforeUnmount(() => { map?.remove(); map = null; if (logoPreview.value) URL.revokeObjectURL(logoPreview.value) })
 </script>

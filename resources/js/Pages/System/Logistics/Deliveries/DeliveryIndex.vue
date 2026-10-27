@@ -115,18 +115,6 @@
           <Column header="Actions" style="width: 11rem">
             <template #body="{ data }">
               <div class="flex items-center gap-2">
-                <Button v-if="data.source_type === 'pickup' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small" 
-                  @click="assignPickup(data)" />
-                <Button v-if="data.source_type === 'sales' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
-                  @click="assignSalesDelivery(data)" />
-                <Button v-if="data.source_type === 'ecommerce' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
-                  @click="assignEcommerceDelivery(data)" />
-                <Button v-if="data.source_type === 'replacement' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
-                  @click="openDetail(data)" />
                 <Button icon="pi pi-eye" label="View" outlined size="small" rounded  v-tooltip.bottom="'View details'"
                   @click="openDetail(data)" />
               </div>
@@ -135,6 +123,47 @@
         </DataTable>
       </template>
     </Card>
+
+    <Dialog v-model:visible="tripChoiceVisible" modal header="Assign Order to a Trip" class="w-full max-w-2xl">
+      <div class="space-y-4">
+        <div v-if="assignmentOrder" class="rounded-xl border border-orange-100 bg-orange-50/70 p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">{{ sourceLabel(assignmentSource) }} order</p>
+          <p class="mt-1 font-semibold text-slate-900">{{ assignmentOrder.order_number }}</p>
+          <p class="text-sm text-slate-600">{{ assignmentOrder.customer_name || 'Customer' }} - {{ assignmentOrder.delivery_address || 'No delivery address' }}</p>
+        </div>
+
+        <div v-if="loadingCompatibleTrips" class="space-y-3">
+          <Skeleton height="5.5rem" borderRadius="12px" />
+          <Skeleton height="5.5rem" borderRadius="12px" />
+        </div>
+        <div v-else-if="compatibleTrips.length" class="space-y-3">
+          <p class="text-sm font-medium text-slate-700">Add to a compatible planned trip</p>
+          <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-slate-900">Trip #{{ trip.id }} - {{ trip.driver_name }}</p>
+              <p class="mt-1 text-sm text-slate-600">{{ trip.vehicle_name }}<span v-if="trip.plate_number"> - {{ trip.plate_number }}</span></p>
+              <p class="mt-1 text-xs text-slate-500">
+                {{ trip.assigned_stops }}{{ trip.max_stops ? ` / ${trip.max_stops}` : '' }} stops
+                <span v-if="trip.remaining_capacity_kg !== null"> - {{ trip.remaining_capacity_kg }} kg remaining</span>
+                <span v-if="trip.scheduled_departure_at"> - Departs {{ formatDateTime(trip.scheduled_departure_at) }}</span>
+              </p>
+            </div>
+            <Button label="Add to Trip" icon="pi pi-plus" size="small" severity="warn"
+              :loading="assigningTripId === trip.id" :disabled="Boolean(assigningTripId)"
+              @click="addOrderToTrip(trip)" />
+          </article>
+        </div>
+        <div v-else-if="!loadingCompatibleTrips" class="rounded-xl border border-dashed border-slate-300 p-5 text-center">
+          <i class="pi pi-inbox text-2xl text-slate-400" />
+          <p class="mt-2 text-sm font-semibold text-slate-700">No compatible planned trips</p>
+          <p class="mt-1 text-xs text-slate-500">A trip may be unavailable if its delivery area, vehicle capacity, or stop limit does not fit this order.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined :disabled="Boolean(assigningTripId)" @click="tripChoiceVisible = false" />
+        <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId)" @click="createNewTrip" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -143,6 +172,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
+import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -163,6 +193,12 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const orders = ref<any[]>([])
 const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
+const tripChoiceVisible = ref(false)
+const loadingCompatibleTrips = ref(false)
+const compatibleTrips = ref<any[]>([])
+const assignmentOrder = ref<any>(null)
+const assignmentSource = ref<'sales' | 'ecommerce'>('sales')
+const assigningTripId = ref<number | null>(null)
 
 const filters = reactive({
   search: '',
@@ -183,14 +219,13 @@ const sourceOptions = [
   { label: 'In Store', value: 'sales' },
   { label: 'Supplier Pickups', value: 'pickup' },
   { label: 'Replacements', value: 'replacement' },
-  { label: 'Customer Return Pickups', value: 'return_pickup' },
   { label: 'Internal Stock Transfers', value: 'stock_transfer' },
 ]
 
 const statusOptions = [
   { label: 'All Delivery Statuses', value: '' },
   { label: 'Pending', value: 'pending' },
-  { label: 'Ready For Dispatch', value: 'ready_for_dispatch' },
+  { label: 'For Dispatch', value: 'ready_for_dispatch' },
   { label: 'Assigned', value: 'assigned' },
   { label: 'Packed', value: 'packed' },
   { label: 'In Transit', value: 'in_transit' },
@@ -213,6 +248,7 @@ const loadOrders = async () => {
       search: filters.search || undefined,
       date_from: formatDateParam(filters.date_range?.[0]),
       date_to: formatDateParam(filters.date_range?.[1]),
+      exclude_return_pickups: true,
     })
 
     const payload = response?.data || {}
@@ -265,10 +301,6 @@ const openDetail = (order: any) => {
     router.push({ name: 'procurement.purchase-orders.detail', params: { id: order.order_id } })
     return
   }
-  if (order.source_type === 'return_pickup') {
-    router.push({ name: 'logistics.return-pickups.detail', params: { id: order.order_id } })
-    return
-  }
   router.push({
     name: 'logistics.deliveries.detail',
     params: { source: order.source_type, orderId: order.order_id },
@@ -280,14 +312,56 @@ const assignPickup = (order: any) => {
 }
 
 const assignSalesDelivery = (order: any) => {
-  assignOrderToTrip(order, 'sales')
+  void openTripChoice(order, 'sales')
 }
 
 const assignEcommerceDelivery = (order: any) => {
-  assignOrderToTrip(order, 'ecommerce')
+  void openTripChoice(order, 'ecommerce')
 }
 
-const assignOrderToTrip = (order: any, source: 'sales' | 'ecommerce') => {
+const openTripChoice = async (order: any, source: 'sales' | 'ecommerce') => {
+  assignmentOrder.value = order
+  assignmentSource.value = source
+  compatibleTrips.value = []
+  tripChoiceVisible.value = true
+  loadingCompatibleTrips.value = true
+  try {
+    const response = await logisticsService.getCompatibleTripsForOrder(source, order.order_id)
+    compatibleTrips.value = response?.data || []
+  } catch (error: any) {
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'error', summary: 'Could Not Load Trips', detail: error?.response?.data?.message || 'Unable to check planned trips for this order.', life: 3500 })
+  } finally {
+    loadingCompatibleTrips.value = false
+  }
+}
+
+const addOrderToTrip = async (trip: any) => {
+  if (!assignmentOrder.value || assigningTripId.value) return
+  assigningTripId.value = Number(trip.id)
+  try {
+    const response = await logisticsService.addOrdersToTrip(trip.id, {
+      source_type: assignmentSource.value,
+      order_ids: [assignmentOrder.value.order_id],
+    })
+    if (Number(response?.data?.added || 0) !== 1) {
+      throw new Error(response?.message || 'The order could not be added to this trip.')
+    }
+    toast.add({ severity: 'success', summary: 'Trip Updated', detail: 'The order was added to the selected trip.', life: 3000 })
+    tripChoiceVisible.value = false
+    await loadOrders()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add the order to this trip.', life: 4000 })
+  } finally {
+    assigningTripId.value = null
+  }
+}
+
+const createNewTrip = () => {
+  if (!assignmentOrder.value) return
+  const order = assignmentOrder.value
+  const source = assignmentSource.value
+  tripChoiceVisible.value = false
   router.push({
     name: 'logistics.trips.create',
     query: { source, order_id: String(order.order_id) },
@@ -304,6 +378,7 @@ const deliverySeverity = (status: string) => {
 
 const formatStatus = (status?: string) => {
   if (!status) return '-'
+  if (status === 'ready_for_dispatch') return 'For Dispatch'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
 
@@ -325,7 +400,6 @@ const sourceLabel = (source: string) => ({
   sales: 'In Store',
   pickup: 'Supplier Pickup',
   replacement: 'Replacement',
-  return_pickup: 'Return Pickup',
   stock_transfer: 'Stock Transfer',
 } as Record<string, string>)[source] || 'Delivery'
 
@@ -334,7 +408,6 @@ const sourceSeverity = (source: string) => ({
   sales: 'success',
   pickup: 'warn',
   replacement: 'danger',
-  return_pickup: 'help',
   stock_transfer: 'contrast',
 } as Record<string, string>)[source] || 'secondary'
 

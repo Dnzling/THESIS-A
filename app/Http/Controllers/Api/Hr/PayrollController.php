@@ -9,6 +9,7 @@ use App\Models\Hr\PayPeriod;
 use App\Models\Hr\Employee;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\EmployeeDeduction;
+use App\Models\Hr\DeductionType;
 use App\Models\Hr\EmployeePayAdjustment;
 use App\Models\Hr\Leave;
 use App\Models\Hr\ShiftSchedule;
@@ -200,19 +201,29 @@ class PayrollController extends Controller
                 + (float) ($payrollData['tax_amount'] ?? 0),
                 2
             );
-            $dailyRate = (float) ($employee->salary ?? 0) / 30;
+            $dailyRate = ($employee->pay_type ?? 'monthly') === 'daily'
+                ? (float) ($employee->salary ?? 0)
+                : (float) ($employee->salary ?? 0) / 30;
             $latePolicy = $this->lateDeductionPolicy($employee);
             $hourlyRate = \App\Services\Hr\PayrollService::deriveHourlyRate($employee);
-            $details = $records->map(function ($record) use ($dailyRate, $hourlyRate, $latePolicy) {
+            $employeeSettings = is_array($employee->store?->settings) ? $employee->store->settings : [];
+            $paidHoursPerDay = (float) (($employeeSettings['hr_payroll_settings']['paidHours'] ?? null)
+                ?: ($employeeSettings['hr_workforce_rules']['dailyHours'] ?? 8));
+            $details = $records->map(function ($record) use ($dailyRate, $hourlyRate, $latePolicy, $paidHoursPerDay, $employee) {
                 $actual = (float) ($record->total_worked_minutes ?? 0) / 60;
                 $paid = (float) ($record->paid_hours ?? $actual);
                 $late = (int) ($record->late_minutes ?? 0);
                 $ot = round((float) ($record->overtime_minutes ?? 0) / 60, 2);
-                $dailyGross = round($paid * ($dailyRate / 8) + ($ot * ($dailyRate / 8) * 1.25), 2);
+                $isDailyPaid = ($employee->pay_type ?? 'monthly') === 'daily';
+                $regularPay = $isDailyPaid
+                    ? min($paid, $paidHoursPerDay) / max(1, $paidHoursPerDay) * $dailyRate
+                    : $paid * ($dailyRate / 8);
+                $overtimePay = $isDailyPaid ? $ot * $hourlyRate * 1.25 : $ot * ($dailyRate / 8) * 1.25;
+                $dailyGross = round($regularPay + $overtimePay, 2);
                 $lateDed = $latePolicy['enabled']
                     ? round(($late / 60) * $hourlyRate * ($latePolicy['rate'] / 100), 2)
                     : 0.0;
-                return ['date' => $record->attendance_date?->format('Y-m-d'), 'status' => $record->status, 'clock_in' => $record->clock_in, 'clock_out' => $record->clock_out, 'actual_hours' => round($actual, 2), 'paid_hours' => round($paid, 2), 'break_minutes' => (int) ($record->break_minutes ?? 0), 'late_minutes' => $late, 'late_deduction' => $lateDed, 'ot_hours' => $ot, 'ot_pay' => round($ot * ($dailyRate / 8) * 1.25, 2), 'daily_gross' => $dailyGross, 'daily_net' => round($dailyGross - $lateDed, 2)];
+                return ['date' => $record->attendance_date?->format('Y-m-d'), 'status' => $record->status, 'clock_in' => $record->clock_in, 'clock_out' => $record->clock_out, 'actual_hours' => round($actual, 2), 'paid_hours' => round($paid, 2), 'break_minutes' => (int) ($record->break_minutes ?? 0), 'late_minutes' => $late, 'late_deduction' => $lateDed, 'ot_hours' => $ot, 'ot_pay' => round($overtimePay, 2), 'daily_gross' => $dailyGross, 'daily_net' => round($dailyGross - $lateDed, 2)];
             });
             $recordedDates = $details->pluck('date');
             foreach ($payrollData['approved_leave_dates'] ?? [] as $date) {
@@ -301,6 +312,16 @@ class PayrollController extends Controller
                 ], 400);
             }
 
+            $initialStatus = $validated['initial_status'] ?? 'draft';
+            if ($initialStatus === 'draft' && $payPeriod->payrolls()
+                ->whereNotIn('status', ['draft', 'calculated'])
+                ->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This period already contains submitted payroll. It cannot be regenerated as a draft.',
+                ], 409);
+            }
+
             // Get employees to process (filter by current user's store + active status)
             $employees = Employee::where('store_id', $user->store_id)
                 ->whereIn('status', ['active', 'on_leave'])
@@ -376,6 +397,7 @@ class PayrollController extends Controller
                     }
 
                     $persistedData = Arr::only($payrollData, (new Payroll())->getFillable());
+                    $persistedData['status'] = $initialStatus;
                     if ($existing) {
                         // Update existing payroll
                         $existing->update($persistedData);
@@ -386,7 +408,6 @@ class PayrollController extends Controller
                             ...$persistedData,
                             'employee_id' => $employee->id,
                             'pay_period_id' => $payPeriod->id,
-                            'status' => $validated['initial_status'] ?? 'draft',
                         ]);
                     }
 
@@ -402,10 +423,7 @@ class PayrollController extends Controller
                 }
             }
 
-            // Update period status if not already processing
-            if ($payPeriod->status === 'draft') {
-                $payPeriod->update(['status' => 'processing']);
-            }
+            $payPeriod->update(['status' => $initialStatus]);
 
             DB::commit();
 
@@ -509,14 +527,6 @@ class PayrollController extends Controller
             }
 
             if ($autoApprove) {
-                $budgetError = $this->validateFinanceBudgetForApproval(collect([$payroll]));
-                if ($budgetError !== null) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $budgetError,
-                    ], 422);
-                }
-
                 $payroll->update([
                     'status' => 'approved',
                     'approved_by' => auth()->id(),
@@ -556,14 +566,6 @@ class PayrollController extends Controller
                     'success' => false,
                     'message' => 'Only payrolls in processing status can be finance-approved'
                 ], 400);
-            }
-
-            $budgetError = $this->validateFinanceBudgetForApproval(collect([$payroll]));
-            if ($budgetError !== null) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $budgetError,
-                ], 422);
             }
 
             $validated = $request->validate([
@@ -636,7 +638,8 @@ class PayrollController extends Controller
                         [
                             'pay_period_id' => (int) $payroll->pay_period_id,
                             'employee_id' => (int) $payroll->employee_id,
-                        ]
+                        ],
+                        allowOverdraft: true
                     );
 
                     $payroll->update([
@@ -916,7 +919,10 @@ class PayrollController extends Controller
 
         // 2. Calculate hourly rate (use PayrollService for canonical derivation)
         $hourlyRate = \App\Services\Hr\PayrollService::deriveHourlyRate($employee);
-        $dailyRate = ($employee->salary ?? 0) / 30; // use 30-day month for proration
+        $payType = $employee->pay_type ?? 'monthly';
+        $dailyRate = $payType === 'daily'
+            ? (float) ($employee->salary ?? 0)
+            : (float) ($employee->salary ?? 0) / 30;
 
         // 3. Calculate regular hours worked
         $regularHours = ($attendance->total_minutes ?? 0) / 60;
@@ -938,7 +944,7 @@ class PayrollController extends Controller
 
         // 7. Absent deductions
         $absentDays = (int) ($attendance->absent_days ?? 0) + $scheduledAbsentDays;
-        $absentDeduction = $absentDays * $dailyRate;
+        $absentDeduction = $payType === 'daily' ? 0 : $absentDays * $dailyRate;
 
         // 8. Half-day deductions
         $halfDayDeduction = ($attendance->half_days ?? 0) * ($dailyRate / 2);
@@ -951,9 +957,11 @@ class PayrollController extends Controller
         // Determine days in period for proration
         $periodDays = Carbon::parse($period->start_date)->diffInDays(Carbon::parse($period->cutoff_date)) + 1;
         // If employee is monthly, prorate base salary by days in period; if hourly, compute from hours
-        if (($employee->pay_type ?? 'monthly') === 'hourly') {
+        if ($payType === 'hourly') {
             $baseSalary = $regularHours * $hourlyRate;
             $leavePay = $paidLeaveDays * $dailyRate;
+        } elseif ($payType === 'daily') {
+            $baseSalary = round(($workedDates->count() + $paidLeaveDays) * $dailyRate, 2);
         } else {
             $monthly = (float) ($employee->salary ?? 0);
             $baseSalary = round($monthly / 30 * $periodDays, 2);
@@ -976,7 +984,7 @@ class PayrollController extends Controller
 
         // Total deductions = attendance deductions + configured employee deductions from deduction types
         $deductionReferenceDate = Carbon::parse($period->cutoff_date)->toDateString();
-        $otherDeductions = EmployeeDeduction::where('employee_id', $employee->id)
+        $assignedDeductions = EmployeeDeduction::where('employee_id', $employee->id)
             ->active()
             ->where('effective_date', '<=', $deductionReferenceDate)
             ->where(function ($query) use ($deductionReferenceDate) {
@@ -984,10 +992,56 @@ class PayrollController extends Controller
                     ->orWhere('end_date', '>=', $deductionReferenceDate);
             })
             ->with('deductionType')
-            ->get()
-            ->sum(function (EmployeeDeduction $deduction) use ($baseSalary, $grossPay, $period, $employee) {
-                return $this->calculateDeductionAmountForPeriod($deduction, $baseSalary, $grossPay, $period, (int) $employee->id);
-            });
+            ->get();
+
+        $deductionItems = $assignedDeductions
+            ->map(function (EmployeeDeduction $deduction) use ($baseSalary, $grossPay, $period, $employee) {
+                return $this->buildPayrollDeductionItem(
+                    $deduction,
+                    $baseSalary,
+                    $grossPay,
+                    $period,
+                    (int) $employee->id
+                );
+            })
+            ->filter()
+            ->values();
+
+        // Mandatory/government deductions are store policy and should also reach
+        // existing employees who predate the hiring flow's assignment step.
+        $assignedTypeIds = EmployeeDeduction::query()
+            ->where('employee_id', $employee->id)
+            ->pluck('deduction_type_id');
+        $storeDeductionTypes = DeductionType::query()
+            ->where('store_id', $employee->store_id)
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->where('is_mandatory', true)
+                    ->orWhere('category', 'government');
+            })
+            ->whereDate('created_at', '<=', $deductionReferenceDate)
+            ->whereNotIn('id', $assignedTypeIds)
+            ->get();
+
+        foreach ($storeDeductionTypes as $deductionType) {
+            $deduction = new EmployeeDeduction([
+                'is_active' => true,
+                'effective_date' => $period->start_date,
+            ]);
+            $deduction->setRelation('deductionType', $deductionType);
+            $item = $this->buildPayrollDeductionItem(
+                $deduction,
+                $baseSalary,
+                $grossPay,
+                $period,
+                (int) $employee->id
+            );
+            if ($item) {
+                $deductionItems->push($item);
+            }
+        }
+
+        $otherDeductions = (float) $deductionItems->sum('amount');
 
         $totalDeductions = $lateDeduction + $absentDeduction + $halfDayDeduction + $otherDeductions;
 
@@ -1031,6 +1085,7 @@ class PayrollController extends Controller
             'absent_days'       => $absentDays,
             'absence_deduction' => round($absentDeduction, 2),
             'half_day_deduction' => round($halfDayDeduction, 2),
+            'employee_deduction_items' => $deductionItems->all(),
             'leave_days'        => $leaveDays,
             'paid_leave_days'   => $paidLeaveDays,
             'approved_leave_dates' => $approvedLeaveDates->all(),
@@ -1157,59 +1212,51 @@ class PayrollController extends Controller
             ]);
         }
 
-        // Add other deductions
-        $referenceDate = optional($payroll->payPeriod)->cutoff_date
-            ? Carbon::parse($payroll->payPeriod->cutoff_date)->toDateString()
-            : now()->toDateString();
-
-        $grossPayForDeduction =
-            (float) ($payrollData['base_salary'] ?? 0) +
-            (float) ($payrollData['overtime_amount'] ?? 0) +
-            (float) ($payrollData['bonuses_total'] ?? 0) +
-            (float) ($payrollData['allowances_total'] ?? 0);
-
-        $deductions = EmployeeDeduction::where('employee_id', $payroll->employee_id)
-            ->active()
-            ->where('effective_date', '<=', $referenceDate)
-            ->where(function ($query) use ($referenceDate) {
-                $query->whereNull('end_date')
-                    ->orWhere('end_date', '>=', $referenceDate);
-            })
-            ->with('deductionType')
-            ->get();
-
-        foreach ($deductions as $deduction) {
-            if (!$deduction instanceof EmployeeDeduction) {
-                continue;
-            }
-
-            $deductionType = $deduction->deductionType;
-            if (!$deductionType) {
-                continue;
-            }
-
-            $deductionAmount = $this->calculateDeductionAmountForPeriod(
-                $deduction,
-                (float) ($payrollData['base_salary'] ?? 0),
-                $grossPayForDeduction,
-                $payroll->payPeriod,
-                (int) $payroll->employee_id
-            );
-
-            if ($deductionAmount <= 0) {
-                continue;
-            }
-
+        // Persist the same itemized deductions used by the preview and totals.
+        foreach ($payrollData['employee_deduction_items'] ?? [] as $deductionItem) {
             $payroll->items()->create([
                 'type' => 'deduction',
-                'name' => $deductionType->name,
-                'deduction_type_id' => $deductionType->id,
-                'amount' => $deductionAmount,
-                'calculation_type' => $deductionType->calculation_type,
-                'rate' => (float) ($deductionType->percentage_rate ?? $deductionType->percentage_value ?? 0),
-                'notes' => $deduction->notes,
+                'name' => $deductionItem['name'],
+                'deduction_type_id' => $deductionItem['deduction_type_id'],
+                'amount' => $deductionItem['amount'],
+                'calculation_type' => $deductionItem['calculation_type'],
+                'rate' => $deductionItem['rate'],
+                'notes' => $deductionItem['notes'],
             ]);
         }
+    }
+
+    private function buildPayrollDeductionItem(
+        EmployeeDeduction $deduction,
+        float $baseSalary,
+        float $grossPay,
+        PayPeriod $period,
+        int $employeeId
+    ): ?array {
+        $deductionType = $deduction->deductionType;
+        if (!$deductionType) {
+            return null;
+        }
+
+        $amount = $this->calculateDeductionAmountForPeriod(
+            $deduction,
+            $baseSalary,
+            $grossPay,
+            $period,
+            $employeeId
+        );
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return [
+            'name' => $deductionType->name,
+            'deduction_type_id' => $deductionType->id,
+            'amount' => $amount,
+            'calculation_type' => $deductionType->calculation_type,
+            'rate' => (float) ($deductionType->percentage_rate ?? $deductionType->percentage_value ?? 0),
+            'notes' => $deduction->notes,
+        ];
     }
 
     private function lateDeductionPolicy(Employee $employee): array
@@ -1242,7 +1289,11 @@ class PayrollController extends Controller
             return 0;
         }
 
-        $baseAmount = (float) $deduction->calculateAmount($baseSalary, $grossPay);
+        $baseAmount = (float) $deduction->calculateAmount(
+            $baseSalary,
+            $grossPay,
+            Carbon::parse($period->cutoff_date)
+        );
         if ($baseAmount <= 0) {
             return 0;
         }
@@ -1763,16 +1814,6 @@ class PayrollController extends Controller
                 ], 400);
             }
 
-            if ($autoApprove) {
-                $budgetError = $this->validateFinanceBudgetForApproval($payrolls);
-                if ($budgetError !== null) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $budgetError,
-                    ], 422);
-                }
-            }
-
             DB::beginTransaction();
             $payPeriodIds = [];
             foreach ($payrolls as $payroll) {
@@ -1831,14 +1872,6 @@ class PayrollController extends Controller
                     'success' => false,
                     'message' => 'No eligible payrolls found for finance approval (must be processing)',
                 ], 400);
-            }
-
-            $budgetError = $this->validateFinanceBudgetForApproval($payrolls);
-            if ($budgetError !== null) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $budgetError,
-                ], 422);
             }
 
             DB::beginTransaction();
@@ -1923,7 +1956,8 @@ class PayrollController extends Controller
                             [
                                 'pay_period_id' => (int) $payroll->pay_period_id,
                                 'employee_id' => (int) $payroll->employee_id,
-                            ]
+                            ],
+                            allowOverdraft: true
                         );
 
                         $payroll->update([
@@ -1993,46 +2027,6 @@ class PayrollController extends Controller
         if ($period->status !== $newStatus) {
             $period->update(['status' => $newStatus]);
         }
-    }
-
-    /**
-     * Validate available operating balance before finance approval.
-     * This prevents approving payroll that cannot be covered by current budget.
-     */
-    private function validateFinanceBudgetForApproval(Collection $payrolls): ?string
-    {
-        if ($payrolls->isEmpty()) {
-            return null;
-        }
-
-        $payrollIds = $payrolls->pluck('id')->map(fn($id) => (int) $id)->all();
-
-        $requiredByStore = Payroll::query()
-            ->join('employees', 'employees.id', '=', 'payrolls.employee_id')
-            ->whereIn('payrolls.id', $payrollIds)
-            ->groupBy('employees.store_id')
-            ->selectRaw('employees.store_id as store_id, COALESCE(SUM(payrolls.net_salary), 0) as required_total')
-            ->get();
-
-        $cashflow = new CashflowService();
-
-        foreach ($requiredByStore as $row) {
-            $storeId = (int) ($row->store_id ?? 0);
-            if ($storeId <= 0) {
-                return 'Unable to resolve employee store for payroll approval budget validation.';
-            }
-
-            $requiredTotal = round((float) ($row->required_total ?? 0), 2);
-            $available = round($cashflow->getAvailableBalance($storeId), 2);
-
-            if ($available + 0.0001 < $requiredTotal) {
-                return 'Insufficient operating budget for finance approval. Store #' . $storeId
-                    . ' available: ' . number_format($available, 2)
-                    . ', required: ' . number_format($requiredTotal, 2) . '.';
-            }
-        }
-
-        return null;
     }
 
     private function shouldAutoApprovePayrollSubmission(): bool

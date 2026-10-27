@@ -74,8 +74,8 @@
       <template #header>
         <div class="m-4 mt-6">
           <h2 class="mb-3 text-sm font-semibold text-gray-900">Expense Records</h2>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div class="space-y-2 md:col-span-2">
+          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div class="space-y-2 md:w-80">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText
                 v-model="filters.search"
@@ -84,7 +84,7 @@
                 @keyup.enter="loadExpenses"
               />
             </div>
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
               <Select
                 v-model="filters.status"
@@ -95,8 +95,9 @@
                 fluid size="small"
               />
             </div>
-            <div class="flex items-end">
-              <Button fluid icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadExpenses" />
+            <div class="flex items-end gap-2">
+              <Button v-if="filters.search || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+              <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadExpenses" />
             </div>
           </div>
         </div>
@@ -113,6 +114,9 @@
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+            <Column field="expense_date" header="Date" sortable style="width: 140px">
+              <template #body="{ data }">{{ formatDate(data.expense_date) }}</template>
+            </Column>
             <Column field="category" header="Category" style="min-width: 180px">
               <template #body="{ data }">
                 <div>
@@ -126,9 +130,6 @@
                 <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.amount) }}</span>
               </template>
             </Column>
-            <Column field="expense_date" header="Date" style="width: 140px">
-              <template #body="{ data }">{{ formatDate(data.expense_date) }}</template>
-            </Column>
             <Column field="status" header="Status" style="width: 150px">
               <template #body="{ data }">
                 <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
@@ -137,13 +138,7 @@
             <Column header="Actions" style="width: 190px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center gap-1">
-                  <Button
-                    icon="pi pi-eye"
-                    text
-                    rounded
-                    severity="secondary"
-                    @click="viewExpense(data)"
-                  />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewExpense(data)" />
                   <Button
                     v-if="data.status === 'pending_approval'"
                     icon="pi pi-check"
@@ -338,6 +333,11 @@ const loadExpenses = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const clearFilters = () => {
+  filters.value = { search: '', status: '' }
+  loadExpenses()
 }
 
 const createExpense = async () => {

@@ -718,14 +718,70 @@ class AuthController extends Controller
 
     private function clockInSimpleEmployee(User $user): ?array
     {
-        if (!in_array($user->store?->subscription_tier, ['free', 'simple'], true)) {
-            return null;
-        }
-
         $employee = Employee::query()->where('store_id', $user->store_id)
             ->where('user_id', $user->id)->where('status', 'active')->first();
         if (!$employee) {
             return null;
+        }
+
+        if ($this->storeHasHrPermissions($user)) {
+            $storeSettings = is_array($user->store?->settings) ? $user->store->settings : [];
+            $attendanceRules = $storeSettings['hr_attendance_rules'] ?? [];
+            $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
+            $now = now($timezone);
+            $today = $now->toDateString();
+            $attendance = Attendance::query()
+                ->where('employee_id', $employee->id)
+                ->whereDate('attendance_date', $today)
+                ->first();
+
+            if ($attendance?->clock_in) {
+                return [
+                    'state' => 'already_clocked_in',
+                    'late_seconds' => max(0, (int) $attendance->late_minutes * 60),
+                ];
+            }
+
+            return DB::transaction(function () use ($employee, $user, $attendance, $today, $now, $timezone, $attendanceRules) {
+                $clockInService = app(AttendanceClockInService::class);
+                $resolved = $clockInService->resolveSchedule($employee, $today, $now, $user->id);
+                $calculated = $clockInService->calculateStatus($resolved, $now, $today, $timezone, $attendanceRules);
+                $schedule = $resolved['schedule'];
+
+                if ($attendance) {
+                    $attendance->update([
+                        'schedule_id' => $schedule?->id ?? $attendance->schedule_id,
+                        'shift_id' => $resolved['shift']?->id ?? $attendance->shift_id,
+                        'clock_in' => $now,
+                        'clock_in_method' => 'web',
+                        'clock_in_ip' => request()->ip(),
+                        'status' => $calculated['status'],
+                    ]);
+                } else {
+                    $attendance = Attendance::create([
+                        'employee_id' => $employee->id,
+                        'schedule_id' => $schedule?->id,
+                        'shift_id' => $resolved['shift']?->id,
+                        'attendance_date' => $today,
+                        'clock_in' => $now,
+                        'clock_in_method' => 'web',
+                        'clock_in_ip' => request()->ip(),
+                        'status' => $calculated['status'],
+                    ]);
+                }
+
+                $attendance->late_minutes = (int) ($calculated['late_minutes'] ?? 0);
+                $attendance->is_restday_work = (bool) ($resolved['is_rest_day'] ?? false);
+                if ($calculated['status'] === 'unscheduled') {
+                    $attendance->notes = trim(($attendance->notes ? $attendance->notes . "\n" : '') . 'Clock-in recorded without an assigned shift; review schedule.');
+                }
+                $attendance->save();
+
+                return [
+                    'state' => 'clocked_in',
+                    'late_seconds' => max(0, (int) $attendance->late_minutes * 60),
+                ];
+            });
         }
 
         $now = now();
@@ -761,6 +817,23 @@ class AuthController extends Controller
 
             return ['state' => 'clocked_in', 'late_seconds' => $lateSeconds];
         });
+    }
+
+    private function storeHasHrPermissions(User $user): bool
+    {
+        if (!$user->store_id) {
+            return false;
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $user->store_id)
+            ->where('plan_permissions.included', true)
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('permissions.name', 'like', 'hr.%')
+            ->exists();
     }
 
     private function resolveGeofenceBranch(User $user, Employee $employee): ?Branch

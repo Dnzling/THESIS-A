@@ -54,7 +54,7 @@ class PurchaseOrderShippingFeeService
         }
 
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first()
-            ?? new StoreDeliveryFeeSetting(['is_active' => true, 'base_fee' => 100, 'per_km_fee' => 10, 'per_kg_fee' => 0, 'min_delivery_fee' => 80, 'bulky_item_surcharge' => 0, 'remote_area_surcharge' => 0]);
+            ?? new StoreDeliveryFeeSetting(['is_active' => true, 'base_fee' => 100, 'per_km_fee' => 10, 'per_kg_fee' => 0, 'bulky_item_surcharge' => 0, 'remote_area_surcharge' => 0]);
         if (!$setting->is_active) return ['shipping_fee' => 0.0, 'breakdown' => ['distance_km' => $distanceKm, 'total_weight_kg' => $totalWeight, 'disabled' => true]];
         if ($setting->max_delivery_distance_km !== null && $distanceKm > (float) $setting->max_delivery_distance_km) {
             throw ValidationException::withMessages(['shipping_fee' => 'The supplier is outside the store\'s maximum configured delivery distance.']);
@@ -67,8 +67,8 @@ class PurchaseOrderShippingFeeService
         $remoteFee = 0.0;
         $raw = $base + $distanceFee + $weightFee + $bulkyFee + $remoteFee;
         $free = $setting->free_shipping_min_order !== null && $subtotal >= (float) $setting->free_shipping_min_order;
-        $shippingFee = $free ? 0.0 : max($raw, (float) $setting->min_delivery_fee);
-        return ['shipping_fee' => round($shippingFee, 2), 'breakdown' => ['distance_km' => round($distanceKm, 2), 'total_weight_kg' => round($totalWeight, 2), 'base_fee' => round($base, 2), 'distance_fee' => round($distanceFee, 2), 'weight_fee' => round($weightFee, 2), 'bulky_item_surcharge' => round($bulkyFee, 2), 'remote_area_surcharge' => $remoteFee, 'minimum_applied' => !$free && $shippingFee > $raw, 'free_shipping_applied' => $free]];
+        $shippingFee = $free ? 0.0 : $raw;
+        return ['shipping_fee' => round($shippingFee, 2), 'breakdown' => ['distance_km' => round($distanceKm, 2), 'total_weight_kg' => round($totalWeight, 2), 'base_fee' => round($base, 2), 'distance_fee' => round($distanceFee, 2), 'weight_fee' => round($weightFee, 2), 'bulky_item_surcharge' => round($bulkyFee, 2), 'remote_area_surcharge' => $remoteFee, 'free_shipping_applied' => $free]];
     }
 
     private function address(array $parts): string

@@ -60,7 +60,7 @@
             <div class="flex items-center justify-between mb-3">
               <span class="text-xs font-medium uppercase tracking-wider">Total Amount</span>
               <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-credit-cardtext-sm"></i>
+                <i class="pi pi-credit-card text-sm"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="7rem" height="1.75rem" />
@@ -133,7 +133,7 @@
           >
 
                <!-- Order Date Column -->
-            <Column header="Order Date" style="min-width: 120px">
+            <Column field="order_date" header="Date" sortable style="min-width: 120px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
                   <span class="text-gray-700">{{ formatDate(data.order_date) }}</span>

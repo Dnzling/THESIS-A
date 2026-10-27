@@ -16,7 +16,8 @@ class FinanceRefund extends Model
         'store_id', 'branch_id', 'order_type', 'order_id', 'order_number',
         'customer_name', 'reason', 'amount', 'status', 'requested_by',
         'refund_method', 'refund_account_name', 'refund_account_number',
-        'payout_reference', 'payout_provider', 'paymongo_refund_id', 'processed_by', 'processed_at', 'sent_by', 'sent_at', 'notes',
+        'payout_reference', 'payout_provider', 'paymongo_refund_id', 'paymongo_transfer_id', 'paymongo_batch_transfer_id',
+        'transfer_error', 'processed_by', 'processed_at', 'sent_by', 'sent_at', 'notes',
     ];
 
     protected $casts = ['amount' => 'decimal:2', 'processed_at' => 'datetime', 'sent_at' => 'datetime'];

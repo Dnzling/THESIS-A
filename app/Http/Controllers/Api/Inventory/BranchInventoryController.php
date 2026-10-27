@@ -84,7 +84,8 @@ class BranchInventoryController extends Controller
                 'lastCountedBy',
             ])
                 ->where('store_id', $context['store_id'])
-                ->where('branch_id', $targetBranchId);
+                ->where('branch_id', $targetBranchId)
+                ->whereHas('product', fn ($product) => $product->where('store_id', $context['store_id']));
 
             // Filters
             if ($request->has('stock_status')) {

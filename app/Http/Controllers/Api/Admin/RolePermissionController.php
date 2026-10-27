@@ -53,6 +53,7 @@ class RolePermissionController extends Controller
                 $query->whereNull('roles.store_id')
                     ->orWhere('roles.name', 'owner');
             })
+            ->where('roles.name', '!=', 'driver')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(
                 SELECT COUNT(*)

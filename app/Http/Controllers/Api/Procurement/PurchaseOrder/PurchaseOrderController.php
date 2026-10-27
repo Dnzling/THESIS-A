@@ -22,6 +22,7 @@ use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Store\Branch;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Services\Procurement\PurchaseOrderShippingFeeService;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -46,7 +47,7 @@ class PurchaseOrderController extends Controller
         return response()->json(['success' => true, 'data' => $shippingFeeService->estimate($storeId, $supplier, $branch, $validated['items'], (float) $validated['subtotal'])]);
     }
 
-    public function assignPickup(Request $request, int $id): JsonResponse
+    public function assignPickup(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $validated = $request->validate([
             'driver_id' => 'required|integer',
@@ -70,23 +71,20 @@ class PurchaseOrderController extends Controller
         $shippingCost = round((float) ($po->shipping_cost ?? 0), 2);
         $driver = Employee::with('user')->where('store_id', $storeId)
             ->where('status', 'active')->whereHas('user', fn ($query) => $query->where('is_active', true))
-            ->where(function ($query) {
-                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
-                    ->orWhereHas('user.role', fn ($role) => $role->where('name', 'driver'));
-            })
             ->findOrFail($validated['driver_id']);
+        if (!$driver->user || !$driverEligibility->userCanDrive($driver->user, $storeId)) {
+            throw ValidationException::withMessages(['driver_id' => 'Select an active employee with a logistics driver permission.']);
+        }
 
         $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
         if ($assistantIds->contains((int) $driver->user_id)) {
             throw ValidationException::withMessages(['assistant_user_ids' => 'The selected driver cannot also be a delivery assistant.']);
         }
-        $validAssistantCount = Employee::query()->where('store_id', $storeId)->where('status', 'active')
+        $validAssistantCount = Employee::query()->with('user')->where('store_id', $storeId)->where('status', 'active')
             ->whereIn('user_id', $assistantIds)
             ->whereHas('user', fn ($query) => $query->where('is_active', true))
-            ->where(function ($query) {
-                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
-                    ->orWhereHas('user.role', fn ($role) => $role->where('name', 'driver'));
-            })
+            ->get()
+            ->filter(fn (Employee $assistant) => $assistant->user && $driverEligibility->userCanDrive($assistant->user, $storeId))
             ->count();
         if ($validAssistantCount !== $assistantIds->count()) {
             throw ValidationException::withMessages(['assistant_user_ids' => 'One or more delivery assistants are invalid.']);
@@ -141,7 +139,7 @@ class PurchaseOrderController extends Controller
         return response()->json(['success' => true, 'data' => $vehicles]);
     }
 
-    public function pickupDrivers(Request $request, int $id): JsonResponse
+    public function pickupDrivers(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $po = PurchaseOrder::where('store_id', (int) Auth::user()->store_id)->findOrFail($id);
         $currentBranchId = (int) (Auth::user()->employee?->branch_id ?? Auth::user()->branch_id ?? 0);
@@ -164,7 +162,7 @@ class PurchaseOrderController extends Controller
                 'branch' => $employee->branch?->name,
                 'branch_id' => $employee->branch_id,
                 'is_same_branch' => $currentBranchId && (int) $employee->branch_id === $currentBranchId,
-                'is_driver' => strtolower((string) ($employee->role?->name ?? $employee->user?->role?->name ?? '')) === 'driver',
+                'is_driver' => $employee->user && $driverEligibility->userCanDrive($employee->user, (int) $employee->store_id),
             ])
             ->sortBy(fn (array $employee) => [$employee['is_same_branch'] ? 0 : 1, strtolower($employee['name'])])
             ->values();

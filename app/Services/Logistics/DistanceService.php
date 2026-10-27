@@ -6,6 +6,11 @@ use Illuminate\Support\Facades\Http;
 
 class DistanceService
 {
+    public function geocodeAddress(string $address): array
+    {
+        return $this->geocode($address);
+    }
+
     public function getDistanceKm(string $origin, string $destination): float
     {
         $originCoords = $this->geocode($origin);

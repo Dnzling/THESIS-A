@@ -14,6 +14,7 @@ use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Support\EmployeeContext;
+use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -502,7 +503,7 @@ class StockTransferController extends Controller
      * Create delivery assignment for logistics stock transfer
      * POST /api/inventory/transfers/{id}/create-delivery
      */
-    public function createDelivery(Request $request, int $id): JsonResponse
+    public function createDelivery(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
         $transfer = StockTransfer::with('items.product')->findOrFail($id);
 
@@ -535,10 +536,9 @@ class StockTransferController extends Controller
             ->where('store_id', $transfer->store_id)
             ->where('is_active', true)
             ->find((int) $validated['driver_user_id']);
-        $isDriver = strtolower((string) $driver?->role?->name) === 'driver'
-            || strtolower((string) $driver?->employee?->role?->name) === 'driver';
-        if (!$driver || !$isDriver || $driver->employee?->status !== 'active') {
-            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+        if (!$driver || $driver->employee?->status !== 'active'
+            || !$driverEligibility->userCanDrive($driver, (int) $transfer->store_id)) {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with a logistics driver permission.'], 422);
         }
 
         $extraNotes = trim((string) ($validated['notes'] ?? ''));

@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\DB;
 use App\Models\Core\SystemNotification;
+use App\Models\Core\User;
+use App\Services\Core\PermissionService;
 
 abstract class Controller
 {
@@ -81,50 +82,14 @@ abstract class Controller
             return [];
         }
 
-        $permissionIds = DB::table('permissions')
-            ->whereIn('name', $permissionNames->all())
-            ->where('is_active', true)
-            ->pluck('id')
-            ->map(fn($id) => (int) $id)
-            ->all();
+        $permissionService = app(PermissionService::class);
 
-        if (empty($permissionIds)) {
-            return [];
-        }
-
-        $roleBasedUserIds = DB::table('users')
-            ->join('role_permissions', 'users.role_id', '=', 'role_permissions.role_id')
-            ->where('users.store_id', $storeId)
-            ->whereIn('role_permissions.permission_id', $permissionIds)
-            ->pluck('users.id')
-            ->map(fn($id) => (int) $id)
-            ->all();
-
-        $grantedUserIds = DB::table('user_permissions')
-            ->join('users', 'users.id', '=', 'user_permissions.user_id')
-            ->where('users.store_id', $storeId)
-            ->where('user_permissions.type', 'grant')
-            ->whereIn('user_permissions.permission_id', $permissionIds)
-            ->pluck('users.id')
-            ->map(fn($id) => (int) $id)
-            ->all();
-
-        $revokedUserIds = DB::table('user_permissions')
-            ->join('users', 'users.id', '=', 'user_permissions.user_id')
-            ->where('users.store_id', $storeId)
-            ->where('user_permissions.type', 'revoke')
-            ->whereIn('user_permissions.permission_id', $permissionIds)
-            ->pluck('users.id')
-            ->map(fn($id) => (int) $id)
-            ->all();
-
-        $candidateIds = collect(array_merge($roleBasedUserIds, $grantedUserIds))
-            ->unique()
-            ->reject(fn($id) => in_array((int) $id, $revokedUserIds, true))
-            ->values()
-            ->all();
-
-        return array_map('intval', $candidateIds);
+        return User::query()->where('store_id', $storeId)->where('is_active', true)
+            ->get(['id', 'store_id', 'role_id'])
+            ->filter(fn (User $user) => $permissionNames->contains(
+                fn (string $permission) => $permissionService->userHasPermission($user, $permission, $storeId)
+            ))
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
     }
 
     protected function notifyUsersByPermissions(

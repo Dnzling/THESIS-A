@@ -21,6 +21,16 @@ class PayrollService
             return 0.0;
         }
 
+        if (($employee->pay_type ?? 'monthly') === 'daily') {
+            $employee->loadMissing('store');
+            $settings = is_array($employee->store?->settings) ? $employee->store->settings : [];
+            $payrollSettings = $settings['hr_payroll_settings'] ?? [];
+            $workforceRules = $settings['hr_workforce_rules'] ?? [];
+            $paidHours = (float) ($payrollSettings['paidHours'] ?? $workforceRules['dailyHours'] ?? 8);
+
+            return round($monthly / max(1, min(24, $paidHours)), 4);
+        }
+
         return round($monthly / $divisor, 4);
     }
 }

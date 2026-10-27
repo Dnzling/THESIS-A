@@ -1,43 +1,5 @@
 <template>
-  <div class="mx-auto space-y-2 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex gap-2 justify-end items-center">
-        <Button
-          v-if="nextStatus && source !== 'return_pickup'"
-          icon="pi pi-check"
-          :label="nextStatusLabel"
-          size="small"
-          :loading="updating"
-          :disabled="updating"
-          @click="beginAdvance"
-        />
-      </div>
-    </div>
-
-    <Card v-if="source === 'return_pickup' && detail" class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title><span class="text-base">Return Delivery Progress</span></template>
-      <template #content>
-        <div class="flex flex-col gap-2 md:flex-row md:items-center">
-          <template v-for="(step, index) in returnDeliverySteps" :key="step.value">
-            <Button
-              :label="step.label"
-              :icon="returnStepIcon(step.value)"
-              size="small"
-              :severity="returnStepSeverity(step.value)"
-              :outlined="!isReturnStepCompleted(step.value) && currentDeliveryStatus !== step.value"
-              :disabled="step.value !== nextStatus || updating"
-              :loading="updating && step.value === nextStatus"
-              class="flex-1"
-              @click="beginAdvance"
-            />
-            <i v-if="index < returnDeliverySteps.length - 1" class="pi pi-angle-right hidden text-slate-400 md:block"></i>
-            <i v-if="index < returnDeliverySteps.length - 1" class="pi pi-angle-down self-center text-slate-400 md:hidden"></i>
-          </template>
-        </div>
-        <p class="mt-3 text-xs text-slate-500">The next step uses the required GPS and delivery-proof process.</p>
-      </template>
-    </Card>
-
+  <div class="mx-auto space-y-2 px-4 py-6 pb-28 sm:px-6 md:pb-24 lg:px-8">
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Delivery Details</template>
 
@@ -322,6 +284,11 @@
                   <small class="text-slate-500">
                     {{ data.product?.sku || data.sku || '-' }}
                   </small>
+                  <div v-if="data.customization_request" class="mt-2 rounded-md bg-orange-50 p-2 text-xs text-slate-700">
+                    <p class="font-semibold text-orange-800"><i class="pi pi-palette mr-1" />Upholstery order</p>
+                    <p class="mt-1 whitespace-pre-line">{{ data.customization_request }}</p>
+                    <p v-if="data.customization_lead_time_days" class="mt-1 text-slate-500">Lead time: {{ data.customization_lead_time_days }} days</p>
+                  </div>
                 </template>
               </Column>
 
@@ -539,6 +506,29 @@
         />
       </template>
     </Dialog>
+
+    <div v-if="nextStatus" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+      <Button
+        icon="pi pi-check"
+        :label="nextStatusLabel"
+        size="large"
+        class="w-full max-w-md"
+        :loading="updating"
+        :disabled="updating"
+        @click="beginAdvance"
+      />
+    </div>
+    <div v-if="nextStatus" class="fixed bottom-6 right-8 z-40 hidden md:block">
+      <Button
+        icon="pi pi-check"
+        :label="nextStatusLabel"
+        size="large"
+        class="min-w-56 shadow-lg"
+        :loading="updating"
+        :disabled="updating"
+        @click="beginAdvance"
+      />
+    </div>
   </div>
 </template>
 

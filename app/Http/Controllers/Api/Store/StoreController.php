@@ -15,10 +15,30 @@ use Illuminate\Support\Facades\Log;
 use App\Services\Modules\ModuleAccessService;
 use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
 use App\Services\ProductCatalog\DefaultFurnitureTagService;
+use App\Services\Store\CaviteLocationService;
 use Illuminate\Support\Facades\DB;
 
 class StoreController extends Controller
 {
+    public function validateLocation(Request $request, CaviteLocationService $locationService)
+    {
+        $coordinates = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+        ]);
+
+        try {
+            $valid = $locationService->contains((float) $coordinates['latitude'], (float) $coordinates['longitude']);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 503);
+        }
+
+        return response()->json([
+            'valid' => $valid,
+            'message' => $valid ? 'Pin is within Cavite.' : 'Place the store pin inside Cavite province.',
+        ]);
+    }
+
     public function index(Request $request)
     {
         try {
@@ -81,9 +101,26 @@ class StoreController extends Controller
                 'city' => 'required|string|max:100',
                 'barangay' => 'required|string|max:150',
                 'address' => 'required|string|max:200',
-                'latitude' => 'nullable|numeric|between:-90, 90',
-                'longitude' => 'nullable|numeric|between:-180, 180',
+                'latitude' => 'required|numeric|between:-90,90',
+                'longitude' => 'required|numeric|between:-180,180',
             ]);
+
+            if (strcasecmp(trim((string) ($validated['province'] ?? 'Cavite')), 'Cavite') !== 0) {
+                throw ValidationException::withMessages(['province' => 'Store registration is available only in Cavite province.']);
+            }
+
+            try {
+                $insideCavite = app(CaviteLocationService::class)->contains(
+                    (float) $validated['latitude'],
+                    (float) $validated['longitude'],
+                );
+            } catch (\RuntimeException $exception) {
+                return response()->json(['success' => false, 'message' => $exception->getMessage()], 503);
+            }
+
+            if (! $insideCavite) {
+                throw ValidationException::withMessages(['latitude' => 'Place the store pin inside Cavite province.']);
+            }
 
             $ownerRole = null;
             if ($request->user()) {
@@ -119,6 +156,8 @@ class StoreController extends Controller
                 'city' => $validated['city'],
                 'barangay' => $validated['barangay'],
                 'address' => $validated['address'],
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
                 'status' => 'pending',
                 'subscription_status' => 'pending',
             ];

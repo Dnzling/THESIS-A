@@ -14,62 +14,22 @@
     </div>
   
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
+      <Card v-for="metric in summaryCards" :key="metric.key" class="rounded-2xl border border-slate-200 shadow-sm transition-shadow hover:shadow-md">
         <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payables</p>
-              <i class="pi pi-credit-card text-blue-400 text-sm"></i>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-slate-600">{{ metric.label }}</p>
+              <i :class="[metric.icon, metric.iconColor, 'text-sm']" />
             </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payables) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Invoices Due</p>
-              <i class="pi pi-file text-indigo-400 text-sm"></i>
+            <p class="text-xl font-semibold tracking-tight text-slate-900">PHP {{ formatMoney(stats[metric.key]) }}</p>
+            <div class="flex flex-wrap items-center gap-1.5 text-xs">
+              <span :class="metric.changeClass" class="inline-flex items-center gap-1 font-semibold">
+                <i v-if="metric.change !== 0" :class="metric.change > 0 ? 'pi pi-arrow-up-right' : 'pi pi-arrow-down-right'" />
+                <i v-else class="pi pi-minus" />
+                {{ metric.varianceLabel }}
+              </span>
+              <span class="text-slate-400">last 28 days vs previous</span>
             </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.invoices_due) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payments Completed</p>
-              <i class="pi pi-check-circle text-emerald-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payments_completed) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Expenses Pending</p>
-              <i class="pi pi-clock text-amber-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.expenses_pending) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payroll Pending</p>
-              <i class="pi pi-users text-rose-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payroll_pending) }}</p>
           </div>
         </template>
       </Card>
@@ -208,6 +168,13 @@ const stats = ref({
   payments_completed: 0,
   expenses_pending: 0,
   payroll_pending: 0,
+  comparisons: {
+    payables: 0,
+    invoices_due: 0,
+    payments_completed: 0,
+    expenses_pending: 0,
+    payroll_pending: 0,
+  },
   approvals_needed: [] as Array<{
     source_module: string
     workflow: string
@@ -216,6 +183,32 @@ const stats = ref({
     route: string
   }>,
 })
+
+const summaryCards = computed(() => ([
+  { key: 'payables' as const, label: 'Payables', icon: 'pi pi-credit-card', iconColor: 'text-blue-500' },
+  { key: 'invoices_due' as const, label: 'Invoices Due', icon: 'pi pi-file', iconColor: 'text-indigo-500' },
+  { key: 'payments_completed' as const, label: 'Payments Completed', icon: 'pi pi-check-circle', iconColor: 'text-emerald-500' },
+  { key: 'expenses_pending' as const, label: 'Expenses Pending', icon: 'pi pi-clock', iconColor: 'text-amber-500' },
+  { key: 'payroll_pending' as const, label: 'Payroll Pending', icon: 'pi pi-users', iconColor: 'text-rose-500' },
+].map((metric) => {
+  const current = toAmount(stats.value[metric.key])
+  const previous = toAmount(stats.value.comparisons?.[metric.key])
+  const difference = current - previous
+  const percentage = previous > 0 ? (difference / previous) * 100 : null
+
+  return {
+    ...metric,
+    change: previous > 0 ? difference : current > 0 ? 1 : 0,
+    changeClass: difference === 0
+      ? 'text-slate-500'
+      : (metric.key === 'payments_completed' ? difference > 0 : difference < 0)
+        ? 'text-emerald-700'
+        : 'text-rose-700',
+    varianceLabel: percentage === null
+      ? (current > 0 ? 'New' : '0%')
+      : `${difference > 0 ? '+' : ''}${percentage.toFixed(1)}%`,
+  }
+})))
 
 const approvalsNeeded = computed(() => stats.value.approvals_needed || [])
 

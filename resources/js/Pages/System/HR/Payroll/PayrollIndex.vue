@@ -1,10 +1,14 @@
 <template>
     <div class="space-y-4 p-4 text-xs">
-        <div>
-            <h1 class="text-lg font-bold text-slate-900">Payroll</h1>
-            <p class="mt-1 text-slate-500">
-                Preview, review, and manage store payroll.
-            </p>
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <h1 class="text-lg font-bold text-slate-900">Payroll</h1>
+                <p class="mt-1 text-slate-500">
+                    Preview, review, and manage store payroll.
+                </p>
+            </div>
+            <Button label="Refresh" icon="pi pi-refresh" size="small" rounded outlined
+                severity="secondary" @click="refreshPage" />
         </div>
         <Card>
             <template #content>
@@ -19,220 +23,10 @@
                     </TabList>
                     <TabPanels>
                         <TabPanel value="create">
-                            <PayrollCreateTab />
+                            <PayrollCreateTab :branches="branches" :branches-loading="branchesLoading" />
                         </TabPanel>
                         <TabPanel value="run">
-                            <div class="space-y-4">
-                                <div class="flex flex-wrap gap-2">
-                                    <Button
-                                        v-for="preset in presets"
-                                        :key="preset.label"
-                                        :label="preset.label"
-                                        size="small"
-                                        :severity="
-                                            preset.active ? 'warn' : 'secondary'
-                                        "
-                                        :outlined="!preset.active"
-                                        @click="applyPreset(preset.key)"
-                                    />
-                                </div>
-                                <div
-                                    class="flex flex-col gap-3 md:flex-row md:items-end lg:justify-between"
-                                >
-                                    <div class="col-span-2">
-                                        <label class="mb-1 block font-medium"
-                                            >Start Date</label
-                                        >
-                                        <DatePicker
-                                            v-model="dateRange"
-                                            selectionMode="range"
-                                            :maxDate="new Date()"
-                                            dateFormat="MM dd, yy"
-                                            :manualInput="false"
-                                            showIcon
-                                            size="small"
-                                            fluid
-                                        />
-                                    </div>
-                                    <Button
-                                        label="Generate Preview"
-                                        severity="warn"
-                                        size="small"
-                                        :loading="loading"
-                                        @click="loadPreview"
-                                    />
-                                </div>
-                                <div
-                                    class="grid grid-cols-2 gap-3 md:grid-cols-5"
-                                >
-                                    <div
-                                        v-for="card in summaryCards"
-                                        :key="card.label"
-                                        class="rounded-lg border border-slate-100 bg-slate-50 p-3"
-                                    >
-                                        <div class="text-slate-500">
-                                            {{ card.label }}
-                                        </div>
-                                        <div
-                                            class="mt-1 text-lg font-semibold text-slate-900"
-                                        >
-                                            {{
-                                                card.money
-                                                    ? money(card.value)
-                                                    : card.value
-                                            }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <DataTable
-                                    :value="employees"
-                                    dataKey="employee_id"
-                                    size="small"
-                                    class="text-xs"
-                                    :loading="loading"
-                                >
-                                    <template #loading>
-                                        <Skeleton
-                                            v-for="n in 6"
-                                            :key="n"
-                                            height="2rem"
-                                            class="mb-2"
-                                        /> </template
-                                    ><template #empty>
-                                        <div
-                                            class="py-10 text-center text-slate-500"
-                                        >
-                                            Select a period and generate a
-                                            payroll preview.
-                                        </div>
-                                    </template>
-                                    <Column expander style="width: 2rem" />
-                                    <Column
-                                        field="employee_name"
-                                        header="Employee Name"
-                                    />
-                                    <Column field="days" header="Days" />
-                                    <Column field="absent" header="Absent" />
-                                    <Column
-                                        field="on_leave"
-                                        header="On Leave"
-                                    />
-                                    <Column
-                                        field="break_minutes"
-                                        header="Break Time"
-                                    />
-                                    <Column
-                                        field="allowances"
-                                        header="Allowances"
-                                    />
-                                    <Column
-                                        field="incentives"
-                                        header="Incentives"
-                                    />
-                                    <Column
-                                        field="late_minutes"
-                                        header="Late Min"
-                                    />
-                                    <Column header="Late Ded."
-                                        ><template #body="{ data }">{{
-                                            money(data.late_deduction)
-                                        }}</template>
-                                    </Column>
-                                    <Column field="ot_hours" header="OT Hrs" />
-                                    <Column header="OT Pay"
-                                        ><template #body="{ data }">{{
-                                            money(data.ot_pay)
-                                        }}</template></Column
-                                    >
-                                    <Column header="Gross"
-                                        ><template #body="{ data }">{{
-                                            money(data.gross)
-                                        }}</template></Column
-                                    >
-                                    <Column header="Deductions"
-                                        ><template #body="{ data }">{{
-                                            money(data.deductions)
-                                        }}</template>
-                                    </Column>
-                                    <Column header="Net Pay"
-                                        ><template #body="{ data }"
-                                            ><span class="font-semibold">{{
-                                                money(data.net_pay)
-                                            }}</span></template
-                                        ></Column
-                                    ><template #expansion="{ data }">
-                                        <DataTable
-                                            :value="data.details"
-                                            size="small"
-                                            class="text-xs"
-                                        >
-                                            <Column
-                                                field="date"
-                                                header="Date"
-                                            />
-                                            <Column
-                                                field="status"
-                                                header="Status"
-                                            />
-                                            <Column header="Clock In"
-                                                ><template #body="{ data }">{{
-                                                    time(data.clock_in)
-                                                }}</template>
-                                            </Column>
-                                            <Column header="Clock Out"
-                                                ><template #body="{ data }">{{
-                                                    time(data.clock_out)
-                                                }}</template>
-                                            </Column>
-                                            <Column
-                                                field="actual_hours"
-                                                header="Actual Hrs"
-                                            />
-                                            <Column
-                                                field="paid_hours"
-                                                header="Paid Hrs"
-                                            />
-                                            <Column
-                                                field="break_minutes"
-                                                header="Break Time"
-                                            />
-                                            <Column
-                                                field="late_minutes"
-                                                header="Late Min"
-                                            />
-                                            <Column header="Late Ded."
-                                                ><template #body="{ data }">{{
-                                                    money(data.late_deduction)
-                                                }}</template>
-                                            </Column>
-                                            <Column
-                                                field="ot_hours"
-                                                header="OT Hrs"
-                                            />
-                                            <Column header="OT Pay"
-                                                ><template #body="{ data }">{{
-                                                    money(data.ot_pay)
-                                                }}</template></Column
-                                            >
-                                            <Column header="Daily Gross"
-                                                ><template #body="{ data }">{{
-                                                    money(data.daily_gross)
-                                                }}</template>
-                                            </Column>
-                                            <Column header="Daily Net"
-                                                ><template #body="{ data }">{{
-                                                    money(data.daily_net)
-                                                }}</template> </Column
-                                            ><template #empty>
-                                                <div class="py-4 text-center">
-                                                    No attendance records in
-                                                    this period.
-                                                </div>
-                                            </template>
-                                        </DataTable>
-                                    </template>
-                                </DataTable>
-                            </div>
+                            <PayrollCreateTab mode="preview" :branches="branches" :branches-loading="branchesLoading" />
                         </TabPanel>
                         <TabPanel value="payslip">
                             <PayrollList />
@@ -379,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import DatePicker from "primevue/datepicker";
 import Skeleton from "primevue/skeleton";
 import PayrollList from "../PayrollList.vue";
@@ -388,8 +182,36 @@ import PayrollSettings from "./PayrollSettings.vue";
 import PayrollCreateTab from "./PayrollCreateTab.vue";
 import hrService from "@/services/hr.services";
 import { useToast } from "primevue/usetoast";
+import { router } from "@inertiajs/vue3";
 const toast = useToast();
 const activeTab = ref("run");
+const refreshPage = () => router.reload({ preserveState: false, preserveScroll: true });
+type BranchOption = { id: number; name: string };
+const branches = ref<BranchOption[]>([]);
+const branchesLoading = ref(false);
+
+const loadPayrollBranches = async () => {
+    branchesLoading.value = true;
+    try {
+        const response = await hrService.getBranches({ payroll_options: 1 });
+        const rows = response?.data || [];
+        branches.value = (Array.isArray(rows) ? rows : []).map((branch: any) => ({
+            id: Number(branch.id),
+            name: String(branch.name || `Branch ${branch.id}`),
+        }));
+    } catch (error: any) {
+        toast.add({
+            severity: "error",
+            summary: "Branches unavailable",
+            detail: error?.response?.data?.message || "Could not load payroll branches. Please refresh and try again.",
+            life: 4000,
+        });
+    } finally {
+        branchesLoading.value = false;
+    }
+};
+
+onMounted(loadPayrollBranches);
 const loading = ref(false);
 const dateRange = ref<Date[]>([]);
 const employees = ref<any[]>([]);

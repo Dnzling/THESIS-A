@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Hr\Employee;
+use App\Models\Hr\Attendance;
 use App\Models\Store\Branch;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class SimpleStaffController extends Controller
 {
@@ -18,7 +20,7 @@ class SimpleStaffController extends Controller
     {
         $storeId = (int) $request->user()->store_id;
         $employees = Employee::query()
-            ->with(['user:id,fname,lname,email,role_id,branch_id', 'user.role:id,name,display_name', 'branch:id,name'])
+            ->with(['user:id,fname,lname,email,role_id,branch_id,avatar_path', 'user.role:id,name,display_name', 'branch:id,name'])
             ->where('store_id', $storeId)
             ->orderBy('id')
             ->get()
@@ -26,9 +28,12 @@ class SimpleStaffController extends Controller
                 'id' => $employee->id,
                 'employee_number' => $employee->employee_number,
                 'name' => trim(($employee->user?->fname ?? '') . ' ' . ($employee->user?->lname ?? '')),
+                'avatar_url' => $employee->user?->avatar_url,
                 'email' => $employee->user?->email,
                 'role' => $employee->user?->role?->display_name ?? $employee->user?->role?->name,
                 'branch' => $employee->branch?->name,
+                'salary' => (float) ($employee->salary ?? 0),
+                'pay_type' => $employee->pay_type ?? 'monthly',
                 'status' => $employee->status,
                 'hire_date' => $employee->hire_date,
             ]);
@@ -44,11 +49,13 @@ class SimpleStaffController extends Controller
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'search' => ['nullable', 'string', 'max:100'],
         ]);
-        $rows = DB::table('simple_employee_attendances as attendance')
+        $storeId = (int) $request->user()->store_id;
+        $simpleRows = Schema::hasTable('simple_employee_attendances')
+            ? DB::table('simple_employee_attendances as attendance')
             ->join('employees as employee', 'employee.id', '=', 'attendance.employee_id')
             ->join('users as staff_user', 'staff_user.id', '=', 'employee.user_id')
-            ->where('attendance.store_id', $request->user()->store_id)
-            ->where('employee.store_id', $request->user()->store_id)
+            ->where('attendance.store_id', $storeId)
+            ->where('employee.store_id', $storeId)
             ->when(isset($validated['date']), fn ($query) => $query->whereDate('attendance.attendance_date', $validated['date']))
             ->when(isset($validated['start_date']), fn ($query) => $query->whereDate('attendance.attendance_date', '>=', $validated['start_date']))
             ->when(isset($validated['end_date']), fn ($query) => $query->whereDate('attendance.attendance_date', '<=', $validated['end_date']))
@@ -63,7 +70,66 @@ class SimpleStaffController extends Controller
             ->select('attendance.id', 'attendance.employee_id', 'attendance.attendance_date', 'attendance.status', 'attendance.note', 'attendance.clock_in_at', 'attendance.clock_out_at', 'attendance.worked_minutes', 'attendance.late_minutes', 'attendance.overtime_minutes', 'staff_user.fname', 'staff_user.lname', 'employee.employee_number')
             ->orderByDesc('attendance.attendance_date')
             ->orderBy('staff_user.fname')
-            ->get();
+            ->get()
+            ->map(fn ($row) => [
+                'id' => $row->id,
+                'employee_id' => $row->employee_id,
+                'attendance_date' => (string) $row->attendance_date,
+                'status' => $row->status,
+                'note' => $row->note,
+                'clock_in_at' => $row->clock_in_at,
+                'clock_out_at' => $row->clock_out_at,
+                'worked_minutes' => $row->worked_minutes,
+                'late_minutes' => $row->late_minutes,
+                'overtime_minutes' => $row->overtime_minutes,
+                'fname' => $row->fname,
+                'lname' => $row->lname,
+                'employee_number' => $row->employee_number,
+            ])
+            : collect();
+
+        $hrRows = Schema::hasTable('attendances')
+            ? Attendance::query()
+                ->with('employee.user')
+                ->whereHas('employee', function ($query) use ($storeId, $validated) {
+                    $query->where('store_id', $storeId)
+                        ->when(isset($validated['search']), function ($employeeQuery) use ($validated) {
+                            $term = '%' . $validated['search'] . '%';
+                            $employeeQuery->where(function ($matches) use ($term) {
+                                $matches->where('employee_number', 'like', $term)
+                                    ->orWhereHas('user', fn ($userQuery) => $userQuery
+                                        ->where('fname', 'like', $term)
+                                        ->orWhere('lname', 'like', $term));
+                            });
+                        });
+                })
+                ->when(isset($validated['date']), fn ($query) => $query->whereDate('attendance_date', $validated['date']))
+                ->when(isset($validated['start_date']), fn ($query) => $query->whereDate('attendance_date', '>=', $validated['start_date']))
+                ->when(isset($validated['end_date']), fn ($query) => $query->whereDate('attendance_date', '<=', $validated['end_date']))
+                ->orderByDesc('attendance_date')
+                ->get()
+                ->map(fn (Attendance $row) => [
+                    'id' => $row->id,
+                    'employee_id' => $row->employee_id,
+                    'attendance_date' => $row->attendance_date?->toDateString(),
+                    'status' => $row->status,
+                    'note' => $row->notes,
+                    'clock_in_at' => $row->clock_in,
+                    'clock_out_at' => $row->clock_out,
+                    'worked_minutes' => $row->total_worked_minutes,
+                    'late_minutes' => $row->late_minutes,
+                    'overtime_minutes' => $row->overtime_minutes,
+                    'fname' => $row->employee?->user?->fname ?? $row->employee?->fname,
+                    'lname' => $row->employee?->user?->lname ?? $row->employee?->lname,
+                    'employee_number' => $row->employee?->employee_number,
+                ])
+            : collect();
+
+        $rows = $simpleRows->concat($hrRows)
+            ->groupBy(fn (array $row) => $row['employee_id'] . '|' . $row['attendance_date'])
+            ->map(fn ($records) => $records->sortByDesc(fn (array $row) => $row['clock_in_at'] ?: '')->first())
+            ->sortByDesc('attendance_date')
+            ->values();
 
         return response()->json(['data' => $rows]);
     }
@@ -211,7 +277,9 @@ class SimpleStaffController extends Controller
         $validated = $request->validate([
             'fname' => ['required', 'string', 'max:100'],
             'lname' => ['required', 'string', 'max:100'],
-            'phone_number' => ['nullable', 'string', 'max:30'],
+            'phone_number' => ['nullable', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
+            'pay_type' => ['required', Rule::in(['monthly', 'daily'])],
+            'salary' => ['required', 'numeric', 'gt:0'],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
                 $query->where(function ($scoped) use ($storeId) {
                     $scoped->whereNull('store_id')->orWhere('store_id', $storeId);
@@ -239,6 +307,8 @@ class SimpleStaffController extends Controller
                 'hire_date' => $validated['hire_date'],
                 'employment_type' => $validated['employment_type'],
                 'contract_end_date' => $validated['employment_type'] === 'contract' ? $validated['contract_end_date'] : null,
+                'pay_type' => $validated['pay_type'],
+                'salary' => $validated['salary'],
                 'status' => $validated['status'],
             ])->save();
         });
@@ -255,6 +325,8 @@ class SimpleStaffController extends Controller
         return [
             'id' => $employee->id,
             'employee_number' => $employee->employee_number,
+                'pay_type' => $employee->pay_type ?? 'monthly',
+                'salary' => (float) ($employee->salary ?? 0),
             'fname' => $employee->user?->fname,
             'lname' => $employee->user?->lname,
             'email' => $employee->user?->email,

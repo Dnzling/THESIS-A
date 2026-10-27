@@ -1,16 +1,12 @@
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Delivery Trips</h1>
-          <p class="mt-1 text-sm text-slate-600">{{ driverOnly ? 'Your assigned delivery trips.' : 'Group multiple orders into a single truck route.' }}</p>
-        </div>
-        <div class="flex gap-2">
-          <Button icon="pi pi-refresh" label="Refresh" text @click="loadTrips" />
-          <Button v-if="canManage" :loading="loadingOptions" icon="pi pi-plus" label="Create Trip" severity="success" @click="openCreate" />
-        </div>
+  <div class="mx-auto space-y-5 px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Delivery Trips</h1>
+        <p class="mt-1 text-sm text-slate-600">{{ driverOnly ? 'Your assigned delivery trips.' : 'Group compatible orders into planned delivery routes.' }}</p>
       </div>
+      <Button v-if="canManage" :loading="loadingOptions" icon="pi pi-plus" label="Create Trip" size="small" severity="warn" @click="openCreate" />
+    </div>
 
 
     <div v-if="pendingOrderId" class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -18,47 +14,53 @@
       <Button label="Clear Selection" text size="small" @click="clearPendingOrder" />
     </div>
 
-    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><div v-for="n in 3" :key="n" class="h-52 animate-pulse rounded-3xl bg-slate-100"></div></div>
-    <div v-else-if="!trips.length" class="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-      <i class="pi pi-truck text-3xl text-slate-400"></i>
-      <h2 class="mt-3 font-semibold text-slate-900">No assigned trips</h2>
-      <p class="mt-1 text-sm text-slate-500">{{ driverOnly ? 'Trips assigned to you will appear here.' : 'Create a trip to start batching deliveries.' }}</p>
-    </div>
-    <div v-else class="grid gap-4 sm:grid-cols-2 lg:hidden">
-      <Card v-for="trip in trips" :key="trip.id" class="rounded-3xl border border-slate-200/80 shadow-sm">
-        <template #content>
-          <div class="flex items-start justify-between gap-3">
-            <div><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Trip reference</p><h2 class="mt-1 text-lg font-semibold text-slate-900">{{ tripReference(trip) }}</h2></div>
-            <Tag :value="formatStatus(trip.status)" :severity="statusSeverity(trip.status)" />
-          </div>
-          <div class="mt-5 space-y-3 text-sm text-slate-700">
-            <p><i class="pi pi-user mr-2 text-slate-400"></i>{{ trip.driver ? `${trip.driver.fname} ${trip.driver.lname}` : 'No driver' }}</p>
-            <p><i class="pi pi-truck mr-2 text-slate-400"></i>{{ trip.vehicle ? `${trip.vehicle.vehicle_name} (${trip.vehicle.plate_number})` : 'No vehicle' }}</p>
-            <p><i class="pi pi-calendar mr-2 text-slate-400"></i>{{ formatDateTime(trip.scheduled_departure_at) }}</p>
-            <p><i class="pi pi-map-marker mr-2 text-slate-400"></i>{{ (trip.ecommerce_deliveries_count || 0) + (trip.sales_deliveries_count || 0) + (trip.return_pickups_count || 0) }} stops</p>
-          </div>
-          <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-            <Button label="View Trip" icon="pi pi-arrow-right" size="small" outlined @click="openDetail(trip)" />
-            <Button v-if="pendingOrderId && trip.status === 'planned' && canManage" label="Add Order" size="small" severity="success" :loading="addingToTripId === trip.id" @click="addPendingOrder(trip.id)" />
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <Card v-if="!loading && trips.length" class="hidden rounded-3xl border border-slate-200/80 shadow-sm lg:block">
+    <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
       <template #content>
-        <DataTable :value="trips" dataKey="id" rowHover class="text-sm">
-          <Column header="Trip" style="width: 12rem"><template #body="{ data }"><span class="font-semibold text-slate-900">{{ tripReference(data) }}</span></template></Column>
-          <Column header="Driver"><template #body="{ data }">{{ data.driver ? `${data.driver.fname} ${data.driver.lname}` : '-' }}</template></Column>
-          <Column header="Vehicle"><template #body="{ data }">{{ data.vehicle ? `${data.vehicle.vehicle_name} (${data.vehicle.plate_number})` : '-' }}</template></Column>
+        <div class="grid grid-cols-1 items-center gap-2 md:grid-cols-12">
+          <div class="md:col-span-4">
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search trip, driver, or vehicle" fluid size="small" />
+            </IconField>
+          </div>
+          <div class="md:col-span-3">
+            <Select v-model="filters.status" :options="tripStatusOptions" optionLabel="label" optionValue="value" placeholder="All statuses" fluid size="small" />
+          </div>
+          <div class="md:col-span-3">
+            <DatePicker v-model="filters.date_range" selectionMode="range" dateFormat="M dd, yy" placeholder="Trip created date" showIcon showButtonBar fluid size="small" />
+          </div>
+          <div class="md:col-span-2">
+            <Button v-if="filters.search || filters.status || filters.date_range?.length" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" class="w-full" @click="resetFilters" />
+            <Button v-else label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" class="w-full" :loading="loading" @click="loadTrips" />
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+      <template #content>
+        <div v-if="loading" class="space-y-2">
+          <Skeleton v-for="n in 5" :key="n" height="2.25rem" borderRadius="8px" />
+        </div>
+        <DataTable v-else :value="trips" dataKey="id" rowHover paginator lazy scrollable size="small"
+          :rows="pageState.rows" :first="(pageState.page - 1) * pageState.rows" :totalRecords="pageState.total"
+          :rowsPerPageOptions="[10, 20, 50]" :sortField="sort.field" :sortOrder="sort.order"
+          @page="onPage" @sort="onSort" class="text-sm">
+          <template #empty>
+            <div class="py-8 text-center text-sm text-slate-500">{{ driverOnly ? 'No assigned trips found.' : 'No delivery trips match these filters.' }}</div>
+          </template>
+          <Column field="created_at" header="Date" sortable style="min-width: 12rem"><template #body="{ data }"><span class="whitespace-nowrap text-xs text-slate-600">{{ formatDateTime(data.created_at) }}</span></template></Column>
+          <Column header="Trip Reference" style="min-width: 12rem"><template #body="{ data }"><span class="font-semibold text-slate-900">{{ tripReference(data) }}</span></template></Column>
+          <Column header="Driver" style="min-width: 11rem"><template #body="{ data }">{{ data.driver ? `${data.driver.fname} ${data.driver.lname}` : '-' }}</template></Column>
+          <Column header="Vehicle" style="min-width: 12rem"><template #body="{ data }">{{ data.vehicle ? `${data.vehicle.vehicle_name} (${data.vehicle.plate_number})` : '-' }}</template></Column>
           <Column header="Stops" style="width: 6rem"><template #body="{ data }">{{ (data.ecommerce_deliveries_count || 0) + (data.sales_deliveries_count || 0) + (data.return_pickups_count || 0) }}</template></Column>
-          <Column header="Status" style="width: 11rem"><template #body="{ data }"><Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
-          <Column header="Scheduled" style="width: 13rem"><template #body="{ data }">{{ formatDateTime(data.scheduled_departure_at) }}</template></Column>
-          <Column header="Actions" style="width: 12rem">
+          <Column field="status" header="Status" sortable style="width: 15rem"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
+          <Column field="scheduled_departure_at" header="Departure" sortable style="min-width: 12rem"><template #body="{ data }">{{ formatDateTime(data.scheduled_departure_at) }}</template></Column>
+          <Column header="Actions" style="min-width: 10rem">
             <template #body="{ data }">
               <div class="flex items-center gap-2">
-                <Button v-if="pendingOrderId && data.status === 'planned' && canManage" label="Add Order" size="small" severity="success" :loading="addingToTripId === data.id" @click="addPendingOrder(data.id)" />
-                <Button icon="pi pi-eye" text rounded severity="info" aria-label="View trip" @click="openDetail(data)" />
+                <Button v-if="pendingOrderId && data.status === 'planned' && canManage" label="Add Order" size="small" severity="warn" :loading="addingToTripId === data.id" @click="addPendingOrder(data.id)" />
+                <Button icon="pi pi-eye" label="View" outlined rounded size="small" aria-label="View trip" @click="openDetail(data)" />
               </div>
             </template>
           </Column>
@@ -96,18 +98,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
+import InputText from 'primevue/inputtext'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import Skeleton from 'primevue/skeleton'
 import logisticsService from '@/services/logistics.service'
 import { useAuthStore } from '@/stores/auth'
 
@@ -124,6 +130,9 @@ const loadingOptions = ref(false)
 const saving = ref(false)
 const tripDialog = ref(false)
 const addingToTripId = ref<number | null>(null)
+const filters = reactive({ search: '', status: '', date_range: null as Date[] | null })
+const pageState = reactive({ page: 1, rows: 10, total: 0 })
+const sort = reactive({ field: 'created_at', order: -1 })
 const pendingOrderId = computed(() => {
   const id = Number(route.query.order_id || 0)
   return Number.isInteger(id) && id > 0 ? id : null
@@ -133,6 +142,14 @@ const pendingSource = computed<'ecommerce' | 'sales' | 'return_pickup'>(() => {
   return source === 'sales' || source === 'return_pickup' ? source : 'ecommerce'
 })
 const pendingSourceLabel = computed(() => pendingSource.value === 'return_pickup' ? 'return pickup' : pendingSource.value)
+const tripStatusOptions = [
+  { label: 'All statuses', value: '' },
+  { label: 'Planned', value: 'planned' },
+  { label: 'In Transit', value: 'in_transit' },
+  { label: 'Out For Delivery', value: 'out_for_delivery' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
+]
 
 const employees = ref<any[]>([])
 const vehicles = ref<any[]>([])
@@ -165,13 +182,52 @@ const loadOptions = async () => {
 const loadTrips = async () => {
   loading.value = true
   try {
-    const res = await logisticsService.getTrips({ per_page: 50 })
+    const res = await logisticsService.getTrips({
+      page: pageState.page,
+      per_page: pageState.rows,
+      status: filters.status || undefined,
+      search: filters.search || undefined,
+      date_from: formatDateParam(filters.date_range?.[0]),
+      date_to: formatDateParam(filters.date_range?.[1]),
+      sort_by: sort.field,
+      sort_order: sort.order === 1 ? 'asc' : 'desc',
+    })
     trips.value = res?.data?.data || []
+    pageState.total = Number(res?.data?.total || 0)
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load trips.', life: 3000 })
   } finally {
     loading.value = false
   }
+}
+
+const onPage = (event: any) => {
+  pageState.page = Number(event.page || 0) + 1
+  pageState.rows = Number(event.rows || 10)
+  loadTrips()
+}
+
+const onSort = (event: any) => {
+  sort.field = ['created_at', 'scheduled_departure_at', 'status'].includes(event.sortField) ? event.sortField : 'created_at'
+  sort.order = event.sortOrder === 1 ? 1 : -1
+  pageState.page = 1
+  loadTrips()
+}
+
+const resetFilters = () => {
+  filters.search = ''
+  filters.status = ''
+  filters.date_range = null
+  pageState.page = 1
+  loadTrips()
+}
+
+const formatDateParam = (value?: Date | null) => {
+  if (!value) return undefined
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const clearPendingOrder = () => router.replace({ name: 'logistics.trips' })
@@ -241,12 +297,22 @@ const formatStatus = (value?: string) => value ? value.replace(/_/g, ' ').replac
 const tripReference = (trip: any) => `TRIP-${new Date(trip.created_at || Date.now()).getFullYear()}-${String(trip.id).padStart(6, '0')}`
 const statusSeverity = (value?: string) => {
   if (value === 'completed') return 'success'
-  if (value === 'cancelled') return 'danger'
-  if (value === 'in_transit') return 'info'
-  if (value === 'out_for_delivery') return 'info'
-  return 'warning'
+  if (value === 'cancelled') return 'secondary'
+  if (['in_transit', 'out_for_delivery'].includes(String(value))) return 'info'
+  if (['planned', 'pending'].includes(String(value))) return 'warn'
+  return 'secondary'
 }
 const formatDateTime = (value?: string) => value ? new Date(value).toLocaleString('en-PH') : '-'
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => [filters.status], () => { pageState.page = 1; loadTrips() })
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { pageState.page = 1; loadTrips() }, 300)
+})
+watch(() => filters.date_range, (range) => {
+  if (range?.length === 2 || !range?.length) { pageState.page = 1; loadTrips() }
+}, { deep: true })
 
 onMounted(async () => {
   await Promise.all([canManage ? loadOptions() : Promise.resolve(), loadTrips()])

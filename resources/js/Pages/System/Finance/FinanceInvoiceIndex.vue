@@ -3,7 +3,7 @@
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">Invoices</h1>
+        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Invoices</h1>
       </div>
     </div>
 
@@ -126,13 +126,10 @@
               @change="loadInvoices"
             />
 
-            <button
-              @click="loadInvoices"
-              class="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
-            >
-              <i class="pi pi-refresh"></i>
-              <span>Refresh</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <Button v-if="filters.search || filters.status || filters.match_status || filters.date_from" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+              <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadInvoices" />
+            </div>
           </div>
 
           <!-- Invoices Table -->
@@ -146,12 +143,16 @@
               <p class="text-gray-500">No invoices found</p>
             </div>
 
-            <table v-else class="w-full text-sm">
+            <table v-else class="w-full text-xs">
               <thead class="bg-gray-50/80 text-gray-500 text-xs">
                 <tr>
-                  <th class="px-5 py-4 text-left font-medium">Invoice No.</th>
-                  <th class="px-5 py-4 text-left font-medium">Supplier</th>
-                  <th class="px-5 py-4 text-left font-medium">Invoice / Due Date</th>
+                  <th class="px-3 py-3 text-left font-medium" :aria-sort="dateSortDirection === 'desc' ? 'descending' : 'ascending'">
+                    <button class="inline-flex items-center gap-1 text-slate-700 hover:text-orange-600" @click="toggleDateSort">
+                      Date <i :class="dateSortDirection === 'desc' ? 'pi pi-sort-amount-down' : 'pi pi-sort-amount-up'" />
+                    </button>
+                  </th>
+                  <th class="px-3 py-3 text-left font-medium">Invoice No.</th>
+                  <th class="px-3 py-3 text-left font-medium">Supplier</th>
                   <th class="px-5 py-4 text-right font-medium">Amount</th>
                   <th class="px-5 py-4 text-left font-medium">Match Status</th>
                   <th class="px-5 py-4 text-left font-medium">Status</th>
@@ -159,8 +160,14 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
-                <tr v-for="inv in invoices" :key="inv.id" class="hover:bg-gray-50/50 transition-colors">
-                  <td class="px-5 py-4">
+                <tr v-for="inv in sortedInvoices" :key="inv.id" class="transition-colors hover:bg-slate-50">
+                  <td class="px-3 py-3">
+                    <div class="space-y-1">
+                      <p class="text-slate-700">{{ formatDate(inv.invoice_date) }}</p>
+                      <p class="text-xs font-medium text-orange-600">Due {{ formatDate(inv.due_date) }}</p>
+                    </div>
+                  </td>
+                  <td class="px-3 py-3">
                     <RouterLink
                       :to="`/procurement/invoices/${inv.id}`"
                       class="text-blue-500 hover:text-blue-600 font-medium"
@@ -168,25 +175,16 @@
                       {{ inv.invoice_number }}
                     </RouterLink>
                   </td>
-                  <td class="px-5 py-4">
+                  <td class="px-3 py-3">
                     <div>
                       <p class="font-medium text-gray-900">{{ inv.supplier_name }}</p>
                       <p class="text-xs text-gray-500 mt-0.5">{{ inv.supplier_code }}</p>
                     </div>
                   </td>
-                  <td class="px-5 py-4">
-                    <div class="space-y-1">
-                      <p class="text-gray-700">{{ formatDate(inv.invoice_date) }}</p>
-                      <p class="text-xs text-orange-600 font-medium">{{ formatDate(inv.due_date) }}</p>
-                    </div>
-                  </td>
                   <td class="px-5 py-4 text-right font-medium text-green-600">₱{{ formatNumber(inv.total_amount) }}</td>
                   <td class="px-5 py-4">
                     <div class="flex items-center gap-2">
-                      <div :class="getMatchDot(inv.match_status)" class="w-2 h-2 rounded-full"></div>
-                      <span :class="getMatchClass(inv.match_status)" class="text-sm">
-                        {{ formatStatus(inv.match_status) }}
-                      </span>
+                      <Badge :value="formatStatus(inv.match_status)" :severity="matchSeverity(inv.match_status)" />
                       <button
                         v-if="canApproveInvoices && inv.match_status === 'pending'"
                         @click="performMatch(inv)"
@@ -198,61 +196,21 @@
                   </td>
                   <td class="px-5 py-4">
                     <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <div :class="getStatusDot(inv.status)" class="w-2 h-2 rounded-full"></div>
-                        <span :class="getStatusClass(inv.status)" class="text-sm">
-                          {{ formatStatus(inv.status) }}
-                        </span>
-                      </div>
-                      <div v-if="inv.payment_status" class="flex items-center gap-2 mt-1">
-                        <div :class="getPaymentDot(inv.payment_status)" class="w-2 h-2 rounded-full"></div>
-                        <span :class="getPaymentClass(inv.payment_status)" class="text-xs">
-                          {{ formatFinanceStatus(inv.payment_status) }}
-                        </span>
-                      </div>
+                      <Badge :value="formatStatus(inv.status)" :severity="invoiceSeverity(inv.status)" />
+                      <Badge v-if="inv.payment_status" :value="formatFinanceStatus(inv.payment_status)" :severity="paymentSeverity(inv.payment_status)" />
                     </div>
                   </td>
                   <td class="px-5 py-4">
                     <div class="flex items-center justify-center gap-1">
-                      <button
-                        @click="viewInvoice(inv)"
-                        class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-                        title="View"
-                      >
-                        <i class="pi pi-eye text-gray-500 text-sm"></i>
-                      </button>
-                      <button
-                        v-if="canManageInvoices && inv.status === 'draft'"
-                        @click="editInvoice(inv)"
-                        class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-                        title="Edit"
-                      >
-                        <i class="pi pi-pencil text-gray-500 text-sm"></i>
-                      </button>
+                      <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewInvoice(inv)" />
+                      <Button v-if="canManageInvoices && inv.status === 'draft'" icon="pi pi-pencil" severity="secondary" text rounded size="small" aria-label="Edit invoice" @click="editInvoice(inv)" />
                     </div>
                   </td>
                 </tr>
               </tbody>
             </table>
 
-            <!-- Pagination -->
-            <div v-if="invoices.length > 0" class="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50/50">
-              <p class="text-xs text-gray-500">Showing {{ invoices.length }} of {{ stats.totalCount }} invoices</p>
-              <div class="flex gap-2">
-                <button class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors">
-                  <i class="pi pi-chevron-left text-xs"></i>
-                </button>
-                <button class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-medium">
-                  1
-                </button>
-                <button class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors">
-                  2
-                </button>
-                <button class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors">
-                  <i class="pi pi-chevron-right text-xs"></i>
-                </button>
-              </div>
-            </div>
+            <p v-if="invoices.length" class="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">{{ invoices.length }} invoices</p>
           </div>
         </div>
 
@@ -435,6 +393,8 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../services/procurement.service'
 import { useAuthStore } from '../../../stores/auth'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
 
 const router = useRouter()
 const toast = useToast()
@@ -447,6 +407,15 @@ const invoices = ref<any[]>([])
 const exceptions = ref<any[]>([])
 const pendingApprovalInvoices = ref<any[]>([])
 const loading = ref(false)
+const dateSortDirection = ref<'desc' | 'asc'>('desc')
+const sortedInvoices = computed(() => [...invoices.value].sort((left, right) => {
+  const leftDate = new Date(left.invoice_date || 0).getTime()
+  const rightDate = new Date(right.invoice_date || 0).getTime()
+  return dateSortDirection.value === 'desc' ? rightDate - leftDate : leftDate - rightDate
+}))
+const toggleDateSort = () => {
+  dateSortDirection.value = dateSortDirection.value === 'desc' ? 'asc' : 'desc'
+}
 const activeTab = ref(0)
 const showResolveDialog = ref(false)
 const resolving = ref(false)
@@ -516,6 +485,26 @@ function formatFinanceStatus(status: string): string {
     overdue: 'Overdue',
   }
   return map[status] || status || '-'
+}
+
+function matchSeverity(status: string): string {
+  if (status === 'matched') return 'success'
+  if (status === 'exception') return 'danger'
+  return 'warn'
+}
+
+function invoiceSeverity(status: string): string {
+  if (status === 'approved' || status === 'paid') return 'success'
+  if (status === 'rejected') return 'danger'
+  if (status === 'pending_approval') return 'warn'
+  return 'secondary'
+}
+
+function paymentSeverity(status: string): string {
+  if (status === 'paid') return 'success'
+  if (status === 'overdue') return 'danger'
+  if (status === 'scheduled') return 'info'
+  return 'warn'
 }
 
 function getStatusClass(status: string): string {
@@ -600,6 +589,12 @@ async function loadInvoices() {
   } finally {
     loading.value = false
   }
+}
+
+function clearFilters() {
+  filters.value = { search: '', status: '', match_status: '', date_from: '' }
+  dateSortDirection.value = 'desc'
+  loadInvoices()
 }
 
 function calculateStats() {

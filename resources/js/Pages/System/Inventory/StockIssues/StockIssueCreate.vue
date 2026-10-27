@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="mx-auto space-y-6 pb-6">
     <ConfirmDialog />
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-issues' })" />
@@ -159,7 +159,7 @@
                 label="Add Item" 
                 @click="addItem" 
                 :disabled="!canAddItem" 
-                severity="success"
+                size="small"
               />
             </div>
           </div>

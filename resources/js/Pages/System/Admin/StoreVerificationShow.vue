@@ -12,8 +12,7 @@
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <Button v-if="status === 'pending'" label="Reject" icon="pi pi-times" severity="danger" outlined @click="rejectOpen = true" />
-        <Button v-if="status === 'pending'" label="Approve Store" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approveOpen = true" />
+
         <Tag :value="title(status)" :severity="statusSeverity(status)" rounded />
       </div>
     </div>
@@ -96,6 +95,11 @@
             <p v-else class="text-sm text-slate-500">No branches recorded.</p>
           </SectionCard>
         </aside>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-5">
+          <Button v-if="status === 'pending'" label="Reject" icon="pi pi-times" severity="danger" outlined @click="rejectOpen = true" />
+        <Button v-if="status === 'pending'" label="Approve Store" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approveOpen = true" />
       </div>
     </template>
 

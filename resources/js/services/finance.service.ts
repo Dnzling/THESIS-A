@@ -67,8 +67,18 @@ const financeService = {
     return response.data
   },
 
-  async markRefundSent(id: number | string, payload: { provider: 'paymongo' | 'manual'; payout_reference?: string; notes?: string }) {
+  async markRefundSent(id: number | string, payload: { provider: 'paymongo' | 'manual' | 'simulation'; payout_reference?: string; notes?: string }) {
     const response = await axiosClient.post(`${baseUrl}/refunds/${id}/send`, payload)
+    return response.data
+  },
+
+  async startRefundTestWalletTransfer(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/test-wallet-transfer`)
+    return response.data
+  },
+
+  async checkRefundTestWalletTransfer(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/test-wallet-transfer/check`)
     return response.data
   },
 

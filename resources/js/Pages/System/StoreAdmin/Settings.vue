@@ -627,6 +627,9 @@
                         <p v-if="mapError" class="mt-2 text-xs text-red-600">
                             {{ mapError }}
                         </p>
+                        <p v-if="attendanceLocationError" class="mt-2 text-xs text-red-600">{{ attendanceLocationError }}</p>
+                        <p v-else-if="attendanceLocationChecking" class="mt-2 text-xs text-slate-500">Checking that the pin is inside Cavite...</p>
+                        <p v-else-if="attendanceLocationValid" class="mt-2 text-xs text-emerald-700">Pin confirmed inside Cavite province.</p>
                         <p class="mt-2 text-xs text-slate-500">
                             Drag the pin or click the map to adjust the exact
                             attendance point.
@@ -964,6 +967,10 @@ const markerRef = ref<MapboxMarker | null>(null);
 let mapboxgl: typeof import("mapbox-gl").default | null = null;
 const searchQuery = ref("");
 const mapError = ref("");
+const attendanceLocationError = ref("");
+const attendanceLocationChecking = ref(false);
+const attendanceLocationValid = ref(false);
+let attendanceLocationRequest = 0;
 const toast = useToast();
 
 const fallbackPlans: UpgradePlan[] = [
@@ -1454,6 +1461,7 @@ const saveAttendance = async () => {
         });
         return;
     }
+    if (!(await validateAttendanceLocation(attendanceDraft.latitude, attendanceDraft.longitude))) return;
     savingAttendance.value = true;
     router.put(
         "/store/settings/attendance",
@@ -1927,8 +1935,37 @@ const saveStoreProfile = async () => {
 };
 
 const syncLocation = (lat: number, lng: number) => {
-    attendanceDraft.latitude = lat;
-    attendanceDraft.longitude = lng;
+    void (async () => {
+        if (!(await validateAttendanceLocation(lat, lng))) {
+            redrawAttendanceMap();
+            return;
+        }
+        attendanceDraft.latitude = lat;
+        attendanceDraft.longitude = lng;
+    })();
+};
+
+const validateAttendanceLocation = async (latitude: number, longitude: number) => {
+    const requestId = ++attendanceLocationRequest;
+    attendanceLocationChecking.value = true;
+    attendanceLocationValid.value = false;
+    attendanceLocationError.value = "";
+    try {
+        const response = await axiosClient.post("/api/stores/validate-location", { latitude, longitude }, { headers: { "X-Suppress-Dialog": "1" } });
+        if (requestId !== attendanceLocationRequest) return false;
+        if (!response.data?.valid) {
+            attendanceLocationError.value = response.data?.message || "Choose a location inside Cavite province.";
+            return false;
+        }
+        attendanceLocationValid.value = true;
+        return true;
+    } catch (error: any) {
+        if (requestId !== attendanceLocationRequest) return false;
+        attendanceLocationError.value = error?.response?.data?.message || "Could not validate this pin. Please try again.";
+        return false;
+    } finally {
+        if (requestId === attendanceLocationRequest) attendanceLocationChecking.value = false;
+    }
 };
 
 const getAttendanceGeofence = () => {

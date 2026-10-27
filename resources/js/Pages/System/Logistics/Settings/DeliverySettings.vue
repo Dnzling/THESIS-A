@@ -54,12 +54,7 @@
               <div class="field-group">
                 <label for="base-fee">Base fee <span class="text-red-500">*</span></label>
                 <InputNumber id="base-fee" v-model="form.base_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
-                <small>Fixed amount charged for every delivery.</small>
-              </div>
-              <div class="field-group">
-                <label for="minimum-fee">Minimum delivery fee <span class="text-red-500">*</span></label>
-                <InputNumber id="minimum-fee" v-model="form.min_delivery_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
-                <small>The lowest fee the customer may be charged.</small>
+                <small>Fixed starting charge and minimum delivery fee for every delivery.</small>
               </div>
               <div class="field-group">
                 <label for="per-km-fee">Rate per kilometer <span class="text-red-500">*</span></label>
@@ -180,7 +175,6 @@
                 <div v-if="estimateResult.breakdown.bulky_item_surcharge" class="fee-row"><span>Bulky handling ({{ estimateResult.breakdown.bulky_quantity }} units)</span><span>{{ money(estimateResult.breakdown.bulky_item_surcharge) }}</span></div>
                 <div v-if="estimateResult.breakdown.remote_area_surcharge" class="fee-row"><span>Remote surcharge</span><span>{{ money(estimateResult.breakdown.remote_area_surcharge) }}</span></div>
                 <div v-if="estimateResult.breakdown.free_shipping_applied" class="mt-3 rounded-lg bg-emerald-500/15 px-3 py-2 text-emerald-300">Free shipping threshold applied.</div>
-                <div v-else-if="estimateResult.breakdown.minimum_applied" class="mt-3 rounded-lg bg-amber-500/15 px-3 py-2 text-amber-200">Minimum delivery fee applied.</div>
               </div>
             </div>
 
@@ -215,7 +209,6 @@ interface DeliverySettingsForm {
   base_fee: number
   per_km_fee: number
   per_kg_fee: number
-  min_delivery_fee: number
   free_shipping_min_order: number | null
   bulky_item_surcharge: number
   bulky_weight_threshold_kg: number | null
@@ -239,7 +232,6 @@ const form = reactive<DeliverySettingsForm>({
   base_fee: 100,
   per_km_fee: 10,
   per_kg_fee: 0,
-  min_delivery_fee: 80,
   free_shipping_min_order: null,
   bulky_item_surcharge: 0,
   bulky_weight_threshold_kg: null,

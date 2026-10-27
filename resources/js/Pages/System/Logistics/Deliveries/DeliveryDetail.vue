@@ -32,22 +32,33 @@
         />
 
         <Button
-          icon="pi pi-refresh"
-          label="Refresh"
-          outlined
-          severity="secondary"
-          size="small"
-          :loading="loading"
-          @click="loadAll"
-        />
-
-        <Button
-          v-if="canAssignDelivery"
+          v-if="canAddToTrip"
           icon="pi pi-send"
           label="Add to Trip"
           severity="warn"
           size="small"
           @click="openAssign"
+        />
+
+        <Button
+          v-if="canAssignDelivery"
+          icon="pi pi-truck"
+          label="Book with Lalamove"
+          severity="warn"
+          outlined
+          size="small"
+          @click="openLalamoveDialog"
+        />
+
+        <Button
+          v-if="delivery?.lalamove_order_id && canManageLalamove"
+          icon="pi pi-sync"
+          label="Refresh Lalamove"
+          outlined
+          severity="secondary"
+          size="small"
+          :loading="refreshingLalamove"
+          @click="refreshLalamove"
         />
       </div>
     </header>
@@ -142,7 +153,31 @@
 
           <template #content>
             <div
-              v-if="delivery"
+              v-if="delivery?.courier_provider === 'lalamove'"
+              class="space-y-3 rounded-xl border border-orange-200 bg-orange-50/70 p-4"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="font-semibold text-slate-900">Lalamove delivery</p>
+                <Tag :value="formatStatus(delivery.lalamove_status || 'quotation')" severity="info" />
+              </div>
+              <Info label="Lalamove Order ID" :value="delivery.lalamove_order_id || 'Not booked yet'" />
+              <Info label="Vehicle service" :value="formatLalamoveService(delivery.lalamove_service_type)" />
+              <div v-if="delivery.lalamove_price_breakdown?.total" class="text-sm">
+                <span class="text-slate-500">Quoted delivery total:</span>
+                <strong class="ml-1 text-slate-900">{{ formatLalamoveTotal(delivery.lalamove_price_breakdown) }}</strong>
+              </div>
+              <a
+                v-if="delivery.lalamove_share_link"
+                :href="delivery.lalamove_share_link"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-2 text-sm font-medium text-orange-700 hover:underline"
+              >
+                Track on Lalamove <i class="pi pi-external-link" />
+              </a>
+            </div>
+            <div
+              v-if="delivery && delivery.courier_provider !== 'lalamove'"
               class="space-y-4"
             >
               <div>
@@ -218,7 +253,7 @@
             </div>
 
             <p
-              v-else
+              v-else-if="!delivery"
               class="text-slate-500"
             >
               No courier has been assigned.
@@ -320,6 +355,11 @@
                 <p class="text-xs text-slate-500">
                   SKU: {{ itemSku(data) }}
                 </p>
+                <div v-if="data.customization_request" class="mt-2 rounded-md bg-orange-50 p-2 text-xs text-slate-700">
+                  <p class="font-semibold text-orange-800"><i class="pi pi-palette mr-1" />Upholstery order</p>
+                  <p class="mt-1 whitespace-pre-line">{{ data.customization_request }}</p>
+                  <p v-if="data.customization_lead_time_days" class="mt-1 text-slate-500">Lead time: {{ data.customization_lead_time_days }} days</p>
+                </div>
               </template>
             </Column>
 
@@ -462,6 +502,56 @@
       Delivery order was not found.
     </Message>
 
+    <Dialog v-model:visible="tripChoiceVisible" modal header="Add Delivery to a Trip" class="w-full max-w-2xl">
+      <div v-if="loadingCompatibleTrips" class="space-y-2">
+        <Skeleton v-for="row in 3" :key="row" height="4.5rem" borderRadius="10px" />
+      </div>
+      <div v-else-if="compatibleTrips.length" class="space-y-3">
+        <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+          <div>
+            <p class="font-semibold text-slate-900">{{ tripReference(trip) }}</p>
+            <p class="mt-1 text-xs text-slate-600">{{ trip.driver?.name || trip.driver_name || 'Driver not set' }} · {{ trip.vehicle?.vehicle_name || trip.vehicle_name || 'Vehicle not set' }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ trip.scheduled_departure_at ? formatDateTime(trip.scheduled_departure_at) : 'No departure time set' }}</p>
+          </div>
+          <Button label="Add to Trip" size="small" severity="warn" :loading="assigningTripId === Number(trip.id)" :disabled="Boolean(assigningTripId)" @click="addDeliveryToTrip(trip.id)" />
+        </article>
+      </div>
+      <p v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-600">
+        No compatible planned trips are available. Create a trip for this delivery instead.
+      </p>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="tripChoiceVisible = false" />
+        <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId)" @click="openCreateTrip" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="createTripVisible" modal header="Create Trip" class="w-full max-w-2xl">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Driver</label>
+          <Select v-model="tripForm.driver_user_id" :options="tripDrivers" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" :loading="loadingTripOptions" />
+          <p v-if="!loadingTripOptions && !tripDrivers.length" class="mt-1 text-xs text-amber-700">No active driver is available for this store.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
+          <Select v-model="tripForm.vehicle_id" :options="tripVehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" :loading="loadingTripOptions" />
+          <p v-if="!loadingTripOptions && !tripVehicles.length" class="mt-1 text-xs text-amber-700">No active vehicle is available for this store.</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
+          <DatePicker v-model="tripForm.scheduled_departure_at" :minDate="new Date()" fluid />
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Notes</label>
+          <Textarea v-model="tripForm.notes" rows="3" fluid placeholder="Optional notes" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Back to Trips" severity="secondary" outlined @click="createTripVisible = false" />
+        <Button label="Create and Add Delivery" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id" @click="createTripAndAddDelivery" />
+      </template>
+    </Dialog>
+
     <!-- Media Preview -->
     <Dialog
       v-model:visible="mediaPreviewVisible"
@@ -479,6 +569,82 @@
         />
       </div>
     </Dialog>
+
+    <Dialog v-model:visible="lalamoveDialogVisible" modal header="Book with Lalamove" class="w-full max-w-xl">
+      <div class="space-y-4">
+        <Message severity="info" :closable="false">
+          Sandbox booking only. Lalamove's quoted amount is shown for review; this does not change the customer's order total.
+        </Message>
+        <div v-if="loadingLalamoveServices" class="space-y-2">
+          <Skeleton height="2.5rem" />
+          <Skeleton height="2.5rem" />
+        </div>
+        <template v-else>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Service area *</label>
+            <Select v-model="selectedLalamoveCity" :options="lalamoveCityOptions" optionLabel="label" optionValue="locode" fluid placeholder="Choose service area" @change="onLalamoveCityChange">
+              <template #option="{ option }">
+                <div class="flex min-w-0 items-center justify-between gap-4 py-1">
+                  <span class="text-sm font-medium text-slate-800">{{ option.label }}</span>
+                  <span class="shrink-0 text-xs text-slate-500">{{ option.locode }}</span>
+                </div>
+              </template>
+            </Select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Vehicle service *</label>
+            <Select v-model="selectedLalamoveService" :options="lalamoveServiceOptions" optionLabel="label" optionValue="key" fluid placeholder="Choose a vehicle service" @change="clearLalamoveQuote">
+              <template #option="{ option }">
+                <div class="min-w-0 py-1">
+                  <p class="text-sm font-medium text-slate-800">{{ option.label }}</p>
+                  <p class="text-xs text-slate-500">{{ option.description || 'Lalamove delivery service' }}</p>
+                  <p v-if="option.serviceDetails" class="mt-0.5 text-xs text-slate-500">{{ option.serviceDetails }}</p>
+                </div>
+              </template>
+            </Select>
+            <small v-if="selectedLalamoveServiceOption" class="mt-1 block text-slate-500">
+              {{ selectedLalamoveServiceOption.description || 'Lalamove delivery service' }}
+              <template v-if="selectedLalamoveServiceOption.serviceDetails"> | {{ selectedLalamoveServiceOption.serviceDetails }}</template>
+            </small>
+          </div>
+
+          <div v-if="lalamoveQuote" class="rounded-xl border border-orange-200 bg-orange-50 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-orange-800">Sandbox quotation</p>
+                <p class="mt-1 text-2xl font-semibold text-slate-900">{{ formatLalamoveTotal(lalamoveQuote.price_breakdown) }}</p>
+                <p class="mt-1 text-xs text-slate-600">{{ selectedLalamoveServiceOption?.label }} · Expires {{ formatDateTime(lalamoveQuote.expires_at) }}</p>
+              </div>
+              <Tag value="Review before booking" severity="warn" />
+            </div>
+            <p v-if="lalamoveQuoteExpired" class="mt-3 text-xs font-medium text-red-700">
+              This quotation has expired. Get a new quotation before booking.
+            </p>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="lalamoveDialogVisible = false" />
+        <Button
+          v-if="!lalamoveQuote || lalamoveQuoteExpired"
+          :label="lalamoveQuote ? 'Get New Quotation' : 'Get Quotation'"
+          icon="pi pi-calculator"
+          severity="warn"
+          :loading="quotingLalamove"
+          :disabled="loadingLalamoveServices || !selectedLalamoveService"
+          @click="requestLalamoveQuote"
+        />
+        <Button
+          v-else
+          label="Confirm Sandbox Booking"
+          icon="pi pi-check"
+          severity="warn"
+          :loading="bookingLalamove"
+          :disabled="lalamoveQuoteExpired"
+          @click="bookLalamove"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -492,6 +658,7 @@ import {
   onBeforeUnmount,
   onDeactivated,
   onMounted,
+  reactive,
   ref,
   watch,
 } from 'vue'
@@ -504,9 +671,12 @@ import Chip from 'primevue/chip'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Dialog from 'primevue/dialog'
+import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
+import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
+import Textarea from 'primevue/textarea'
 
 import type { Map as MapboxMap } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -554,11 +724,37 @@ const loading = ref(false)
 const order = ref<any>(null)
 const delivery = ref<any>(null)
 const logs = ref<any[]>([])
+const lalamoveDialogVisible = ref(false)
+const loadingLalamoveServices = ref(false)
+const quotingLalamove = ref(false)
+const bookingLalamove = ref(false)
+const refreshingLalamove = ref(false)
+const lalamoveCities = ref<any[]>([])
+const selectedLalamoveCity = ref<string | null>(null)
+const selectedLalamoveService = ref<string | null>(null)
+const lalamoveQuote = ref<any>(null)
+const lalamoveQuoteClock = ref(Date.now())
+let lalamoveQuoteClockTimer: ReturnType<typeof setInterval> | null = null
 
 const mapElement = ref<HTMLElement | null>(null)
 
 const mediaPreviewVisible = ref(false)
 const mediaPreviewUrl = ref('')
+const tripChoiceVisible = ref(false)
+const createTripVisible = ref(false)
+const loadingCompatibleTrips = ref(false)
+const loadingTripOptions = ref(false)
+const creatingTrip = ref(false)
+const assigningTripId = ref<number | null>(null)
+const compatibleTrips = ref<any[]>([])
+const tripDrivers = ref<any[]>([])
+const tripVehicles = ref<any[]>([])
+const tripForm = reactive({
+  driver_user_id: null as number | null,
+  vehicle_id: null as number | null,
+  scheduled_departure_at: null as Date | null,
+  notes: '',
+})
 
 const routeUnavailable = ref(false)
 
@@ -597,16 +793,56 @@ const canAssignDelivery = computed(() => {
 
   const orderStatus = String(order.value?.status || '').toLowerCase()
   const deliveryStatus = String(delivery.value?.status || '').toLowerCase()
+  const lalamoveRetryable = delivery.value?.courier_provider === 'lalamove'
+    && ['failed_delivery', 'cancelled'].includes(deliveryStatus)
   const dispatchApproved = orderStatus === 'ready_for_dispatch'
     || (source.value === 'sales' && orderStatus === 'completed' && deliveryStatus === 'pending')
-  const deliveryNotAssigned = !delivery.value || ['pending', 'ready_for_dispatch'].includes(deliveryStatus)
+  const deliveryNotAssigned = !delivery.value || ['pending', 'ready_for_dispatch'].includes(deliveryStatus) || lalamoveRetryable
 
   return dispatchApproved && deliveryNotAssigned
+})
+const canAddToTrip = computed(() => canAssignDelivery.value
+  && (!delivery.value || ['pending', 'ready_for_dispatch'].includes(String(delivery.value.status || '').toLowerCase())))
+const canManageLalamove = computed(() => authStore.hasPermission('logistics.deliveries.manage'))
+const lalamoveCityOptions = computed(() => lalamoveCities.value.map((city: any) => ({
+  ...city,
+  label: formatLalamoveServiceArea(city.name),
+})))
+const selectedLalamoveServiceOptions = computed(() => lalamoveCities.value.find(city => city.locode === selectedLalamoveCity.value)?.services || [])
+const lalamoveServiceOptions = computed(() => selectedLalamoveServiceOptions.value.map((service: any) => ({
+  ...service,
+  label: formatLalamoveService(service.key),
+  serviceDetails: [
+    service.load?.value ? `Capacity ${service.load.value} ${service.load.unit || 'kg'}` : null,
+    formatLalamoveDimensions(service.dimensions),
+  ].filter(Boolean).join(' | '),
+})))
+const selectedLalamoveServiceOption = computed(() => lalamoveServiceOptions.value.find((service: any) => service.key === selectedLalamoveService.value))
+const lalamoveQuoteExpired = computed(() => {
+  if (!lalamoveQuote.value?.expires_at) return true
+  const expiresAt = Date.parse(lalamoveQuote.value.expires_at)
+  return !Number.isFinite(expiresAt) || expiresAt <= lalamoveQuoteClock.value
+})
+
+watch(lalamoveDialogVisible, (visible) => {
+  if (visible) {
+    lalamoveQuoteClock.value = Date.now()
+    lalamoveQuoteClockTimer = setInterval(() => {
+      lalamoveQuoteClock.value = Date.now()
+    }, 1000)
+    return
+  }
+
+  if (lalamoveQuoteClockTimer) {
+    clearInterval(lalamoveQuoteClockTimer)
+    lalamoveQuoteClockTimer = null
+  }
 })
 
 const showLiveTracking = computed(
   () =>
     !!delivery.value &&
+    delivery.value.courier_provider !== 'lalamove' &&
     !(
       source.value === 'ecommerce' &&
       String(delivery.value.status || '').toLowerCase() === 'delivered'
@@ -779,6 +1015,31 @@ const formatCurrency = (value: any) =>
     style: 'currency',
     currency: 'PHP',
   }).format(Number(value) || 0)
+
+const formatLalamoveTotal = (breakdown: any) => {
+  const total = Number(breakdown?.total ?? breakdown?.totalExcludePriorityFee)
+  const currency = String(breakdown?.currency || 'PHP')
+  if (!Number.isFinite(total)) return '-'
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(total)
+}
+
+const formatLalamoveService = (value: any) => {
+  const formatted = String(value || '').replace(/[_-]+/g, ' ').trim().toLowerCase()
+  return formatted ? formatted.replace(/\b\w/g, character => character.toUpperCase()) : '-'
+}
+
+const formatLalamoveServiceArea = (value: any) => {
+  const formatted = String(value || '').replace(/[_-]+/g, ' ').trim().toLowerCase()
+  return formatted ? formatted.replace(/\b\w/g, character => character.toUpperCase()) : 'Unknown service area'
+}
+
+const formatLalamoveDimensions = (dimensions: any) => {
+  if (!dimensions) return null
+  const parts = ['length', 'width', 'height']
+    .map(key => dimensions[key]?.value ? `${dimensions[key].value}${dimensions[key].unit || 'm'}` : null)
+    .filter(Boolean)
+  return parts.length ? `Dimensions ${parts.join(' x ')}` : null
+}
 
 const formatQuantity = (value: any) =>
   Number(value || 0).toLocaleString('en-PH', {
@@ -966,6 +1227,72 @@ const loadAll = async () => {
   }
 }
 
+const openLalamoveDialog = async () => {
+  lalamoveDialogVisible.value = true
+  lalamoveQuote.value = null
+  loadingLalamoveServices.value = true
+  try {
+    const response = await logisticsService.getLalamoveServices()
+    lalamoveCities.value = response?.data || []
+    const manila = lalamoveCities.value.find((city: any) => /manila|ncr|luzon/i.test(`${city.name} ${city.locode}`))
+    selectedLalamoveCity.value = manila?.locode || lalamoveCities.value[0]?.locode || null
+    selectedLalamoveService.value = selectedLalamoveServiceOptions.value[0]?.key || null
+  } catch (error: any) {
+    lalamoveDialogVisible.value = false
+    toast.add({ severity: 'error', summary: 'Lalamove unavailable', detail: error?.response?.data?.message || 'Could not load Lalamove sandbox services.', life: 4500 })
+  } finally {
+    loadingLalamoveServices.value = false
+  }
+}
+
+const clearLalamoveQuote = () => { lalamoveQuote.value = null }
+const onLalamoveCityChange = () => {
+  clearLalamoveQuote()
+  selectedLalamoveService.value = selectedLalamoveServiceOptions.value[0]?.key || null
+}
+
+const requestLalamoveQuote = async () => {
+  if (!selectedLalamoveService.value) return
+  quotingLalamove.value = true
+  try {
+    const response = await logisticsService.requestLalamoveQuote(source.value as 'ecommerce' | 'sales', orderId.value, { service_type: selectedLalamoveService.value })
+    lalamoveQuote.value = response?.data || null
+    await loadAll()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Quotation failed', detail: error?.response?.data?.message || 'Unable to request a Lalamove quotation.', life: 4500 })
+  } finally {
+    quotingLalamove.value = false
+  }
+}
+
+const bookLalamove = async () => {
+  if (!lalamoveQuote.value) return
+  bookingLalamove.value = true
+  try {
+    await logisticsService.bookLalamoveDelivery(source.value as 'ecommerce' | 'sales', orderId.value)
+    lalamoveDialogVisible.value = false
+    toast.add({ severity: 'success', summary: 'Lalamove booked', detail: 'The order is now assigned to Lalamove sandbox.', life: 3500 })
+    await loadAll()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Booking failed', detail: error?.response?.data?.message || 'Unable to book with Lalamove.', life: 4500 })
+  } finally {
+    bookingLalamove.value = false
+  }
+}
+
+const refreshLalamove = async () => {
+  refreshingLalamove.value = true
+  try {
+    await logisticsService.refreshLalamoveDelivery(source.value as 'ecommerce' | 'sales', orderId.value)
+    await loadAll()
+    toast.add({ severity: 'success', summary: 'Lalamove status refreshed', detail: 'The latest sandbox delivery status has been loaded.', life: 2500 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Refresh failed', detail: error?.response?.data?.message || 'Unable to refresh Lalamove status.', life: 4500 })
+  } finally {
+    refreshingLalamove.value = false
+  }
+}
+
 const openMedia = (url: string) => {
   if (!url) {
     return
@@ -975,14 +1302,90 @@ const openMedia = (url: string) => {
   mediaPreviewVisible.value = true
 }
 
-const openAssign = () =>
-  router.push({
-    name: 'logistics.trips.create',
-    query: {
-      source: source.value,
-      order_id: String(orderId.value),
-    },
-  })
+const openAssign = async () => {
+  tripChoiceVisible.value = true
+  loadingCompatibleTrips.value = true
+  try {
+    const response = await logisticsService.getCompatibleTripsForOrder(source.value as 'ecommerce' | 'sales', orderId.value)
+    compatibleTrips.value = response?.data || []
+  } catch (error: any) {
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'error', summary: 'Could Not Load Trips', detail: error?.response?.data?.message || 'Unable to load compatible trips.', life: 3500 })
+  } finally {
+    loadingCompatibleTrips.value = false
+  }
+}
+
+const tripReference = (trip: any) => `TRIP-${String(trip.id).padStart(6, '0')}`
+
+const addDeliveryToTrip = async (tripId: number | string) => {
+  if (assigningTripId.value) return
+  assigningTripId.value = Number(tripId)
+  try {
+    const response = await logisticsService.addOrdersToTrip(tripId, {
+      source_type: source.value,
+      order_ids: [orderId.value],
+    })
+    if (Number(response?.data?.added || 0) !== 1) {
+      throw new Error(response?.message || 'The delivery could not be added to this trip.')
+    }
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'success', summary: 'Added to Trip', detail: 'The delivery was added to the selected trip.', life: 3000 })
+    await loadAll()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add this delivery to the trip.', life: 4000 })
+  } finally {
+    assigningTripId.value = null
+  }
+}
+
+const openCreateTrip = async () => {
+  tripForm.driver_user_id = null
+  tripForm.vehicle_id = null
+  tripForm.scheduled_departure_at = null
+  tripForm.notes = ''
+  createTripVisible.value = true
+  if (tripDrivers.value.length && tripVehicles.value.length) return
+
+  loadingTripOptions.value = true
+  try {
+    const [employeeResponse, vehicleResponse] = await Promise.all([
+      logisticsService.getLogisticsEmployees(),
+      logisticsService.getVehicles({ per_page: 100, status: 'active' }),
+    ])
+    tripDrivers.value = employeeResponse?.data?.drivers || []
+    tripVehicles.value = (vehicleResponse?.data?.data || []).map((vehicle: any) => ({
+      ...vehicle,
+      label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
+    }))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Options Failed', detail: error?.response?.data?.message || 'Failed to load drivers and vehicles.', life: 3500 })
+  } finally {
+    loadingTripOptions.value = false
+  }
+}
+
+const createTripAndAddDelivery = async () => {
+  if (!tripForm.driver_user_id || !tripForm.vehicle_id || creatingTrip.value) return
+  creatingTrip.value = true
+  try {
+    const response = await logisticsService.createTrip({
+      driver_user_id: tripForm.driver_user_id,
+      vehicle_id: tripForm.vehicle_id,
+      scheduled_departure_at: tripForm.scheduled_departure_at ? new Date(tripForm.scheduled_departure_at).toISOString() : null,
+      notes: tripForm.notes || null,
+    })
+    const tripId = Number(response?.data?.id)
+    if (!tripId) throw new Error('Trip was created but no trip ID was returned.')
+
+    createTripVisible.value = false
+    await addDeliveryToTrip(tripId)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Create Failed', detail: error?.response?.data?.message || error?.message || 'Failed to create trip.', life: 4000 })
+  } finally {
+    creatingTrip.value = false
+  }
+}
 
 const goBack = () =>
   router.push({
@@ -1012,6 +1415,9 @@ const destroyMap = () => {
 }
 
 onDeactivated(destroyMap)
-onBeforeUnmount(destroyMap)
+onBeforeUnmount(() => {
+  if (lalamoveQuoteClockTimer) clearInterval(lalamoveQuoteClockTimer)
+  destroyMap()
+})
 </script>
 ```

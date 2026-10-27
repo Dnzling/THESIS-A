@@ -134,7 +134,7 @@
           <div class="space-y-4">
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Salary / Rate</span>
-              <span class="text-base font-semibold text-blue-600">PHP {{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }} / {{ employeeInfo.employment_details?.pay_type === 'hourly' ? 'hour' : 'month' }}</span>
+              <span class="text-base font-semibold text-blue-600">PHP {{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }} / {{ employeeInfo.employment_details?.pay_type === 'hourly' ? 'hour' : employeeInfo.employment_details?.pay_type === 'daily' ? 'day' : 'month' }}</span>
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Pay Type</span>

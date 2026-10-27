@@ -160,6 +160,17 @@ class SupplierPOFeedbackController extends Controller
                 ], 403);
             }
 
+            foreach ($po->items as $item) {
+                foreach (['length_cm', 'width_cm', 'height_cm'] as $dimension) {
+                    $item->setAttribute(
+                        $dimension,
+                        $item->{$dimension}
+                            ?? $item->variation?->{$dimension}
+                            ?? $item->product?->{$dimension}
+                    );
+                }
+            }
+
             // Get supplier's feedback for this PO
             $feedback = $portal->poFeedbacks()
                 ->where('purchase_order_id', $id)

@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\StoreDashboardController;
 use App\Http\Controllers\Api\Store\StoreModuleController;
 use App\Http\Controllers\Api\Store\SimpleStaffController;
+use App\Http\Controllers\Api\Store\SimplePayrollController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
 use App\Http\Controllers\Api\Hr\EmployeeAvatarController;
@@ -311,9 +312,12 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('attendances', [SimpleStaffController::class, 'attendances']);
         Route::get('payments', [SimpleStaffController::class, 'payments']);
         Route::post('payments', [SimpleStaffController::class, 'savePayment']);
+        Route::get('payroll/preview', [SimplePayrollController::class, 'preview']);
+        Route::post('payroll/generate', [SimplePayrollController::class, 'generate']);
     });
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
+    Route::get('/employees/weekly-schedule-coverage', [EmployeeController::class, 'weeklyScheduleCoverage']);
     Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
     Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
@@ -426,6 +430,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::post('store-verification/{verification}/documents/auto-validate-all', [StoreVerificationController::class, 'autoValidateAllDocuments']);
     Route::prefix('stores')->controller(StoreController::class)->group(function () {
         Route::get('hasStore', 'hasStore');
+        Route::post('validate-location', 'validateLocation');
         Route::post('register', 'store'); // Store registration
 
         // Specific Store Operations

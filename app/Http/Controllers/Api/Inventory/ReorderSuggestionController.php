@@ -8,6 +8,7 @@ use App\Models\Hr\Employee;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Store\Branch;
 use App\Services\Inventory\ReorderSuggestionService;
+use App\Services\Inventory\ForecastPlanService;
 use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,37 @@ class ReorderSuggestionController extends Controller
     public function __construct(ReorderSuggestionService $suggestionService)
     {
         $this->suggestionService = $suggestionService;
+    }
+
+    public function createGroupedPrs(Request $request): JsonResponse
+    {
+        abort_if(app(ForecastPlanService::class)->key((int) ($request->user()?->store_id ?? 0)) === 'simple', 403, 'Simple-plan stores create direct Inventory Purchase Orders instead of PRs.');
+        abort_unless($request->user()?->hasPermissionTo('inventory.requisites.manage', (int) ($request->user()?->store_id ?? 0)), 403);
+        $validated = $request->validate([
+            'suggestion_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'suggestion_ids.*' => ['required', 'integer', 'distinct', 'exists:reorder_suggestions,id'],
+        ]);
+
+        $context = $this->getUserContext();
+        if ($context['store_id'] <= 0 || !EmployeeContext::currentEmployeeId()) {
+            return response()->json(['message' => 'A store employee is required to create a requisition.'], 403);
+        }
+
+        try {
+            $prs = $this->suggestionService->createGroupedPurchaseRequisitions(
+                $validated['suggestion_ids'],
+                (int) $context['store_id'],
+                $context['branch_id'] ?: null,
+                (int) EmployeeContext::currentEmployeeId()
+            );
+
+            return response()->json(['success' => true, 'data' => $prs, 'message' => count($prs) . ' draft PR(s) created.']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            report($e);
+            return response()->json(['message' => 'Could not create requisitions from these suggestions.'], 500);
+        }
     }
 
     /**
@@ -121,12 +153,19 @@ class ReorderSuggestionController extends Controller
                 $filters['store_id'] = $context['store_id'];
             }
 
+            $storeId = (int) ($context['store_id'] ?? 0);
+            $useDirectPo = $storeId > 0 && (
+                app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId)
+            );
+
             $perPage = $request->get('per_page', 15);
             $suggestions = $this->suggestionService->getSuggestions($filters, $perPage);
 
             return response()->json([
                 'success' => true,
                 'data' => $suggestions,
+                'reorder_destination' => $useDirectPo ? 'po' : 'pr',
                 'message' => 'Reorder suggestions retrieved successfully.',
             ]);
 
@@ -235,6 +274,10 @@ class ReorderSuggestionController extends Controller
             }
 
             $suggestion->load(['reorderRule', 'product', 'variation', 'branch', 'approver', 'implementer']);
+            $storeId = (int) ($suggestion->branch?->store_id ?? 0);
+            $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !request()->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
+            $suggestion->setAttribute('reorder_destination', $useDirectPo ? 'po' : 'pr');
 
             return response()->json([
                 'success' => true,
@@ -336,9 +379,29 @@ class ReorderSuggestionController extends Controller
                 ], 403);
             }
 
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
+
+            $storeId = (int) $suggestion->branch()->value('store_id');
+            $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
+            if ($useDirectPo) {
+                if (!$request->user()?->hasPermissionTo('inventory.purchase_orders.manage', $storeId)) {
+                    return response()->json(['success' => false, 'message' => 'You need Inventory Purchase Order access to process this suggestion.'], 403);
+                }
+                if (!$suggestion->canBeApproved()) {
+                    return response()->json(['success' => false, 'message' => 'This suggestion is no longer pending.'], 422);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'action_required' => 'create_purchase_order',
+                    'url' => "/inventory/purchase-orders/create?reorder_suggestion_id={$suggestion->id}",
+                    'message' => 'Choose a supplier and save the PO to approve this suggestion.',
+                ]);
+            }
 
             $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
@@ -353,9 +416,11 @@ class ReorderSuggestionController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch', 'approver']),
-                'message' => 'Reorder suggestion approved successfully.',
+                'message' => 'Suggestion approved and draft Inventory PR created.',
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
@@ -411,41 +476,21 @@ class ReorderSuggestionController extends Controller
      */
     public function implement(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
-        try {
-            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized access to reorder suggestion.',
-                ], 403);
-            }
-
-            $request->validate([
-                'notes' => 'nullable|string|max:1000',
-            ]);
-
-            $implementedBy = EmployeeContext::currentEmployeeId();
-            $notes = $request->get('notes');
-
-            if (!$this->suggestionService->implementSuggestion($suggestion, $implementedBy, $notes)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Suggestion cannot be implemented.',
-                ], 422);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch', 'implementer']),
-                'message' => 'Reorder suggestion implemented successfully.',
-            ]);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to implement reorder suggestion.',
-                'error' => $e->getMessage(),
-            ], 500);
+        if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to reorder suggestion.'], 403);
         }
+
+        $prId = $suggestion->getMetadataValue('purchase_requisition_id');
+        $poId = $suggestion->getMetadataValue('purchase_order_id');
+        if (!$prId && !$poId) {
+            return response()->json(['message' => 'Create an Inventory PR or direct Purchase Order for this suggestion first.'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => ['purchase_requisition_id' => $prId, 'purchase_order_id' => $poId],
+            'message' => $poId ? 'This suggestion is linked to an Inventory Purchase Order.' : 'This suggestion is linked to an Inventory PR. Submit the PR there to continue.',
+        ]);
     }
 
     /**

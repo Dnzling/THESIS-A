@@ -86,24 +86,24 @@
 
             <div
                 v-if="loadingCategories"
-                class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+                class="flex gap-3 overflow-x-auto pb-3"
             >
                 <Skeleton
                     v-for="index in 8"
                     :key="index"
-                    class="aspect-square"
+                    class="aspect-square w-36 shrink-0 sm:w-40"
                     borderRadius="1rem"
                 />
             </div>
             <div
                 v-else-if="categories.length"
-                class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+                class="flex gap-3 overflow-x-auto pb-3"
             >
                 <button
                     v-for="category in categories"
                     :key="category.id"
                     type="button"
-                    class="group relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100"
+                    class="group relative aspect-square w-36 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100 sm:w-40"
                     @click="goCategory(category.id)"
                 >
                     <img
@@ -169,11 +169,11 @@
                     @click="clearRecentlyViewed"
                 />
             </div>
-            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <div class="flex gap-4 overflow-x-auto pb-3">
                 <article
                     v-for="product in recentlyViewed.slice(0, 5)"
                     :key="`recent-${product.id}`"
-                    class="group cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:-translate-y-1 hover:shadow-xl sm:w-52"
                     @click="goProduct(product.id)"
                 >
                     <div
@@ -234,11 +234,11 @@
                     @click="goShop"
                 />
             </div>
-            <div class="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-7">
+            <div class="flex gap-4 overflow-x-auto px-5 pb-6 pt-3 sm:px-7">
                 <button
                     v-for="idea in shoppingRooms"
                     :key="idea.id"
-                    class="group relative min-h-64 overflow-hidden rounded-2xl text-left shadow-sm"
+                    class="group relative min-h-64 w-[min(82vw,22rem)] shrink-0 overflow-hidden rounded-2xl text-left shadow-sm"
                     @click="goRoom(idea)"
                 >
                     <img v-if="idea.image_url"
@@ -293,12 +293,12 @@
 
             <div
                 v-if="loadingDeals"
-                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+                class="flex gap-4 overflow-x-auto pb-3"
             >
                 <div
                     v-for="index in 5"
                     :key="index"
-                    class="rounded-2xl border border-slate-100 bg-white p-3"
+                    class="w-48 shrink-0 rounded-2xl border border-slate-100 bg-white p-3 sm:w-52"
                 >
                     <Skeleton height="180px" borderRadius="0.75rem" />
                     <Skeleton class="mt-3" width="70%" height="16px" />
@@ -306,12 +306,12 @@
             </div>
             <div
                 v-else-if="flashDeals.length"
-                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+                class="flex gap-4 overflow-x-auto pb-3"
             >
                 <article
                     v-for="product in flashDeals"
                     :key="`deal-${product.id}`"
-                    class="group cursor-pointer overflow-hidden rounded-2xl border border-rose-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-rose-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-52"
                     @click="goProduct(product.id)"
                 >
                     <div
@@ -376,12 +376,12 @@
 
             <div
                 v-if="loadingProducts"
-                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+                class="flex gap-4 overflow-x-auto pb-3"
             >
                 <div
                     v-for="index in 10"
                     :key="index"
-                    class="rounded-2xl border border-slate-100 bg-white p-3"
+                    class="w-48 shrink-0 rounded-2xl border border-slate-100 bg-white p-3 sm:w-52"
                 >
                     <Skeleton height="180px" borderRadius="0.75rem" />
                     <Skeleton class="mt-3" width="45%" height="12px" />
@@ -390,12 +390,12 @@
             </div>
             <div
                 v-else-if="topProducts.length"
-                class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+                class="flex gap-4 overflow-x-auto pb-3"
             >
                 <article
                     v-for="(product, index) in topProducts"
                     :key="product.id"
-                    class="group cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    class="group w-48 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-52"
                     @click="goProduct(product.id)"
                 >
                     <div

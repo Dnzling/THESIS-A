@@ -119,7 +119,14 @@
                 </div>
               </div>
 
-              <div class="space-y-2"><label class="text-sm font-medium text-gray-700">Collection Name</label><InputText v-model="form.collection_name" placeholder="e.g., Living Room Collection" fluid /></div>
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Collection</label>
+                <Select v-model="form.collection_name" :options="availableTags" optionLabel="tag_name" optionValue="tag_name"
+                  placeholder="Select a store collection" :loading="loadingTags" :disabled="loadingTags || availableTags.length === 0"
+                  showClear fluid size="small" />
+                <small class="text-xs text-gray-500">Choose from this store’s active collection records.</small>
+                <small v-if="!loadingTags && availableTags.length === 0" class="text-xs text-amber-700">No active collections are available. Add one in Collections first.</small>
+              </div>
 
               <div v-if="form.product_type === 'finished_good'" class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">Rooms</label>
@@ -277,7 +284,7 @@
                 <p class="text-sm text-gray-500 mt-1">Upload 3D models and product images</p>
               </div>
               <!-- 3D Model Upload -->
-              <div v-if="canManage3d" class="space-y-3">
+              <div class="space-y-3">
                 <label class="text-sm font-medium text-gray-700">3D Model</label>
   
                 <!-- Upload Area -->
@@ -337,7 +344,7 @@
               </div>
   
               <!-- Camera Settings -->
-              <div v-if="canManage3d" class="space-y-3 pt-4 border-t border-gray-100">
+              <div class="space-y-3 pt-4 border-t border-gray-100">
                 <h4 class="text-sm font-semibold text-gray-900">Camera Settings</h4>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div class="space-y-2">
@@ -358,25 +365,6 @@
                 </div>
               </div>
 
-              <div v-if="!canManage3d"
-                class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5">
-                <div class="flex items-start gap-4">
-                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 shadow-sm">
-                    <i class="pi pi-lock text-lg"></i>
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <p class="font-semibold text-gray-900">3D product tools are locked</p>
-                    <p v-if="upgradePlan" class="mt-1 text-sm text-gray-600">
-                      Upgrade to {{ upgradePlanName }} to upload and preview 3D product models.
-                    </p>
-                    <p v-else class="mt-1 text-sm text-gray-600">
-                      No active subscription plan currently includes 3D management. Contact your administrator or review the available plans.
-                    </p>
-                    <Button type="button" class="mt-3" size="small" severity="warn" icon="pi pi-arrow-up-right"
-                      :label="upgradePlan ? `Upgrade to ${upgradePlanName}` : 'View Subscription Plans'" @click="goToUpgrade" />
-                  </div>
-                </div>
-              </div>
   
               <!-- Images Upload -->
               <div class="space-y-3 pt-4 border-t border-gray-100">
@@ -408,10 +396,10 @@
                         <Tag v-else value="New" severity="info" />
                       </div>
                       <Button v-if="selectedAssetPreviewItem?.type === 'existing'" icon="pi pi-times" severity="danger"
-                        rounded size="small" class="absolute top-3 right-3"
+                        rounded size="small" class="!absolute !right-3 !top-3 z-20 mr-1"
                         @click="selectedAssetPreviewItem?.raw && deleteExistingImage(selectedAssetPreviewItem.raw)" />
                       <Button v-else icon="pi pi-times" severity="danger" rounded size="small"
-                        class="absolute top-3 right-3"
+                        class="!absolute !right-3 !top-3 z-20 mr-1"
                         @click="typeof selectedAssetPreviewItem?.index === 'number' && removeImage(selectedAssetPreviewItem.index)" />
                     </div>
                   </div>
@@ -493,7 +481,7 @@
                   <p class="text-sm text-gray-600 mt-1">Updates live as you edit the form</p>
                 </div>
                 <div class="flex items-center gap-3">
-                  <div v-if="canManage3d" class="flex items-center gap-2">
+                  <div class="flex items-center gap-2">
                     <span class="text-xs font-medium text-gray-500">3D</span>
                     <ToggleSwitch v-model="previewShow3d" />
                   </div>
@@ -507,7 +495,7 @@
               <!-- Media -->
               <div class="rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden">
                 <div class="aspect-square relative">
-                  <Model3DPreview v-if="canManage3d && previewShow3d && previewModelUrl" :model-url="previewModelUrl"
+                  <Model3DPreview v-if="previewShow3d && previewModelUrl" :model-url="previewModelUrl"
                     :model-format="previewUsesVariation3d ? (selectedVariation3dAsset?.model_format) : existingModel?.model_format"
                     :auth-token="previewAuthToken"
                     :camera-x="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_x ?? 0) : form.default_camera_angle_x"
@@ -549,7 +537,7 @@
                   <Button v-for="v in variations" :key="v.id" type="button" size="small" :label="v.variation_name"
                     class="rounded-full" :outlined="Number(selectedVariationId) !== Number(v.id)"
                     :severity="Number(selectedVariationId) === Number(v.id) ? 'info' : 'secondary'"
-                    @click="selectedVariationId = Number(v.id); previewShow3d = canManage3d" />
+                    @click="selectedVariationId = Number(v.id); previewShow3d = true" />
                 </div>
                 <small class="text-xs text-gray-500">Default preview shows base product images. Select a variation to
                   preview its 3D + photo.</small>
@@ -630,7 +618,7 @@
               </div>
   
               <!-- 3D Model Hint -->
-              <div v-if="canManage3d && (form.modelFile || existingModelPreviewUrl)"
+              <div v-if="form.modelFile || existingModelPreviewUrl"
                 class="rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <div class="flex items-start gap-3">
                   <div class="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center">
@@ -749,14 +737,6 @@ const load3dUpgradePlan = async () => {
   } catch {
     upgradePlan.value = null
   }
-}
-
-const goToUpgrade = () => {
-  const storeId = (authStore.user as any)?.store_id || (authStore.user as any)?.store?.id
-  const query = new URLSearchParams()
-  if (storeId) query.set('store_id', String(storeId))
-  if (upgradePlan.value?.plan_key) query.set('plan', String(upgradePlan.value.plan_key))
-  window.location.href = `/subscription-plans${query.size ? `?${query.toString()}` : ''}`
 }
 
 const isEditMode = computed(() => !!route.params.id)
@@ -1362,7 +1342,6 @@ const copySKU = () => {
 }
 
 const handleModelSelect = (event: any) => {
-  if (!canManage3d.value) return
   const file = event.target.files[0]
   if (!file) return
 
@@ -1380,7 +1359,6 @@ const handleModelSelect = (event: any) => {
 }
 
 const handleModelDrop = (event: DragEvent) => {
-  if (!canManage3d.value) return
   const file = event.dataTransfer?.files[0]
   if (!file) return
 
@@ -1918,9 +1896,9 @@ const handleSubmit = async () => {
     toast.add({ severity: 'success', summary: 'Success', detail: response?.message || 'Presentation updated successfully', life: 3000 })
 
     // Upload 3D model if present
-    if (canManage3d.value && form.value.modelFile) {
+    if (form.value.modelFile) {
       await upload3DModel(productId)
-    } else if (canManage3d.value && existingModel.value?.id) {
+    } else if (existingModel.value?.id) {
       await updateExistingModelCameraSettings(existingModel.value.id)
     }
 
@@ -1970,7 +1948,7 @@ const upload3DModel = async (productId: number) => {
       size: form.value.modelFile.size
     })
 
-    const response = await merchandisingService.uploadAsset(formData)
+    const response = await merchandisingService.uploadProduct3DModel(productId, formData)
 
     console.log('3D model upload response:', response)
 

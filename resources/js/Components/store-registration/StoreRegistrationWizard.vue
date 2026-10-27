@@ -41,9 +41,25 @@
             <span :class="currentStep >= 3 ? 'font-semibold text-slate-950' : 'text-slate-400'">BIR</span>
           </div>
           <div class="h-1 flex-1 rounded-full" :class="currentStep >= 4 ? 'bg-orange-500' : 'bg-slate-200'"></div>
-          <span :class="currentStep >= 4 ? 'font-semibold text-slate-950' : 'text-slate-400'">Mayor's Permit</span>
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
+              currentStep >= 4 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500',
+            ]">
+              4
+            </div>
+            <span :class="currentStep >= 4 ? 'font-semibold text-slate-950' : 'text-slate-400'">Mayor's Permit</span>
+          </div>
           <div class="h-1 flex-1 rounded-full" :class="currentStep >= 5 ? 'bg-orange-500' : 'bg-slate-200'"></div>
-          <span :class="currentStep >= 5 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
+              currentStep >= 5 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500',
+            ]">
+              5
+            </div>
+            <span :class="currentStep >= 5 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
+          </div>
         </div>
       </div>
       <div class="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">

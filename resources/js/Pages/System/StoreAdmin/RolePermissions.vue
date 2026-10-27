@@ -211,6 +211,19 @@
         <Button :label="editingRole ? 'Save Changes' : 'Create Role'" icon="pi pi-check" :loading="savingRole" @click="saveRole" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="permissionSaveDialogVisible" modal :closable="false" :style="{ width: 'min(26rem, 92vw)' }">
+      <div class="py-2 text-center">
+        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <i class="pi pi-check text-2xl" />
+        </div>
+        <h3 class="text-lg font-semibold text-slate-900">Permissions Saved</h3>
+        <p class="mt-2 text-sm text-slate-600">{{ permissionSaveMessage }}</p>
+      </div>
+      <template #footer>
+        <Button label="OK" severity="warn" class="mx-auto" @click="permissionSaveDialogVisible = false" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -244,6 +257,8 @@ const loadError = ref('')
 const loadingRoles = ref(false)
 const loadingPermissions = ref(false)
 const savingPermissions = ref(false)
+const permissionSaveDialogVisible = ref(false)
+const permissionSaveMessage = ref('Role permissions were updated successfully.')
 const createRoleDialog = ref(false)
 const editingRole = ref<any | null>(null)
 const roleActionsPopover = ref()
@@ -286,7 +301,7 @@ const filteredPermissions = computed(() => {
   let list = permissions.value
   if (enabledModules.value.length > 0) {
     const enabledSet = new Set(enabledModules.value)
-    list = list.filter((p: any) => enabledSet.has(p.module))
+    list = list.filter((p: any) => enabledSet.has(p.module) || isDriverPermission(p))
   }
   if (selectedModule.value) {
     list = list.filter((p: any) => p.module === selectedModule.value)
@@ -303,6 +318,8 @@ const filteredPermissions = computed(() => {
   }
   return list
 })
+
+const isDriverPermission = (permission: any) => String(permission?.name || '').startsWith('logistics.driver.')
 
 const allowedPermissionIds = computed(() => {
   // The API already returns only permissions allowed by the store's enabled modules.
@@ -479,11 +496,10 @@ const savePermissions = async () => {
       permissions: selectedRolePermissions.value
     })
     selectedRolePermissions.value = (response.data?.permissions || []).map((permission: any) => Number(permission.id))
-    await authStore.fetchNavigation()
-    showResponseDialog({
-      severity: 'success',
-      title: 'Permissions Saved',
-      message: response.data?.message || 'Role permissions were updated successfully.',
+    permissionSaveMessage.value = response.data?.message || 'Role permissions were updated successfully.'
+    permissionSaveDialogVisible.value = true
+    void authStore.fetchNavigation().catch((error: any) => {
+      console.warn('Permissions saved, but navigation refresh failed.', error)
     })
   } catch (error: any) {
     showResponseDialog({

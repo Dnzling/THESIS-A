@@ -8,8 +8,8 @@
     <div class="grid gap-6 rounded-2xl border border-orange-100 bg-orange-50/40 p-5 lg:grid-cols-2">
       <UploadSection :title="config.title + ' *'" :description="config.description" :file="localForm[config.file]" :accept="config.accept" required @upload="handleUpload" @remove="handleRemove" />
       <div class="space-y-4">
-        <div><label class="mb-2 block text-sm font-medium text-slate-700">Reference number *</label><InputText v-model="localForm[config.number]" class="w-full" placeholder="Number printed on the document" @input="syncForm" /></div>
-        <div v-if="config.expiry"><label class="mb-2 block text-sm font-medium text-slate-700">Expiration date *</label><DatePicker v-model="expirationDate" showIcon fluid dateFormat="MM d, yy" :minDate="new Date()" placeholder="Month Day, Year" @update:modelValue="syncExpiration" /></div>
+        <div><label class="mb-2 block text-sm font-medium text-slate-700">Reference number *</label><InputText :modelValue="localForm[config.number]" class="w-full" placeholder="Detected from uploaded document" readonly /></div>
+        <div v-if="config.expiry"><label class="mb-2 block text-sm font-medium text-slate-700">Expiration date *</label><DatePicker v-model="expirationDate" showIcon fluid dateFormat="MM d, yy" placeholder="Detected from uploaded document" disabled /></div>
         <p class="rounded-xl bg-white px-3 py-2 text-sm text-slate-600" role="status">{{ readMessage }}</p>
       </div>
     </div>

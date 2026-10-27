@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Inventory\ReorderSuggestion;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Supplier\Supplier;
@@ -50,6 +51,8 @@ class PurchaseOrderController extends Controller
     public function options(Request $request)
     {
         $storeId = $this->authorizeStore($request, 'view');
+        $canSelectAllBranches = $this->canSelectAllBranches($request, $storeId);
+        $assignedBranchId = $this->assignedBranchId($request);
 
         $products = Product::query()
             ->with([
@@ -94,9 +97,19 @@ class PurchaseOrderController extends Controller
                 ])->values(),
             ]);
 
+        $branches = Branch::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->when(!$canSelectAllBranches, fn ($query) => $assignedBranchId > 0
+                ? $query->whereKey($assignedBranchId)
+                : $query->whereRaw('1 = 0'))
+            ->orderByDesc('is_main_branch')->orderBy('name')
+            ->get(['id', 'name', 'branch_code']);
+
         return response()->json(['success' => true, 'data' => [
             'suppliers' => Supplier::query()->where('store_id', $storeId)->where('status', 'active')->orderBy('supplier_name')->get(['id', 'supplier_name', 'supplier_code', 'default_tax_rate', 'is_tax_exempt']),
-            'branches' => Branch::query()->where('store_id', $storeId)->where('status', 'active')->orderByDesc('is_main_branch')->orderBy('name')->get(['id', 'name', 'branch_code']),
+            'branches' => $branches,
+            'can_select_all_branches' => $canSelectAllBranches,
             'products' => $products,
         ]]);
     }
@@ -115,10 +128,22 @@ class PurchaseOrderController extends Controller
     public function store(Request $request)
     {
         $storeId = $this->authorizeStore($request, 'manage');
+        $canSelectAllBranches = $this->canSelectAllBranches($request, $storeId);
+        $assignedBranchId = $this->assignedBranchId($request);
+        $branchRule = Rule::exists('branches', 'id')->where('store_id', $storeId);
+        if (!$canSelectAllBranches) {
+            if ($assignedBranchId <= 0) {
+                throw ValidationException::withMessages(['branch_id' => 'Your user profile does not have an assigned branch.']);
+            }
+            $branchRule->where('id', $assignedBranchId);
+        }
         $validated = $request->validate([
             'submit' => ['sometimes', 'boolean'],
+            'reorder_suggestion_id' => ['nullable', 'integer', 'exists:reorder_suggestions,id'],
+            'reorder_suggestion_ids' => ['nullable', 'array', 'min:1', 'max:100'],
+            'reorder_suggestion_ids.*' => ['required', 'integer', 'distinct', 'exists:reorder_suggestions,id'],
             'supplier_id' => ['required', 'integer', Rule::exists('suppliers', 'id')->where('store_id', $storeId)->whereNull('deleted_at')],
-            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
+            'branch_id' => ['required', 'integer', $branchRule],
             'expected_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
             'payment_terms' => ['required', Rule::in(['cash_on_delivery', 'net_7', 'net_15', 'net_30', 'net_60', 'advance_payment'])],
             'fulfillment_method' => ['required', Rule::in(['supplier_delivery', 'store_pickup'])],
@@ -168,6 +193,30 @@ class PurchaseOrderController extends Controller
         $shipping = 0;
 
         $order = DB::transaction(function () use ($validated, $storeId, $employee, $supplier, $lines, $subtotal, $discount, $taxRate, $taxAmount, $shipping) {
+            $suggestionIds = $validated['reorder_suggestion_ids'] ?? (empty($validated['reorder_suggestion_id']) ? [] : [$validated['reorder_suggestion_id']]);
+            $linkedSuggestions = collect();
+            if ($suggestionIds) {
+                $linkedSuggestions = ReorderSuggestion::query()
+                    ->whereIn('id', $suggestionIds)
+                    ->whereHas('branch', fn ($query) => $query->where('store_id', $storeId))
+                    ->lockForUpdate()
+                    ->get();
+                if ($linkedSuggestions->count() !== count($suggestionIds) || count($validated['items']) !== count($suggestionIds)) {
+                    throw ValidationException::withMessages(['reorder_suggestion_ids' => 'Some suggestions are unavailable or the PO items no longer match them.']);
+                }
+                foreach ($linkedSuggestions as $suggestion) {
+                    $matchingItems = collect($validated['items'])->filter(fn ($item) =>
+                        (int) $item['product_id'] === (int) $suggestion->product_id
+                        && (int) ($item['variation_id'] ?? 0) === (int) ($suggestion->variation_id ?? 0)
+                    );
+                    if (!$suggestion->canBeApproved() || $suggestion->getMetadataValue('purchase_order_id')
+                        || (int) $suggestion->branch_id !== (int) $validated['branch_id']
+                        || $matchingItems->count() !== 1
+                        || (int) $matchingItems->first()['quantity_ordered'] < (int) ceil((float) $suggestion->suggested_quantity)) {
+                        throw ValidationException::withMessages(['reorder_suggestion_ids' => 'A suggestion is no longer pending, or its branch, SKU, or quantity does not match the PO.']);
+                    }
+                }
+            }
             do {
                 $number = 'PO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(8));
             } while (PurchaseOrder::where('po_number', $number)->exists());
@@ -211,6 +260,11 @@ class PurchaseOrderController extends Controller
                 $order->submitForReceipt();
             }
 
+            foreach ($linkedSuggestions as $suggestion) {
+                $suggestion->approve($employee->id, 'Direct Inventory PO created.');
+                $suggestion->setMetadataValue('purchase_order_id', $order->id);
+            }
+
             return $order;
         });
 
@@ -238,5 +292,22 @@ class PurchaseOrderController extends Controller
         $storeId = (int) ($request->user()?->store_id ?? 0);
         abort_unless($storeId > 0 && $request->user()?->hasPermissionTo("inventory.purchase_orders.{$action}", $storeId), 403);
         return $storeId;
+    }
+
+    private function assignedBranchId(Request $request): int
+    {
+        return (int) ($request->user()?->branch_id ?? $request->user()?->employee?->branch_id ?? 0);
+    }
+
+    private function canSelectAllBranches(Request $request, int $storeId): bool
+    {
+        $adminPermissions = DB::table('permissions')
+            ->where('module', 'admin')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->pluck('name');
+
+        return $adminPermissions->isNotEmpty()
+            && $adminPermissions->contains(fn (string $permission) => $request->user()?->hasPermissionTo($permission, $storeId));
     }
 }

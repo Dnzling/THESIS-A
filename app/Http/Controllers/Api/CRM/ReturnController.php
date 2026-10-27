@@ -11,6 +11,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Finance\FinanceRefund;
 use App\Services\Logistics\ReturnChargeService;
+use App\Services\Payment\EcommerceRefundRoutingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -525,6 +526,10 @@ class ReturnController extends Controller
                 );
 
                 if ($return->return_type === 'refund') {
+                    $refundRouting = app(EcommerceRefundRoutingService::class);
+                    $refundMethod = $return->order && $refundRouting->canRefundToOriginal($return->order)
+                        ? $refundRouting->originalMethod($return->order)
+                        : null;
                     FinanceRefund::query()->updateOrCreate(
                         ['store_id' => (int) $return->store_id, 'order_type' => 'ecommerce_return', 'order_id' => (int) $return->id],
                         [
@@ -535,7 +540,10 @@ class ReturnController extends Controller
                             'amount' => max(0, round((float) ($return->orderItem?->unit_price ?? 0) * (int) ($return->requested_quantity ?: 1) - (float) $return->return_fee, 2)),
                             'status' => 'pending_inspection',
                             'requested_by' => auth()->id(),
-                            'notes' => 'Approved by CRM. Awaiting return delivery and inventory inspection.',
+                            'refund_method' => $refundMethod,
+                            'notes' => $refundMethod
+                                ? 'Approved by CRM. Refund to the original payment method after inspection.'
+                                : 'Approved by CRM. Awaiting return delivery, inspection, and customer payout details.',
                         ]
                     );
                 }
@@ -717,7 +725,7 @@ class ReturnController extends Controller
         }
 
         $return->loadMissing([
-            'order:id,order_number,shipping_name',
+            'order:id,order_number,shipping_name,payment_method,payment_status,store_id',
             'orderItem:id,order_id,product_id,branch_inventory_id,unit_price',
             'orderItem.branchInventory:id,variation_id',
         ]);
@@ -799,6 +807,10 @@ class ReturnController extends Controller
             $inventory->save();
 
             if ($return->return_type === 'refund') {
+                $refundRouting = app(EcommerceRefundRoutingService::class);
+                $refundMethod = $return->order && $refundRouting->canRefundToOriginal($return->order)
+                    ? $refundRouting->originalMethod($return->order)
+                    : null;
                 $amount = max(0, round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty - (float) $return->return_fee, 2));
                 $refund = FinanceRefund::query()->updateOrCreate(
                     [
@@ -814,7 +826,10 @@ class ReturnController extends Controller
                         'amount' => $amount,
                         'status' => 'pending',
                         'requested_by' => (int) ($user?->id ?? 0) ?: null,
-                        'notes' => 'Inventory inspection complete. Ready for Finance approval.',
+                        'refund_method' => $refundMethod,
+                        'notes' => $refundMethod
+                            ? 'Inventory inspection complete. Ready for refund to the original payment method.'
+                            : 'Inventory inspection complete. Awaiting customer payout details for Finance.',
                     ]
                 );
                 $return->status = 'refund_pending';

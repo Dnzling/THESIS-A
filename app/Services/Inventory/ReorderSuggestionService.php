@@ -13,11 +13,77 @@ use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Store\Branch;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Exception;
 
 class ReorderSuggestionService
 {
+    public function createGroupedPurchaseRequisitions(array $ids, int $storeId, ?int $branchId, int $employeeId): array
+    {
+        return DB::transaction(function () use ($ids, $storeId, $branchId, $employeeId) {
+            $suggestions = ReorderSuggestion::query()
+                ->whereIn('id', $ids)
+                ->whereHas('branch', fn ($query) => $query->where('store_id', $storeId))
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->with(['product', 'variation', 'branch'])
+                ->lockForUpdate()
+                ->get();
+
+            if ($suggestions->count() !== count($ids) || $suggestions->contains(fn ($item) =>
+                !$item->canBeApproved() || !$item->product || !$item->branch || $item->getMetadataValue('purchase_requisition_id')
+            )) {
+                throw ValidationException::withMessages(['suggestion_ids' => 'Some suggestions are unavailable, expired, or already linked to a PR. Refresh and select pending suggestions.']);
+            }
+
+            $settings = ProcurementSettings::where('store_id', $storeId)->first();
+            $groups = $suggestions->groupBy(function ($item) use ($settings) {
+                $amount = (float) $item->suggested_quantity * (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0);
+                $route = $settings?->shouldRequireRFQ($amount) ? 'rfq_required'
+                    : ($settings && $amount >= $settings->procurement_threshold ? 'centralized' : 'branch_direct');
+                return $item->branch_id . ':' . $route;
+            });
+
+            $created = [];
+            foreach ($groups as $key => $items) {
+                [$groupBranchId, $route] = explode(':', $key, 2);
+                $amount = $items->sum(fn ($item) => (float) $item->suggested_quantity * (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0));
+                $requiredApprovals = ['warehouse_manager'];
+                if ($amount >= 100000) $requiredApprovals[] = 'branch_manager';
+                if ($amount >= 500000) $requiredApprovals[] = 'finance_manager';
+
+                $pr = PurchaseRequisition::create([
+                    'pr_number' => 'PR-' . now()->format('YmdHis') . '-' . random_int(10000, 99999),
+                    'store_id' => $storeId,
+                    'branch_id' => (int) $groupBranchId,
+                    'requisition_type' => 'regular',
+                    'status' => 'draft',
+                    'estimated_amount' => $amount,
+                    'procurement_route' => $route,
+                    'required_approvals' => $requiredApprovals,
+                    'reason' => 'Reorder suggestions: ' . $items->pluck('id')->implode(', '),
+                    'priority' => $items->max(fn ($item) => ['low' => 2, 'medium' => 3, 'high' => 4, 'critical' => 5][$item->priority] ?? 3),
+                    'requested_by' => $employeeId,
+                ]);
+
+                foreach ($items as $item) {
+                    $unitCost = (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0);
+                    PurchaseRequisitionItem::create([
+                        'requisition_id' => $pr->id,
+                        'product_id' => $item->product_id,
+                        'variation_id' => $item->variation_id,
+                        'quantity_requested' => (int) ceil((float) $item->suggested_quantity),
+                        'estimated_unit_cost' => $unitCost ?: null,
+                        'specifications' => null,
+                    ]);
+                    $item->approve($employeeId);
+                    $item->setMetadataValue('purchase_requisition_id', $pr->id);
+                }
+                $created[] = ['id' => $pr->id, 'pr_number' => $pr->pr_number, 'items' => $items->count()];
+            }
+
+            return $created;
+        });
+    }
     /**
      * Get paginated list of reorder suggestions with filters
      */
@@ -52,10 +118,11 @@ class ReorderSuggestionService
             $query->where('product_id', $filters['product_id']);
         }
 
-        if (isset($filters['expired'])) {
-            if ($filters['expired']) {
+        if (array_key_exists('expired', $filters)) {
+            $expired = filter_var($filters['expired'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($expired === true) {
                 $query->expired();
-            } else {
+            } elseif ($expired === false) {
                 $query->valid();
             }
         }
@@ -144,24 +211,23 @@ class ReorderSuggestionService
      */
     public function approveSuggestion(ReorderSuggestion $suggestion, ?int $approvedBy = null, ?string $notes = null): bool
     {
-        if (!$suggestion->approve($approvedBy, $notes)) {
+        if (!$approvedBy) {
             return false;
         }
 
-        // Log the approval action
-        // You might want to add activity logging here
-        try {
-            if ($approvedBy) {
-                $this->createPurchaseRequisitionFromSuggestion($suggestion, $approvedBy);
+        return DB::transaction(function () use ($suggestion, $approvedBy, $notes) {
+            $locked = ReorderSuggestion::query()->lockForUpdate()->find($suggestion->id);
+            if (!$locked?->canBeApproved()) {
+                return false;
             }
-        } catch (Exception $e) {
-            Log::error('Failed to auto-create PR from suggestion', [
-                'suggestion_id' => $suggestion->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
 
-        return true;
+            $pr = $this->createPurchaseRequisitionFromSuggestion($locked, $approvedBy);
+            if (!$pr) {
+                throw ValidationException::withMessages(['suggestion' => 'Cannot create an Inventory PR for this suggestion. Check its product and branch.']);
+            }
+
+            return $locked->approve($approvedBy, $notes);
+        });
     }
 
     /**
