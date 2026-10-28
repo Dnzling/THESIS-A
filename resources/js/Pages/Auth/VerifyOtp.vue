@@ -253,7 +253,7 @@ const verifyOtp = async () => {
       }
 
       const destination = verifiedCustomer
-        ? '/shop'
+        ? '/'
         : verifiedBusinessRegistration && needsStoreSetup
           ? '/store/registration'
           : verifiedProfile

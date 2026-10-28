@@ -49,9 +49,15 @@ class RolePermissionController extends Controller
     {
         $roles = DB::table('roles')
             ->select('roles.*')
-            ->where(function ($query) {
-                $query->whereNull('roles.store_id')
-                    ->orWhere('roles.name', 'owner');
+            // The Super Admin catalog shows global system roles only. Including
+            // tenant-scoped owner roles here makes Store Owner appear multiple times.
+            ->whereNull('roles.store_id')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('roles as canonical_roles')
+                    ->whereNull('canonical_roles.store_id')
+                    ->whereColumn('canonical_roles.name', 'roles.name')
+                    ->whereColumn('canonical_roles.id', '<', 'roles.id');
             })
             ->where('roles.name', '!=', 'driver')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')

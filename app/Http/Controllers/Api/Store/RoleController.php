@@ -184,6 +184,12 @@ class RoleController extends Controller
                 'required',
                 'string',
                 Rule::unique('roles')->where(fn($q) => $q->where('store_id', $storeId)),
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $reservedNames = ['super_admin', 'owner', 'driver', 'applicant', 'supplier', 'customer', 'unassigned_role'];
+                    if (in_array(strtolower(trim((string) $value)), $reservedNames, true)) {
+                        $fail('This name is reserved for a system role.');
+                    }
+                },
             ],
             'display_name' => 'required|string',
             'code' => [
@@ -230,6 +236,13 @@ class RoleController extends Controller
                 'required',
                 'string',
                 Rule::unique('roles')->where(fn($q) => $q->where('store_id', $storeId))->ignore($role->id),
+                function (string $attribute, mixed $value, \Closure $fail) use ($role): void {
+                    $reservedNames = ['super_admin', 'owner', 'driver', 'applicant', 'supplier', 'customer', 'unassigned_role'];
+                    if (strtolower(trim((string) $value)) !== strtolower((string) $role->name)
+                        && in_array(strtolower(trim((string) $value)), $reservedNames, true)) {
+                        $fail('This name is reserved for a system role.');
+                    }
+                },
             ],
             'display_name' => 'required|string',
             'code' => [

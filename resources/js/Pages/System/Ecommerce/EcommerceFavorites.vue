@@ -1,27 +1,29 @@
 <template>
-  <section class="mx-auto max-w-7xl px-1 py-4 sm:px-3 md:py-8">
-    <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+  <section class="mx-auto max-w-7xl px-3 py-4 sm:px-3 md:py-8">
+    <div class="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p class="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Saved for later</p>
         <h1 class="mt-1 text-2xl font-bold text-slate-900 md:text-3xl">My Favorites</h1>
         <p class="mt-1 text-sm text-slate-500">{{ favoriteIds.length }} {{ favoriteIds.length === 1 ? 'product' : 'products' }} saved</p>
       </div>
       <Button label="Continue shopping" icon="pi pi-arrow-right" iconPos="right" severity="warn" outlined
-        @click="router.push({ name: 'ecommerce.products' })" />
+        class="w-full sm:w-auto" @click="router.push({ name: 'ecommerce.products' })" />
     </div>
 
-    <div v-if="loading" class="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <div v-for="index in 8" :key="index" class="rounded-2xl border border-slate-100 bg-white p-3">
-        <Skeleton height="220px" borderRadius="0.8rem" />
-        <Skeleton width="70%" height="1.2rem" class="mt-4" />
-        <Skeleton width="45%" height="1rem" class="mt-2" />
+    <div v-if="loading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+      <div v-for="index in 8" :key="index" class="flex gap-3 rounded-2xl border border-slate-100 bg-white p-3 sm:block">
+        <Skeleton class="!h-28 !w-28 shrink-0 sm:!h-auto sm:!w-full sm:aspect-square" borderRadius="0.8rem" />
+        <div class="min-w-0 flex-1 sm:pt-1">
+          <Skeleton width="70%" height="1.2rem" class="mt-1 sm:mt-3" />
+          <Skeleton width="45%" height="1rem" class="mt-2" />
+        </div>
       </div>
     </div>
 
-    <div v-else-if="products.length" class="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div v-else-if="products.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
       <article v-for="product in products" :key="product.id"
-        class="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl">
-        <div class="relative aspect-square cursor-pointer overflow-hidden bg-slate-100" @click="viewProduct(product.id)">
+        class="group flex min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl sm:block">
+        <div class="relative aspect-square w-32 shrink-0 cursor-pointer overflow-hidden bg-slate-100 sm:w-auto" @click="viewProduct(product.id)">
           <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
             class="h-full w-full object-cover transition duration-500 group-hover:scale-105" @error="onImageError" />
           <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger"
@@ -33,7 +35,7 @@
             <i class="pi pi-heart-fill text-lg" />
           </button>
         </div>
-        <div class="p-4">
+        <div class="flex min-w-0 flex-1 flex-col justify-center p-3 sm:p-4">
           <div class="mb-1 flex items-center justify-between gap-2">
             <span class="truncate text-[10px] font-bold uppercase tracking-wider text-orange-600">{{ product.category || 'Furniture' }}</span>
             <span class="shrink-0 text-xs text-slate-500"><i class="pi pi-star-fill mr-1 text-[10px] text-amber-400" />{{ Number(product.rating_avg || 0).toFixed(1) }}</span>
@@ -44,7 +46,7 @@
             <span class="font-bold" :class="product.has_discount ? 'text-rose-600' : 'text-slate-900'">₱{{ formatMoney(product.price ?? product.base_price) }}</span>
             <span v-if="product.has_discount" class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
           </div>
-          <Button label="View product" icon="pi pi-eye" size="small" severity="warn" class="mt-4 w-full"
+          <Button label="View product" icon="pi pi-eye" size="small" severity="warn" class="mt-3 w-full sm:mt-4"
             @click="viewProduct(product.id)" />
         </div>
       </article>

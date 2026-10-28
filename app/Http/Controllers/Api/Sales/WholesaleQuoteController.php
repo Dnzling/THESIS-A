@@ -9,6 +9,7 @@ use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
 use App\Models\Sales\WholesaleQuote;
+use App\Models\Store\Branch;
 use App\Services\Sales\SalesOrderSettlementService;
 use App\Services\Payment\PaymongoService;
 use Illuminate\Http\JsonResponse;
@@ -48,6 +49,18 @@ class WholesaleQuoteController extends Controller
     public function options(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
+        $branches = Branch::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->whereIn('branch_type', ['storefront', 'wholesale'])
+            ->orderByDesc('is_main_branch')
+            ->orderBy('name')
+            ->get(['id', 'name', 'branch_type'])
+            ->map(fn (Branch $branch) => [
+                'id' => (int) $branch->id,
+                'name' => (string) $branch->name,
+                'branch_type' => (string) $branch->branch_type,
+            ]);
         $products = BranchInventory::query()->where('store_id', $storeId)
             ->whereHas('product', fn ($query) => $query->where('product_type', 'finished_good')->where('is_active', true))
             ->with(['product:id,product_name,sku,base_price', 'branch:id,name'])
@@ -60,7 +73,7 @@ class WholesaleQuoteController extends Controller
                 'available' => (int) $stock->quantity_available,
                 'base_price' => (float) ($stock->product?->base_price ?? 0),
             ]);
-        return response()->json(['success' => true, 'data' => ['products' => $products]]);
+        return response()->json(['success' => true, 'data' => ['branches' => $branches, 'products' => $products]]);
     }
 
     public function store(Request $request): JsonResponse

@@ -1,14 +1,23 @@
 <template>
   <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="flex flex-wrap items-center justify-between gap-3"><div><h1 class="text-2xl font-semibold text-slate-900">3D Model Service Requests</h1><p class="mt-1 text-sm text-slate-500">Review store submissions and deliver models for approval.</p></div><Button label="Refresh" icon="pi pi-refresh" outlined @click="load" /></div>
-    <Card class="rounded-3xl border border-slate-200 shadow-sm"><template #content>
-      <DataTable :value="requests" :loading="loading" dataKey="id" stripedRows paginator :rows="15">
-        <template #empty><div class="py-8 text-center text-slate-500">No requests received.</div></template>
-        <Column header="Reference"><template #body="{ data }"><span class="font-semibold">{{ data.reference_number || `#${data.id}` }}</span></template></Column>
-        <Column header="Store"><template #body="{ data }">{{ data.store?.name || '-' }}</template></Column>
-        <Column header="Product"><template #body="{ data }">{{ data.product?.product_name || '-' }}</template></Column>
-        <Column header="Status"><template #body="{ data }"><Tag :value="label(data.status)" :severity="severity(data.status)" /></template></Column>
-        <Column header="Action"><template #body="{ data }"><div class="flex gap-1"><Button label="Review" icon="pi pi-eye" text @click="selectRequest(data.id)" /><Button v-if="data.model_path" label="View 3D" icon="pi pi-box" text @click="previewing = data" /></div></template></Column>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div><h1 class="text-2xl font-semibold text-slate-900">3D Model Requests</h1><p class="mt-1 text-sm text-slate-500">Review store submissions, manage production, and deliver completed models.</p></div>
+      <Button label="Refresh" icon="pi pi-refresh" size="small" severity="secondary" outlined rounded :loading="loading" @click="load" />
+    </div>
+    <Card class="rounded-xl border border-slate-200 shadow-sm"><template #content>
+      <div class="mb-4 flex flex-wrap items-center gap-2">
+        <InputText v-model="search" placeholder="Search reference, store, or product" size="small" class="w-full sm:w-72" />
+        <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="All statuses" size="small" class="w-full sm:w-48" />
+        <Button v-if="hasFilters" label="Clear Filter" icon="pi pi-filter-slash" size="small" severity="danger" outlined rounded @click="clearFilters" />
+      </div>
+      <DataTable :value="filteredRequests" :loading="loading" dataKey="id" rowHover paginator :rows="10" :rowsPerPageOptions="[10, 15, 25]" size="small">
+        <template #empty><div class="py-8 text-center text-sm text-slate-500">{{ requests.length ? 'No requests match these filters.' : 'No 3D model requests have been submitted yet.' }}</div></template>
+        <Column field="created_at" header="Date" sortable style="min-width: 150px"><template #body="{ data }"><span class="whitespace-nowrap text-slate-700">{{ formatDate(data.created_at) }}</span></template></Column>
+        <Column field="reference_number" header="Reference" sortable style="min-width: 160px"><template #body="{ data }"><span class="font-mono text-xs font-semibold text-slate-800">{{ data.reference_number || `#${data.id}` }}</span></template></Column>
+        <Column header="Store" style="min-width: 160px"><template #body="{ data }"><span class="font-medium text-slate-800">{{ data.store?.name || '—' }}</span></template></Column>
+        <Column header="Product" style="min-width: 200px"><template #body="{ data }"><div><p class="font-medium text-slate-800">{{ data.product?.product_name || '—' }}</p><p v-if="data.product?.sku" class="text-xs text-slate-500">{{ data.product.sku }}</p></div></template></Column>
+        <Column field="status" header="Status" sortable style="min-width: 150px"><template #body="{ data }"><Badge :value="label(data.status)" :severity="severity(data.status)" /></template></Column>
+        <Column header="Actions" style="width: 190px"><template #body="{ data }"><div class="flex items-center gap-2"><Button label="View" icon="pi pi-eye" size="small" outlined rounded @click="selectRequest(data.id)" /><Button v-if="data.model_path" v-tooltip.top="'Preview 3D model'" icon="pi pi-box" aria-label="Preview 3D model" size="small" severity="secondary" outlined rounded @click="previewing = data" /></div></template></Column>
       </DataTable>
     </template></Card>
     <Dialog v-model:visible="visible" modal :header="selected?.reference_number || '3D Model Request'" class="w-full max-w-3xl">
@@ -38,18 +47,49 @@ import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Dialog from 'primevue/dialog'
 import FileUpload from 'primevue/fileupload'
+import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 import axiosClient from '@/axios'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 const toast = useToast()
 const requests = ref<any[]>([]), selected = ref<any>(null), visible = ref(false), loading = ref(false), saving = ref(false), modelFile = ref<File | null>(null)
 const uploadError = ref('')
+const search = ref(''), statusFilter = ref<string | null>(null)
 const previewing = ref<any>(null), downloading = ref(false)
 const previewVisible = computed({ get: () => Boolean(previewing.value), set: value => { if (!value) previewing.value = null } })
+const statusOptions = [
+  { label: 'Submitted', value: 'submitted' },
+  { label: 'Quoted', value: 'quoted' },
+  { label: 'Accepted', value: 'accepted' },
+  { label: 'In Production', value: 'in_production' },
+  { label: 'Ready for Review', value: 'ready_for_review' },
+  { label: 'Changes Requested', value: 'changes_requested' },
+  { label: 'Published', value: 'published' },
+]
+const filteredRequests = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return requests.value.filter(request => {
+    const matchesStatus = !statusFilter.value || request.status === statusFilter.value
+    const searchable = [request.reference_number, request.store?.name, request.product?.product_name, request.product?.sku]
+      .filter(Boolean).join(' ').toLowerCase()
+    return matchesStatus && (!term || searchable.includes(term))
+  })
+})
+const hasFilters = computed(() => Boolean(search.value.trim() || statusFilter.value))
+const clearFilters = () => { search.value = ''; statusFilter.value = null }
 const label = (value: string) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase())
-const severity = (value: string) => value === 'published' ? 'success' : value === 'ready_for_review' ? 'info' : value === 'changes_requested' ? 'warn' : 'secondary'
+const severity = (value: string) => {
+  if (value === 'published' || value === 'accepted') return 'success'
+  if (value === 'in_production' || value === 'ready_for_review') return 'info'
+  if (value === 'submitted' || value === 'quoted' || value === 'changes_requested') return 'warn'
+  return 'secondary'
+}
+const formatDate = (value?: string) => value
+  ? new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+  : '—'
 const fileUrl = (path: string) => `/storage/${path}`
 const load = async () => { loading.value = true; try { const response = await axiosClient.get('/api/3d-model-requests'); requests.value = response.data?.data?.data || [] } catch (error: any) { toast.add({ severity: 'error', summary: 'Load Failed', detail: error.response?.data?.message || 'Could not load requests.', life: 3500 }) } finally { loading.value = false } }
 const selectRequest = async (id: number) => { try { const response = await axiosClient.get(`/api/3d-model-requests/${id}`); selected.value = response.data?.data; modelFile.value = null; uploadError.value = ''; visible.value = true } catch (error: any) { toast.add({ severity: 'error', summary: 'Load Failed', detail: error.response?.data?.message || 'Could not open request.', life: 3500 }) } }

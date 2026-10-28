@@ -47,6 +47,11 @@
               <button type="button" @click="router.visit('/customer/register')" label="Register Here" 
                 class="font-semibold text-orange-500 hover:underline">Register Here</button>
             </p>
+            <p class="text-center text-xs text-slate-500">
+              <button type="button" class="hover:text-orange-600 hover:underline" @click="openLegal('terms')">Terms</button>
+              <span class="px-1">·</span>
+              <button type="button" class="hover:text-orange-600 hover:underline" @click="openLegal('privacy')">Privacy Policy</button>
+            </p>
           </form>
         </div>
   
@@ -64,10 +69,15 @@
       <p class="text-gray-500">Please wait a moment</p>
     </div>
   </Dialog>
+
+  <Dialog v-model:visible="legalVisible" modal :header="legalTitle" class="w-[min(48rem,95vw)]">
+    <div class="max-h-[70vh] overflow-y-auto pr-2"><EcommerceLegalContent :type="legalType" /></div>
+    <template #footer><Button label="Close" severity="secondary" outlined @click="legalVisible = false" /></template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import { Link, router, usePage } from '@inertiajs/vue3'
@@ -80,6 +90,7 @@ import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
 import Message from 'primevue/message'
 import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
+import EcommerceLegalContent from '@/Components/ecommerce/EcommerceLegalContent.vue'
 
 defineProps<{ status?: string | null }>()
 
@@ -89,6 +100,10 @@ const authStore = useAuthStore()
 
 const isSubmitting = ref(false)
 const rememberMe = ref(false)
+const legalVisible = ref(false)
+const legalType = ref<'terms' | 'privacy'>('terms')
+const legalTitle = computed(() => legalType.value === 'terms' ? 'Terms and Conditions' : 'Privacy Policy')
+const openLegal = (type: 'terms' | 'privacy') => { legalType.value = type; legalVisible.value = true }
 const form = reactive({
   login: '',
   password: '',

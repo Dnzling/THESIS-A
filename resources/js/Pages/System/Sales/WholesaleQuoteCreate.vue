@@ -40,7 +40,7 @@
                 <small v-if="customerPhoneError" class="text-red-600">{{ customerPhoneError }}</small>
               </div>
               <div class="field"><label>Fulfilment branch *</label><Select v-model="form.branch_id" :options="branches"
-                  optionLabel="name" optionValue="id" fluid placeholder="Select branch" @change="resetItems" /></div>
+                  optionLabel="name" optionValue="id" fluid placeholder="Select branch" :disabled="!branches.length" @change="resetItems"><template #option="{ option }"><div><p class="font-medium">{{ option.name }}</p><p class="text-xs capitalize text-slate-500">{{ option.branch_type }} branch</p></div></template></Select><small v-if="!branches.length" class="text-amber-700">No active storefront or wholesale branches are available.</small></div>
               <div class="field"><label>Valid until</label>
                 <DatePicker v-model="form.valid_until" showIcon fluid :minDate="new Date()" />
               </div>
@@ -132,7 +132,8 @@ import Textarea from 'primevue/textarea'
 const toast = useToast(),
   loading = ref(true),
   saving = ref(false),
-  products = ref<any[]>([])
+  products = ref<any[]>([]),
+  branches = ref<any[]>([])
 const newItem = () => ({
   branch_inventory_id: null as number | null,
   quantity: 1,
@@ -159,17 +160,9 @@ const paymentTerms = [
   { label: 'PayMongo payment link', value: 'online_payment', help: 'Share a secure payment link and wait for confirmation.' },
   { label: 'Verified bank transfer', value: 'bank_transfer', help: 'Confirm the funds in your bank before releasing the order.' }
 ]
-const branches = computed(() => [
-  ...new Map(
-    products.value.map(x => [
-      x.branch_id,
-      { id: x.branch_id, name: x.branch_name }
-    ])
-  ).values()
-])
 const branchProducts = computed(() =>
   products.value
-    .filter(x => x.branch_id === form.branch_id)
+    .filter(x => Number(x.branch_id) === Number(form.branch_id))
     .map(x => ({
       ...x,
       label: `${x.product_name} (${x.sku || 'No SKU'}) · ${x.available
@@ -259,6 +252,7 @@ onMounted(async () => {
   try {
     const r = await salesService.getWholesaleOptions()
     products.value = r.data?.products || []
+    branches.value = r.data?.branches || []
   } catch (e: any) {
     toast.add({
       severity: 'error',

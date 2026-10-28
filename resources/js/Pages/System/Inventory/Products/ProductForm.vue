@@ -213,11 +213,13 @@
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
                 </div>
 
+              <!-- Temporarily hidden while bulky delivery handling is being revised.
               <div v-if="showFinishedGoodFields" class="md:col-span-2">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Bulky delivery handling</label>
                 <Select v-model="form.is_bulky" :options="bulkyOptions" optionLabel="label" optionValue="value" class="w-full text-sm" size="small" />
                 <small class="text-gray-500">Auto uses the store's delivery size and weight thresholds. Override when special handling is needed.</small>
               </div>
+              -->
             </div>
 
             <div v-if="submitError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

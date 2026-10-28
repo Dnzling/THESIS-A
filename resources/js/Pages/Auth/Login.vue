@@ -111,6 +111,7 @@ const handleLogin = async (formData: LoginFormData) => {
         : employeeAttendance.state === 'not_recorded' ? employeeAttendance.message || 'Attendance could not be recorded.'
         : 'Your attendance was already recorded today.'
       sessionStorage.setItem('employee_login_welcome', JSON.stringify({
+        state: employeeAttendance.state,
         employeeName: authStore.currentUser?.full_name || authStore.currentUser?.first_name || authStore.user?.fname || 'there',
         branchName: (authStore.currentUser as any)?.branch?.name || (authStore.user as any)?.branch?.name || 'Branch not assigned',
         attendanceMessage,

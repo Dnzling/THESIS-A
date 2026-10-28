@@ -11,6 +11,7 @@ use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Store\Branch;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\Store\CaviteLocationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -549,7 +550,7 @@ class StoreSettingsController extends Controller
         ]);
     }
 
-    public function updateAttendanceSettings(Request $request)
+    public function updateAttendanceSettings(Request $request, CaviteLocationService $locationService)
     {
         $validated = $request->validate([
             'branch_id' => 'nullable|exists:branches,id',
@@ -571,6 +572,18 @@ class StoreSettingsController extends Controller
                 'success' => false,
                 'message' => 'Store not found for this user.',
             ], 404);
+        }
+
+        try {
+            if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Choose an attendance location inside Cavite province.',
+                    'errors' => ['latitude' => ['Choose an attendance location inside Cavite province.']],
+                ], 422);
+            }
+        } catch (\RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 503);
         }
 
         $branchQuery = Branch::query()->where('store_id', $store->id);

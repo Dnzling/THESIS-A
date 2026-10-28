@@ -143,6 +143,8 @@ class UserNavigationController extends Controller
             $user,
             $user->store_id ? (int) $user->store_id : null
         );
+        $storeChatPermissions = $this->getStoreChatPermissions($user);
+        $finalPermissions = array_values(array_unique(array_merge($finalPermissions, $storeChatPermissions)));
         $filteredOut = array_values(array_diff($basePermissions, $finalPermissions));
 
         return [
@@ -154,6 +156,26 @@ class UserNavigationController extends Controller
                 'filtered_out' => $filteredOut,
             ],
         ];
+    }
+
+    /** Store-plan chat access is shared by every employee, not assigned per user. */
+    private function getStoreChatPermissions($user): array
+    {
+        $storeId = (int) ($user?->store_id ?? 0);
+        if ($storeId <= 0) {
+            return [];
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $storeId)
+            ->whereIn('permissions.name', ['admin.chats.manage', 'admin.chats.cross-branch'])
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->pluck('permissions.name')
+            ->all();
     }
 
     /**

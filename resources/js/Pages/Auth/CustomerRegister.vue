@@ -76,12 +76,12 @@
   
             <div class="flex items-start gap-2 text-sm sm:text-base">
               <Checkbox v-model="acceptedTerms" inputId="acceptedTerms" :binary="true" />
-              <label for="acceptedTerms" class="leading-6 text-slate-700">
-                I agree to the
-                <a href="#" class="font-medium text-orange-500 hover:underline">Terms</a>
+              <div class="leading-6 text-slate-700">
+                <label for="acceptedTerms" class="cursor-pointer">I agree to the</label>
+                <button type="button" class="font-medium text-orange-500 hover:underline" @click="openLegal('terms')">Terms</button>
                 and
-                <a href="#" class="font-medium text-orange-500 hover:underline">Privacy Policy</a>.
-              </label>
+                <button type="button" class="font-medium text-orange-500 hover:underline" @click="openLegal('privacy')">Privacy Policy</button>.
+              </div>
             </div>
   
             <Button type="submit" :loading="isSubmitting" fluid severity="warn"
@@ -103,6 +103,11 @@
       </div>
     </div>
   </div>
+
+  <Dialog v-model:visible="legalVisible" modal :header="legalTitle" class="w-[min(48rem,95vw)]">
+    <div class="max-h-[70vh] overflow-y-auto pr-2"><EcommerceLegalContent :type="legalType" /></div>
+    <template #footer><Button label="Close" severity="secondary" outlined @click="legalVisible = false" /></template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -116,11 +121,17 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import DatePicker from 'primevue/datepicker'
+import Dialog from 'primevue/dialog'
 import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
+import EcommerceLegalContent from '@/Components/ecommerce/EcommerceLegalContent.vue'
 
 const toast = useToast()
 const isSubmitting = ref(false)
 const acceptedTerms = ref(false)
+const legalVisible = ref(false)
+const legalType = ref<'terms' | 'privacy'>('terms')
+const legalTitle = computed(() => legalType.value === 'terms' ? 'Terms and Conditions' : 'Privacy Policy')
+const openLegal = (type: 'terms' | 'privacy') => { legalType.value = type; legalVisible.value = true }
 const minimumAdultDate = computed(() => {
   const d = new Date()
   d.setFullYear(d.getFullYear() - 18)

@@ -17,8 +17,10 @@ class StaffChatController extends Controller
     public function staff(Request $request): JsonResponse
     {
         $user = $request->user();
+        $this->ensureStoreChatEnabled($user);
+        $canChatAcrossBranches = $this->storeHasChatEntitlement((int) $user->store_id, 'admin.chats.cross-branch');
         $staff = User::query()->with(['role:id,display_name', 'branch:id,name'])->where('store_id', $user->store_id)->where('is_active', true)
-            ->when(!$user->can('admin.chats.cross-branch'), fn($query) => $query->where('branch_id', $user->branch_id))
+            ->when(!$canChatAcrossBranches, fn($query) => $query->where('branch_id', $user->branch_id))
             ->whereKeyNot($user->id)->orderBy('fname')->orderBy('lname')->get(['id','fname','lname','email','avatar_path','role_id','branch_id']);
         return response()->json(['success' => true, 'data' => $staff]);
     }
@@ -26,6 +28,7 @@ class StaffChatController extends Controller
     public function conversations(Request $request): JsonResponse
     {
         $user = $request->user();
+        $this->ensureStoreChatEnabled($user);
         $rows = StaffChatConversation::query()->where('store_id', $user->store_id)->whereHas('participants', fn($q) => $q->where('users.id', $user->id))
             ->with(['participants' => fn($q) => $q->where('users.id', '!=', $user->id)->select('users.id','fname','lname','email','avatar_path'), 'messages' => fn($q) => $q->latest()->limit(1)])
             ->orderByDesc('last_message_at')->get()->map(function ($conversation) use ($user) {
@@ -40,9 +43,10 @@ class StaffChatController extends Controller
     public function start(Request $request): JsonResponse
     {
         $data = $request->validate(['user_id'=>['required','integer']]); $user=$request->user();
+        $this->ensureStoreChatEnabled($user);
         $other=User::whereKey($data['user_id'])->where('store_id',$user->store_id)->where('is_active',true)->firstOrFail();
         abort_if($other->id === $user->id, 422, 'Select another staff member.');
-        abort_if(!$user->can('admin.chats.cross-branch') && (int)$other->branch_id !== (int)$user->branch_id, 403, 'You do not have permission to chat with another branch.');
+        abort_if(!$this->storeHasChatEntitlement((int) $user->store_id, 'admin.chats.cross-branch') && (int)$other->branch_id !== (int)$user->branch_id, 403, 'This store plan only allows chats within the same branch.');
         $conversation = StaffChatConversation::where('store_id',$user->store_id)
             ->whereHas('participants',fn($q)=>$q->where('users.id',$user->id))->whereHas('participants',fn($q)=>$q->where('users.id',$other->id))->has('participants','=',2)->first();
         if (!$conversation) DB::transaction(function () use (&$conversation,$user,$other) { $conversation=StaffChatConversation::create(['store_id'=>$user->store_id]); $conversation->participants()->attach([$user->id,$other->id]); });
@@ -76,6 +80,29 @@ class StaffChatController extends Controller
 
     private function conversation(Request $request,int $id): StaffChatConversation
     {
+        $this->ensureStoreChatEnabled($request->user());
         return StaffChatConversation::whereKey($id)->where('store_id',$request->user()->store_id)->whereHas('participants',fn($q)=>$q->where('users.id',$request->user()->id))->firstOrFail();
+    }
+
+    private function ensureStoreChatEnabled(User $user): void
+    {
+        abort_unless($this->storeHasChatEntitlement((int) $user->store_id, 'admin.chats.manage'), 403, 'Staff chat is not included in this store plan.');
+    }
+
+    private function storeHasChatEntitlement(int $storeId, string $permission): bool
+    {
+        if ($storeId <= 0) {
+            return false;
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $storeId)
+            ->where('permissions.name', $permission)
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->exists();
     }
 }

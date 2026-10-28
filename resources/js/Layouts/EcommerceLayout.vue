@@ -2,7 +2,7 @@
   <Head v-if="pageTitle" :title="pageTitle" />
   <div class="min-h-screen bg-linear-to-b from-[#e0e7f5] to-[#f6f9fd]">
     <Toast />
-    <ConfirmDialog />
+    <ConfirmDialog group="ecommerce-logout" />
     <div class="sticky top-0 z-30">
       <header class="hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
       <div
@@ -473,6 +473,7 @@ function goChatThread(storeId: number) {
 async function logoutCustomer() {
   profilePopoverRef.value?.hide()
   confirm.require({
+    group: 'ecommerce-logout',
     message: 'Are you sure you want to log out?',
     header: 'Confirm Logout',
     rejectProps: {

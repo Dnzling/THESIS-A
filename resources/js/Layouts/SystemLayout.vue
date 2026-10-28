@@ -241,35 +241,6 @@
       @click="sidebarOpen = false"
     ></div>
 
-    <Dialog v-model:visible="employeeWelcome.visible" modal :closable="false" :showHeader="false"
-      :style="{ width: 'min(26rem, 94vw)' }">
-      <div class="space-y-3 px-1 pb-1 pt-2">
-        <div class="flex items-center gap-3">
-          <div>
-            <p class="portal-brand text-sm uppercase text-orange-600">FURNISYNC</p>
-            <p class="text-xs text-slate-500">Employee workspace</p>
-          </div>
-        </div>
-
-        <div class="text-center p-4">
-          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Welcome to work</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-900">Hello, {{ employeeWelcome.employeeName }}</h2>
-          <p class="mt-1 text-sm text-slate-600">{{ employeeWelcome.attendanceMessage }}</p>
-
-            <Divider/>
-            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Assigned Branch</p>
-            <p class="mt-0.5 text-sm font-medium text-slate-800">{{ employeeWelcome.branchName }}</p>
-
-        </div>
-
-        <p v-if="employeeWelcome.lateMessage" class="rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-center font-semibold text-amber-800">
-          <i class="pi pi-clock mr-1.5"></i>{{ employeeWelcome.lateMessage }}
-        </p>
-        <Button label="Continue to workspace" icon="pi pi-arrow-right" iconPos="right" severity="warn"
-          size="small" class="w-full" @click="employeeWelcome.visible = false" />
-      </div>
-    </Dialog>
-  
     <!-- Global API Response Dialog -->
     <Dialog v-model:visible="responseDialog.visible" modal :closable="false" :showHeader="false" class="w-full max-w-md"
       contentClass="p-0">
@@ -323,7 +294,7 @@ import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
 import UserDialog from '@/Components/dialogs/UserDialog.vue'
-import { onResponseDialog } from '@/utils/responseDialogBus'
+import { onResponseDialog, showResponseDialog } from '@/utils/responseDialogBus'
 
 const page = usePage()
 const currentPath = computed(() => String(page.url || '').split('?')[0] || '/')
@@ -357,13 +328,6 @@ const responseDialog = ref({
   severity: 'success' as 'success' | 'error' | 'warn' | 'info',
   title: 'Success',
   message: ''
-})
-const employeeWelcome = ref({
-  visible: false,
-  employeeName: '',
-  branchName: '',
-  attendanceMessage: '',
-  lateMessage: '',
 })
 let responseDialogUnsub: (() => void) | null = null
 
@@ -440,17 +404,6 @@ onMounted(async () => {
 
   isBooting.value = false
 
-  const pendingEmployeeWelcome = sessionStorage.getItem('employee_login_welcome')
-  if (pendingEmployeeWelcome) {
-    sessionStorage.removeItem('employee_login_welcome')
-    try {
-      Object.assign(employeeWelcome.value, JSON.parse(pendingEmployeeWelcome), { visible: true })
-      await nextTick()
-    } catch {
-      sessionStorage.removeItem('employee_login_welcome')
-    }
-  }
-
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
   loadNotifications()
@@ -473,6 +426,28 @@ onMounted(async () => {
       message: payload.message
     }
   })
+
+  const pendingEmployeeAttendance = sessionStorage.getItem('employee_login_welcome')
+  if (pendingEmployeeAttendance) {
+    sessionStorage.removeItem('employee_login_welcome')
+    try {
+      const attendance = JSON.parse(pendingEmployeeAttendance)
+      const details = [
+        `Hello, ${attendance.employeeName || 'there'}.`,
+        attendance.attendanceMessage,
+        attendance.branchName ? `Assigned branch: ${attendance.branchName}` : '',
+        attendance.lateMessage,
+      ].filter(Boolean)
+      const didClockIn = ['clocked_in', 'already_clocked_in', 'completed'].includes(attendance.state)
+      showResponseDialog({
+        severity: didClockIn ? 'success' : 'warn',
+        title: didClockIn ? 'Welcome to Work' : 'Attendance Update',
+        message: details.join('\n'),
+      })
+    } catch {
+      sessionStorage.removeItem('employee_login_welcome')
+    }
+  }
 })
 
 onUnmounted(() => {

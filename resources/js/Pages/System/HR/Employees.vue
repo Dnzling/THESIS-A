@@ -6,6 +6,7 @@
         <h1 class="text-lg font-semibold text-slate-900">Employees</h1>
         <p class="mt-1 text-xs text-slate-500">Employee profiles, roles, and employment status.</p>
       </div>
+      <Button v-if="canCreateEmployee" label="Add Employee" icon="pi pi-plus" severity="warn" size="small" @click="openAddDialog" />
     </div>
 
     <Card class="overflow-hidden border border-slate-200 shadow-sm">
@@ -152,6 +153,13 @@
             <label class="block text-sm font-medium mb-1">Hire Date *</label>
             <DatePicker v-model="employeeForm.hireDate" dateFormat="M d, yy" showIcon class="w-full" fluid />
           </div>
+        </div>
+
+        <div v-if="employeeForm.employmentType === 'contract'">
+          <label class="mb-1 block text-sm font-medium">End Contract *</label>
+          <DatePicker v-model="employeeForm.contractEndDate" dateFormat="M d, yy" showIcon fluid
+            :minDate="employeeForm.hireDate || undefined" placeholder="Select contract end date" />
+          <small v-if="contractEndDateError" class="mt-1 block text-red-600">{{ contractEndDateError }}</small>
         </div>
 
         <div class="grid gap-4 md:grid-cols-4 md:items-end">
@@ -352,6 +360,7 @@ interface EmployeeFormState {
   salary: number
   employmentType: 'full_time' | 'part_time' | 'contract' | 'intern'
   hireDate: Date | null
+  contractEndDate: Date | null
 }
 
 interface Employee {
@@ -393,6 +402,7 @@ const showViewDialog = ref<boolean>(false)
 const showDepartmentDialog = ref(false)
 const showRoleDialog = ref(false)
 const isEditMode = ref(false)
+const canCreateEmployee = computed(() => authStore.hasPermission('hr.employees.create'))
 const selectedEmployee = ref<Employee | null>(null)
 const employees = ref<Employee[]>([])
 const loading = ref(true)
@@ -432,6 +442,7 @@ const employeeForm = ref<EmployeeFormState>({
   salary: 0,
   employmentType: 'full_time',
   hireDate: new Date(),
+  contractEndDate: null,
 })
 
 const departmentForm = ref({
@@ -467,11 +478,19 @@ const isValidEmail = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeFo
 const isValidPhone = computed(() => !employeeForm.value.phoneNumber || /^09\d{2}-\d{3}-\d{4}$/.test(employeeForm.value.phoneNumber))
 const formatPayType = (value?: string) => ({ monthly: 'Monthly', hourly: 'Hourly', daily: 'Daily', hybrid: 'Hybrid' }[String(value || 'monthly')] || 'Monthly')
 const scheduleError = computed(() => validateScheduleRules())
+const contractEndDateError = computed(() => {
+  if (employeeForm.value.employmentType !== 'contract') return ''
+  if (!employeeForm.value.contractEndDate) return 'End date is required for contract employees.'
+  if (employeeForm.value.hireDate && employeeForm.value.contractEndDate < employeeForm.value.hireDate) {
+    return 'End date must be on or after the hire date.'
+  }
+  return ''
+})
 const canSaveEmployee = computed(() => Boolean(
   employeeForm.value.firstName.trim() && employeeForm.value.lastName.trim()
   && employeeForm.value.role && employeeForm.value.branchId && employeeForm.value.hireDate
   && employeeForm.value.employmentType && isValidEmail.value
-  && Number(employeeForm.value.salary) > 0 && isValidPhone.value && !scheduleError.value
+  && Number(employeeForm.value.salary) > 0 && isValidPhone.value && !scheduleError.value && !contractEndDateError.value
 ))
 
 // Status options
@@ -817,6 +836,7 @@ const editEmployee = (employee: Employee) => {
     salary: 0,
     employmentType: 'full_time',
     hireDate: employee.hireDate ? new Date(employee.hireDate) : new Date(),
+    contractEndDate: null,
   }
   showAddDialog.value = true
 }
@@ -835,6 +855,7 @@ const resetEmployeeForm = () => {
     salary: 0,
     employmentType: 'full_time',
     hireDate: new Date(),
+    contractEndDate: null,
   }
   resetWeeklyPlanner()
 }
@@ -952,7 +973,7 @@ const createRole = async () => {
 }
 
 const saveEmployee = async () => {
-  if (!employeeForm.value.firstName || !employeeForm.value.lastName || !employeeForm.value.role || !employeeForm.value.email || !employeeForm.value.branchId || Number(employeeForm.value.salary || 0) <= 0) {
+  if (!employeeForm.value.firstName || !employeeForm.value.lastName || !employeeForm.value.role || !employeeForm.value.email || !employeeForm.value.branchId || Number(employeeForm.value.salary || 0) <= 0 || contractEndDateError.value) {
     notifyResponse(false, 'Missing Details', 'Please complete the required employee, branch, and salary fields.')
     return
   }
@@ -1012,6 +1033,7 @@ const saveEmployee = async () => {
         role_id: selectedRole.id,
         branch_id: employeeForm.value.branchId,
         hire_date: employeeForm.value.hireDate ? formatLocalDate(employeeForm.value.hireDate) : null,
+        contract_end_date: employeeForm.value.contractEndDate ? formatLocalDate(employeeForm.value.contractEndDate) : null,
         department: employeeForm.value.department || null,
         employment_type: employeeForm.value.employmentType,
         salary: Number(employeeForm.value.salary || 0),

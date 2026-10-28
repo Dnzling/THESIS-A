@@ -103,7 +103,7 @@
           </template>
         </Column>
   
-        <Column field="status" header="Status" sortable style="width: 120px">
+        <Column field="status" header="Status" sortable style="width: 150px">
           <template #body="{ data }">
             <Badge :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)" />
           </template>
