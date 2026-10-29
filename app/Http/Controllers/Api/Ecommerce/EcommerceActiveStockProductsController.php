@@ -88,20 +88,20 @@ class EcommerceActiveStockProductsController extends Controller
             $selectColumns[] = 'products.tax_rate';
         }
 
-        $monthStart = now()->startOfMonth();
-        $monthEnd = now()->endOfMonth();
-        $monthlySales = DB::table('ecommerce_order_items as monthly_items')
-            ->join('ecommerce_orders as monthly_orders', 'monthly_orders.id', '=', 'monthly_items.order_id')
-            ->whereIn('monthly_orders.status', ['delivered', 'completed'])
-            ->whereBetween(DB::raw('COALESCE(monthly_orders.placed_at, monthly_orders.created_at)'), [$monthStart, $monthEnd])
-            ->groupBy('monthly_items.product_id')
-            ->selectRaw('monthly_items.product_id, SUM(monthly_items.quantity) as monthly_sales');
+        $salesWindowStart = now()->subDays(30);
+        $salesWindowEnd = now();
+        $recentSales = DB::table('ecommerce_order_items as recent_items')
+            ->join('ecommerce_orders as recent_orders', 'recent_orders.id', '=', 'recent_items.order_id')
+            ->whereIn('recent_orders.status', ['delivered', 'completed'])
+            ->whereBetween(DB::raw('COALESCE(recent_orders.placed_at, recent_orders.created_at)'), [$salesWindowStart, $salesWindowEnd])
+            ->groupBy('recent_items.product_id')
+            ->selectRaw('recent_items.product_id, SUM(recent_items.quantity) as sales_last_30_days');
 
         $query = Product::query()
             ->select($selectColumns)
-            ->addSelect(DB::raw('COALESCE(monthly_product_sales.monthly_sales, 0) as monthly_sales'))
-            ->leftJoinSub($monthlySales, 'monthly_product_sales', function ($join) {
-                $join->on('monthly_product_sales.product_id', '=', 'products.id');
+            ->addSelect(DB::raw('COALESCE(recent_product_sales.sales_last_30_days, 0) as sales_last_30_days'))
+            ->leftJoinSub($recentSales, 'recent_product_sales', function ($join) {
+                $join->on('recent_product_sales.product_id', '=', 'products.id');
             })
             ->with([
                 'category:id,category_name',
@@ -192,7 +192,7 @@ class EcommerceActiveStockProductsController extends Controller
                 .'WHEN LOWER(products.product_name) LIKE ? THEN 2 '
                 .'WHEN LOWER(products.sku) LIKE ? THEN 3 ELSE 4 END',
                 [$term, $term.'%', '% '.$term.'%', $term.'%']
-            )->orderByDesc('monthly_sales')->orderByDesc('products.id');
+            )->orderByDesc('sales_last_30_days')->orderByDesc('products.id');
         } elseif ($sort === 'price_asc') {
             $query->orderByRaw('COALESCE(discounted_price, base_price, 0) ASC');
         } elseif ($sort === 'price_desc') {
@@ -204,13 +204,13 @@ class EcommerceActiveStockProductsController extends Controller
                 ->selectRaw('AVG(rating)')
                 ->whereColumn('product_id', 'products.id')
                 ->where('status', 'published'))
-                ->orderByDesc('monthly_sales');
+                ->orderByDesc('sales_last_30_days');
         } elseif ($sort === 'name') {
             $query->orderBy('products.product_name')->orderBy('products.id');
         } elseif ($sort === 'latest') {
             $query->orderByDesc('products.id');
         } else {
-            $query->orderByDesc('monthly_sales')->orderByDesc('products.id');
+            $query->orderByDesc('sales_last_30_days')->orderByDesc('products.id');
         }
 
         $products = $query->paginate($perPage);
@@ -271,7 +271,7 @@ class EcommerceActiveStockProductsController extends Controller
                 'rating_count' => (int) ($rating?->rating_count ?? 0),
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'stock_status' => (string) ($inventory?->stock_status ?? 'out_of_stock'),
-                'monthly_sales' => (int) ($product->monthly_sales ?? 0),
+                'sales_last_30_days' => (int) ($product->sales_last_30_days ?? 0),
                 'created_at' => optional($product->created_at)->toIso8601String(),
             ];
         });
@@ -386,19 +386,19 @@ class EcommerceActiveStockProductsController extends Controller
             ->whereNull('deleted_at')
             ->findOrFail($categoryId);
 
-        $monthStart = now()->startOfMonth();
-        $monthEnd = now()->endOfMonth();
-        $monthlySales = DB::table('ecommerce_order_items as monthly_items')
-            ->join('ecommerce_orders as monthly_orders', 'monthly_orders.id', '=', 'monthly_items.order_id')
-            ->whereIn('monthly_orders.status', ['delivered', 'completed'])
-            ->whereBetween(DB::raw('COALESCE(monthly_orders.placed_at, monthly_orders.created_at)'), [$monthStart, $monthEnd])
-            ->groupBy('monthly_items.product_id')
-            ->selectRaw('monthly_items.product_id, SUM(monthly_items.quantity) as monthly_sales');
+        $salesWindowStart = now()->subDays(30);
+        $salesWindowEnd = now();
+        $recentSales = DB::table('ecommerce_order_items as recent_items')
+            ->join('ecommerce_orders as recent_orders', 'recent_orders.id', '=', 'recent_items.order_id')
+            ->whereIn('recent_orders.status', ['delivered', 'completed'])
+            ->whereBetween(DB::raw('COALESCE(recent_orders.placed_at, recent_orders.created_at)'), [$salesWindowStart, $salesWindowEnd])
+            ->groupBy('recent_items.product_id')
+            ->selectRaw('recent_items.product_id, SUM(recent_items.quantity) as sales_last_30_days');
 
         $rankedStores = Product::query()
             ->join('categories', 'categories.id', '=', 'products.category_id')
-            ->leftJoinSub($monthlySales, 'category_monthly_sales', function ($join) {
-                $join->on('category_monthly_sales.product_id', '=', 'products.id');
+            ->leftJoinSub($recentSales, 'category_recent_sales', function ($join) {
+                $join->on('category_recent_sales.product_id', '=', 'products.id');
             })
             ->whereIn('products.category_id', $this->relatedCategoryIds($category->id))
             ->where('products.product_type', 'finished_good')
@@ -411,8 +411,8 @@ class EcommerceActiveStockProductsController extends Controller
                     ->whereIn('stock_status', ['in_stock', 'low_stock']);
             })
             ->groupBy('products.store_id')
-            ->selectRaw('products.store_id, COUNT(DISTINCT products.id) as matching_products_count, COALESCE(SUM(category_monthly_sales.monthly_sales), 0) as monthly_sales')
-            ->orderByDesc('monthly_sales')
+            ->selectRaw('products.store_id, COUNT(DISTINCT products.id) as matching_products_count, COALESCE(SUM(category_recent_sales.sales_last_30_days), 0) as sales_last_30_days')
+            ->orderByDesc('sales_last_30_days')
             ->orderByDesc('matching_products_count')
             ->limit(10)
             ->get()
@@ -425,7 +425,7 @@ class EcommerceActiveStockProductsController extends Controller
             ->get()
             ->sortBy(function (Store $store) use ($rankedStores) {
                 $rank = $rankedStores->get($store->id);
-                return sprintf('%012d-%012d', PHP_INT_MAX - (int) ($rank?->monthly_sales ?? 0), PHP_INT_MAX - (int) ($rank?->matching_products_count ?? 0));
+                return sprintf('%012d-%012d', PHP_INT_MAX - (int) ($rank?->sales_last_30_days ?? 0), PHP_INT_MAX - (int) ($rank?->matching_products_count ?? 0));
             })
             ->values();
 
@@ -446,7 +446,7 @@ class EcommerceActiveStockProductsController extends Controller
                     'city' => $store->city,
                     'store_logo' => $this->toAssetUrl($storeLogos->get($store->id)),
                     'matching_products_count' => (int) ($rank?->matching_products_count ?? 0),
-                    'monthly_sales' => (int) ($rank?->monthly_sales ?? 0),
+                    'sales_last_30_days' => (int) ($rank?->sales_last_30_days ?? 0),
                 ];
             });
 

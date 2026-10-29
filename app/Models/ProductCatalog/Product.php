@@ -48,6 +48,7 @@ class Product extends Model
         'length_cm',
         'width_cm',
         'height_cm',
+        'depth_cm',
         'weight_kg',
         'is_bulky',
         'assembly_required',
@@ -67,6 +68,11 @@ class Product extends Model
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
         'initial_stock' => 'decimal:2',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
+        'depth_cm' => 'decimal:2',
+        'weight_kg' => 'decimal:2',
         'discounted_price' => 'decimal:2',
         'reorder_point' => 'integer',
         'pending_base_price' => 'decimal:2',
@@ -278,7 +284,13 @@ class Product extends Model
 
     public function getDimensionsAttribute()
     {
-        return "{$this->length_cm} x {$this->width_cm} x {$this->height_cm} cm";
+        $dimensions = "{$this->length_cm} x {$this->width_cm} x {$this->height_cm}";
+
+        if ($this->depth_cm !== null) {
+            $dimensions .= " x {$this->depth_cm}";
+        }
+
+        return $dimensions . ' cm';
     }
 
     public function getPrimary3dModelAttribute()

@@ -30,7 +30,7 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Today's Sales</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Sales Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_today) }}</p>
               </div>
               <Tag value="Today" severity="success" />
@@ -41,7 +41,7 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Today's Orders</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Orders Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ kpis.orders_today }}</p>
               </div>
               <Tag value="Orders" severity="info" />
@@ -52,7 +52,7 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales | Last 30 Days</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Sales | Last 30 Days</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_30d) }}</p>
                 <p class="text-xs text-slate-500 mt-1">Average Order Value: {{ formatCurrency(kpis.avg_order_value_30d) }}</p>
               </div>
@@ -80,7 +80,7 @@
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="text-base font-semibold text-slate-800">Sales Trend</h3>
-                <p class="text-xs text-slate-500">In-store sales performance.</p>
+                <p class="text-xs text-slate-500">Paid sales across all branches and sales channels.</p>
               </div>
               <Select v-model="ownerSalesTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Sales trend period" />
             </div>
@@ -141,6 +141,7 @@
               </div>
             </div>
             <DataTable :value="dashboard?.recent_orders || []" responsiveLayout="scroll" class="text-sm">
+              <Column field="channel" header="Channel"></Column>
               <Column field="order_number" header="Order Number"></Column>
               <Column field="customer_name" header="Customer"></Column>
               <Column field="status" header="Status">
@@ -180,6 +181,12 @@
                     <span v-if="branch.is_main_branch" class="text-xs text-emerald-600 ml-1">(Main Branch)</span>
                   </div>
                   <div class="text-xs text-slate-500">{{ [branch.city, branch.province].filter(Boolean).join(', ') }}</div>
+                  <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600">
+                    <span>Today</span><span class="text-right font-medium text-slate-800">{{ formatCurrency(branch.sales_today) }}</span>
+                    <span>Orders today</span><span class="text-right font-medium text-slate-800">{{ branch.orders_today || 0 }}</span>
+                    <span>Sales, 30 days</span><span class="text-right font-medium text-slate-800">{{ formatCurrency(branch.sales_30d) }}</span>
+                    <span>Low / out of stock</span><span class="text-right font-medium text-slate-800">{{ branch.low_stock_count || 0 }} / {{ branch.out_of_stock_count || 0 }}</span>
+                  </div>
                 </div>
                 <Tag :value="branch.status || 'active'" :severity="branch.status === 'inactive' ? 'danger' : 'success'" />
               </div>

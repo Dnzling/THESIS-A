@@ -867,6 +867,7 @@ class EcommerceController extends Controller
                     'length_cm' => $product->length_cm !== null ? (float) $product->length_cm : null,
                     'width_cm' => $product->width_cm !== null ? (float) $product->width_cm : null,
                     'height_cm' => $product->height_cm !== null ? (float) $product->height_cm : null,
+                    'depth_cm' => $product->depth_cm !== null ? (float) $product->depth_cm : null,
                     'weight_kg' => $product->weight_kg !== null ? (float) $product->weight_kg : null,
                 ],
                 'image' => $this->selectBestProductImage($product)?->url,
@@ -1437,8 +1438,8 @@ class EcommerceController extends Controller
         $fulfillmentBranch = $this->resolveFulfillmentBranch(
             (int) $cart->store_id,
             $itemsForCheckout,
-            null,
-            null
+            $customerLatitude,
+            $customerLongitude
         );
 
         if (!$fulfillmentBranch) {
@@ -1450,7 +1451,7 @@ class EcommerceController extends Controller
 
         $totalWeight = 0.0;
         foreach ($itemsForCheckout as $item) {
-            $itemWeight = (float) ($item->product?->weight_kg ?? 0);
+            $itemWeight = $this->shippingWeightForItem($item);
             $totalWeight += $itemWeight * (int) $item->quantity;
         }
 
@@ -1488,15 +1489,27 @@ class EcommerceController extends Controller
         }
         $itemQuantity = (int) $itemsForCheckout->sum('quantity');
         $bulkyQuantity = $this->countBulkyUnits($cart->store_id, $itemsForCheckout);
-        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight, $bulkyQuantity);
+        $fallback = $this->computeStoreDeliveryFeeFallback(
+            (int) $cart->store_id,
+            $subtotal,
+            $distanceKm,
+            $totalWeight,
+            $bulkyQuantity,
+            $this->isRemoteDeliveryAddress((int) $cart->store_id, $validated['shipping_address'] ?? null)
+        );
         if (!($fallback['delivery_available'] ?? true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'The delivery address is outside this store\'s maximum delivery distance.',
             ], 422);
         }
+        $freeShippingApplied = (bool) ($fallback['free_shipping_applied'] ?? false);
         $discountAmount = $bulkTrip ? round(((float) $fallback['shipping_fee']) * $bulkDiscountRate, 2) : 0.0;
-        $finalFee = round(((float) $fallback['shipping_fee']) - $discountAmount, 2);
+        $minimumDeliveryFee = (float) ($fallback['min_delivery_fee'] ?? 0);
+        $finalFee = $freeShippingApplied
+            ? 0.0
+            : max($minimumDeliveryFee, round(((float) $fallback['shipping_fee']) - $discountAmount, 2));
+        $minimumFeeAdjustment = max(0, round($finalFee - ((float) ($fallback['raw_fee'] ?? 0) - $discountAmount), 2));
 
         return response()->json([
             'success' => true,
@@ -1513,6 +1526,9 @@ class EcommerceController extends Controller
                     'distance_fee' => (float) ($fallback['distance_fee'] ?? 0),
                     'weight_fee' => (float) ($fallback['weight_fee'] ?? 0),
                     'bulky_item_surcharge' => (float) ($fallback['bulky_item_surcharge'] ?? 0),
+                    'remote_area_surcharge' => (float) ($fallback['remote_area_surcharge'] ?? 0),
+                    'minimum_delivery_fee' => $minimumDeliveryFee,
+                    'minimum_fee_adjustment' => $minimumFeeAdjustment,
                     'bulky_quantity' => $bulkyQuantity,
                     'item_quantity' => $itemQuantity,
                     'distance_km' => round($distanceKm, 2),
@@ -1575,7 +1591,6 @@ class EcommerceController extends Controller
             'billing_name' => ['nullable', 'string', 'max:120'],
             'billing_address' => ['nullable', 'string', 'max:1000'],
             'payment_method' => ['required', Rule::in(['card', 'e_wallet'])],
-            'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'fulfillment_method' => ['nullable', Rule::in(['delivery', 'pickup'])],
             'requested_fulfillment_date' => ['required', 'date_format:Y-m-d'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
@@ -1677,21 +1692,12 @@ class EcommerceController extends Controller
             ], 422);
         }
 
-        $shippingFee = $fulfillmentMethod === 'pickup' ? 0.0 : (float) ($validated['shipping_fee'] ?? 0);
+        $shippingFee = 0.0;
+        $minimumDeliveryFee = 0.0;
+        $freeShippingApplied = false;
         $previewSubtotal = 0;
         foreach ($itemsForCheckout as $item) {
             $previewSubtotal += (float) $item->unit_price * (int) $item->quantity;
-        }
-
-        $voucherDiscount = 0.0;
-        $appliedVoucherCode = null;
-        if (!empty($validated['voucher_code'])) {
-            $voucherResult = $this->validateVoucherCode(
-                (string) $validated['voucher_code'],
-                (float) $previewSubtotal + $shippingFee
-            );
-            $voucherDiscount = (float) $voucherResult['discount_amount'];
-            $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
         }
 
         $customerLatitude = isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null;
@@ -1717,50 +1723,31 @@ class EcommerceController extends Controller
             ], 422);
         }
 
-        // Compute shipping fee from delivery zones/rates based on branch->customer distance and order weight.
+        // Compute delivery pricing from server-side coordinates and current store settings.
         $totalWeight = 0.0;
         foreach ($itemsForCheckout as $item) {
-            $itemWeight = (float) ($item->product?->weight_kg ?? 0);
+            $itemWeight = $this->shippingWeightForItem($item);
             $totalWeight += $itemWeight * (int) $item->quantity;
         }
 
-        // Allow fallback to a provided shipping_fee if coordinates or branch coords are missing.
-        $providedShippingFee = array_key_exists('shipping_fee', $validated) ? (float) $validated['shipping_fee'] : null;
-        $canLookupRates = true;
-
-        if ($fulfillmentMethod === 'pickup') {
-            $shippingFee = 0.0;
-            $canLookupRates = false;
-        } elseif ($customerLatitude === null || $customerLongitude === null) {
-            if (!is_null($providedShippingFee)) {
-                $shippingFee = $providedShippingFee;
-                $canLookupRates = false;
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unable to determine customer coordinates for delivery rate lookup.',
-                ], 422);
-            }
+        if ($fulfillmentMethod === 'delivery' && ($customerLatitude === null || $customerLongitude === null)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to determine customer coordinates for delivery rate lookup.',
+            ], 422);
         }
 
         $originLatitude = is_numeric($fulfillmentBranch->latitude) ? (float) $fulfillmentBranch->latitude : null;
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
-        if ($canLookupRates && $fulfillmentMethod === 'delivery') {
-            if ($originLatitude === null || $originLongitude === null) {
-                if (!is_null($providedShippingFee)) {
-                    $shippingFee = $providedShippingFee;
-                    $canLookupRates = false;
-                } else {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Fulfillment branch does not have valid coordinates for delivery rate lookup.',
-                    ], 422);
-                }
-            }
+        if ($fulfillmentMethod === 'delivery' && ($originLatitude === null || $originLongitude === null)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Fulfillment branch does not have valid coordinates for delivery rate lookup.',
+            ], 422);
         }
 
-        if ($canLookupRates && $fulfillmentMethod === 'delivery') {
+        if ($fulfillmentMethod === 'delivery') {
             $distanceKm = $this->haversineKm(
                 (float) $originLatitude,
                 (float) $originLongitude,
@@ -1768,9 +1755,14 @@ class EcommerceController extends Controller
                 (float) $customerLongitude
             );
 
-            // Always recalculate on the server when coordinates are available.
-            // The client-provided amount is only a fallback when routing data is unavailable.
-            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight, $this->countBulkyUnits($cart->store_id, $itemsForCheckout));
+            $fallback = $this->computeStoreDeliveryFeeFallback(
+                (int) $cart->store_id,
+                (float) $previewSubtotal,
+                $distanceKm,
+                $totalWeight,
+                $this->countBulkyUnits($cart->store_id, $itemsForCheckout),
+                $this->isRemoteDeliveryAddress((int) $cart->store_id, $validated['shipping_address'] ?? null)
+            );
             if (!($fallback['delivery_available'] ?? true)) {
                 return response()->json([
                     'success' => false,
@@ -1778,13 +1770,27 @@ class EcommerceController extends Controller
                 ], 422);
             }
             $shippingFee = (float) $fallback['shipping_fee'];
+            $minimumDeliveryFee = (float) ($fallback['min_delivery_fee'] ?? 0);
+            $freeShippingApplied = (bool) ($fallback['free_shipping_applied'] ?? false);
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
         $bulkTrip = $bulkTripRequested;
         if ($bulkTrip && $fulfillmentMethod === 'delivery') {
             $bulkDiscountRate = $this->resolveBulkTripDiscountRate($cart->store_id);
-            $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
+            $discountedShippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
+            $shippingFee = $freeShippingApplied ? 0.0 : max($minimumDeliveryFee, $discountedShippingFee);
+        }
+
+        $voucherDiscount = 0.0;
+        $appliedVoucherCode = null;
+        if (!empty($validated['voucher_code'])) {
+            $voucherResult = $this->validateVoucherCode(
+                (string) $validated['voucher_code'],
+                (float) $previewSubtotal + $shippingFee
+            );
+            $voucherDiscount = (float) $voucherResult['discount_amount'];
+            $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
         }
 
         $submittedCustomizations = $validated['customization_requests'] ?? [];
@@ -3709,6 +3715,7 @@ class EcommerceController extends Controller
                         'length_cm' => $item->product->length_cm !== null ? (float) $item->product->length_cm : null,
                         'width_cm' => $item->product->width_cm !== null ? (float) $item->product->width_cm : null,
                         'height_cm' => $item->product->height_cm !== null ? (float) $item->product->height_cm : null,
+                        'depth_cm' => $item->product->depth_cm !== null ? (float) $item->product->depth_cm : null,
                     ] : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
@@ -4051,7 +4058,11 @@ class EcommerceController extends Controller
                     ->where('store_id', $storeId)
                     ->where('branch_id', $branch->id)
                     ->where('product_id', $item->product_id)
-                    ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
+                    ->when(
+                        $item->variation_id,
+                        fn ($q) => $q->where('variation_id', $item->variation_id),
+                        fn ($q) => $q->whereNull('variation_id')
+                    )
                     ->first();
 
                 $available = (int) ($inventory?->quantity_available ?? 0);
@@ -4214,10 +4225,46 @@ class EcommerceController extends Controller
     {
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first() ?? new StoreDeliveryFeeSetting();
         $classifier = app(\App\Services\Logistics\BulkyProductService::class);
-        return (int) $items->sum(fn ($item) => $classifier->isBulky($item->product, $setting) ? (int) $item->quantity : 0);
+        return (int) $items->sum(fn ($item) => $classifier->isBulky($item->product, $setting, $item->variation) ? (int) $item->quantity : 0);
     }
 
-    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0, int $bulkyQuantity = 0): array
+    private function isRemoteDeliveryAddress(int $storeId, ?string $address): bool
+    {
+        if (!$address) {
+            return false;
+        }
+
+        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
+        $remoteAreas = collect($setting?->remote_area_service_areas ?? [])
+            ->map(fn ($area) => mb_strtolower(trim((string) $area)))
+            ->filter()
+            ->unique()
+            ->all();
+        if (!$remoteAreas) {
+            return false;
+        }
+
+        $addressParts = collect(explode(',', $address))
+            ->map(fn ($part) => mb_strtolower(trim((string) $part)))
+            ->filter()
+            ->all();
+
+        return (bool) array_intersect($remoteAreas, $addressParts);
+    }
+
+    private function shippingWeightForItem(EcommerceCartItem $item): float
+    {
+        return (float) ($item->variation?->weight_kg ?? $item->product?->weight_kg ?? 0);
+    }
+
+    private function computeStoreDeliveryFeeFallback(
+        int $storeId,
+        float $subtotal,
+        float $distanceKm,
+        float $totalWeightKg = 0,
+        int $bulkyQuantity = 0,
+        bool $isRemoteArea = false
+    ): array
     {
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
         if (!$setting) {
@@ -4226,10 +4273,12 @@ class EcommerceController extends Controller
                 'is_active' => true,
                 'base_fee' => 100,
                 'per_km_fee' => 10,
+                'min_delivery_fee' => 80,
                 'per_kg_fee' => 0,
                 'free_shipping_min_order' => null,
                 'bulky_item_surcharge' => 0,
                 'remote_area_surcharge' => 0,
+                'remote_area_service_areas' => [],
                 'max_delivery_distance_km' => null,
                 'bulk_discount_rate' => 10,
             ]);
@@ -4240,23 +4289,29 @@ class EcommerceController extends Controller
             return [
                 'delivery_available' => false,
                 'shipping_fee' => 0.0,
+                'raw_fee' => 0.0,
+                'min_delivery_fee' => (float) ($setting->min_delivery_fee ?? 80),
                 'free_shipping_applied' => false,
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
                 'bulky_item_surcharge' => 0.0,
+                'remote_area_surcharge' => 0.0,
             ];
         }
 
         if (!(bool) $setting->is_active) {
             return [
                 'shipping_fee' => 0.0,
+                'raw_fee' => 0.0,
+                'min_delivery_fee' => 0.0,
                 'delivery_available' => true,
                 'free_shipping_applied' => false,
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
                 'bulky_item_surcharge' => 0.0,
+                'remote_area_surcharge' => 0.0,
             ];
         }
 
@@ -4264,12 +4319,15 @@ class EcommerceController extends Controller
         if (!is_null($freeThreshold) && $subtotal >= (float) $freeThreshold) {
             return [
                 'shipping_fee' => 0.0,
+                'raw_fee' => 0.0,
+                'min_delivery_fee' => (float) ($setting->min_delivery_fee ?? 80),
                 'delivery_available' => true,
                 'free_shipping_applied' => true,
                 'base_fee' => (float) $setting->base_fee,
                 'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
                 'weight_fee' => round($totalWeightKg * (float) $setting->per_kg_fee, 2),
                 'bulky_item_surcharge' => round($bulkyQuantity * (float) $setting->bulky_item_surcharge, 2),
+                'remote_area_surcharge' => $isRemoteArea ? (float) $setting->remote_area_surcharge : 0.0,
             ];
         }
 
@@ -4277,17 +4335,23 @@ class EcommerceController extends Controller
         $distanceFee = $distanceKm * (float) $setting->per_km_fee;
         $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
         $bulkyFee = $bulkyQuantity * (float) $setting->bulky_item_surcharge;
-        $raw = $base + $distanceFee + $weightFee + $bulkyFee;
-        $applied = $raw;
+        $remoteFee = $isRemoteArea ? (float) $setting->remote_area_surcharge : 0.0;
+        $raw = $base + $distanceFee + $weightFee + $bulkyFee + $remoteFee;
+        $minimumAdjustment = max(0, (float) ($setting->min_delivery_fee ?? 80) - $raw);
+        $applied = $raw + $minimumAdjustment;
 
         return [
             'shipping_fee' => round($applied, 2),
+            'raw_fee' => round($raw, 2),
+            'min_delivery_fee' => max(0, (float) ($setting->min_delivery_fee ?? 80)),
             'delivery_available' => true,
             'free_shipping_applied' => false,
             'base_fee' => round($base, 2),
             'distance_fee' => round($distanceFee, 2),
             'weight_fee' => round($weightFee, 2),
             'bulky_item_surcharge' => round($bulkyFee, 2),
+            'remote_area_surcharge' => round($remoteFee, 2),
+            'minimum_fee_adjustment' => round($minimumAdjustment, 2),
         ];
     }
 

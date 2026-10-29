@@ -524,7 +524,7 @@ const reviewHtml = computed(() => {
   </head>
   <body>
       <div class="contract-header">
-          <div class="platform-name">FurniSync</div>
+          <div class="platform-name">FURNISYNC</div>
           <div class="document-title">STORE-SUPPLIER AGREEMENT</div>
           <div class="document-subtitle">Facilitated by FurniSync IMS Platform</div>
       </div>

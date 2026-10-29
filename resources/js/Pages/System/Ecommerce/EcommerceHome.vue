@@ -358,7 +358,7 @@
                         Top-selling furniture
                     </h2>
                     <p class="mt-2 text-sm text-slate-500">
-                        The 15 most purchased in-stock products this month.
+                        Top products by units sold in the last 30 days.
                     </p>
                 </div>
             </div>
@@ -412,10 +412,10 @@
                         <p class="text-[11px] font-semibold text-orange-600">
                             {{
                                 Number(
-                                    product.monthly_sales || 0
+                                    product.sales_last_30_days || 0
                                 ).toLocaleString()
                             }}
-                            sold this month
+                            sold in the last 30 days
                         </p>
                         <h3
                             class="mt-1 truncate text-sm font-semibold text-slate-900 group-hover:text-orange-600"

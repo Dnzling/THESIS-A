@@ -204,10 +204,11 @@
               <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Shipping details</p>
                 <div class="md:col-span-2">
                   <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
-                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <InputNumber v-model="form.length_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Length" suffix=" cm" />
                     <InputNumber v-model="form.width_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Width" suffix=" cm" />
                     <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
+                    <InputNumber v-model="form.depth_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Depth" suffix=" cm" />
                     <InputNumber v-model="form.weight_kg" class="w-full text-sm" fluid size="small" :min="0" placeholder="Weight" suffix=" kg" />
                   </div>
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
@@ -312,6 +313,7 @@ const form = reactive({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  depth_cm: null as number | null,
   weight_kg: null as number | null,
   is_bulky: null as boolean | null,
   unit_of_measurement: '',
@@ -410,6 +412,7 @@ const loadProduct = async (id: number) => {
     form.length_cm = product.length_cm != null ? Number(product.length_cm) : null
     form.width_cm = product.width_cm != null ? Number(product.width_cm) : null
     form.height_cm = product.height_cm != null ? Number(product.height_cm) : null
+    form.depth_cm = product.depth_cm != null ? Number(product.depth_cm) : null
     form.weight_kg = product.weight_kg != null ? Number(product.weight_kg) : null
     form.is_bulky = product.is_bulky == null ? null : Boolean(product.is_bulky)
     form.unit_of_measurement = product.unit_of_measurement || ''
@@ -515,6 +518,7 @@ const handleSubmit = async () => {
     payload.append('length_cm', form.length_cm == null ? '' : String(form.length_cm))
     payload.append('width_cm', form.width_cm == null ? '' : String(form.width_cm))
     payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
+    payload.append('depth_cm', form.depth_cm == null ? '' : String(form.depth_cm))
     payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
     payload.append('supplier_id', form.supplier_id != null ? String(form.supplier_id) : '')
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)

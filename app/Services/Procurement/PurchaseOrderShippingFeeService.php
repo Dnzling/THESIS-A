@@ -49,7 +49,7 @@ class PurchaseOrderShippingFeeService
             if (!$product) continue;
             $weight = (float) ($product->weight_kg ?? 0);
             $totalWeight += $weight * $quantity;
-            $largestDimension = max((float) ($product->length_cm ?? 0), (float) ($product->width_cm ?? 0), (float) ($product->height_cm ?? 0));
+            $largestDimension = max((float) ($product->length_cm ?? 0), (float) ($product->width_cm ?? 0), (float) ($product->height_cm ?? 0), (float) ($product->depth_cm ?? 0));
             $hasBulkyItems = $hasBulkyItems || $weight >= 25 || $largestDimension >= 150;
         }
 

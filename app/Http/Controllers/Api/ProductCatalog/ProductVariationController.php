@@ -157,6 +157,7 @@ class ProductVariationController extends BaseController
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
                 ,'proposal_id' => 'nullable|integer|exists:supplier_rfq_feedbacks,id'
@@ -250,6 +251,7 @@ class ProductVariationController extends BaseController
                 $data['length_cm'] = $data['length_cm'] ?? $product->length_cm;
                 $data['width_cm'] = $data['width_cm'] ?? $product->width_cm;
                 $data['height_cm'] = $data['height_cm'] ?? $product->height_cm;
+                $data['depth_cm'] = $data['depth_cm'] ?? $product->depth_cm;
                 $data['weight_kg'] = $data['weight_kg'] ?? $product->weight_kg;
                 $data = $this->onlyExistingVariationColumns($data);
                 
@@ -370,6 +372,7 @@ class ProductVariationController extends BaseController
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
             ]);
@@ -638,6 +641,7 @@ class ProductVariationController extends BaseController
             'length_cm' => $product->length_cm,
             'width_cm' => $product->width_cm,
             'height_cm' => $product->height_cm,
+            'depth_cm' => $product->depth_cm,
             'weight_kg' => $product->weight_kg,
             'custom_image_id' => $standardImage?->id,
             'custom_3d_model_id' => $standardModel?->id,

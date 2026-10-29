@@ -16,6 +16,7 @@ class ProductObserver
     public function created(Product $product): void
     {
         $branches = Branch::where('store_id', $product->store_id)->get();
+        $reorderPoint = (int) ($product->reorder_point ?? 10);
 
         foreach ($branches as $branch) {
             $exists = BranchInventory::where('branch_id', $branch->id)
@@ -37,7 +38,7 @@ class ProductObserver
                 'quantity_available'=> 0,
                 'quantity_damaged'  => 0,
                 'quantity_incoming' => 0,
-                'reorder_point'     => 10,
+                'reorder_point'     => $reorderPoint,
                 'reorder_quantity'  => 10,
                 'safety_stock'      => 5,
                 'maximum_stock'     => 0,
@@ -59,7 +60,7 @@ class ProductObserver
                     'variation_id'               => null,
                     'alert_type'                 => 'out_of_stock',
                     'current_quantity'           => 0,
-                    'reorder_point'              => 10,
+                    'reorder_point'              => $reorderPoint,
                     'recommended_order_quantity' => 10,
                     'status'                     => 'active',
                 ]);

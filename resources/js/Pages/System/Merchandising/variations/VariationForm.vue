@@ -405,7 +405,7 @@
           </div>
         </template>
         <template #content>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-xs font-semibold text-gray-700">Length (cm)</label>
               <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
@@ -417,6 +417,10 @@
             <div class="flex flex-col gap-2">
               <label class="text-xs font-semibold text-gray-700">Height (cm)</label>
               <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Depth (cm)</label>
+              <InputNumber v-model="form.depth_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
             </div>
             <div class="flex flex-col gap-2">
               <label class="text-xs font-semibold text-gray-700">Weight (kg)</label>
@@ -540,6 +544,7 @@ const form = reactive({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  depth_cm: null as number | null,
   weight_kg: null as number | null,
   is_active: true
 })
@@ -593,6 +598,7 @@ watch(() => form.product_id, (newVal) => {
       form.length_cm = selectedProduct.value.length_cm == null ? null : Number(selectedProduct.value.length_cm)
       form.width_cm = selectedProduct.value.width_cm == null ? null : Number(selectedProduct.value.width_cm)
       form.height_cm = selectedProduct.value.height_cm == null ? null : Number(selectedProduct.value.height_cm)
+      form.depth_cm = selectedProduct.value.depth_cm == null ? null : Number(selectedProduct.value.depth_cm)
       form.weight_kg = selectedProduct.value.weight_kg == null ? null : Number(selectedProduct.value.weight_kg)
     }
     generateSKU()
@@ -694,6 +700,7 @@ const loadVariation = async () => {
       length_cm: variation.length_cm ?? variation.product?.length_cm ?? null,
       width_cm: variation.width_cm ?? variation.product?.width_cm ?? null,
       height_cm: variation.height_cm ?? variation.product?.height_cm ?? null,
+      depth_cm: variation.depth_cm ?? variation.product?.depth_cm ?? null,
       weight_kg: variation.weight_kg ?? variation.product?.weight_kg ?? null,
       is_active: variation.is_active
     })
@@ -1070,6 +1077,7 @@ onMounted(() => {
         form.length_cm = Number(p.length_cm || 0) || null
         form.width_cm = Number(p.width_cm || 0) || null
         form.height_cm = Number(p.height_cm || 0) || null
+        form.depth_cm = Number(p.depth_cm || 0) || null
         form.weight_kg = Number(p.weight_kg || 0) || null
         variantImagePreviewUrl.value = p.image_urls?.[0] || ''
         generateSKU()

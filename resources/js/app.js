@@ -4,7 +4,7 @@ import './axios';
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
-import { createApp, h } from 'vue';
+import { createApp, defineComponent, h } from 'vue';
 import { createPinia } from 'pinia';
 import SystemLayout from '@/Layouts/SystemLayout.vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
@@ -21,6 +21,7 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useAuthStore } from '@/stores/auth';
 import axios from 'axios';
 import { captureDevConsole } from './utils/devConsoleCapture';
+import UnsavedCreateChangesGuard from '@/Components/UnsavedCreateChangesGuard.vue';
 
 captureDevConsole();
 
@@ -114,7 +115,9 @@ createInertiaApp({
             return module;
         }),
     setup({ el, App, props, plugin }) {
-        const app = createApp({ render: () => h(App, props) });
+        const app = createApp(defineComponent({
+            setup: () => () => [h(App, props), h(UnsavedCreateChangesGuard)],
+        }));
         const pinia = createPinia();
         let currentPageUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 

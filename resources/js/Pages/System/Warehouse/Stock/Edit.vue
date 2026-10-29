@@ -112,7 +112,7 @@
                                 ></template
                             ><template #content
                                 ><div
-                                    class="grid grid-cols-2 gap-4 md:grid-cols-4"
+                                    class="grid grid-cols-2 gap-4 md:grid-cols-5"
                                 >
                                     <Field label="Length (cm)"
                                         ><InputNumber
@@ -131,6 +131,13 @@
                                     ><Field label="Height (cm)"
                                         ><InputNumber
                                             v-model="form.height_cm"
+                                            :min="0"
+                                            :minFractionDigits="0"
+                                            :maxFractionDigits="2"
+                                            fluid /></Field
+                                    ><Field label="Depth (cm)"
+                                        ><InputNumber
+                                            v-model="form.depth_cm"
                                             :min="0"
                                             :minFractionDigits="0"
                                             :maxFractionDigits="2"
@@ -375,6 +382,9 @@ const hydrate = (row: any) =>
         width_cm: row.product?.width_cm ? Number(row.product.width_cm) : null,
         height_cm: row.product?.height_cm
             ? Number(row.product.height_cm)
+            : null,
+        depth_cm: row.product?.depth_cm
+            ? Number(row.product.depth_cm)
             : null,
         weight_kg: row.product?.weight_kg
             ? Number(row.product.weight_kg)

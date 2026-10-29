@@ -25,6 +25,7 @@ class UpdateProductRequest extends FormRequest
             'color_id' => 'sometimes|nullable|exists:colors,id',
             'width_cm' => 'sometimes|nullable|numeric|min:0',
             'height_cm' => 'sometimes|nullable|numeric|min:0',
+            'length_cm' => 'sometimes|nullable|numeric|min:0',
             'depth_cm' => 'sometimes|nullable|numeric|min:0',
             'weight_kg' => 'sometimes|nullable|numeric|min:0',
             'cost_price' => 'sometimes|numeric|min:0',

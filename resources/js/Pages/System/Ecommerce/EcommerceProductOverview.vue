@@ -134,6 +134,10 @@
                   <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.height_cm, 'cm') }}</dd>
                 </div>
                 <div class="flex items-baseline justify-between gap-2 py-2.5">
+                  <dt class="text-slate-500">Depth</dt>
+                  <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.depth_cm, 'cm') }}</dd>
+                </div>
+                <div class="flex items-baseline justify-between gap-2 py-2.5">
                   <dt class="text-slate-500">Weight</dt>
                   <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.weight_kg, 'kg') }}</dd>
                 </div>
@@ -602,7 +606,7 @@ const variationHasOwnMediaOrSpecs = computed(() => {
     return Boolean(String(raw || '').trim())
   })
   const dims = v.dimensions || v
-  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((k) => {
     const val = dims?.[k]
     return val !== null && val !== undefined && val !== ''
   })
@@ -617,7 +621,7 @@ const displayDimensions = computed(() => {
   const parentDims = p?.dimensions || p || {}
   const variationDims = v?.dimensions || v || {}
 
-  const pick = (key: 'length_cm' | 'width_cm' | 'height_cm' | 'weight_kg') => {
+  const pick = (key: 'length_cm' | 'width_cm' | 'height_cm' | 'depth_cm' | 'weight_kg') => {
     const vv = variationDims?.[key]
     if (vv !== null && vv !== undefined && vv !== '') return vv
     const pv = parentDims?.[key]
@@ -629,6 +633,7 @@ const displayDimensions = computed(() => {
     length_cm: pick('length_cm'),
     width_cm: pick('width_cm'),
     height_cm: pick('height_cm'),
+    depth_cm: pick('depth_cm'),
     weight_kg: pick('weight_kg'),
   }
 })

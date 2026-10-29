@@ -141,6 +141,7 @@ class ProductController extends BaseController
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
@@ -359,7 +360,7 @@ class ProductController extends BaseController
     {
         try {
             $product = Product::byStore($this->getStoreId())
-                             ->select('id', 'sku', 'product_name', 'description', 'length_cm', 'width_cm', 'height_cm')
+                             ->select('id', 'sku', 'product_name', 'description', 'length_cm', 'width_cm', 'height_cm', 'depth_cm')
                              ->with(['assets' => function($query) {
                                  $query->whereIn('asset_type', ['3D_Model', '3D_Thumbnail'])
                                        ->orderBy('is_primary', 'desc')
@@ -377,6 +378,7 @@ class ProductController extends BaseController
                     'length' => $product->length_cm,
                     'width' => $product->width_cm,
                     'height' => $product->height_cm,
+                    'depth' => $product->depth_cm,
                     'formatted' => $product->dimensions
                 ],
                 'primary_model' => $product->primary_3d_model ? [
@@ -443,11 +445,12 @@ class ProductController extends BaseController
                 'room_ids.*' => 'integer|distinct|exists:shopping_rooms,id',
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
-                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'discounted_price' => 'nullable|numeric|gt:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
@@ -462,6 +465,15 @@ class ProductController extends BaseController
                 'published_at' => 'nullable|date',
                 'price_change_reason' => 'nullable|string|max:500'
             ]);
+
+            if (array_key_exists('discounted_price', $validated) && !is_null($validated['discounted_price'])) {
+                $sellingPrice = (float) ($validated['base_price'] ?? $product->base_price ?? 0);
+                if ((float) $validated['discounted_price'] >= $sellingPrice) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'discounted_price' => 'Discounted price must be less than the selling price.',
+                    ]);
+                }
+            }
 
             // If category changed, verify it belongs to store
             if (isset($validated['category_id'])) {

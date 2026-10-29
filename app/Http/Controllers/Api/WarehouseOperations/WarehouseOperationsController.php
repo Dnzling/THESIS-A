@@ -225,6 +225,7 @@ class WarehouseOperationsController extends Controller
             'length_cm' => ['nullable', 'numeric', 'min:0'],
             'width_cm' => ['nullable', 'numeric', 'min:0'],
             'height_cm' => ['nullable', 'numeric', 'min:0'],
+            'depth_cm' => ['nullable', 'numeric', 'min:0'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],
             'is_active' => ['required', 'boolean'],
             'quantity_on_hand' => ['required', 'integer', 'min:0'],
@@ -269,7 +270,7 @@ class WarehouseOperationsController extends Controller
         DB::transaction(function () use ($stock, $validated) {
             $stock->product->update(collect($validated)->only([
                 'product_name', 'description', 'product_type', 'category_id', 'unit_of_measurement',
-                'brand', 'cost_price', 'length_cm', 'width_cm', 'height_cm', 'weight_kg', 'is_active',
+                'brand', 'cost_price', 'length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg', 'is_active',
             ])->all());
 
             $onHand = (int) $validated['quantity_on_hand'];

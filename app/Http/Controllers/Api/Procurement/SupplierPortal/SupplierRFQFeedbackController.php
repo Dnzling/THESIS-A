@@ -35,13 +35,16 @@ class SupplierRFQFeedbackController extends Controller
                 ], 409);
             }
 
-            // Get all active RFQs (exclude drafts/cancelled)
+            // Suppliers may only see RFQs explicitly invited to their linked supplier record.
             $relations = ['items.product', 'store'];
             if (Schema::hasTable('rfq_attachments')) {
                 $relations[] = 'attachments';
             }
 
             $query = RequestForQuotation::whereNotIn('status', ['draft', 'cancelled'])
+                ->whereHas('suppliers', function ($supplierQuery) use ($portal) {
+                    $supplierQuery->where('supplier_id', $portal->supplier_id);
+                })
                 ->with($relations)
                 ->orderBy('created_at', 'desc');
 
@@ -163,7 +166,11 @@ class SupplierRFQFeedbackController extends Controller
                 $relations[] = 'attachments';
             }
 
-            $rfq = RequestForQuotation::with($relations)->findOrFail($id);
+            $rfq = RequestForQuotation::whereHas('suppliers', function ($supplierQuery) use ($portal) {
+                    $supplierQuery->where('supplier_id', $portal->supplier_id);
+                })
+                ->with($relations)
+                ->findOrFail($id);
 
             // Mark RFQ as viewed for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $id)

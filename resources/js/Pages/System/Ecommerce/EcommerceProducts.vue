@@ -118,7 +118,7 @@
         <section v-if="activeCategoryId" class="mb-8">
           <div class="mb-4">
             <h2 class="mt-1 text-xl font-bold text-slate-900">Top shops for {{ activeCategoryName || 'this category' }}</h2>
-            <p class="mt-1 text-xs text-slate-500">Ranked by monthly sales and available products in this category.</p>
+            <p class="mt-1 text-xs text-slate-500">Ranked by sales in the last 30 days and available products in this category.</p>
           </div>
 
           <div v-if="loadingStores" class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
@@ -132,7 +132,7 @@
                 <img :src="normalizeImageUrl(store.store_logo) || '/F.svg'" :alt="`${store.store_name} logo`" class="h-full w-full object-cover" @error="onImageError" />
               </div>
               <p class="mt-3 truncate text-center text-xs font-semibold text-slate-900 group-hover:text-orange-600">{{ store.store_name }}</p>
-              <p class="mt-1 text-center text-[10px] text-slate-400">{{ store.matching_products_count }} products · {{ store.monthly_sales }} sold</p>
+              <p class="mt-1 text-center text-[10px] text-slate-400">{{ store.matching_products_count }} products · {{ store.sales_last_30_days }} sold in 30 days</p>
             </button>
           </div>
           <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-center text-xs text-slate-500">No matching shops are currently available.</div>
@@ -543,7 +543,7 @@ const filteredProducts = computed(() => {
   else if (sort.value === 'price_desc') rows.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
   else if (sort.value === 'latest') rows.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
   else if (sort.value === 'rating') rows.sort((a, b) => Number(b.rating_avg || 0) - Number(a.rating_avg || 0))
-  else rows.sort((a, b) => Number(b.monthly_sales || 0) - Number(a.monthly_sales || 0))
+  else rows.sort((a, b) => Number(b.sales_last_30_days || 0) - Number(a.sales_last_30_days || 0))
 
   return rows
 })

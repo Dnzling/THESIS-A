@@ -53,6 +53,7 @@ class ProductResource extends JsonResource
             // Dimensions
             'width_cm' => $this->width_cm,
             'height_cm' => $this->height_cm,
+            'length_cm' => $this->length_cm,
             'depth_cm' => $this->depth_cm,
             'weight_kg' => $this->weight_kg,
             'dimensions' => $this->formatted_dimensions,

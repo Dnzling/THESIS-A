@@ -54,7 +54,12 @@
               <div class="field-group">
                 <label for="base-fee">Base fee <span class="text-red-500">*</span></label>
                 <InputNumber id="base-fee" v-model="form.base_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
-                <small>Fixed starting charge and minimum delivery fee for every delivery.</small>
+                <small>Fixed starting charge for every delivery order.</small>
+              </div>
+              <div class="field-group">
+                <label for="minimum-delivery-fee">Minimum delivery fee <span class="text-red-500">*</span></label>
+                <InputNumber id="minimum-delivery-fee" v-model="form.min_delivery_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+                <small>Paid delivery fees will not fall below this amount. Free-shipping orders remain free.</small>
               </div>
               <div class="field-group">
                 <label for="per-km-fee">Rate per kilometer <span class="text-red-500">*</span></label>
@@ -118,6 +123,12 @@
               <div class="field-group">
                 <label for="remote-surcharge">Remote area surcharge</label>
                 <InputNumber id="remote-surcharge" v-model="form.remote_area_surcharge" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+                <small>Applied only when the checkout city or barangay matches the remote areas below.</small>
+              </div>
+              <div class="field-group">
+                <label for="remote-areas">Remote cities or barangays</label>
+                <Textarea id="remote-areas" v-model="remoteAreasText" rows="3" fluid placeholder="One exact city or barangay per line" />
+                <small>Enter the location names as they appear in the customer address, one per line.</small>
               </div>
               <div class="field-group sm:col-span-2">
                 <label for="delivery-notes">Internal policy notes</label>
@@ -174,6 +185,7 @@
                 <div class="fee-row"><span>Weight fee</span><span>{{ money(estimateResult.breakdown.weight_fee) }}</span></div>
                 <div v-if="estimateResult.breakdown.bulky_item_surcharge" class="fee-row"><span>Bulky handling ({{ estimateResult.breakdown.bulky_quantity }} units)</span><span>{{ money(estimateResult.breakdown.bulky_item_surcharge) }}</span></div>
                 <div v-if="estimateResult.breakdown.remote_area_surcharge" class="fee-row"><span>Remote surcharge</span><span>{{ money(estimateResult.breakdown.remote_area_surcharge) }}</span></div>
+                <div v-if="estimateResult.breakdown.minimum_fee_adjustment" class="fee-row"><span>Minimum fee adjustment</span><span>{{ money(estimateResult.breakdown.minimum_fee_adjustment) }}</span></div>
                 <div v-if="estimateResult.breakdown.free_shipping_applied" class="mt-3 rounded-lg bg-emerald-500/15 px-3 py-2 text-emerald-300">Free shipping threshold applied.</div>
               </div>
             </div>
@@ -208,6 +220,7 @@ interface DeliverySettingsForm {
   is_active: boolean
   base_fee: number
   per_km_fee: number
+  min_delivery_fee: number
   per_kg_fee: number
   free_shipping_min_order: number | null
   bulky_item_surcharge: number
@@ -231,6 +244,7 @@ const form = reactive<DeliverySettingsForm>({
   is_active: true,
   base_fee: 100,
   per_km_fee: 10,
+  min_delivery_fee: 80,
   per_kg_fee: 0,
   free_shipping_min_order: null,
   bulky_item_surcharge: 0,
@@ -242,6 +256,7 @@ const form = reactive<DeliverySettingsForm>({
   bulk_discount_rate: 10,
   notes: '',
 })
+const remoteAreasText = ref('')
 
 const estimateForm = reactive({
   subtotal: 0,
@@ -259,6 +274,7 @@ const loadSettings = async () => {
   try {
     const response = await logisticsService.getDeliverySettings()
     Object.assign(form, response?.data || {})
+    remoteAreasText.value = (response?.data?.remote_area_service_areas || []).join('\n')
     loaded.value = true
   } catch (error: any) {
     loadError.value = error?.response?.data?.message || 'Delivery settings could not be loaded.'
@@ -270,8 +286,15 @@ const loadSettings = async () => {
 const saveSettings = async () => {
   saving.value = true
   try {
-    const response = await logisticsService.updateDeliverySettings({ ...form })
+    const response = await logisticsService.updateDeliverySettings({
+      ...form,
+      remote_area_service_areas: remoteAreasText.value
+        .split(/\r?\n/)
+        .map((area) => area.trim())
+        .filter(Boolean),
+    })
     Object.assign(form, response?.data || {})
+    remoteAreasText.value = (response?.data?.remote_area_service_areas || []).join('\n')
     toast.add({ severity: 'success', summary: 'Settings saved', detail: 'Delivery pricing and limits were updated.', life: 2500 })
   } catch (error: any) {
     const validationErrors = error?.response?.data?.errors

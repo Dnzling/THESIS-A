@@ -36,6 +36,7 @@ class ProductVariation extends Model
         'length_cm',
         'width_cm',
         'height_cm',
+        'depth_cm',
         'weight_kg',
         'is_active'
     ];
@@ -49,6 +50,7 @@ class ProductVariation extends Model
         'length_cm' => 'decimal:2',
         'width_cm' => 'decimal:2',
         'height_cm' => 'decimal:2',
+        'depth_cm' => 'decimal:2',
         'weight_kg' => 'decimal:2',
         'is_active' => 'boolean'
     ];

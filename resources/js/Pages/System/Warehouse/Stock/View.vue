@@ -417,10 +417,9 @@ const productFields = computed(() => [
       product.value.length_cm,
       product.value.width_cm,
       product.value.height_cm,
+      product.value.depth_cm,
     ].some(Boolean)
-      ? `${product.value.length_cm || 0} × ${product.value.width_cm || 0} × ${
-          product.value.height_cm || 0
-        } cm`
+      ? `${product.value.length_cm || 0} × ${product.value.width_cm || 0} × ${product.value.height_cm || 0}${product.value.depth_cm ? ` × ${product.value.depth_cm}` : ''} cm`
       : '—',
   },
   {

@@ -119,7 +119,7 @@
             </div>
             <div class="mt-5 border-t border-slate-200 pt-4">
               <label class="mb-2 block text-xs font-semibold text-slate-700">Preferred {{ serviceMethod }} date *</label>
-              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="new Date()" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon  size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate />
+              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="minFulfillmentDate" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon  size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate />
               <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
               <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
               <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
@@ -279,6 +279,9 @@
                 <div class="flex justify-between"><span>Base fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.base_fee, 2) }}</span></div>
                 <div class="flex justify-between"><span>Distance fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.distance_fee, 2) }}</span></div>
                 <div class="flex justify-between"><span>Weight fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.weight_fee, 2) }}</span></div>
+                <div v-if="Number(shippingFeeBreakdown.bulky_item_surcharge || 0) > 0" class="flex justify-between"><span>Bulky handling</span><span>₱ {{ formatNumber(shippingFeeBreakdown.bulky_item_surcharge, 2) }}</span></div>
+                <div v-if="Number(shippingFeeBreakdown.remote_area_surcharge || 0) > 0" class="flex justify-between"><span>Remote area surcharge</span><span>₱ {{ formatNumber(shippingFeeBreakdown.remote_area_surcharge, 2) }}</span></div>
+                <div v-if="Number(shippingFeeBreakdown.minimum_fee_adjustment || 0) > 0" class="flex justify-between"><span>Minimum fee adjustment</span><span>₱ {{ formatNumber(shippingFeeBreakdown.minimum_fee_adjustment, 2) }}</span></div>
                 <div class="flex justify-between"><span>Distance</span><span>{{ formatNumber(shippingFeeBreakdown.distance_km, 2) }} km</span></div>
                 <div class="flex justify-between"><span>Weight</span><span>{{ formatNumber(shippingFeeBreakdown.weight_kg, 2) }} kg</span></div>
                 <div v-if="shippingFeeBreakdown.bulk_trip" class="flex justify-between text-emerald-600">
@@ -544,6 +547,12 @@ let availabilityRequest = 0
 const fulfillmentDateString = computed(() => fulfillmentDate.value
   ? `${fulfillmentDate.value.getFullYear()}-${String(fulfillmentDate.value.getMonth() + 1).padStart(2, '0')}-${String(fulfillmentDate.value.getDate()).padStart(2, '0')}`
   : '')
+const minFulfillmentDate = computed(() => {
+  const first = fulfillmentDates.value[0]
+  if (!first) return new Date()
+  const [year, month, day] = first.split('-').map(Number)
+  return new Date(year, month - 1, day)
+})
 const maxFulfillmentDate = computed(() => {
   const last = fulfillmentDates.value.at(-1)
   if (!last) return new Date()
@@ -576,6 +585,10 @@ async function loadFulfillmentAvailability() {
     if (requestId !== availabilityRequest) return
     fulfillmentDates.value = response.data?.data?.dates || []
     fulfillmentWindow.value = response.data?.data?.window || null
+    if (fulfillmentDates.value.length) {
+      const [year, month, day] = fulfillmentDates.value[0].split('-').map(Number)
+      fulfillmentDate.value = new Date(year, month - 1, day)
+    }
     if (serviceMethod.value === 'pickup') pickupBranch.value = response.data?.data?.pickup_branch || null
   } catch (error: any) {
     if (requestId !== availabilityRequest) return
@@ -1391,7 +1404,6 @@ async function placeOrder() {
         ? [billingForm.street, billingForm.barangay, billingForm.city, billingForm.province, billingForm.postalCode].map((part) => part.trim()).filter(Boolean).join(', ')
         : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value),
-      shipping_fee: shippingFeeTotal.value,
       fulfillment_method: serviceMethod.value,
       requested_fulfillment_date: fulfillmentDateString.value,
       discount_amount: discountAmount.value,

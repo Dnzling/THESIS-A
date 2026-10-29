@@ -36,7 +36,14 @@ class DashboardTrendController extends Controller
     public function ownerSales(Request $request): JsonResponse
     {
         [$period, $start, $points] = $this->period($request);
-        $this->add($points, 'value', DB::table('sales_pos_orders')->where('store_id', $this->storeId($request)), $start, $period, 'total_amount');
+        $storeId = $this->storeId($request);
+        $this->add($points, 'value', DB::table('sales_pos_orders')->where('store_id', $storeId)
+            ->whereIn('payment_status', ['paid', 'succeeded', 'completed']), $start, $period, 'total_amount');
+        if (Schema::hasTable('ecommerce_orders')) {
+            $this->add($points, 'value', DB::table('ecommerce_orders')->where('store_id', $storeId)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->whereNotIn('status', ['cancelled', 'rejected']), $start, $period, 'total_amount');
+        }
         return $this->respond($period, $points);
     }
 

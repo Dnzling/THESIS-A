@@ -25,6 +25,7 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => 'required|boolean',
             'base_fee' => 'required|numeric|min:0',
             'per_km_fee' => 'required|numeric|min:0',
+            'min_delivery_fee' => 'required|numeric|min:0',
             'per_kg_fee' => 'required|numeric|min:0',
             'free_shipping_min_order' => 'nullable|numeric|min:0',
             'bulky_item_surcharge' => 'required|numeric|min:0',
@@ -32,6 +33,8 @@ class DeliveryFeeSettingController extends Controller
             'bulky_longest_side_threshold_cm' => 'nullable|numeric|gt:0',
             'bulky_volume_threshold_cbm' => 'nullable|numeric|gt:0',
             'remote_area_surcharge' => 'required|numeric|min:0',
+            'remote_area_service_areas' => 'nullable|array',
+            'remote_area_service_areas.*' => 'required|string|max:120',
             'max_delivery_distance_km' => 'nullable|numeric|min:0',
             'bulk_discount_rate' => 'nullable|numeric|min:5|max:25',
             'notes' => 'nullable|string|max:2000',
@@ -107,10 +110,12 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => true,
             'base_fee' => 100,
             'per_km_fee' => 10,
+            'min_delivery_fee' => 80,
             'per_kg_fee' => 0,
             'free_shipping_min_order' => null,
             'bulky_item_surcharge' => 0,
             'remote_area_surcharge' => 0,
+            'remote_area_service_areas' => [],
             'max_delivery_distance_km' => null,
             'bulk_discount_rate' => 10,
         ]);
@@ -123,6 +128,7 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => (bool) $setting->is_active,
             'base_fee' => (float) $setting->base_fee,
             'per_km_fee' => (float) $setting->per_km_fee,
+            'min_delivery_fee' => (float) ($setting->min_delivery_fee ?? 80),
             'per_kg_fee' => (float) $setting->per_kg_fee,
             'free_shipping_min_order' => is_null($setting->free_shipping_min_order) ? null : (float) $setting->free_shipping_min_order,
             'bulky_item_surcharge' => (float) $setting->bulky_item_surcharge,
@@ -130,6 +136,7 @@ class DeliveryFeeSettingController extends Controller
             'bulky_longest_side_threshold_cm' => $setting->bulky_longest_side_threshold_cm !== null ? (float) $setting->bulky_longest_side_threshold_cm : null,
             'bulky_volume_threshold_cbm' => $setting->bulky_volume_threshold_cbm !== null ? (float) $setting->bulky_volume_threshold_cbm : null,
             'remote_area_surcharge' => (float) $setting->remote_area_surcharge,
+            'remote_area_service_areas' => $setting->remote_area_service_areas ?? [],
             'max_delivery_distance_km' => is_null($setting->max_delivery_distance_km) ? null : (float) $setting->max_delivery_distance_km,
             'bulk_discount_rate' => is_null($setting->bulk_discount_rate) ? null : (float) $setting->bulk_discount_rate,
             'notes' => $setting->notes,
@@ -204,7 +211,8 @@ class DeliveryFeeSettingController extends Controller
         $bulky = $bulkyQuantity * (float) $setting->bulky_item_surcharge;
         $remote = $isRemoteArea ? (float) $setting->remote_area_surcharge : 0.0;
         $raw = $base + $distanceFee + $weightFee + $bulky + $remote;
-        $applied = $raw;
+        $minimumAdjustment = max(0, (float) ($setting->min_delivery_fee ?? 80) - $raw);
+        $applied = $raw + $minimumAdjustment;
 
         return [
             'shipping_fee' => round($applied, 2),
@@ -216,6 +224,7 @@ class DeliveryFeeSettingController extends Controller
                 'bulky_quantity' => $bulkyQuantity,
                 'bulky_item_surcharge' => round($bulky, 2),
                 'remote_area_surcharge' => round($remote, 2),
+                'minimum_fee_adjustment' => round($minimumAdjustment, 2),
                 'free_shipping_applied' => false,
                 'distance_km' => round($distanceKm, 2),
                 'total_weight_kg' => round($totalWeightKg, 2),

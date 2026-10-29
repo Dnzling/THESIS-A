@@ -4,14 +4,12 @@
     <meta charset="UTF-8">
     <title>Store-Supplier Agreement - {{ $contractNumber ?? 'DRAFT' }}</title>
     <style>
-        /* BARABARA font for FurniSync platform name only */
+        /* Match the FurniSync wordmark used in the system layout. */
         @font-face {
-            font-family: 'BARABARA';
-            /* Use public/ so it works for both DomPDF (filesystem) and HTML fallback rendering */
+            font-family: 'Barabara';
             src: url('{{ public_path('fonts/BARABARA-final.otf') }}') format('opentype');
-            font-weight: normal;
+            font-weight: 400;
             font-style: normal;
-            font-display: swap;
         }
         
         /* Professional contract styling */
@@ -39,13 +37,29 @@
         }
         
         .platform-name {
-            font-family: 'BARABARA', 'DejaVu Sans', 'Helvetica', 'Arial', sans-serif;
-            font-size: 32pt;
+            font-family: 'Barabara', 'DejaVu Sans', 'Helvetica', 'Arial', sans-serif;
+            font-size: 25pt;
             font-weight: normal;
-            letter-spacing: 2px;
-            color: #1a5276;
-            margin-bottom: 4px;
+            letter-spacing: 1px;
+            color: #f97316;
             line-height: 1.2;
+            vertical-align: middle;
+        }
+
+        .brand-lockup {
+            margin: 0 auto 4px;
+            border-collapse: collapse;
+        }
+
+        .brand-mark-cell {
+            padding-right: 8px;
+            vertical-align: middle;
+        }
+
+        .brand-mark {
+            display: block;
+            width: 30px;
+            height: 30px;
         }
         
         .document-title {
@@ -219,7 +233,14 @@
 </head>
 <body>
     <div class="contract-header">
-        <div class="platform-name">FurniSync</div>
+        <table class="brand-lockup" role="presentation">
+            <tr>
+                <td class="brand-mark-cell">
+                    <img class="brand-mark" src="{{ public_path('F.png') }}" alt="">
+                </td>
+                <td class="platform-name">FURNISYNC</td>
+            </tr>
+        </table>
         <div class="document-title">STORE-SUPPLIER AGREEMENT</div>
         <div class="document-subtitle">Facilitated by FurniSync IMS Platform</div>
     </div>

@@ -146,8 +146,8 @@
                     <span v-if="item.brand">Brand: {{ item.brand }}</span>
                     <span v-if="item.weight_kg !== null && item.weight_kg !== undefined">Weight: {{ item.weight_kg }} kg</span>
                   </div>
-                  <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm)" class="text-xs text-slate-500">
-                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm x {{ item.dimensions.width_cm || 0 }} cm x {{ item.dimensions.height_cm || 0 }} cm
+                  <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm || item.dimensions.depth_cm)" class="text-xs text-slate-500">
+                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm x {{ item.dimensions.width_cm || 0 }} cm x {{ item.dimensions.height_cm || 0 }} cm x {{ item.dimensions.depth_cm || 0 }} cm
                   </p>
                   <div v-if="String(item.customization_request || '').trim()" class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
                     <div class="flex flex-wrap items-center justify-between gap-2"><p class="font-semibold"><i class="pi pi-palette mr-1" />Customization request</p><Tag :value="item.customization_status === 'approved' ? 'Approved' : item.customization_status === 'rejected' ? 'Not available' : 'Pending store review'" :severity="item.customization_status === 'approved' ? 'success' : item.customization_status === 'rejected' ? 'danger' : 'warn'" /></div>

@@ -148,7 +148,7 @@
             <span class="text-base font-semibold text-slate-900">Product Specifications</span>
           </template>
           <template #content>
-            <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
               <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
                 <p class="text-xs text-slate-500">Length</p>
                 <p class="mt-1 font-semibold text-slate-900">
@@ -165,6 +165,12 @@
                 <p class="text-xs text-slate-500">Height</p>
                 <p class="mt-1 font-semibold text-slate-900">
                   {{ product.height_cm ? `${product.height_cm} cm` : 'N/A' }}
+                </p>
+              </div>
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs text-slate-500">Depth</p>
+                <p class="mt-1 font-semibold text-slate-900">
+                  {{ product.depth_cm ? `${product.depth_cm} cm` : 'N/A' }}
                 </p>
               </div>
               <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">

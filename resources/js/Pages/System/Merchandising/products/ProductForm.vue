@@ -168,7 +168,7 @@
               </div>
   
               <!-- Dimensions -->
-              <div v-if="showInventoryFields" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div v-if="showInventoryFields" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500">Length (cm)</label>
                   <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0"
@@ -182,6 +182,11 @@
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500">Height (cm)</label>
                   <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0"
+                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Depth (cm)</label>
+                  <InputNumber v-model="form.depth_cm" :minFractionDigits="2" suffix=" cm" :min="0"
                     class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
                 </div>
                 <div class="space-y-2">
@@ -205,7 +210,7 @@
                   <Checkbox v-model="form.is_bestseller" inputId="bestseller" :binary="true" />
                   <label for="bestseller" class="text-sm text-gray-700 cursor-pointer">Bestseller</label>
                 </div>
-                <div v-if="showInventoryFields" class="flex items-center gap-2">
+                <div v-if="form.product_type === 'finished_good'" class="flex items-center gap-2">
                   <Checkbox v-model="form.assembly_required" inputId="assembly" :binary="true" />
                   <label for="assembly" class="text-sm text-gray-700 cursor-pointer">Assembly Required</label>
                 </div>
@@ -221,7 +226,7 @@
             </section>
   
             <!-- Pricing -->
-            <section v-if="showInventoryFields" class="space-y-6">
+            <section v-if="isEditMode" class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
                 <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
                 <p class="text-sm text-gray-500 mt-1">Set the selling price and optional discount</p>
@@ -229,11 +234,11 @@
   
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
-                  <label class="text-sm font-medium text-gray-700">Selling Price <span class="text-red-500">*</span></label>
+                  <label class="text-sm font-medium text-gray-700">Selling Price</label>
                   <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH"
-                    :class="{ 'p-invalid': errors.base_price }" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                    disabled :min="0" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
                   <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
+                  <small class="text-gray-500 text-xs">Managed in Inventory.</small>
                 </div>
   
                 <div class="space-y-2">
@@ -245,9 +250,16 @@
   
                 <div v-if="!isRawMaterialType" class="space-y-2 md:col-span-2">
                   <label class="text-sm font-medium text-gray-700">Discounted Price</label>
-                  <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP"
-                    locale="en-PH" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                  <small class="text-gray-500 text-xs">Leave empty if no discount</small>
+                  <div class="flex flex-col gap-2 sm:flex-row">
+                    <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP"
+                      locale="en-PH" :min="0" :max="Number(form.base_price || 0)" :invalid="Boolean(errors.discounted_price)"
+                      class="w-full bg-gray-50 border-gray-200 rounded-xl sm:flex-1" fluid />
+                    <Button v-if="form.discounted_price !== null && form.discounted_price !== ''" type="button"
+                      label="Clear discount" severity="secondary" outlined size="small"
+                      @click="form.discounted_price = null" />
+                  </div>
+                  <small v-if="errors.discounted_price" class="text-red-500">{{ errors.discounted_price }}</small>
+                  <small v-else class="text-gray-500 text-xs">Enter a price below the inventory selling price, or clear it to remove the discount.</small>
                 </div>
   
               </div>
@@ -607,6 +619,10 @@
                         cm</span></p>
                   </div>
                   <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                    <p class="text-[11px] text-gray-500">D</p>
+                    <p class="font-semibold text-gray-900">{{ previewDepthCm ?? '—' }}<span v-if="previewDepthCm"> cm</span></p>
+                  </div>
+                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                     <p class="text-[11px] text-gray-500">Weight</p>
                     <p class="font-semibold text-gray-900">{{ previewWeightKg ?? '—' }}<span v-if="previewWeightKg">
                         kg</span></p>
@@ -792,6 +808,7 @@ const variationForm = ref({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  depth_cm: null as number | null,
   weight_kg: null as number | null,
   is_active: true
 })
@@ -832,6 +849,7 @@ const form = ref({
   length_cm: null,
   width_cm: null,
   height_cm: null,
+  depth_cm: null,
   weight_kg: null,
   assembly_required: false,
   is_customizable: false,
@@ -914,7 +932,7 @@ const variationHasOwnMediaOrSpecs = computed(() => {
   if (!v) return false
   const has3d = !!selectedVariationModelUrl.value
   const hasImage = !!String(selectedVariationImageUrl.value || '').trim()
-  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((k) => {
     const val = v?.[k]
     return val !== null && val !== undefined && val !== ''
   })
@@ -926,7 +944,7 @@ const previewUsesVariationImage = computed(() => previewUsesVariationPricing.val
 const previewUsesVariationSpecs = computed(() => {
   const v: any = selectedVariation.value
   if (!previewUsesVariationPricing.value || !v) return false
-  return ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+  return ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((k) => {
     const val = v?.[k]
     return val !== null && val !== undefined && val !== ''
   })
@@ -977,6 +995,7 @@ const previewImageUrl = computed(() => {
 const previewLengthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.length_cm ?? null) : form.value.length_cm)
 const previewWidthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.width_cm ?? null) : form.value.width_cm)
 const previewHeightCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.height_cm ?? null) : form.value.height_cm)
+const previewDepthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.depth_cm ?? null) : form.value.depth_cm)
 const previewWeightKg = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.weight_kg ?? null) : form.value.weight_kg)
 
 const previewPrimaryImageUrl = computed(() => previewImageUrl.value)
@@ -1222,6 +1241,7 @@ const loadProduct = async () => {
       length_cm: product.length_cm,
       width_cm: product.width_cm,
       height_cm: product.height_cm,
+      depth_cm: product.depth_cm,
       weight_kg: product.weight_kg,
       assembly_required: product.assembly_required || false,
       is_customizable: product.is_customizable || false,
@@ -1639,6 +1659,7 @@ const resetVariationForm = () => {
     length_cm: null,
     width_cm: null,
     height_cm: null,
+    depth_cm: null,
     weight_kg: null,
     is_active: true
   }
@@ -1711,6 +1732,7 @@ const openEditVariationDialog = (row: any) => {
     length_cm: row.length_cm ?? null,
     width_cm: row.width_cm ?? null,
     height_cm: row.height_cm ?? null,
+    depth_cm: row.depth_cm ?? null,
     weight_kg: row.weight_kg ?? null,
     is_active: !!row.is_active
   }
@@ -1782,6 +1804,7 @@ const saveVariation = async () => {
       length_cm: variationForm.value.length_cm,
       width_cm: variationForm.value.width_cm,
       height_cm: variationForm.value.height_cm,
+      depth_cm: variationForm.value.depth_cm,
       weight_kg: variationForm.value.weight_kg,
       is_active: variationForm.value.is_active
     }
@@ -1849,6 +1872,14 @@ const validateForm = () => {
     form.value.is_bestseller = false
   }
 
+  if (!isRawMaterialType.value && form.value.discounted_price !== null && form.value.discounted_price !== '') {
+    const discountedPrice = Number(form.value.discounted_price)
+    const sellingPrice = Number(form.value.base_price || 0)
+    if (!(discountedPrice > 0 && discountedPrice < sellingPrice)) {
+      errors.value.discounted_price = 'Discounted price must be greater than zero and less than the selling price.'
+    }
+  }
+
   return Object.keys(errors.value).length === 0
 }
 
@@ -1877,6 +1908,13 @@ const handleSubmit = async () => {
       collection_name: form.value.collection_name,
       room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
       description: form.value.description,
+      discounted_price: isRawMaterialType.value ? null : form.value.discounted_price,
+      length_cm: form.value.length_cm,
+      width_cm: form.value.width_cm,
+      height_cm: form.value.height_cm,
+      depth_cm: form.value.depth_cm,
+      weight_kg: form.value.weight_kg,
+      assembly_required: form.value.assembly_required,
       is_customizable: form.value.is_customizable,
       is_featured: form.value.is_featured,
       is_new_arrival: form.value.is_new_arrival,

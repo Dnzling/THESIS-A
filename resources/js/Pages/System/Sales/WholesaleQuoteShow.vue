@@ -5,7 +5,47 @@
     <template v-else-if="quote">
       <Message v-if="quote.sales_order_id" severity="success" :closable="false">Invoice {{ quote.invoice_number || quote.quote_number }} · Sales order {{ quote.sales_order_id }} · Payment {{ quote.order_payment_status || 'pending' }}. <button class="font-semibold underline" @click="router.visit(`/sales/pos/orders/${quote.sales_order_id}`)">View order</button></Message>
       <div class="grid gap-3 md:grid-cols-4"><div class="summary"><span>Quotation number</span><b>{{ quote.quote_number }}</b></div><div class="summary"><span>Created</span><b>{{ dateTime(quote.created_at) }}</b></div><div class="summary"><span>Valid until</span><b>{{ dateOnly(quote.valid_until) }}</b></div><div class="summary"><span>Quoted total</span><b class="text-orange-600">{{ money(quote.subtotal) }}</b></div></div>
-      <div class="grid gap-4 lg:grid-cols-3"><Card class="border shadow-sm lg:col-span-2"><template #title>Customer and terms</template><template #content><div class="grid gap-4 text-sm md:grid-cols-2"><div><p class="meta">Business customer</p><p class="font-semibold">{{ quote.crm_lead?.full_name||'—' }}</p><p class="text-slate-500">{{ quote.crm_lead?.email||quote.crm_lead?.phone||'No contact' }}</p></div><div><p class="meta">Payment terms</p><p class="font-semibold">{{ paymentTermLabel(quote.payment_terms) }}</p><p v-if="['online_payment','credit_card'].includes(quote.payment_terms)" class="mt-1 text-xs text-slate-500">Processed through PayMongo</p></div></div></template></Card><Card class="border shadow-sm"><template #title>Workflow</template><template #content><ol class="space-y-3 text-sm"><li v-for="step in steps" :key="step.key" class="flex items-center gap-2"><span :class="['flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',step.done?'bg-emerald-500 text-white':'bg-slate-100 text-slate-400']"><i :class="step.done?'pi pi-check':'pi pi-circle'" /></span><span :class="step.done?'font-medium text-slate-800':'text-slate-400'">{{ step.label }}</span></li></ol></template></Card></div>
+      <div class="grid gap-4 lg:grid-cols-3">
+        <Card class="border shadow-sm lg:col-span-2">
+          <template #title>Business customer and terms</template>
+          <template #content>
+            <div class="grid gap-5 text-sm md:grid-cols-2">
+              <div class="space-y-3">
+                <div>
+                  <p class="meta">Business / Customer Name</p>
+                  <p class="mt-1 font-semibold text-slate-900">{{ quote.customer_name || quote.crm_lead?.full_name || '—' }}</p>
+                </div>
+                <div>
+                  <p class="meta">Contact Email</p>
+                  <p class="mt-1 break-all text-slate-700">{{ quote.customer_email || quote.crm_lead?.email || '—' }}</p>
+                </div>
+                <div>
+                  <p class="meta">Contact Number</p>
+                  <p class="mt-1 text-slate-700">{{ quote.customer_phone || quote.crm_lead?.phone || '—' }}</p>
+                </div>
+              </div>
+              <div>
+                <p class="meta">Payment Terms</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ paymentTermLabel(quote.payment_terms) }}</p>
+                <p v-if="['online_payment','credit_card'].includes(quote.payment_terms)" class="mt-1 text-xs text-slate-500">Processed through PayMongo</p>
+              </div>
+            </div>
+          </template>
+        </Card>
+        <Card class="border shadow-sm">
+          <template #title>Workflow</template>
+          <template #content>
+            <ol class="space-y-3 text-sm">
+              <li v-for="step in steps" :key="step.key" class="flex items-center gap-2">
+                <span :class="['flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold', step.done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400']">
+                  <i :class="step.done ? 'pi pi-check' : 'pi pi-circle'" />
+                </span>
+                <span :class="step.done ? 'font-medium text-slate-800' : 'text-slate-400'">{{ step.label }}</span>
+              </li>
+            </ol>
+          </template>
+        </Card>
+      </div>
       <Card class="border shadow-sm"><template #title>Quoted items</template><template #content><div class="overflow-x-auto"><table class="w-full min-w-[700px] text-sm"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="p-3 text-left">#</th><th class="p-3 text-left">Product</th><th class="p-3 text-center">Quantity</th><th class="p-3 text-right">Unit price</th><th class="p-3 text-right">Line total</th></tr></thead><tbody class="divide-y"><tr v-for="(item,i) in quote.items||[]" :key="i"><td class="p-3 text-slate-400">{{ i+1 }}</td><td class="p-3"><p class="font-medium">{{ item.product_name }}</p><p class="text-xs text-slate-500">{{ item.sku||'No SKU' }}</p></td><td class="p-3 text-center">{{ item.quantity }}</td><td class="p-3 text-right">{{ money(item.unit_price) }}</td><td class="p-3 text-right font-semibold">{{ money(item.line_total) }}</td></tr></tbody><tfoot><tr class="border-t-2"><td colspan="4" class="p-3 text-right font-semibold">Total</td><td class="p-3 text-right text-lg font-bold">{{ money(quote.subtotal) }}</td></tr></tfoot></table></div></template></Card>
       <Card v-if="quote.sales_order_id" class="border shadow-sm"><template #title>Payment request</template><template #content><p class="text-sm text-slate-600">Invoice {{ quote.invoice_number || quote.quote_number }} · {{ money(quote.subtotal) }}</p><p v-if="quote.payment_link && quote.order_payment_status !== 'paid'" class="mt-2 break-all text-xs text-orange-700">{{ quote.payment_link }}</p><Button v-if="quote.payment_link && quote.order_payment_status !== 'paid'" label="Copy payment link" icon="pi pi-copy" size="small" severity="warn" outlined class="mt-3" @click="copyPaymentLink" /><p v-if="quote.order_payment_status !== 'paid'" class="mt-2 text-xs text-amber-700">Do not release this order until payment is confirmed.</p></template></Card><Card v-if="quote.notes" class="border shadow-sm"><template #title>Notes</template><template #content><p class="whitespace-pre-line text-sm text-slate-600">{{ quote.notes }}</p></template></Card>
     </template>

@@ -93,6 +93,7 @@ const comparisonRows = [
   { label: 'Length', key: 'length_cm', type: 'dimension' },
   { label: 'Width', key: 'width_cm', type: 'dimension' },
   { label: 'Height', key: 'height_cm', type: 'dimension' },
+  { label: 'Depth', key: 'depth_cm', type: 'dimension' },
   { label: 'Weight', key: 'weight_kg', type: 'weight' },
   { label: 'Assembly', key: 'assembly_required', type: 'boolean' },
   { label: 'Available variants', key: 'variations', type: 'variations' },

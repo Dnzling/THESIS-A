@@ -17,6 +17,7 @@ export interface Product {
     length_cm?: number
     width_cm?: number
     height_cm?: number
+    depth_cm?: number
     weight_kg?: number
     assembly_required?: boolean
     is_featured?: boolean
@@ -77,6 +78,7 @@ export interface ProductVariation {
     length_cm?: number | null
     width_cm?: number | null
     height_cm?: number | null
+    depth_cm?: number | null
     weight_kg?: number | null
     is_active?: boolean
 }

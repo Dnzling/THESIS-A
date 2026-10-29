@@ -256,7 +256,7 @@
         <!-- Stock & Dimensions -->
         <div class="border-t border-gray-200 pt-4">
           <p class="text-sm font-semibold text-gray-700 mb-3">Stock & Dimensions</p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p class="text-xs text-gray-600 mb-1">Stock</p>
               <Badge :value="currentVariation.stock_quantity"
@@ -273,6 +273,10 @@
             <div>
               <p class="text-xs text-gray-600 mb-1">Width</p>
               <p class="text-sm font-semibold">{{ currentVariation.width_cm || 'N/A' }} cm</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-600 mb-1">Depth</p>
+              <p class="text-sm font-semibold">{{ currentVariation.depth_cm || 'N/A' }} cm</p>
             </div>
           </div>
         </div>

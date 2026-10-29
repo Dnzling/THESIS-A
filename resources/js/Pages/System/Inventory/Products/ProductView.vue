@@ -519,7 +519,7 @@ const availableStock = computed(() => {
 
 const displaySellingPrice = computed(() => selectedVariation.value?.final_price ?? product.value?.base_price ?? 0)
 const displayReorderLevel = computed(() => selectedVariation.value?.reorder_point ?? branchInventory.value?.reorder_point ?? product.value?.reorder_point ?? 'N/A')
-const hasDimensions = computed(() => ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((key) => displayItem.value?.[key]))
+const hasDimensions = computed(() => ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((key) => displayItem.value?.[key]))
 
 const priceLabel = computed(() => {
   const type = product.value?.product_type
@@ -532,6 +532,7 @@ const dimensionsLabel = computed(() => {
     displayItem.value?.length_cm ? `${displayItem.value.length_cm} cm` : null,
     displayItem.value?.width_cm ? `${displayItem.value.width_cm} cm` : null,
     displayItem.value?.height_cm ? `${displayItem.value.height_cm} cm` : null,
+    displayItem.value?.depth_cm ? `${displayItem.value.depth_cm} cm` : null,
     displayItem.value?.weight_kg ? `${displayItem.value.weight_kg} kg` : null,
   ].filter(Boolean)
 
