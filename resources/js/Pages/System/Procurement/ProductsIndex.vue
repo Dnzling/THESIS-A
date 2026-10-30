@@ -1,30 +1,32 @@
 <template>
-  <div class="space-y-6">
+  <div class="min-h-screen p-4">
+    <div class="mx-auto space-y-4">
     <!-- Header -->
     <div class="flex items-center gap-4 justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Procurement Products</h1>
+        <h1 class="text-lg font-bold text-gray-900">Products</h1>
         <p class="text-gray-500 mt-1">Manage products with supplier pricing and stock levels</p>
       </div>
       <Button
         label="New Purchase Order"
         icon="pi pi-plus"
-        class="p-button-lg"
+        size="small"
         @click="goToCreatePO"
       />
     </div>
 
-    <!-- Filters & Search -->
-    <Card>
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+
+    <!-- Data Table -->
+    <Card class="border border-gray-200 shadow-sm">
+      <template #header>
+        <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-5 m-4 mt-6">
           <!-- Search -->
           <span class="p-input-icon-left w-full">
-            <i class="pi pi-search" />
             <InputText
               v-model="filters.search"
               placeholder="Search SKU, name..."
-              class="w-full"
+              class="w-full text-sm"
+              size="small"
               @keyup.enter="loadProducts"
             />
           </span>
@@ -38,7 +40,8 @@
               option-label="category_name"
               option-value="id"
               placeholder="All Categories"
-              class="w-full" fluid
+              class="w-full text-sm" fluid
+              size="small"
               @change="loadProducts"
             />
           </div>
@@ -49,8 +52,11 @@
             <Select
               v-model="filters.status"
               :options="statusOptions"
+              option-label="label"
+              option-value="value"
               placeholder="All Status"
-              class="w-full" fluid
+              class="w-full text-sm" fluid
+              size="small"
               @change="loadProducts"
             />
           </div>
@@ -63,7 +69,8 @@
               option-label="label"
               option-value="value"
               placeholder="All Types"
-              class="w-full"
+              class="w-full text-sm"
+              size="small"
               fluid
               showClear
               @change="loadProducts"
@@ -77,16 +84,13 @@
               v-model="filters.sort_by"
               :options="sortOptions"
               placeholder="Sort by..."
-              class="w-full" fluid
+              class="w-full text-sm" fluid
+              size="small"
               @change="loadProducts"
             />
           </div>
         </div>
       </template>
-    </Card>
-
-    <!-- Data Table -->
-    <Card>
       <template #content>
         <DataTable
           v-if="!loading"
@@ -98,7 +102,7 @@
           :loading="loading"
           @page="onPageChange"
           responsive-layout="scroll"
-          class="p-datatable-sm"
+          class="p-datatable-sm text-xs"
         >
           <template #header>
             <div class="flex justify-between items-center">
@@ -110,6 +114,14 @@
               />
             </div>
           </template>
+
+          <Column header="Branch" style="min-width: 150px">
+            <template #body="{ data }">
+              <span class="text-gray-700">
+                {{ data.branch_name || data.inventory?.[0]?.branch?.name || data.branch?.name || '—' }}
+              </span>
+            </template>
+          </Column>
 
           <!-- SKU Column -->
           <Column field="sku" header="SKU" style="width: 10%" sortable>
@@ -129,7 +141,7 @@
           </Column>
 
           <!-- Suppliers Column -->
-          <Column header="Suppliers" style="width: 20%">
+          <Column v-if="false" header="Suppliers" style="width: 20%">
             <template #body="{ data }">
               <div class="space-y-2">
                 <div
@@ -167,7 +179,7 @@
           </Column>
 
           <!-- Stock Column -->
-          <Column header="Stock" style="width: 15%">
+          <Column v-if="false" header="Stock" style="width: 15%">
             <template #body="{ data }">
               <div class="space-y-1 text-sm">
                 <div>
@@ -183,6 +195,12 @@
                   {{ data.reorder_point }}
                 </div>
               </div>
+            </template>
+          </Column>
+
+          <Column header="Quantity on Hand" style="min-width: 150px">
+            <template #body="{ data }">
+              <span class="font-semibold text-gray-900">{{ formatNumber(data.quantity_on_hand ?? data.current_stock) }}</span>
             </template>
           </Column>
 
@@ -216,6 +234,7 @@
                   severity="success"
                   text
                   rounded
+                  v-if="false"
                   @click="quickOrderProduct(data)"
                   v-tooltip="'Quick Order'"
                 />
@@ -223,13 +242,14 @@
                   icon="pi pi-eye"
                   text
                   rounded
-                  @click="viewProductDetail(data)"
+                  @click="viewProduct(data)"
                   v-tooltip="'View Details'"
                 />
                 <Button
                   icon="pi pi-history"
                   text
                   rounded
+                  v-if="false"
                   @click="viewPurchaseHistory(data)"
                   v-tooltip="'Purchase History'"
                 />
@@ -280,30 +300,7 @@
       </DataTable>
     </Dialog>
 
-    <!-- Product Detail Dialog -->
-    <Dialog
-      v-model:visible="showProductModal"
-      header="Product Detail"
-      :modal="true"
-      style="width: 90vw; max-width: 800px"
-    >
-      <div v-if="selectedProduct" class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="font-semibold text-gray-600">SKU</label>
-            <p>{{ selectedProduct.sku }}</p>
-          </div>
-          <div>
-            <label class="font-semibold text-gray-600">Category</label>
-            <p>{{ selectedProduct.category?.category_name }}</p>
-          </div>
-        </div>
-        <div>
-          <label class="font-semibold text-gray-600">Description</label>
-          <p>{{ selectedProduct.description || 'N/A' }}</p>
-        </div>
-      </div>
-    </Dialog>
+    </div>
 
     <!-- Toast -->
     <Toast />
@@ -311,7 +308,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '@/services/procurement.service'
@@ -325,6 +322,10 @@ const loading = ref(false)
 const totalRecords = ref(0)
 const currentPage = ref(0)
 const categories = ref([])
+const branches = ref<any[]>([])
+const showBranchColumn = computed(() =>
+  branches.value.length > 1 || products.value.some((product: any) => Number(product?.branch_count || 0) > 1)
+)
 const showSuppliersModal = ref(false)
 const showProductModal = ref(false)
 const selectedProduct = ref(null)
@@ -353,8 +354,8 @@ const sortOptions = ref([
   { label: 'Newest', value: 'created_at' },
 ])
 const productTypeOptions = ref([
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Product', value: 'finished_good' },
+  { label: 'Supply', value: 'supply' },
 ])
 
 // Methods
@@ -402,9 +403,12 @@ function showSupplierDialog(product: any) {
   showSuppliersModal.value = true
 }
 
-function viewProductDetail(product: any) {
-  selectedProduct.value = product
-  showProductModal.value = true
+function viewProduct(product: any) {
+  router.push({
+    name: 'procurement.products.detail',
+    params: { id: product.id },
+    query: product.branch_id ? { branch_id: product.branch_id } : undefined,
+  })
 }
 
 async function viewPurchaseHistory(product: any) {
@@ -442,6 +446,16 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
 }
 
+async function loadBranches() {
+  try {
+    const response = await procurementService.getBranches({ active_only: true })
+    const data = response?.data?.data || response?.data || []
+    branches.value = Array.isArray(data) ? data : []
+  } catch {
+    branches.value = []
+  }
+}
+
 function supplierList(row: any) {
   return Array.isArray(row?.suppliers) ? row.suppliers : []
 }
@@ -465,7 +479,8 @@ function firstPrice(supplier: any): number | null {
 }
 
 // Lifecycle
-onMounted(() => {
+onMounted(async () => {
+  await loadBranches()
   loadProducts()
 })
 </script>

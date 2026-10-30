@@ -110,7 +110,7 @@ class SubscriptionManagementController extends Controller
         $validated = $request->validate([
             'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
             'subscription_ends_at' => 'nullable|date',
-            'status' => 'nullable|in:pending,active,inactive,suspended,banned,verified,rejected',
+            'status' => 'nullable|in:unverified,pending,active,inactive,deactivated,suspended,banned,verified,rejected',
         ]);
 
         $planId = SubscriptionPlan::query()->where('plan_key', strtolower((string) $validated['subscription_tier']))->value('id');
@@ -119,6 +119,7 @@ class SubscriptionManagementController extends Controller
             'subscription_tier' => $planId,
             'subscription_ends_at' => $validated['subscription_ends_at'] ?? null,
             'status' => $validated['status'] ?? $store->status,
+            'subscription_status' => strtolower((string) $validated['subscription_tier']) === 'free' ? $store->subscription_status : 'paid',
         ]);
 
         if (strtolower((string) $validated['subscription_tier']) !== 'free') {
@@ -170,16 +171,17 @@ class SubscriptionManagementController extends Controller
         $displayStatus = $rawStatus === 'pending' ? 'unverified' : $store->status;
         $statusDetails = $this->getStatusDetailsForStore((int) $store->id, (string) $store->status);
 
-        $subscriptionStatus = 'free';
+        $subscriptionPlan = $store->subscriptionPlan;
+        $subscriptionStatus = 'unassigned';
         $daysRemaining = null;
-        if (($store->subscriptionPlan?->plan_key ?? 'free') !== 'free') {
+        if ($subscriptionPlan && $subscriptionPlan->plan_key !== 'free') {
             if (!$endsAt) {
                 $subscriptionStatus = 'paid';
             } else {
                 $daysRemaining = $today->diffInDays($endsAt, false);
                 $subscriptionStatus = $daysRemaining < 0 ? 'overdue' : 'paid';
             }
-        } else {
+        } elseif ($subscriptionPlan) {
             $subscriptionStatus = 'unpaid';
         }
 
@@ -190,7 +192,7 @@ class SubscriptionManagementController extends Controller
             'contact_person' => $store->contact_person,
             'contact_number' => $store->contact_number,
             'status' => $displayStatus,
-            'subscription_tier' => $store->subscriptionPlan?->plan_key ?? 'free',
+            'subscription_tier' => $subscriptionPlan?->plan_key,
             'subscription_ends_at' => optional($endsAt)->toDateString(),
             'subscription_status' => $subscriptionStatus,
             'days_remaining' => $daysRemaining,
@@ -251,8 +253,8 @@ class SubscriptionManagementController extends Controller
         $settings['requires_verification'] = true;
         $store->settings = $settings;
 
-        if ($store->status !== 'verified') {
-            $store->status = 'pending';
+        if (!in_array((string) $store->status, ['active', 'pending'], true)) {
+            $store->status = 'active';
         }
 
         $this->ensureStoreHasMainBranch($store);
@@ -285,6 +287,7 @@ class SubscriptionManagementController extends Controller
             'branch_code' => $branchCode,
             'is_main_branch' => true,
             'status' => 'active',
+            'geofence_enabled' => false,
         ]);
     }
 }

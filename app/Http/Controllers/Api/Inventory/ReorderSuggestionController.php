@@ -8,11 +8,11 @@ use App\Models\Hr\Employee;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Store\Branch;
 use App\Services\Inventory\ReorderSuggestionService;
+use App\Services\Inventory\ForecastPlanService;
 use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use App\Models\Core\SystemNotification;
 use Exception;
 
@@ -20,36 +20,40 @@ class ReorderSuggestionController extends Controller
 {
     protected ReorderSuggestionService $suggestionService;
 
-    protected function userHasAnyPermission(array $permissions, $user = null): bool
-    {
-        $authUser = $user ?? auth()->user();
-        if (!$authUser) {
-            return false;
-        }
-
-        $storeId = (int) ($authUser->store_id ?? 0);
-
-        foreach ($permissions as $permission) {
-            $normalized = (string) $permission;
-            $aliases = array_values(array_unique([
-                $normalized,
-                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
-                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
-            ]));
-
-            foreach ($aliases as $candidate) {
-                if ($candidate && $authUser->hasPermissionTo($candidate, $storeId)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     public function __construct(ReorderSuggestionService $suggestionService)
     {
         $this->suggestionService = $suggestionService;
+    }
+
+    public function createGroupedPrs(Request $request): JsonResponse
+    {
+        abort_if(app(ForecastPlanService::class)->key((int) ($request->user()?->store_id ?? 0)) === 'simple', 403, 'Simple-plan stores create direct Inventory Purchase Orders instead of PRs.');
+        abort_unless($request->user()?->hasPermissionTo('inventory.requisites.manage', (int) ($request->user()?->store_id ?? 0)), 403);
+        $validated = $request->validate([
+            'suggestion_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'suggestion_ids.*' => ['required', 'integer', 'distinct', 'exists:reorder_suggestions,id'],
+        ]);
+
+        $context = $this->getUserContext();
+        if ($context['store_id'] <= 0 || !EmployeeContext::currentEmployeeId()) {
+            return response()->json(['message' => 'A store employee is required to create a requisition.'], 403);
+        }
+
+        try {
+            $prs = $this->suggestionService->createGroupedPurchaseRequisitions(
+                $validated['suggestion_ids'],
+                (int) $context['store_id'],
+                $context['branch_id'] ?: null,
+                (int) EmployeeContext::currentEmployeeId()
+            );
+
+            return response()->json(['success' => true, 'data' => $prs, 'message' => count($prs) . ' draft PR(s) created.']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            report($e);
+            return response()->json(['message' => 'Could not create requisitions from these suggestions.'], 500);
+        }
     }
 
     /**
@@ -76,10 +80,15 @@ class ReorderSuggestionController extends Controller
         ];
     }
 
-    private function resolveBranchId(Request $request): int
+    private function resolveBranchId(Request $request): ?int
     {
         $context = $this->getUserContext();
-        return (int) ($request->branch_id ?? $context['branch_id'] ?? 0);
+        if (!$this->hasGlobalAccess() && !empty($context['branch_id'])) {
+            return (int) $context['branch_id'];
+        }
+
+        $requested = (int) ($request->branch_id ?? 0);
+        return $requested > 0 ? $requested : null;
     }
 
     private function canAccessBranchRecord(int $recordBranchId): bool
@@ -106,7 +115,7 @@ class ReorderSuggestionController extends Controller
     private function hasGlobalAccess(): bool
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
-        return in_array($roleName, ['super_admin', 'owner'], true);
+        return $roleName === 'super_admin' && empty(auth()->user()?->store_id);
     }
 
     /**
@@ -132,13 +141,23 @@ class ReorderSuggestionController extends Controller
                 ]);
             }
 
-            if (!isset($filters['branch_id']) && !empty($context['branch_id'])) {
+            if (!empty($context['branch_id']) && !$this->hasGlobalAccess()) {
                 $filters['branch_id'] = $context['branch_id'];
+            }
+
+            if (isset($filters['branch_id']) && !$this->canAccessBranchRecord((int) $filters['branch_id'])) {
+                return response()->json(['success' => false, 'message' => 'You cannot view another branch.'], 403);
             }
 
             if (!empty($context['store_id'])) {
                 $filters['store_id'] = $context['store_id'];
             }
+
+            $storeId = (int) ($context['store_id'] ?? 0);
+            $useDirectPo = $storeId > 0 && (
+                app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId)
+            );
 
             $perPage = $request->get('per_page', 15);
             $suggestions = $this->suggestionService->getSuggestions($filters, $perPage);
@@ -146,6 +165,7 @@ class ReorderSuggestionController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $suggestions,
+                'reorder_destination' => $useDirectPo ? 'po' : 'pr',
                 'message' => 'Reorder suggestions retrieved successfully.',
             ]);
 
@@ -164,21 +184,66 @@ class ReorderSuggestionController extends Controller
     public function store(ReorderSuggestionRequest $request): JsonResponse
     {
         try {
-            $user = auth()->user();
-            $storeId = (int) ($user?->store_id ?? 0);
+            $context = $this->getUserContext();
+            $storeId = (int) $context['store_id'];
 
             $payload = $request->validated();
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = $this->resolveBranchId($request);
             }
 
-            $suggestion = $this->suggestionService->createSuggestion($payload);
-
-            if ($this->userHasAnyPermission(['inventory.reorder_suggestions.approve'], $user) && $suggestion->isPending()) {
-                $approvedBy = EmployeeContext::currentEmployeeId();
-                $this->suggestionService->approveSuggestion($suggestion, $approvedBy, 'Auto-approved on creation.');
-                $suggestion = $suggestion->fresh(['reorderRule', 'product', 'branch', 'approver']);
+            if ($storeId <= 0 || !$this->canAccessBranchRecord((int) $payload['branch_id'])) {
+                return response()->json(['success' => false, 'message' => 'The selected branch is outside your store access.'], 403);
             }
+
+            $productBelongsToStore = DB::table('products')
+                ->where('id', $payload['product_id'])
+                ->where('store_id', $storeId)
+                ->exists();
+            if (!$productBelongsToStore) {
+                return response()->json(['success' => false, 'message' => 'The selected product is outside your store.'], 422);
+            }
+
+            if (!empty($payload['reorder_rule_id'])) {
+                $ruleBelongsToBranchProduct = DB::table('reorder_rules')
+                    ->where('id', $payload['reorder_rule_id'])
+                    ->where('branch_id', $payload['branch_id'])
+                    ->where('product_id', $payload['product_id'])
+                    ->exists();
+                if (!$ruleBelongsToBranchProduct) {
+                    return response()->json(['success' => false, 'message' => 'The reorder rule does not match the selected branch and product.'], 422);
+                }
+            }
+
+            $payload['status'] = 'pending';
+
+            if (!empty($payload['variation_id'])) {
+                $variationMatchesProduct = DB::table('product_variations')
+                    ->where('id', $payload['variation_id'])
+                    ->where('product_id', $payload['product_id'])
+                    ->where('store_id', $storeId)
+                    ->exists();
+                if (!$variationMatchesProduct) {
+                    return response()->json(['success' => false, 'message' => 'The selected variation does not belong to this product and store.'], 422);
+                }
+            }
+
+            $inventoryRowExists = DB::table('branch_inventory')
+                ->where('store_id', $storeId)
+                ->where('branch_id', $payload['branch_id'])
+                ->where('product_id', $payload['product_id'])
+                ->when(
+                    !empty($payload['variation_id']),
+                    fn ($query) => $query->where('variation_id', $payload['variation_id']),
+                    fn ($query) => $query->whereNull('variation_id')
+                )
+                ->whereNull('deleted_at')
+                ->exists();
+            if (!$inventoryRowExists) {
+                return response()->json(['success' => false, 'message' => 'No active branch inventory record exists for the selected SKU.'], 422);
+            }
+
+            $suggestion = $this->suggestionService->createSuggestion($payload);
 
             return response()->json([
                 'success' => true,
@@ -208,7 +273,11 @@ class ReorderSuggestionController extends Controller
                 ], 403);
             }
 
-            $suggestion->load(['reorderRule', 'product', 'branch', 'approver', 'implementer']);
+            $suggestion->load(['reorderRule', 'product', 'variation', 'branch', 'approver', 'implementer']);
+            $storeId = (int) ($suggestion->branch?->store_id ?? 0);
+            $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !request()->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
+            $suggestion->setAttribute('reorder_destination', $useDirectPo ? 'po' : 'pr');
 
             return response()->json([
                 'success' => true,
@@ -310,9 +379,29 @@ class ReorderSuggestionController extends Controller
                 ], 403);
             }
 
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
+
+            $storeId = (int) $suggestion->branch()->value('store_id');
+            $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
+                || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
+            if ($useDirectPo) {
+                if (!$request->user()?->hasPermissionTo('inventory.purchase_orders.manage', $storeId)) {
+                    return response()->json(['success' => false, 'message' => 'You need Inventory Purchase Order access to process this suggestion.'], 403);
+                }
+                if (!$suggestion->canBeApproved()) {
+                    return response()->json(['success' => false, 'message' => 'This suggestion is no longer pending.'], 422);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'action_required' => 'create_purchase_order',
+                    'url' => "/inventory/purchase-orders/create?reorder_suggestion_id={$suggestion->id}",
+                    'message' => 'Choose a supplier and save the PO to approve this suggestion.',
+                ]);
+            }
 
             $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
@@ -326,10 +415,12 @@ class ReorderSuggestionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $suggestion->fresh(['reorderRule', 'product', 'branch', 'approver']),
-                'message' => 'Reorder suggestion approved successfully.',
+                'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch', 'approver']),
+                'message' => 'Suggestion approved and draft Inventory PR created.',
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
@@ -367,7 +458,7 @@ class ReorderSuggestionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $suggestion->fresh(['reorderRule', 'product', 'branch']),
+                'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch']),
                 'message' => 'Reorder suggestion rejected successfully.',
             ]);
 
@@ -385,41 +476,21 @@ class ReorderSuggestionController extends Controller
      */
     public function implement(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
-        try {
-            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized access to reorder suggestion.',
-                ], 403);
-            }
-
-            $request->validate([
-                'notes' => 'nullable|string|max:1000',
-            ]);
-
-            $implementedBy = EmployeeContext::currentEmployeeId();
-            $notes = $request->get('notes');
-
-            if (!$this->suggestionService->implementSuggestion($suggestion, $implementedBy, $notes)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Suggestion cannot be implemented.',
-                ], 422);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => $suggestion->fresh(['reorderRule', 'product', 'branch', 'implementer']),
-                'message' => 'Reorder suggestion implemented successfully.',
-            ]);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to implement reorder suggestion.',
-                'error' => $e->getMessage(),
-            ], 500);
+        if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to reorder suggestion.'], 403);
         }
+
+        $prId = $suggestion->getMetadataValue('purchase_requisition_id');
+        $poId = $suggestion->getMetadataValue('purchase_order_id');
+        if (!$prId && !$poId) {
+            return response()->json(['message' => 'Create an Inventory PR or direct Purchase Order for this suggestion first.'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => ['purchase_requisition_id' => $prId, 'purchase_order_id' => $poId],
+            'message' => $poId ? 'This suggestion is linked to an Inventory Purchase Order.' : 'This suggestion is linked to an Inventory PR. Submit the PR there to continue.',
+        ]);
     }
 
     /**
@@ -450,7 +521,7 @@ class ReorderSuggestionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $suggestion->fresh(['reorderRule', 'product', 'branch']),
+                'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch']),
                 'message' => 'Reorder suggestion cancelled successfully.',
             ]);
 
@@ -469,12 +540,18 @@ class ReorderSuggestionController extends Controller
     public function generateSuggestions(Request $request): JsonResponse
     {
         try {
-            $request->validate([
-                'branch_id' => 'nullable|integer|exists:branches,id',
-            ]);
+            $request->validate(['branch_id' => 'nullable|integer|exists:branches,id']);
+            $context = $this->getUserContext();
+            $storeId = (int) $context['store_id'];
+            if ($storeId <= 0) {
+                return response()->json(['success' => false, 'message' => 'A store context is required to generate reorder suggestions.'], 403);
+            }
 
             $branchId = $this->resolveBranchId($request);
-            $result = $this->suggestionService->generateSuggestions($branchId);
+            if ($branchId && !$this->canAccessBranchRecord($branchId)) {
+                return response()->json(['success' => false, 'message' => 'You cannot generate suggestions for another store or branch.'], 403);
+            }
+            $result = $this->suggestionService->generateSuggestions($storeId, $branchId);
 
             if ((int) ($result['total_generated'] ?? 0) > 0) {
                 $this->createGroupedSuggestionNotifications((int) ($result['total_generated'] ?? 0));
@@ -582,12 +659,18 @@ class ReorderSuggestionController extends Controller
     public function getStats(Request $request): JsonResponse
     {
         try {
-            $request->validate([
-                'branch_id' => 'nullable|integer|exists:branches,id',
-            ]);
+            $request->validate(['branch_id' => 'nullable|integer|exists:branches,id']);
+            $context = $this->getUserContext();
+            $storeId = (int) $context['store_id'];
+            if ($storeId <= 0) {
+                return response()->json(['success' => false, 'message' => 'A store context is required to read reorder statistics.'], 403);
+            }
 
             $branchId = $this->resolveBranchId($request);
-            $stats = $this->suggestionService->getSuggestionStats($branchId);
+            if ($branchId && !$this->canAccessBranchRecord($branchId)) {
+                return response()->json(['success' => false, 'message' => 'You cannot view another store or branch.'], 403);
+            }
+            $stats = $this->suggestionService->getSuggestionStats($storeId, $branchId);
 
             return response()->json([
                 'success' => true,

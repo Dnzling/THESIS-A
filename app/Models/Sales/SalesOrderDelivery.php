@@ -5,6 +5,7 @@ namespace App\Models\Sales;
 use App\Models\Core\User;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -19,9 +20,21 @@ class SalesOrderDelivery extends Model
         'branch_id',
         'trip_id',
         'driver_user_id',
+        'vehicle_id',
         'tracking_number',
         'courier_name',
         'courier_contact',
+        'courier_provider',
+        'lalamove_quotation_id',
+        'lalamove_order_id',
+        'lalamove_share_link',
+        'lalamove_status',
+        'lalamove_service_type',
+        'lalamove_pickup_stop_id',
+        'lalamove_dropoff_stop_id',
+        'lalamove_price_breakdown',
+        'lalamove_quote_expires_at',
+        'assistant_user_ids',
         'status',
         'scheduled_delivery_at',
         'distance_km',
@@ -39,10 +52,13 @@ class SalesOrderDelivery extends Model
     ];
 
     protected $casts = [
+        'assistant_user_ids' => 'array',
         'scheduled_delivery_at' => 'datetime',
         'distance_km' => 'decimal:2',
         'per_km_charge' => 'decimal:2',
         'estimated_fee' => 'decimal:2',
+        'lalamove_price_breakdown' => 'array',
+        'lalamove_quote_expires_at' => 'datetime',
         'dispatched_at' => 'datetime',
         'out_for_delivery_at' => 'datetime',
         'delivered_at' => 'datetime',
@@ -66,6 +82,11 @@ class SalesOrderDelivery extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_user_id');
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(EcommerceDeliveryVehicle::class, 'vehicle_id');
     }
 
     public function logs(): HasMany

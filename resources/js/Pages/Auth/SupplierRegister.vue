@@ -5,7 +5,7 @@
       <div class="grid h-full gap-0 lg:grid-cols-2">
         <div class="flex flex-col justify-center p-8 lg:p-12">
           <div class="mb-6 text-center sm:mb-8">
-            <div class="portal-title text-2xl font-bold text-teal-600">Supplier Account Registration</div>
+            <div class="portal-title text-2xl font-bold text-orange-500">Supplier Account Registration</div>
             <p class="mt-2 text-sm text-slate-500 sm:text-lg">Create your supplier access for Furnisync IMS</p>
           </div>
 
@@ -18,17 +18,21 @@
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-base font-semibold text-slate-900 sm:text-lg">First Name</label>
-                <InputText v-model="form.fname" fluid placeholder="First name" autocomplete="given-name" />
+                <InputText :model-value="form.fname" fluid placeholder="First name" autocomplete="given-name" @update:model-value="form.fname = sanitizeName($event)" />
+                <small v-if="validationErrors.fname" class="text-xs text-red-600">{{ validationErrors.fname }}</small>
               </div>
               <div class="space-y-2">
                 <label class="text-base font-semibold text-slate-900 sm:text-lg">Last Name</label>
-                <InputText v-model="form.lname" fluid placeholder="Last name" autocomplete="family-name" />
+                <InputText :model-value="form.lname" fluid placeholder="Last name" autocomplete="family-name" @update:model-value="form.lname = sanitizeName($event)" />
+                <small v-if="validationErrors.lname" class="text-xs text-red-600">{{ validationErrors.lname }}</small>
               </div>
             </div>
 
             <div class="space-y-2">
               <label class="text-base font-semibold text-slate-900 sm:text-lg">Email</label>
-              <InputText v-model="form.email" fluid placeholder="Email address" autocomplete="email" />
+              <InputText v-model="form.email" type="email" fluid placeholder="Email address" autocomplete="email"
+                :class="{ 'p-invalid': validationErrors.email }" @blur="validateEmail" @input="validationErrors.email = ''" />
+              <small v-if="validationErrors.email" class="text-xs text-red-600">{{ validationErrors.email }}</small>
             </div>
 
             <div class="space-y-2">
@@ -45,19 +49,19 @@
               <Checkbox v-model="acceptedTerms" inputId="acceptedSupplierTerms" :binary="true" />
               <label for="acceptedSupplierTerms" class="leading-6 text-slate-700">
                 I agree to the
-                <a href="#" class="font-medium text-teal-600 hover:underline">Supplier Terms</a>
+                <a href="#" class="font-medium text-orange-500 hover:underline">Supplier Terms</a>
                 and
-                <a href="#" class="font-medium text-teal-600 hover:underline">Platform Policy</a>.
+                <a href="#" class="font-medium text-orange-500 hover:underline">Platform Policy</a>.
               </label>
             </div>
 
-            <Button type="submit" :loading="isSubmitting" fluid class="bg-teal-600 border-teal-600 hover:bg-teal-700 hover:border-teal-700 text-base font-semibold text-white sm:py-3 sm:text-xl">
+            <Button type="submit" :loading="isSubmitting" fluid severity="warn" class="text-base font-semibold sm:py-3 sm:text-xl">
               Register
             </Button>
 
             <p class="text-center text-sm text-slate-600 sm:text-base">
               Already have a supplier account?
-              <button type="button" @click="router.visit('/login')" class="font-semibold text-teal-600 hover:underline">
+                <button type="button" @click="router.visit('/login')" class="font-semibold text-orange-500 hover:underline">
                 Login
               </button>
             </p>
@@ -90,6 +94,7 @@ import SupplierAuth3DHero from '@/Components/auth/SupplierAuth3DHero.vue'
 const toast = useToast()
 const isSubmitting = ref(false)
 const acceptedTerms = ref(false)
+const validationErrors = reactive({ fname: '', lname: '', email: '' })
 
 const form = reactive({
   supplier_name: '',
@@ -99,9 +104,25 @@ const form = reactive({
   password: '',
   confirmPassword: '',
 })
+const sanitizeName = (value: string) => String(value || '').replace(/[^\p{L}\p{M}\s'-]/gu, '').replace(/\s{2,}/g, ' ')
+const validateEmail = () => {
+  const email = form.email.trim()
+  validationErrors.email = !email
+    ? 'Email is required.'
+    : /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
+      ? ''
+      : 'Enter a valid email address.'
+  return !validationErrors.email
+}
 
 async function submitRegister() {
   if (isSubmitting.value) return
+
+  form.fname = sanitizeName(form.fname).trim()
+  form.lname = sanitizeName(form.lname).trim()
+  validationErrors.fname = form.fname ? '' : 'First name is required.'
+  validationErrors.lname = form.lname ? '' : 'Last name is required.'
+  if (validationErrors.fname || validationErrors.lname || !validateEmail()) return
 
   if (!form.supplier_name || !form.fname || !form.lname || !form.email || !form.password || !form.confirmPassword) {
     toast.add({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all required fields.', life: 3000 })

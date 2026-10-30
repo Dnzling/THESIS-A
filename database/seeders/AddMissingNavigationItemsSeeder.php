@@ -315,8 +315,18 @@ class AddMissingNavigationItemsSeeder extends Seeder
             ],
         ];
 
-        // ========== STORE ADMIN BRANCHES ==========
-        $storeAdminItems = [
+        // ========== STORE OWNER BRANCHES ==========
+        $storeOwnerItems = [
+            [
+                'name' => 'store.employees',
+                'display_name' => 'Employees',
+                'module' => 'store',
+                'section' => 'settings',
+                'route_name' => 'store.employees',
+                'route_path' => '/store/employees',
+                'icon' => 'pi pi-users',
+                'display_order' => 19,
+            ],
             [
                 'name' => 'store.branches',
                 'display_name' => 'Branches',
@@ -410,6 +420,16 @@ class AddMissingNavigationItemsSeeder extends Seeder
                 'route_path' => '/finance/reports',
                 'icon' => 'pi pi-file',
                 'display_order' => 7,
+            ],
+            [
+                'name' => 'finance.tax-vat',
+                'display_name' => 'Tax / VAT Report',
+                'module' => 'finance',
+                'section' => 'tax',
+                'route_name' => 'finance.tax-vat',
+                'route_path' => '/finance/tax-vat',
+                'icon' => 'pi pi-percentage',
+                'display_order' => 8,
             ],
         ];
 
@@ -523,8 +543,8 @@ class AddMissingNavigationItemsSeeder extends Seeder
             }
         }
 
-        // Insert Store Admin items
-        foreach ($storeAdminItems as $item) {
+        // Insert store owner items
+        foreach ($storeOwnerItems as $item) {
             if (!DB::table('navigation_items')->where('name', $item['name'])->exists()) {
                 DB::table('navigation_items')->insert(array_merge($item, [
                     'is_active' => 1,

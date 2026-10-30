@@ -1,0 +1,25 @@
+{
+  "name": "furnisync-ecommerce-promo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts FurniSyncEcommerce out/furnisync-ecommerce-promo.mp4",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.372",
+    "@remotion/google-fonts": "^4.0.372",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.372"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@10.18.0"
+}

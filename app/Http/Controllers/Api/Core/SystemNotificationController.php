@@ -3,9 +3,18 @@
 namespace App\Http\Controllers\Api\Core;
 
 use App\Http\Controllers\Controller;
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\CRM\SalesReview;
 use App\Models\Core\SystemNotification;
+use App\Models\Core\User;
+use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\Hr\Employee;
+use App\Models\Logistics\ReturnPickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use App\Services\Core\PermissionService;
 
 class SystemNotificationController extends Controller
 {
@@ -18,7 +27,7 @@ class SystemNotificationController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $onlyUnread = $request->boolean('unread_only', false);
 
-            $query = SystemNotification::where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user);
 
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
@@ -40,6 +49,16 @@ class SystemNotificationController extends Controller
                 ->orderBy($sortBy, $sortOrder)
                 ->paginate($perPage);
 
+            $notifications->setCollection(
+                $this->filterEmployeeCreators($notifications->getCollection())
+            );
+
+            if ($request->get('module') === 'ecommerce') {
+                $notifications->setCollection(
+                    $this->enrichEcommerceNotifications($notifications->getCollection(), (int) $user->id)
+                );
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $notifications->items(),
@@ -49,7 +68,7 @@ class SystemNotificationController extends Controller
                     'per_page' => $notifications->perPage(),
                     'current_page' => $notifications->currentPage(),
                     'last_page' => $notifications->lastPage(),
-                    'unread_count' => SystemNotification::where('user_id', $user->id)->where('is_read', false)->count(),
+                    'unread_count' => $this->visibleNotificationsFor($user)->where('is_read', false)->count(),
                 ],
             ], 200);
         } catch (\Exception $e) {
@@ -60,11 +79,62 @@ class SystemNotificationController extends Controller
         }
     }
 
+    private function filterEmployeeCreators(Collection $notifications): Collection
+    {
+        $creatorIds = $notifications
+            ->map(fn (SystemNotification $notification) => (int) data_get($notification->data, 'created_by.id', 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        $storeIds = $notifications->pluck('store_id')->filter()->unique()->values();
+
+        if ($creatorIds->isEmpty() || $storeIds->isEmpty()) {
+            return $notifications->map(function (SystemNotification $notification) {
+                $data = (array) ($notification->data ?? []);
+                unset($data['created_by']);
+                $notification->data = $data;
+                return $notification;
+            });
+        }
+
+        $employees = Employee::query()
+            ->with('user:id,fname,lname,avatar_path')
+            ->whereIn('user_id', $creatorIds)
+            ->whereIn('store_id', $storeIds)
+            ->get()
+            ->keyBy(fn (Employee $employee) => $employee->store_id . ':' . $employee->user_id);
+
+        return $notifications->map(function (SystemNotification $notification) use ($employees) {
+            $data = (array) ($notification->data ?? []);
+            $creator = (array) ($data['created_by'] ?? []);
+            $key = (int) $notification->store_id . ':' . (int) ($creator['id'] ?? 0);
+            $employee = $employees->get($key);
+            $user = $employee?->user;
+
+            if (!$employee || !$user) {
+                unset($data['created_by']);
+                $notification->data = $data;
+                return $notification;
+            }
+
+            $name = trim(implode(' ', array_filter([$user->fname, $user->lname])));
+            $data['created_by'] = [
+                'id' => (int) $user->id,
+                'name' => $name !== '' ? $name : ($creator['name'] ?? 'Store employee'),
+                'avatar_url' => $user->avatar_url,
+                'type' => 'employee',
+            ];
+            $notification->data = $data;
+
+            return $notification;
+        });
+    }
+
     public function show(string $id): JsonResponse
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             return response()->json([
@@ -88,7 +158,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             $notification->markAsRead();
@@ -111,11 +181,14 @@ class SystemNotificationController extends Controller
         }
     }
 
-    public function markAllAsRead(): JsonResponse
+    public function markAllAsRead(Request $request): JsonResponse
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
+            $query = $this->visibleNotificationsFor($user)->where('is_read', false);
+            if ($request->filled('module')) {
+                $query->where('module', $request->module);
+            }
             $updated = $query->update([
                     'is_read' => true,
                     'read_at' => now(),
@@ -138,7 +211,7 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
+            $query = $this->visibleNotificationsFor($user)->where('id', $id);
             $notification = $query->firstOrFail();
 
             $notification->delete();
@@ -173,7 +246,7 @@ class SystemNotificationController extends Controller
                 ], 422);
             }
 
-            $query = SystemNotification::where('user_id', $user->id)->whereIn('id', $ids);
+            $query = $this->visibleNotificationsFor($user)->whereIn('id', $ids);
             $deleted = $query->delete();
 
             return response()->json([
@@ -189,11 +262,14 @@ class SystemNotificationController extends Controller
         }
     }
 
-    public function getUnread(): JsonResponse
+    public function getUnread(Request $request): JsonResponse
     {
         try {
             $user = auth()->user();
-            $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
+            $query = $this->visibleNotificationsFor($user)->where('is_read', false);
+            if ($request->filled('module')) {
+                $query->where('module', $request->module);
+            }
             $unreadCount = $query->count();
 
             return response()->json([
@@ -206,5 +282,134 @@ class SystemNotificationController extends Controller
                 'message' => 'Failed to retrieve unread count: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function visibleNotificationsFor(User $user): Builder
+    {
+        $permissions = collect(app(PermissionService::class)->getUserPermissions($user))
+            ->flatMap(fn (string $permission) => str_ends_with($permission, '.manage')
+                ? [$permission, substr($permission, 0, -7) . '.view']
+                : [$permission])
+            ->unique()->values()->all();
+
+        return SystemNotification::query()->where('user_id', $user->id)
+            ->where(function (Builder $query) use ($permissions) {
+                $query->whereNull('data->required_permission');
+                if ($permissions !== []) {
+                    $query->orWhereIn('data->required_permission', $permissions);
+                }
+            });
+    }
+
+    private function enrichEcommerceNotifications(Collection $notifications, int $userId): Collection
+    {
+        $idsFor = fn (string $type) => $notifications
+            ->where('entity_type', $type)
+            ->pluck('entity_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $returns = EcommerceOrderReturn::query()
+            ->with(['orderItem.product.assets'])
+            ->where('user_id', $userId)
+            ->whereIn('id', $idsFor('ecommerce_order_return'))
+            ->get()
+            ->keyBy('id');
+
+        $pickups = ReturnPickup::query()
+            ->with(['returnRequest.orderItem.product.assets'])
+            ->whereIn('id', $idsFor('return_pickup'))
+            ->whereHas('returnRequest', fn ($query) => $query->where('user_id', $userId))
+            ->get()
+            ->keyBy('id');
+
+        $reviews = SalesReview::query()
+            ->with(['product.assets'])
+            ->where('created_by', $userId)
+            ->whereIn('order_type', ['ecommerce', 'ecommerce_order'])
+            ->whereIn('id', $idsFor('product_review'))
+            ->get()
+            ->keyBy('id');
+
+        $orderIds = $idsFor('ecommerce_order')
+            ->merge($returns->pluck('order_id'))
+            ->merge($pickups->pluck('returnRequest.order_id'))
+            ->merge($reviews->pluck('order_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $orders = EcommerceOrder::query()
+            ->with(['store:id,name', 'items.product.assets'])
+            ->where('user_id', $userId)
+            ->whereIn('id', $orderIds)
+            ->get()
+            ->keyBy('id');
+
+        return $notifications->map(function (SystemNotification $notification) use ($orders, $returns, $pickups, $reviews) {
+            $return = null;
+            $review = null;
+            $order = null;
+
+            if (is_string($notification->link)) {
+                $notification->link = preg_replace('#^/shop/(chats|profile)#', '/$1', $notification->link);
+            }
+
+            if ($notification->entity_type === 'ecommerce_order') {
+                $order = $orders->get((int) $notification->entity_id);
+            } elseif ($notification->entity_type === 'ecommerce_order_return') {
+                $return = $returns->get((int) $notification->entity_id);
+                $order = $return ? $orders->get((int) $return->order_id) : null;
+            } elseif ($notification->entity_type === 'return_pickup') {
+                $return = $pickups->get((int) $notification->entity_id)?->returnRequest;
+                $order = $return ? $orders->get((int) $return->order_id) : null;
+            } elseif ($notification->entity_type === 'product_review') {
+                $review = $reviews->get((int) $notification->entity_id);
+                $order = $review ? $orders->get((int) $review->order_id) : null;
+            }
+
+            if (!$order) {
+                return $notification;
+            }
+
+            $selectedItem = $return?->orderItem;
+            if (!$selectedItem && $review) {
+                $selectedItem = $order->items->firstWhere('product_id', (int) $review->product_id);
+            }
+            $items = $selectedItem ? collect([$selectedItem]) : $order->items;
+            $itemData = $items->map(function ($item) use ($return) {
+                $asset = $item->product?->assets
+                    ?->filter(fn ($asset) => in_array($asset->asset_type, ['Image_Main', 'Image_Gallery', 'Image_360'], true))
+                    ->sortByDesc('is_primary')
+                    ->sortBy('display_order')
+                    ->first();
+
+                return [
+                    'id' => (int) $item->id,
+                    'product_id' => (int) $item->product_id,
+                    'product_name' => (string) ($item->product_name ?: $item->product?->product_name ?: 'Product'),
+                    'quantity' => (int) ($return?->requested_quantity ?: $item->quantity),
+                    'image_url' => $asset?->url,
+                ];
+            })->values()->all();
+
+            $notification->data = array_merge((array) $notification->data, [
+                'order_id' => (int) $order->id,
+                'order_number' => (string) $order->order_number,
+                'order_status' => (string) $order->status,
+                'store_name' => (string) ($order->store?->name ?? 'Store'),
+                'items' => $itemData,
+                'return_number' => $return?->return_number,
+                'return_type' => $return?->return_type,
+            ]);
+            $notification->link = $review
+                ? '/products/' . (int) $review->product_id . '?tab=reviews'
+                : '/orders/' . (int) $order->id;
+
+            return $notification;
+        });
     }
 }

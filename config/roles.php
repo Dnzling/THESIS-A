@@ -16,7 +16,7 @@ return [
             'system-settings',
         ],
         
-        2 => [ // Store Admin
+        2 => [ // Store Owner
             'manage-store-users',
             'view-store-reports',
             'manage-inventory',

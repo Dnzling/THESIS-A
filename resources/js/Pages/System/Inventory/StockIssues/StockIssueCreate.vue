@@ -1,28 +1,31 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-issues' })" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Stock Issue</h2>
-        <p class="text-sm text-gray-500 mt-1">Record stock out transactions (damaged, lost, expired, etc.)</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Stock Issuance' : 'Create Stock Issuance' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">Record items deliberately used or released from this branch. Use Stock Adjustment for count differences.</p>
       </div>
     </div>
 
     <Card>
       <template #content>
-        <form class="space-y-6" @submit.prevent="submitIssue">
+        <form @submit.prevent="confirmSubmit">
+          <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+            <div class="space-y-6 lg:col-span-2">
           <!-- Header Section -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
-                Issue Type <span class="text-red-500">*</span>
+                Reason <span class="text-red-500">*</span>
               </label>
-              <Select 
-                v-model="form.issue_type" 
-                :options="typeOptions" 
+              <Select
+                v-model="form.issue_type"
+                :options="transactionReasonOptions"
                 optionLabel="label" 
                 optionValue="value"
-                placeholder="Select issue type" 
+                placeholder="Select reason"
                 :class="{ 'p-invalid': errors.issue_type }"
                 fluid
               >
@@ -37,31 +40,18 @@
             </div>
 
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Issue Date <span class="text-red-500">*</span>
-              </label>
-              <DatePicker 
-                v-model="form.issue_date" 
-                dateFormat="yy-mm-dd" 
-                class="w-full" 
-                :maxDate="today"
-                :class="{ 'p-invalid': errors.issue_date }"
-                fluid
-              />
-              <small v-if="errors.issue_date" class="text-red-500">{{ errors.issue_date[0] }}</small>
+              <label class="text-sm font-semibold text-gray-700">Issued To / Additional Notes</label>
+              <Textarea v-model="form.remarks" rows="2" maxlength="1000" fluid
+                placeholder="Recipient or additional context for this issuance" />
             </div>
 
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Reference Number
-              </label>
-              <InputText 
-                v-model="form.reference_number" 
-                placeholder="Auto-generated if empty"
-                fluid
-              />
-              <small class="text-gray-500">Leave empty for auto-generation</small>
+            <div v-if="form.issue_type === 'other'" class="flex flex-col gap-2 md:col-span-2">
+              <label class="text-sm font-semibold text-gray-700">Specify reason <span class="text-red-500">*</span></label>
+              <Textarea v-model="form.description" rows="3" maxlength="1000" fluid
+                placeholder="Describe why these items are being issued" :invalid="Boolean(errors.description)" />
+              <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
             </div>
+
           </div>
 
           <!-- Items Section -->
@@ -74,7 +64,7 @@
             <h3 class="text-sm font-semibold text-gray-700">Add Item to Issue</h3>
 
             <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div class="flex flex-col gap-2 md:col-span-5">
+              <div class="flex flex-col gap-2 md:col-span-8">
                 <label class="text-sm text-gray-600">Product <span class="text-red-500">*</span></label>
                 <Select 
                   v-model="newItem.inventory_item_id" 
@@ -91,18 +81,13 @@
                     <div class="flex flex-col">
                       <div class="flex items-center justify-between">
                         <span class="font-medium">{{ option.productName }}</span>
-                        <Tag 
-                          :value="option.stock" 
-                          :severity="getStockSeverityValue(option.stock)"
-                          class="text-xs"
-                        />
                       </div>
                       <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
                         <span>SKU: {{ option.sku }}</span>
                         <span>•</span>
-                        <span>Bin: {{ option.binCode || 'N/A' }}</span>
+                        <span>Type: {{ option.productType }}</span>
                         <span>•</span>
-                        <span>Cost: {{ formatCurrency(option.unitCost) }}</span>
+                        <span>Stock: {{ option.stock }} {{ option.unit }}</span>
                       </div>
                     </div>
                   </template>
@@ -143,18 +128,6 @@
                 />
               </div>
 
-              <div class="flex flex-col gap-2 md:col-span-3">
-                <label class="text-sm text-gray-600">Reason (Optional)</label>
-                <Select
-                  v-model="newItem.reason"
-                  :options="reasonOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Select reason"
-                  showClear
-                  fluid
-                />
-              </div>
             </div>
 
             <!-- Stock Info & Warning -->
@@ -169,13 +142,13 @@
                     Unit Cost: <span class="text-blue-600">{{ formatCurrency(selectedProduct.unitCost) }}</span>
                   </span>
                   <span class="font-medium">
-                    Available: <span :class="getStockClass(selectedProduct.stock)">{{ selectedProduct.stock }}</span> units
+                    Available: <span :class="getStockClass(selectedProduct.stock)">{{ selectedProduct.stock }}</span> {{ selectedProduct.unit }}
                   </span>
                 </div>
               </div>
               <div v-if="selectedProduct.stock < newItem.quantity" class="mt-2 text-amber-600 text-xs">
                 <i class="pi pi-exclamation-triangle mr-1"></i>
-                Warning: Issuing more than available stock will result in negative inventory
+                Quantity cannot exceed available stock.
               </div>
             </div>
 
@@ -186,13 +159,13 @@
                 label="Add Item" 
                 @click="addItem" 
                 :disabled="!canAddItem" 
-                severity="success"
+                size="small"
               />
             </div>
           </div>
 
           <!-- Items Table -->
-          <DataTable :value="form.items" class="p-datatable-sm" stripedRows showGridlines>
+          <DataTable :value="form.items" class="p-datatable-sm" rowHover>
             <template #empty>
               <div class="text-center py-8 text-gray-500">
                 <i class="pi pi-inbox text-4xl mb-2"></i>
@@ -215,6 +188,12 @@
               </template>
             </Column>
 
+            <Column header="Unit" style="width: 100px">
+              <template #body="{ data }">
+                {{ getProductUnit(data.inventory_item_id) }}
+              </template>
+            </Column>
+
             <Column header="Unit Cost" style="width: 120px">
               <template #body="{ data }">
                 {{ formatCurrency(getItemUnitCost(data)) }}
@@ -229,18 +208,6 @@
               </template>
             </Column>
 
-            <Column field="reason" header="Reason" style="min-width: 150px">
-              <template #body="{ data }">
-                {{ data.reason ? formatReason(data.reason) : '-' }}
-              </template>
-            </Column>
-
-            <Column field="remarks" header="Remarks" style="min-width: 150px">
-              <template #body="{ data }">
-                {{ data.remarks || '-' }}
-              </template>
-            </Column>
-
             <Column header="Actions" style="width: 80px">
               <template #body="{ index }">
                 <Button 
@@ -249,69 +216,12 @@
                   rounded 
                   severity="danger" 
                   size="small" 
-                  @click="removeItem(index)"
+                  @click="confirmRemoveItem(index)"
                   v-tooltip="'Remove item'" 
                 />
               </template>
             </Column>
           </DataTable>
-
-          <!-- Summary Section -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Description & Remarks -->
-            <div class="space-y-4">
-              <div class="flex flex-col gap-2">
-                <label class="text-sm font-semibold text-gray-700">Description</label>
-                <Textarea 
-                  v-model="form.description" 
-                  rows="3" 
-                  placeholder="Overall description of the stock issue"
-                  :class="{ 'p-invalid': errors.description }"
-                  fluid
-                />
-                <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
-              </div>
-              <div class="flex flex-col gap-2">
-                <label class="text-sm font-semibold text-gray-700">Remarks</label>
-                <Textarea 
-                  v-model="form.remarks" 
-                  rows="3" 
-                  placeholder="Any additional remarks"
-                  fluid
-                />
-              </div>
-            </div>
-
-            <!-- Totals Card -->
-            <div class="bg-linear-to-br from-gray-50 to-gray-100 rounded-xl p-6 border">
-              <h4 class="text-sm font-medium text-gray-600 mb-4">Issue Summary</h4>
-              <div class="space-y-3">
-                <div class="flex justify-between items-center py-2 border-b">
-                  <span>Total Items:</span>
-                  <span class="font-semibold text-lg">{{ form.items.length }}</span>
-                </div>
-                <div class="flex justify-between items-center py-2 border-b">
-                  <span>Total Quantity:</span>
-                  <span class="font-semibold text-lg">{{ totalQuantity }}</span>
-                </div>
-                <div class="flex justify-between items-center py-2">
-                  <span class="text-lg font-medium">Total Value:</span>
-                  <span class="text-2xl font-bold text-red-600">{{ formatCurrency(totalValue) }}</span>
-                </div>
-              </div>
-
-              <div v-if="form.items.length > 0" class="mt-4 grid grid-cols-2 gap-2">
-                <div class="bg-white p-2 rounded text-center">
-                  <div class="text-xs text-gray-500">Avg Cost</div>
-                  <div class="font-semibold">{{ formatCurrency(averageCost) }}</div>
-                </div>
-                <div class="bg-white p-2 rounded text-center">
-                  <div class="text-xs text-gray-500">Items with Stock</div>
-                  <div class="font-semibold">{{ itemsWithStock }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
 
           <!-- Form Actions -->
           <div class="pt-4 flex gap-2 justify-end border-t border-gray-200">
@@ -319,17 +229,42 @@
               label="Cancel" 
               severity="secondary" 
               outlined 
-              type="button" 
+              type="button"
               @click="cancel"
             />
             <Button 
-              label="Create Stock Issue" 
+              :label="isEditMode ? 'Update Stock Issuance' : 'Create Stock Issuance'"
               icon="pi pi-check" 
               :loading="submitting" 
-              type="submit" 
+              type="button"
+              @click="confirmSubmit"
               :disabled="!isFormValid"
               class="bg-red-600 hover:bg-red-700 border-red-600"
             />
+          </div>
+            </div>
+
+            <aside class="rounded-xl border border-orange-200 bg-orange-50/60 p-5 lg:sticky lg:top-4">
+              <h3 class="text-sm font-semibold text-slate-800">Issue Summary</h3>
+              <p class="mt-1 text-xs text-slate-500">Review the quantities and estimated value before submitting.</p>
+              <dl class="mt-5 space-y-3">
+                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                  <dt class="text-sm text-slate-600">Unique items</dt>
+                  <dd class="font-semibold text-slate-900">{{ form.items.length }}</dd>
+                </div>
+                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                  <dt class="text-sm text-slate-600">Total quantity</dt>
+                  <dd class="font-semibold text-slate-900">{{ totalQuantity }}</dd>
+                </div>
+                <div class="pt-1">
+                  <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Estimated issue value</dt>
+                  <dd class="mt-1 text-2xl font-bold text-orange-700">{{ formatCurrency(totalValue) }}</dd>
+                </div>
+              </dl>
+              <div v-if="form.items.length" class="mt-4 rounded-lg bg-white p-3 text-xs text-slate-600">
+                Average unit cost: <span class="font-semibold text-slate-800">{{ formatCurrency(averageCost) }}</span>
+              </div>
+            </aside>
           </div>
         </form>
       </template>
@@ -350,12 +285,16 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import axios from 'axios'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
+const isEditMode = computed(() => Boolean(route.params.id))
 
 // State
 const submitting = ref(false)
@@ -363,52 +302,32 @@ const inventoryItemsLoading = ref(false)
 const showCancelDialog = ref(false)
 const inventoryItems = ref<any[]>([])
 
-const today = new Date()
-
 // Form state
 const form = reactive({
-  issue_type: '',
-  issue_date: today,
-  reference_number: '',
+  movement_type: 'deduct',
+  issue_type: 'production_use',
   description: '',
   remarks: '',
   items: [] as Array<{
     inventory_item_id: number
     quantity: number
-    reason: string | null
-    remarks: string | null
   }>
 })
 
 // New item form
 const newItem = reactive({
   inventory_item_id: null as number | null,
-  quantity: 1,
-  reason: '',
-  remarks: ''
+  quantity: 1
 })
 
 // Validation errors
 const errors = ref<any>({})
 
-// Type options
-const typeOptions = [
-  { label: 'Damaged', value: 'damaged' },
-  { label: 'Lost', value: 'lost' },
-  { label: 'Expired', value: 'expired' },
-  { label: 'Theft', value: 'theft' },
-  { label: 'Other', value: 'other' }
-]
-
-// Reason options
-const reasonOptions = [
-  { label: 'Customer Return', value: 'customer_return' },
-  { label: 'Quality Issue', value: 'quality_issue' },
-  { label: 'Damaged in Transit', value: 'damaged_transit' },
-  { label: 'Expired', value: 'expired' },
-  { label: 'Theft', value: 'theft' },
-  { label: 'Inventory Adjustment', value: 'adjustment' },
-  { label: 'Other', value: 'other' }
+const transactionReasonOptions = [
+  { label: 'Used for Production', value: 'production_use' },
+  { label: 'Office Consumption', value: 'office_consumption' },
+  { label: 'Store Usage / Sample or Demo', value: 'store_usage' },
+  { label: 'Other', value: 'other' },
 ]
 
 // Get type icon
@@ -421,12 +340,6 @@ const getTypeIcon = (type: string) => {
     other: 'pi pi-ellipsis-h text-gray-500'
   }
   return icons[type] || 'pi pi-tag'
-}
-
-// Format reason
-const formatReason = (reason: string) => {
-  const option = reasonOptions.find(opt => opt.value === reason)
-  return option?.label || reason
 }
 
 // Transform inventory items for select component
@@ -446,8 +359,9 @@ const availableProducts = computed(() => {
       productName: item.product?.product_name || 'Unknown Product',
       sku: item.product?.sku || 'N/A',
       stock: item.quantity_available || 0,
-      binCode: item.bin_code,
-      unitCost: parseFloat(item.unit_cost || item.average_cost || 0),
+      unit: item.product?.unit_of_measurement || 'unit',
+      productType: formatProductType(item.product?.product_type),
+      unitCost: parseFloat(item.product?.inventory_cost_price ?? item.product?.cost_price ?? item.unit_cost ?? item.average_cost ?? 0),
       displayName: `${item.product?.product_name || 'Unknown'} (Stock: ${item.quantity_available || 0})`,
       original: item
     }))
@@ -466,14 +380,15 @@ const selectedProductStock = computed(() => {
 
 // Can add item
 const canAddItem = computed(() => {
-  return newItem.inventory_item_id && 
-         newItem.quantity > 0 && 
+  return newItem.inventory_item_id &&
+         newItem.quantity > 0 &&
          newItem.quantity <= selectedProductStock.value
 })
 
 // Form validity
 const isFormValid = computed(() => {
-  return form.issue_type && form.issue_date && form.items.length > 0
+  return Boolean(form.issue_type && form.items.length > 0
+    && (form.issue_type !== 'other' || form.description.trim()))
 })
 
 // Totals
@@ -484,7 +399,7 @@ const totalQuantity = computed(() => {
 const totalValue = computed(() => {
   return form.items.reduce((sum, item) => {
     const inventoryItem = inventoryItems.value.find(i => i.id === item.inventory_item_id)
-    const unitCost = parseFloat(inventoryItem?.unit_cost || inventoryItem?.average_cost || 0)
+    const unitCost = parseFloat(inventoryItem?.product?.inventory_cost_price ?? inventoryItem?.product?.cost_price ?? inventoryItem?.unit_cost ?? inventoryItem?.average_cost ?? 0)
     return sum + (item.quantity * unitCost)
   }, 0)
 })
@@ -524,9 +439,18 @@ const getProductSku = (inventoryItemId: number) => {
   return item?.product?.sku || ''
 }
 
+const getProductUnit = (inventoryItemId: number) => {
+  const item = inventoryItems.value.find(i => i.id === inventoryItemId)
+  return item?.product?.unit_of_measurement || 'unit'
+}
+
+const formatProductType = (type?: string) => String(type || 'other')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, char => char.toUpperCase())
+
 const getItemUnitCost = (item: any) => {
   const inventoryItem = inventoryItems.value.find(i => i.id === item.inventory_item_id)
-  return parseFloat(inventoryItem?.unit_cost || inventoryItem?.average_cost || 0)
+  return parseFloat(inventoryItem?.product?.inventory_cost_price ?? inventoryItem?.product?.cost_price ?? inventoryItem?.unit_cost ?? inventoryItem?.average_cost ?? 0)
 }
 
 const getItemTotal = (item: any) => {
@@ -565,7 +489,7 @@ const loadInventoryItems = async () => {
       toast.add({
         severity: 'info',
         summary: 'No Stock',
-        detail: 'No items with available stock found',
+      detail: 'No items with available stock found',
         life: 3000
       })
     }
@@ -589,23 +513,19 @@ const addItem = () => {
 
   form.items.push({
     inventory_item_id: newItem.inventory_item_id!,
-    quantity: newItem.quantity,
-    reason: newItem.reason || null,
-    remarks: newItem.remarks || null
+    quantity: newItem.quantity
   })
 
   toast.add({
     severity: 'success',
     summary: 'Item Added',
-    detail: `${getProductName(newItem.inventory_item_id!)} has been added to the issue`,
+    detail: `${getProductName(newItem.inventory_item_id!)} has been added`,
     life: 2000
   })
 
   // Reset new item form
   newItem.inventory_item_id = null
   newItem.quantity = 1
-  newItem.reason = ''
-  newItem.remarks = ''
 }
 
 // Remove item
@@ -617,6 +537,30 @@ const removeItem = (index: number) => {
     summary: 'Item Removed',
     detail: 'Item has been removed from the issue',
     life: 2000
+  })
+}
+
+const confirmRemoveItem = (index: number) => {
+  confirm.require({
+    header: 'Remove Item',
+    message: 'Remove this item from the stock issuance?',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'No',
+    acceptLabel: 'Remove',
+    acceptClass: 'p-button-danger',
+    accept: () => removeItem(index),
+  })
+}
+
+const confirmSubmit = () => {
+  if (!isFormValid.value) return
+  confirm.require({
+    header: isEditMode.value ? 'Update Stock Issuance' : 'Create Stock Issuance',
+    message: `Confirm ${isEditMode.value ? 'updating this issuance with' : 'deducting'} ${totalQuantity.value} item(s)?`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'No',
+    acceptLabel: isEditMode.value ? 'Update' : 'Create',
+    accept: submitIssue,
   })
 }
 
@@ -655,24 +599,27 @@ const submitIssue = async () => {
   // Prepare data for API
   const submitData = {
     issue_type: form.issue_type,
-    issue_date: form.issue_date.toISOString().split('T')[0],
-    reference_number: form.reference_number || null,
-    description: form.description || null,
+    movement_type: form.movement_type,
+    description: form.issue_type === 'other' ? form.description.trim() : null,
     remarks: form.remarks || null,
     items: form.items
   }
 
   try {
-    const response = await axios.post('/api/inventory/issues', submitData)
+    const response = isEditMode.value
+      ? await axios.put(`/api/inventory/issues/${route.params.id}`, submitData)
+      : await axios.post('/api/inventory/issues', submitData)
 
     if (response.data?.success) {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'Stock issue created successfully',
+        detail: isEditMode.value ? 'Stock issuance updated successfully' : 'Stock issuance created successfully',
         life: 3000
       })
-      router.push({ name: 'inventory.stock-issues' })
+      router.push(isEditMode.value
+        ? { name: 'inventory.stock-issues.detail', params: { id: route.params.id } }
+        : { name: 'inventory.stock-issues' })
     }
   } catch (error: any) {
     if (error.response?.status === 422) {
@@ -687,7 +634,7 @@ const submitIssue = async () => {
       toast.add({
         severity: 'error',
         summary: 'Error',
-        detail: error.response?.data?.message || 'Failed to create stock issue',
+        detail: error.response?.data?.message || 'Failed to create stock issuance',
         life: 3000
       })
     }
@@ -698,7 +645,7 @@ const submitIssue = async () => {
 
 // Cancel handlers
 const cancel = () => {
-  if (form.items.length > 0 || form.description || form.remarks || form.issue_type || form.reference_number) {
+  if (form.items.length > 0 || form.description || form.remarks) {
     showCancelDialog.value = true
   } else {
     router.push({ name: 'inventory.stock-issues' })
@@ -728,7 +675,32 @@ watch(() => newItem.inventory_item_id, (newVal) => {
 })
 
 // Lifecycle
-onMounted(() => {
-  loadInventoryItems()
+const loadIssueForEdit = async () => {
+  if (!isEditMode.value) return
+  try {
+    const response = await axios.get(`/api/inventory/issues/${route.params.id}`)
+    const issue = response.data?.data
+    if (!issue) return
+    if (issue.movement_type !== 'deduct') {
+      toast.add({ severity: 'warn', summary: 'Historical record', detail: 'Add-stock records cannot be edited as issuances.', life: 4000 })
+      router.push({ name: 'inventory.stock-issues.detail', params: { id: route.params.id } })
+      return
+    }
+    form.issue_type = issue.issue_type || 'other'
+    form.description = issue.description || ''
+    form.remarks = issue.remarks || ''
+    form.items = (issue.items || []).map((item: any) => ({
+      inventory_item_id: Number(item.inventory_item_id),
+      quantity: Number(item.quantity || 1),
+    }))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to load stock issuance', life: 3000 })
+    router.push({ name: 'inventory.stock-issues' })
+  }
+}
+
+onMounted(async () => {
+  await loadInventoryItems()
+  await loadIssueForEdit()
 })
 </script>

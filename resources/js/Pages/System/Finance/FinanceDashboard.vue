@@ -1,12 +1,12 @@
 <template>
-  <div class="space-y-6 p-6">
-    <div class="rounded-3xl border border-slate-200 bg-linear-to-r from-emerald-50 via-cyan-50 to-blue-50 p-6">
+  <div class="module-dashboard dashboard--finance space-y-6">
+    <div class="dashboard-hero">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-3xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
-          <p class="mt-1 text-sm text-slate-600">MVP overview of payables, operating spend, and payroll cash pressure.</p>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
+          <p class="mt-1 text-sm text-slate-500">Cash position, obligations, and financial performance at a glance.</p>
         </div>
-        <Button icon="pi pi-refresh" label="Refresh" outlined :loading="loading" @click="loadDashboard" />
+        <Button icon="pi pi-refresh" text :loading="loading" @click="loadDashboard" />
       </div>
       <div v-if="loadError" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         {{ loadError }}
@@ -14,62 +14,22 @@
     </div>
   
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
+      <Card v-for="metric in summaryCards" :key="metric.key" class="rounded-2xl border border-slate-200 shadow-sm transition-shadow hover:shadow-md">
         <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payables</p>
-              <i class="pi pi-credit-card text-blue-400 text-sm"></i>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-slate-600">{{ metric.label }}</p>
+              <i :class="[metric.icon, metric.iconColor, 'text-sm']" />
             </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payables) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Invoices Due</p>
-              <i class="pi pi-file text-indigo-400 text-sm"></i>
+            <p class="text-xl font-semibold tracking-tight text-slate-900">PHP {{ formatMoney(stats[metric.key]) }}</p>
+            <div class="flex flex-wrap items-center gap-1.5 text-xs">
+              <span :class="metric.changeClass" class="inline-flex items-center gap-1 font-semibold">
+                <i v-if="metric.change !== 0" :class="metric.change > 0 ? 'pi pi-arrow-up-right' : 'pi pi-arrow-down-right'" />
+                <i v-else class="pi pi-minus" />
+                {{ metric.varianceLabel }}
+              </span>
+              <span class="text-slate-400">last 28 days vs previous</span>
             </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.invoices_due) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payments Completed</p>
-              <i class="pi pi-check-circle text-emerald-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payments_completed) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Expenses Pending</p>
-              <i class="pi pi-clock text-amber-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.expenses_pending) }}</p>
-          </div>
-        </template>
-      </Card>
-  
-      <Card class="shadow-sm hover:shadow-md transition-shadow">
-        <template #content>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-500">Payroll Pending</p>
-              <i class="pi pi-users text-rose-400 text-sm"></i>
-            </div>
-            <p class="text-xl font-semibold text-gray-900">PHP {{ formatMoney(stats.payroll_pending) }}</p>
           </div>
         </template>
       </Card>
@@ -79,12 +39,15 @@
       <Card class="rounded-2xl border border-slate-200 shadow-sm xl:col-span-2">
         <template #title>
           <div class="flex items-center justify-between">
-            <span class="text-base font-semibold text-slate-800">6-Month Outflow Trend</span>
-            <Tag value="Chart.js" severity="info" />
+            <span class="text-base font-semibold text-slate-800">Outflow Trend</span>
+            <Select v-model="outflowTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Outflow trend period" />
           </div>
         </template>
         <template #content>
-          <Chart type="line" :data="outflowTrendData" :options="lineOptions" class="h-80" />
+          <Skeleton v-if="outflowTrend.loading.value" height="20rem" class="rounded-xl" />
+          <div v-else-if="outflowTrend.error.value" class="flex h-80 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ outflowTrend.error.value }}<Button text label="Try again" @click="outflowTrend.reload" /></div>
+          <Chart v-else-if="outflowTrend.points.value.some((point) => point.invoices || point.expenses || point.payroll)" type="line" :data="outflowTrendData" :options="lineOptions" class="h-80" />
+          <p v-else class="flex h-80 items-center justify-center text-sm text-slate-500">No outflow in this period.</p>
         </template>
       </Card>
   
@@ -188,9 +151,13 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Chart from 'primevue/chart'
 import Tag from 'primevue/tag'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 import financeService from '../../../services/finance.service'
 
 const router = useRouter()
+const outflowTrend = useDashboardTrend('/api/finance/dashboard/trend')
 
 const loading = ref(false)
 const loadError = ref('')
@@ -201,6 +168,13 @@ const stats = ref({
   payments_completed: 0,
   expenses_pending: 0,
   payroll_pending: 0,
+  comparisons: {
+    payables: 0,
+    invoices_due: 0,
+    payments_completed: 0,
+    expenses_pending: 0,
+    payroll_pending: 0,
+  },
   approvals_needed: [] as Array<{
     source_module: string
     workflow: string
@@ -209,6 +183,32 @@ const stats = ref({
     route: string
   }>,
 })
+
+const summaryCards = computed(() => ([
+  { key: 'payables' as const, label: 'Payables', icon: 'pi pi-credit-card', iconColor: 'text-blue-500' },
+  { key: 'invoices_due' as const, label: 'Invoices Due', icon: 'pi pi-file', iconColor: 'text-indigo-500' },
+  { key: 'payments_completed' as const, label: 'Payments Completed', icon: 'pi pi-check-circle', iconColor: 'text-emerald-500' },
+  { key: 'expenses_pending' as const, label: 'Expenses Pending', icon: 'pi pi-clock', iconColor: 'text-amber-500' },
+  { key: 'payroll_pending' as const, label: 'Payroll Pending', icon: 'pi pi-users', iconColor: 'text-rose-500' },
+].map((metric) => {
+  const current = toAmount(stats.value[metric.key])
+  const previous = toAmount(stats.value.comparisons?.[metric.key])
+  const difference = current - previous
+  const percentage = previous > 0 ? (difference / previous) * 100 : null
+
+  return {
+    ...metric,
+    change: previous > 0 ? difference : current > 0 ? 1 : 0,
+    changeClass: difference === 0
+      ? 'text-slate-500'
+      : (metric.key === 'payments_completed' ? difference > 0 : difference < 0)
+        ? 'text-emerald-700'
+        : 'text-rose-700',
+    varianceLabel: percentage === null
+      ? (current > 0 ? 'New' : '0%')
+      : `${difference > 0 ? '+' : ''}${percentage.toFixed(1)}%`,
+  }
+})))
 
 const approvalsNeeded = computed(() => stats.value.approvals_needed || [])
 
@@ -245,81 +245,14 @@ const formatDate = (value: unknown) => {
   return dt.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: '2-digit' })
 }
 
-const monthBuckets = computed(() => {
-  const now = new Date()
-  const months: { key: string; label: string }[] = []
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const label = d.toLocaleString('en-PH', { month: 'short' })
-    months.push({ key, label })
-  }
-  return months
-})
-
-const outflowTrendData = computed(() => {
-  const labels = monthBuckets.value.map((m) => m.label)
-  const invoiceMap: Record<string, number> = {}
-  const expenseMap: Record<string, number> = {}
-  const payrollMap: Record<string, number> = {}
-
-  monthBuckets.value.forEach((m) => {
-    invoiceMap[m.key] = 0
-    expenseMap[m.key] = 0
-    payrollMap[m.key] = 0
-  })
-
-  invoices.value.forEach((row) => {
-    const dt = parseDate(row?.due_date || row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in invoiceMap) invoiceMap[key] = (invoiceMap[key] || 0) + toAmount(row?.amount || row?.payment_amount)
-  })
-
-  expenses.value.forEach((row) => {
-    const dt = parseDate(row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in expenseMap) expenseMap[key] = (expenseMap[key] || 0) + toAmount(row?.amount)
-  })
-
-  payrolls.value.forEach((row) => {
-    const dt = parseDate(row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in payrollMap) payrollMap[key] = (payrollMap[key] || 0) + toAmount(row?.net_salary)
-  })
-
-  return {
-    labels,
-    datasets: [
-      {
-        label: 'Invoices',
-        data: monthBuckets.value.map((m) => invoiceMap[m.key]),
-        borderColor: '#1d4ed8',
-        backgroundColor: 'rgba(29, 78, 216, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-      {
-        label: 'Expenses',
-        data: monthBuckets.value.map((m) => expenseMap[m.key]),
-        borderColor: '#d97706',
-        backgroundColor: 'rgba(217, 119, 6, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-      {
-        label: 'Payroll',
-        data: monthBuckets.value.map((m) => payrollMap[m.key]),
-        borderColor: '#be123c',
-        backgroundColor: 'rgba(190, 18, 60, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-    ],
-  }
-})
+const outflowTrendData = computed(() => ({
+  labels: outflowTrend.points.value.map((point: any) => point.label),
+  datasets: [
+    { label: 'Invoices', data: outflowTrend.points.value.map((point: any) => Number(point.invoices)), borderColor: '#1d4ed8', backgroundColor: 'rgba(29, 78, 216, 0.15)', fill: true, tension: 0.35 },
+    { label: 'Expenses', data: outflowTrend.points.value.map((point: any) => Number(point.expenses)), borderColor: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.15)', fill: true, tension: 0.35 },
+    { label: 'Payroll', data: outflowTrend.points.value.map((point: any) => Number(point.payroll)), borderColor: '#be123c', backgroundColor: 'rgba(190, 18, 60, 0.15)', fill: true, tension: 0.35 },
+  ],
+}))
 
 const overdueInvoices = computed(() => {
   const today = new Date()

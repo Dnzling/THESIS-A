@@ -66,7 +66,7 @@ class InventoryTransactionController extends Controller
             'product',
             'variation',
             'relatedBranch',
-            'createdBy'
+            'createdBy.user'
         ]);
 
         if ($storeId > 0) {
@@ -85,6 +85,15 @@ class InventoryTransactionController extends Controller
             $query->where('product_id', $request->product_id);
         }
 
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('transaction_number', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%")
+                    ->orWhereHas('product', fn ($productQuery) => $productQuery->where('product_name', 'like', "%{$search}%"));
+            });
+        }
+
         if ($request->has('transaction_type')) {
             $query->where('transaction_type', $request->transaction_type);
         }
@@ -96,16 +105,27 @@ class InventoryTransactionController extends Controller
             ]);
         }
 
+        if ($request->filled('from_date')) {
+            $query->whereDate('transaction_date', '>=', $request->input('from_date'));
+        }
+        if ($request->filled('to_date')) {
+            $query->whereDate('transaction_date', '<=', $request->input('to_date'));
+        }
+
         if ($request->has('reference_type')) {
             $query->where('reference_type', $request->reference_type);
         }
 
         // Sorting
-        $sortBy = $request->get('sort_by', 'transaction_date');
-        $sortOrder = $request->get('sort_order', 'desc');
+        $sortBy = $request->get('sort_by', $request->get('sort_field', 'transaction_date'));
+        $sortOrder = strtolower((string) $request->get('sort_order', $request->get('sort_direction', 'desc'))) === 'asc' ? 'asc' : 'desc';
+        if (!in_array($sortBy, ['transaction_date', 'transaction_number', 'transaction_type', 'quantity_change', 'total_value', 'created_at'], true)) {
+            $sortBy = 'transaction_date';
+        }
         $query->orderBy($sortBy, $sortOrder);
+        $query->orderBy('id', $sortOrder);
 
-        $transactions = $query->paginate($request->get('per_page', 20));
+        $transactions = $query->paginate((int) $request->get('per_page', 20));
 
         return response()->json([
             'success' => true,
@@ -124,7 +144,7 @@ class InventoryTransactionController extends Controller
             'product',
             'variation',
             'relatedBranch',
-            'createdBy'
+            'createdBy.user'
         ])->findOrFail($id);
 
         return response()->json([
@@ -331,7 +351,14 @@ class InventoryTransactionController extends Controller
     }
     public function summary(Request $request): JsonResponse
     {
-        $query = InventoryTransaction::where('store_id', auth()->user()->store_id);
+        $context = $this->getUserContext($request);
+        $query = InventoryTransaction::query();
+        if (!$this->hasGlobalAccess()) {
+            $query->where('store_id', $context['store_id']);
+        }
+        if ($context['branch_id'] > 0) {
+            $query->where('branch_id', $context['branch_id']);
+        }
 
         // Apply date filter
         if ($request->has('start_date') && $request->has('end_date')) {
@@ -371,5 +398,24 @@ class InventoryTransactionController extends Controller
             'success' => true,
             'data' => $summary,
         ]);
+    }
+
+    public function recent(Request $request): JsonResponse
+    {
+        $context = $this->getUserContext($request);
+        $query = InventoryTransaction::with(['product', 'variation', 'branch', 'createdBy']);
+        if (!$this->hasGlobalAccess()) {
+            $query->where('store_id', $context['store_id']);
+        }
+        if ($context['branch_id'] > 0) {
+            $query->where('branch_id', $context['branch_id']);
+        }
+
+        $transactions = $query->orderByDesc('transaction_date')
+            ->orderByDesc('id')
+            ->limit(min(max((int) $request->input('limit', 10), 1), 100))
+            ->get();
+
+        return response()->json(['success' => true, 'data' => $transactions]);
     }
 }

@@ -100,7 +100,7 @@
     </Card>
 
      <!-- Record Log Card -->
-    <Card v-if="shipment?.status !== 'delivered'" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-gray-50 to-white">
+    <Card v-if="shipment?.status !== 'delivered'" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-gray-50 to-white">
       <template #header>
         <div class="px-6 pt-6">
           <div class="flex items-center gap-2">

@@ -21,41 +21,68 @@ class StoreVerificationController extends Controller
     }
 
     private const DOC_SPECS = [
-        'business_registration_file' => [
-            'label' => "Mayor's Permit",
+        'gov_id_front_file' => [
+            'label' => 'Primary ID Front',
             'required' => true,
-            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
+            'allowed_mimes' => ['image/jpeg', 'image/png'],
             'max_kb' => 5120,
         ],
-        'business_permit_file' => [
-            'label' => 'Business Permit',
+        'gov_id_back_file' => [
+            'label' => 'Primary ID Back',
+            'required' => false,
+            'allowed_mimes' => ['image/jpeg', 'image/png'],
+            'max_kb' => 5120,
+        ],
+        'business_registration_file' => [
+            'label' => 'Business Registration Permit',
             'required' => true,
             'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
             'max_kb' => 5120,
         ],
         'tax_certificate_file' => [
-            'label' => 'Tax Certificate',
+            'label' => 'BIR Tax Certificate',
             'required' => true,
             'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
-            'max_kb' => 5120,
+            'max_kb' => 10240,
         ],
+        'business_permit_file' => [
+            'label' => "Mayor's/Business Permit",
+            'required' => true,
+            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
+            'max_kb' => 10240,
+        ],
+    ];
+
+    private const ID_TYPES = [
+        'sss',
+        'tin',
+        'passport',
+        'driver_license',
+        'umid',
+        'national_id',
     ];
 
     public function submitDocuments(Request $request, Store $store)
     {
+        abort_unless((int) $request->user()?->store_id === (int) $store->id && $request->user()?->hasRole('owner'), 403);
         try {
-            // Check if user owns this store
-            // First, you need to add user_id to stores table or have another way to link
-            // For now, let's assume the authenticated user can submit
 
+            $idTypes = implode(',', self::ID_TYPES);
             $validated = $request->validate([
-                'business_registration_number' => ['nullable', 'string', 'max:100'],
-                'business_registration_date' => 'required|date|before_or_equal:today',
-                'business_registration_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'business_permit_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'tax_certificate_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'other_documents' => 'nullable|array',
-                'other_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
+                'gov_id_type' => ['required', 'string', "in:{$idTypes}"],
+                'gov_id_number' => ['required', 'string', 'max:100'],
+                'gov_id_front_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+                'gov_id_back_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+                'business_registration_number' => ['required', 'string', 'max:100'],
+                'tax_certificate_number' => ['required', 'string', 'max:100'],
+                'permit_number' => ['required', 'string', 'max:100'],
+                'business_registration_date' => ['required', 'date', 'before_or_equal:today'],
+                'registration_expires_at' => ['nullable', 'date', 'after:today'],
+                'tax_expires_at' => ['nullable', 'date', 'after:today'],
+                'permit_expires_at' => ['nullable', 'date', 'after:today'],
+                'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+                'tax_certificate_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+                'business_permit_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             ]);
 
             $legitimacyIssues = $this->validateUploadedDocuments($request);
@@ -67,12 +94,32 @@ class StoreVerificationController extends Controller
                 ], 422);
             }
 
+            $tempIdPath = $request->file('gov_id_front_file')->store('store-verifications/tmp-owner-id', 'public');
+            try {
+                $ownerIdText = $this->documentAutoValidationService->extractTextFromDocument($tempIdPath);
+                $detectedIdType = $this->documentAutoValidationService->detectGovernmentIdType($ownerIdText);
+            } finally {
+                Storage::disk('public')->delete($tempIdPath);
+            }
+
+            if (!$detectedIdType || $detectedIdType !== $validated['gov_id_type']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The selected owner ID type does not match the uploaded ID header. Upload a clear image of the selected ID type.',
+                    'errors' => [
+                        'gov_id_front_file' => ['The uploaded ID header could not be verified as the selected ID type.'],
+                    ],
+                ], 422);
+            }
+
             // Upload files
             $uploads = [];
             $fileFields = [
+                'gov_id_front_file',
+                'gov_id_back_file',
                 'business_registration_file',
+                'tax_certificate_file',
                 'business_permit_file',
-                'tax_certificate_file'
             ];
 
             foreach ($fileFields as $fileField) {
@@ -82,31 +129,62 @@ class StoreVerificationController extends Controller
                 }
             }
 
-            // Upload other documents if any
-            if ($request->hasFile('other_documents')) {
-                $otherDocs = [];
-                foreach ($request->file('other_documents') as $file) {
-                    $path = $file->store("store-verifications/{$store->id}/other", 'public');
-                    $otherDocs[] = $path;
-                }
-                $uploads['other_documents'] = $otherDocs;
-            }
-
             // Create or update verification record
             $verification = StoreVerification::updateOrCreate(
                 ['store_id' => $store->id], // Use $store->id, not $store->store_id
                 array_merge(
-                    $validated,
-                    $uploads,
                     [
+                        'gov_id_type' => $validated['gov_id_type'],
+                        'gov_id_number' => $validated['gov_id_number'],
+                        'business_registration_number' => $validated['business_registration_number'] ?? null,
+                        'tax_certificate_number' => $validated['tax_certificate_number'],
+                        'permit_number' => $validated['permit_number'],
+                        'business_registration_date' => $validated['business_registration_date'],
+                        'registration_expires_at' => $validated['registration_expires_at'] ?? null,
+                        'tax_expires_at' => $validated['tax_expires_at'] ?? null,
+                        'permit_expires_at' => $validated['permit_expires_at'] ?? null,
+                        'other_documents' => null,
+                        'reviewed_at' => null,
+                        'reviewed_by' => null,
+                        'rejection_reason' => null,
                         'submitted_at' => now(),
-                        'business_registration_date' => $validated['business_registration_date']
-                    ]
+                    ],
+                    $uploads
                 )
             );
 
-            // Use valid DB enum status; "pending" means submitted/under review.
-            $store->update(['status' => 'pending']);
+            $store->update([
+                'status' => 'pending',
+                'verified_at' => null,
+                'verified_by' => null,
+            ]);
+
+            $superAdminIds = User::query()
+                ->where('is_active', true)
+                ->whereHas('role', fn ($query) => $query->where('name', 'super_admin'))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if ($superAdminIds !== []) {
+                $storeName = (string) ($store->name ?: 'A store');
+
+                $this->notifyMany($superAdminIds, [
+                    'store_id' => (int) $store->id,
+                    'module' => 'admin',
+                    'entity_type' => 'store_verification',
+                    'entity_id' => (int) $verification->id,
+                    'action' => 'submitted',
+                    'title' => 'Store verification submitted',
+                    'message' => "{$storeName} submitted verification documents for review.",
+                    'data' => [
+                        'store_name' => $storeName,
+                        'submitted_at' => $verification->submitted_at?->toDateTimeString(),
+                    ],
+                    'link' => "/admin/store-validation/{$verification->id}",
+                    'severity' => 'info',
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -136,12 +214,104 @@ class StoreVerificationController extends Controller
         }
     }
 
+    public function extractOwnerId(Request $request)
+    {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
+        $request->validate([
+            'id_type' => ['required', 'string', 'in:' . implode(',', self::ID_TYPES)],
+            'id_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+        ]);
+
+        $path = $request->file('id_file')->store('store-verifications/tmp-owner-id', 'public');
+
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $selectedType = $request->input('id_type');
+            $detectedType = $this->documentAutoValidationService->detectGovernmentIdType($text);
+            $typeMatches = $detectedType !== null && $detectedType === $selectedType;
+            $idNumber = $typeMatches
+                ? $this->documentAutoValidationService->extractLikelyIdNumber($text, $selectedType)
+                : null;
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id_number' => $idNumber,
+                    'selected_id_type' => $selectedType,
+                    'detected_id_type' => $detectedType,
+                    'id_type_matches' => $typeMatches,
+                    'confidence' => $idNumber ? 'low' : 'none',
+                    'message' => !$typeMatches
+                        ? ($detectedType
+                            ? 'The uploaded document appears to be a different ID type. Select the correct type or upload the matching ID.'
+                            : 'We could not verify the ID type from its header. Upload a clear image showing the ID heading.')
+                        : ($idNumber
+                            ? 'The ID type matches. We found a possible ID number; confirm it before continuing.'
+                            : 'The ID type matches, but we could not read the number. Enter it manually.'),
+                ],
+            ]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    public function extractBusinessRegistration(Request $request)
+    {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
+        $request->validate([
+            'registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+        ]);
+
+        $path = $request->file('registration_file')->store('store-verifications/tmp-registration', 'public');
+
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $number = $this->documentAutoValidationService->extractDocumentReference($text, 'registration');
+            $expiresAt = $this->documentAutoValidationService->extractDocumentExpiration($text);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'registration_number' => $number,
+                    'expires_at' => $expiresAt,
+                    'message' => $number
+                        ? 'Possible registration number found. Please confirm it against your certificate.'
+                        : 'Could not read a registration number. Please enter it manually.',
+                ],
+            ]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    public function extractBusinessDocument(Request $request)
+    {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
+        $validated = $request->validate([
+            'document_type' => ['required', 'in:bir,mayor'],
+            'document_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ]);
+        $path = $request->file('document_file')->store('store-verifications/tmp-documents', 'public');
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $number = $this->documentAutoValidationService->extractDocumentReference($text, $validated['document_type']);
+            return response()->json(['success' => true, 'data' => [
+                'reference_number' => $number,
+                'expires_at' => $validated['document_type'] === 'mayor'
+                    ? $this->documentAutoValidationService->extractDocumentExpiration($text) : null,
+                'message' => $number ? 'Possible reference number found. Confirm it against the document.' : 'Reference number not found. Check the image and enter it manually.',
+            ]]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
     public function getDocuments(Store $store)
     {
         try {
             $user = Auth::user();
             $isSuperAdmin = (bool) $user?->hasRole('super_admin');
-            $isStoreOwner = (int) ($user?->store_id ?? 0) === (int) $store->id;
+            $isStoreOwner = $user?->hasRole('owner') && (int) ($user?->store_id ?? 0) === (int) $store->id;
             if (!$isSuperAdmin && !$isStoreOwner) {
                 return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
             }
@@ -171,6 +341,7 @@ class StoreVerificationController extends Controller
      */
     public function getStatus(Store $store)
     {
+        abort_unless((int) request()->user()?->store_id === (int) $store->id && request()->user()?->hasRole('owner'), 403);
         try {
             // Load verification data
             $store->load(['verification' => function ($query) {
@@ -235,6 +406,8 @@ class StoreVerificationController extends Controller
         $verifications->getCollection()->transform(function (StoreVerification $verification) {
             $payload = $this->buildDocumentPayload($verification);
             $verification->setAttribute('documents_summary', $payload['summary']);
+            $verification->setAttribute('verification_status', $this->verificationStatus($verification));
+            $verification->setAttribute('owner', $this->verificationOwner($verification));
             return $verification;
         });
 
@@ -272,6 +445,8 @@ class StoreVerificationController extends Controller
         $verifications->getCollection()->transform(function (StoreVerification $verification) {
             $payload = $this->buildDocumentPayload($verification);
             $verification->setAttribute('documents_summary', $payload['summary']);
+            $verification->setAttribute('verification_status', $this->verificationStatus($verification));
+            $verification->setAttribute('owner', $this->verificationOwner($verification));
             return $verification;
         });
 
@@ -279,6 +454,57 @@ class StoreVerificationController extends Controller
             'success' => true,
             'data' => $verifications
         ]);
+    }
+
+    /**
+     * Admin: Get the complete store verification record.
+     */
+    public function show(StoreVerification $verification)
+    {
+        if (!Auth::user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $verification->load([
+            'store.branches',
+            'reviewer:id,fname,lname,email',
+        ]);
+
+        $store = $verification->store;
+        $owner = $this->verificationOwner($verification, true);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'verification' => $verification,
+                'store' => $store,
+                'owner' => $owner,
+                'documents' => $this->buildDocumentPayload($verification),
+                'status' => $this->verificationStatus($verification),
+            ],
+        ]);
+    }
+
+    private function verificationStatus(StoreVerification $verification): string
+    {
+        return $verification->isPending()
+            ? 'pending'
+            : ($verification->isRejected() ? 'rejected' : 'approved');
+    }
+
+    private function verificationOwner(StoreVerification $verification, bool $includeProfile = false): ?User
+    {
+        $email = $verification->store?->email;
+        if (!$email) {
+            return null;
+        }
+
+        $columns = ['id', 'fname', 'lname', 'email', 'phone_number'];
+        if ($includeProfile) {
+            $columns = [...$columns, 'birthday', 'created_at'];
+        }
+
+        return User::query()->where('email', $email)->first($columns);
     }
 
     /**
@@ -315,15 +541,25 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => null
                 ]);
 
-                // 2. Update store status using valid enum values.
+                // Verification is independent of subscription/store operational status.
                 $store = $verification->store;
-                $store->update(['status' => 'active']);
+                $store->update([
+                    'status' => 'active',
+                    'verified_at' => now(),
+                    'verified_by' => Auth::id(),
+                ]);
 
                 // 3. Find store owner user by store email and link to store.
                 $storeOwner = User::where('email', $store->email)->first();
 
                 if ($storeOwner) {
-                    $storeAdminRoleId = (int) (\App\Models\Core\Role::query()->where('name', 'store_admin')->value('id') ?? 2);
+                    $ownerRoleId = (int) (\App\Models\Core\Role::query()
+                        ->where('name', 'owner')
+                        ->whereNull('store_id')
+                        ->value('id') ?? 0);
+                    if ($ownerRoleId <= 0) {
+                        throw new \RuntimeException('The global owner role is not configured.');
+                    }
                     $defaultBranchId = (int) (\App\Models\Store\Branch::query()
                         ->where('store_id', (int) $store->id)
                         ->orderByDesc('is_main_branch')
@@ -332,7 +568,7 @@ class StoreVerificationController extends Controller
 
                     $storeOwner->update([
                         'store_id' => $store->id,
-                        'role_id' => $storeAdminRoleId,
+                        'role_id' => $ownerRoleId,
                         'branch_id' => $storeOwner->branch_id ?: ($defaultBranchId ?: null),
                     ]);
 
@@ -341,7 +577,7 @@ class StoreVerificationController extends Controller
 
                     if (!$existingEmployee) {
                         if ($defaultBranchId <= 0) {
-                            throw new \RuntimeException('Cannot create store admin employee profile: no branch exists for the store.');
+                            throw new \RuntimeException('Cannot create store owner employee profile: no branch exists for the store.');
                         }
 
                         // 6. Create employee record for store owner
@@ -349,8 +585,8 @@ class StoreVerificationController extends Controller
                             'user_id' => $storeOwner->id,
                             'store_id' => $store->id,
                             'branch_id' => $defaultBranchId,
-                            'role_id' => $storeAdminRoleId,
-                            'employee_number' => \App\Models\Hr\Employee::generateEmployeeNumber($storeAdminRoleId),
+                            'role_id' => $ownerRoleId,
+                            'employee_number' => \App\Models\Hr\Employee::generateEmployeeNumber($ownerRoleId),
                             'fname' => (string) $storeOwner->fname,
                             'lname' => (string) $storeOwner->lname,
                             'department' => 'Management',
@@ -372,12 +608,36 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => $validated['rejection_reason']
                 ]);
 
-                // 2. Keep store in pending state after rejection.
-                $verification->store->update(['status' => 'pending']);
+                $verification->store->update([
+                    'status' => 'rejected',
+                    'verified_at' => null,
+                    'verified_by' => null,
+                ]);
             });
 
             $message = 'Store verification rejected';
         }
+
+        $storeId = (int) $verification->store_id;
+        User::query()->where('store_id', $storeId)->get(['id', 'role_id', 'store_id'])
+            ->filter(fn (User $user) => $user->hasPermissionTo('admin.settings.manage', $storeId))
+            ->each(function (User $user) use ($storeId, $verification, $validated) {
+                $approved = $validated['action'] === 'approve';
+                $this->notify((int) $user->id, [
+                    'store_id' => $storeId,
+                    'module' => 'admin',
+                    'entity_type' => 'store_verification',
+                    'entity_id' => (int) $verification->id,
+                    'action' => $approved ? 'approved' : 'rejected',
+                    'title' => $approved ? 'Store verification approved' : 'Store verification needs changes',
+                    'message' => $approved
+                        ? 'Your store verification was approved.'
+                        : 'Your store verification was rejected. Review the reason in Store Settings and resubmit.',
+                    'data' => $approved ? [] : ['rejection_reason' => $validated['rejection_reason']],
+                    'link' => '/store/settings',
+                    'severity' => $approved ? 'success' : 'warn',
+                ]);
+            });
 
         return response()->json([
             'success' => true,
@@ -470,7 +730,7 @@ class StoreVerificationController extends Controller
     {
         $user = Auth::user();
         $isSuperAdmin = (bool) $user?->hasRole('super_admin');
-        $isStoreOwner = (int) ($user?->store_id ?? 0) === (int) $verification->store_id;
+        $isStoreOwner = $user?->hasRole('owner') && (int) ($user?->store_id ?? 0) === (int) $verification->store_id;
         if (!$isSuperAdmin && !$isStoreOwner) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
@@ -481,6 +741,23 @@ class StoreVerificationController extends Controller
         }
 
         return Storage::disk('public')->download($documentInfo['path'], basename($documentInfo['path']));
+    }
+
+    public function previewDocument(Request $request, StoreVerification $verification, string $document)
+    {
+        $user = $request->user();
+        if (!$user?->hasRole('super_admin') && !($user?->hasRole('owner') && (int) $user->store_id === (int) $verification->store_id)) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $documentInfo = $this->resolveDocument($verification, $document, (int) $request->query('index', -1));
+        if (!$documentInfo || empty($documentInfo['path']) || !Storage::disk('public')->exists($documentInfo['path'])) {
+            return response()->json(['success' => false, 'message' => 'Document file not found'], 404);
+        }
+
+        return Storage::disk('public')->response($documentInfo['path'], null, [
+            'Content-Disposition' => 'inline',
+        ]);
     }
 
     private function validateUploadedDocuments(Request $request): array
@@ -561,7 +838,8 @@ class StoreVerificationController extends Controller
         }
 
         $otherDocuments = is_array($verification->other_documents) ? $verification->other_documents : [];
-        foreach ($otherDocuments as $index => $path) {
+        foreach ($otherDocuments as $index => $document) {
+            $path = is_array($document) ? ($document['path'] ?? '') : $document;
             $documents[] = $this->buildDocumentItem(
                 $verification,
                 'other_documents',
@@ -580,6 +858,8 @@ class StoreVerificationController extends Controller
 
         return [
             'summary' => [
+                'total' => count($documents),
+                'total_submitted' => count(array_filter($documents, fn($doc) => (bool) $doc['submitted'])),
                 'required_total' => count($requiredDocs),
                 'required_submitted' => count($requiredSubmitted),
                 'required_valid' => count($requiredValid),
@@ -619,6 +899,15 @@ class StoreVerificationController extends Controller
         if ($exists && $mime && !in_array($mime, $allowedMimes, true)) {
             $issues[] = 'Unexpected MIME type for this document.';
         }
+        $expiryField = [
+            'business_registration_file' => 'registration_expires_at',
+            'tax_certificate_file' => 'tax_expires_at',
+            'business_permit_file' => 'permit_expires_at',
+        ][$key] ?? null;
+        $expiresAt = $expiryField ? $verification->{$expiryField} : null;
+        if ($expiresAt && $expiresAt->isPast()) {
+            $issues[] = 'Document has expired.';
+        }
 
         return [
             'key' => $key,
@@ -630,6 +919,7 @@ class StoreVerificationController extends Controller
             'exists' => $exists,
             'size_kb' => $sizeKb,
             'mime_type' => $mime,
+            'expires_at' => $expiresAt?->toDateString(),
             'is_valid' => $submitted ? empty($issues) : !$required,
             'issues' => $issues,
             'download_url' => $submitted
@@ -637,6 +927,9 @@ class StoreVerificationController extends Controller
                 : null,
             'inspect_url' => $submitted
                 ? url("/api/store-verification/{$verification->id}/documents/{$key}/inspect" . ($index !== null ? "?index={$index}" : ''))
+                : null,
+            'preview_url' => $submitted
+                ? url("/api/store-verification/{$verification->id}/documents/{$key}/preview" . ($index !== null ? "?index={$index}" : ''))
                 : null,
         ];
     }
@@ -649,10 +942,12 @@ class StoreVerificationController extends Controller
                 return null;
             }
 
+            $otherDoc = $otherDocs[$index];
+
             return [
                 'key' => $document,
                 'index' => $index,
-                'path' => (string) $otherDocs[$index],
+                'path' => (string) (is_array($otherDoc) ? ($otherDoc['path'] ?? '') : $otherDoc),
             ];
         }
 

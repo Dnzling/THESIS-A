@@ -1,88 +1,39 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto space-y-4 py-4 px-4 sm:px-6 lg:px-8">
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
+        <h1 class="text-xl font-semibold text-slate-900">Purchase Orders</h1>
+        <p class="mt-1 text-sm text-slate-500">Review and respond to purchase orders from linked stores.</p>
       </div>
     </div>
 
-    <!-- iOS-style Filters Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-          </div>
-        </div>
-      </template>
-      
-      <template #content>
-        <div class="p-6 pt-2">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <!-- Search Input -->
-            <div class="md:col-span-2 space-y-2">
-              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
-              <div class="relative">
-                <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  placeholder="Search by PO number"
-                  class="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  @input="onSearch"
-                />
-              </div>
-            </div>
-
-            <!-- Status Filter -->
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
-              <select
-                v-model="statusFilter"
-                class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
-                @change="onFilterChange"
-              >
-                <option value="">All Statuses</option>
-                <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Reset Button -->
-            <div class="flex items-end">
-              <button
-                @click="resetFilters"
-                class="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-gray-200"
-              >
-                <i class="pi pi-times"></i>
-                <span>Reset</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </template>
-    </Card>
-
     <!-- POs Table Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <i class="pi pi-list text-blue-600 text-sm"></i>
+        <div class="px-5 pt-5">
+          <div class="mb-3 flex flex-wrap items-end gap-2">
+            <div class="w-full sm:w-64">
+              <IconField class="w-full">
+                <InputIcon class="pi pi-search" />
+                <InputText v-model="searchQuery" size="small" placeholder="Search PO number" class="w-full text-xs" @input="onSearch" />
+              </IconField>
             </div>
-            <h2 class="text-lg font-semibold text-gray-900">Purchase Orders</h2>
+            <div class="w-full sm:w-48">
+              <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value"
+                placeholder="All Statuses" showClear size="small" class="w-full text-xs" @change="onFilterChange" />
+            </div>
+            <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" class="text-xs" @click="resetFilters" />
           </div>
         </div>
       </template>
 
       <template #content>
-        <div class="p-6 pt-2">
+        <div class="px-4 pb-4 pt-2">
           <!-- Loading State -->
           <div v-if="loading" class="space-y-3">
             <div v-for="i in 5" :key="i" class="bg-gray-50 rounded-xl p-4">
-              <div class="grid grid-cols-6 gap-4">
+              <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
                 <Skeleton width="120px" height="20px" />
                 <Skeleton width="60px" height="20px" />
                 <Skeleton width="80px" height="20px" />
@@ -108,15 +59,15 @@
             :sortOrder="sortOrder"
             @sort="onSort"
             @page="onPageChange"
-            class="p-datatable-sm"
-            stripedRows
+            class="p-datatable-sm text-sm"
+            rowHover
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
             <!-- Date Column -->
             <Column header="Date" field="created_at" sortable style="min-width: 140px">
               <template #body="{ data }">
-                <span class="text-sm text-gray-700">{{ formatDate(data.created_at) }}</span>
+                <span class="text-sm text-slate-700">{{ formatDate(data.created_at) }}</span>
               </template>
             </Column>
 
@@ -124,11 +75,9 @@
             <Column header="PO" style="min-width: 140px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i class="pi pi-file text-blue-600 text-xs"></i>
-                  </div>
+              
                   <div>
-                    <div class="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer" @click="viewDetail(data.id, getPurchaseOrderStatus(data))">
+                    <div class="font-semibold text-slate-900">
                       #{{ getPONumber(data) }}
                     </div>
                     <div class="text-xs text-gray-500 mt-0.5">{{ formatDate(data.order_date || data.created_at) }}</div>
@@ -149,7 +98,7 @@
             <!-- Items Column -->
             <Column header="Items" style="width: 80px" class="text-center">
               <template #body="{ data }">
-                <Tag :value="getItemCount(data)" severity="info" class="rounded-full text-xs px-3 py-1" />
+                <Badge :value="getItemCount(data)" severity="info" />
               </template>
             </Column>
 
@@ -164,7 +113,7 @@
             <Column header="Expected Delivery" style="min-width: 120px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <i class="pi pi-calendar text-gray-400 text-xs"></i>
+  
                   <span class="text-gray-700">{{ formatDate(getExpectedDelivery(data)) }}</span>
                 </div>
               </template>
@@ -173,14 +122,10 @@
             <!-- Status Column -->
             <Column header="Status" style="min-width: 140px">
               <template #body="{ data }">
-                <div class="flex items-center gap-2">
-                  <div :class="getStatusDot(getPurchaseOrderStatus(data))" class="w-2 h-2 rounded-full"></div>
-                  <Tag 
-                    :value="formatStatus(getPurchaseOrderStatus(data))" 
-                    :severity="getStatusSeverity(getPurchaseOrderStatus(data))"
-                    class="rounded-full text-xs px-3 py-1"
-                  />
-                </div>
+                <Badge
+                  :value="formatStatus(getPurchaseOrderStatus(data))"
+                  :severity="getStatusSeverity(getPurchaseOrderStatus(data))"
+                />
               </template>
             </Column>
 
@@ -200,41 +145,20 @@
             </Column> -->
 
             <!-- Actions Column -->
-            <Column header="Actions" style="min-width: 180px" headerStyle="text-align: center">
+            <Column header="Actions" style="width: 110px" headerStyle="text-align: center">
               <template #body="{ data }">
-                <div class="flex items-center justify-start gap-1">
-                  <button
-                    @click.stop="viewDetail(data.id, getPurchaseOrderStatus(data))"
-                    class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                    :class="getActionButtonClass(getPurchaseOrderStatus(data))"
-                  >
-                    <i :class="getActionIcon(getPurchaseOrderStatus(data))" class="text-xs"></i>
-                    <span>{{ getActionLabel(getPurchaseOrderStatus(data)) }}</span>
-                  </button>
-                  
-                  
-                  
-                  <button
-                    v-if="getPurchaseOrderStatus(data) === 'supplier_accepted'"
-                    @click.stop="goToDeliveryForm(data.id)"
-                    class="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                    v-tooltip="'Record Delivery'"
-                  >
-                    <i class="pi pi-truck text-xs"></i>
-                    <span>Deliver</span>
-                  </button>
-                </div>
+                <Button :label="getActionLabel(getPurchaseOrderStatus(data))"
+                  :icon="getActionIcon(getPurchaseOrderStatus(data))" size="small" outlined rounded
+                  class="text-xs" @click="viewDetail(data.id, getPurchaseOrderStatus(data))" />
               </template>
             </Column>
 
             <!-- Empty Template -->
             <template #empty>
               <div class="text-center py-12">
-                <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i class="pi pi-inbox text-gray-400 text-3xl"></i>
-                </div>
-                <h3 class="text-lg font-medium text-gray-700">No Purchase Orders Found</h3>
-                <p class="text-gray-500 mt-2">No purchase orders match your current filters</p>
+                <i class="pi pi-inbox mb-2 text-2xl text-slate-400"></i>
+                <p class="font-medium text-slate-700">No purchase orders found</p>
+                <p class="mt-1 text-sm text-slate-500">Try changing the search or status filter.</p>
               </div>
             </template>
           </DataTable>
@@ -251,7 +175,10 @@ import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Skeleton from 'primevue/skeleton'
@@ -259,7 +186,7 @@ import supplierService from '../../../services/supplier.service'
 
 const router = useRouter()
 const toast = useToast()
-const loading = ref(false)
+const loading = ref(true)
 const pos = ref<any[]>([])
 const searchQuery = ref('')
 const statusFilter = ref('')
@@ -268,9 +195,8 @@ const rows = ref(10)
 const totalRecords = ref(0)
 const sortField = ref('created_at')
 const sortOrder = ref(-1)
-const poFeedback = ref<Record<number, any>>({})
-const lastDeliveryPoId = ref<number | null>(null)
 const invoiceCreatingId = ref<number | null>(null)
+const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim() || statusFilter.value))
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
@@ -290,9 +216,9 @@ const statusOptions = [
 // Computed stats
 const stats = computed(() => {
   const total = pos.value.length
-  const accepted = pos.value.filter(p => p.response === 'accepted').length
+  const accepted = pos.value.filter(p => p.supplier_feedback?.response === 'accepted').length
   const inTransit = pos.value.filter(p => getPurchaseOrderStatus(p) === 'in_transit').length
-  const goodsReceived = pos.value.filter(p => p.receipt_status === 'confirmed').length
+  const goodsReceived = pos.value.filter(p => p.supplier_feedback?.receipt_status === 'confirmed').length
   
   return { total, accepted, inTransit, goodsReceived }
 })
@@ -319,7 +245,7 @@ const getPurchaseOrderStatus = (row: any): string => {
 }
 
 const getGoodsReceivedStatus = (row: any): string => {
-  return row?.receipt_status || 'pending'
+  return row?.supplier_feedback?.receipt_status || 'pending'
 }
 
 const getInvoiceStatusForPO = (row: any): string => {
@@ -412,12 +338,12 @@ const getStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'dange
     approved: 'success',
     sent_to_supplier: 'info',
     supplier_accepted: 'success',
-    in_transit: 'warn',
+    in_transit: 'info',
     delivered: 'success',
     goods_received: 'success',
     rejected_finance: 'danger',
     declined_supplier: 'danger',
-    cancelled: 'danger',
+    cancelled: 'secondary',
   }
   return map[status] || 'info'
 }
@@ -483,19 +409,6 @@ const loadPOs = async () => {
       totalRecords.value = 0
     }
 
-    // Load feedback for each PO
-    for (const po of pos.value) {
-      try {
-        const feedbackRes = await supplierService.getMyPOFeedbacks({ purchase_order_id: po.id })
-        const feedbackPayload = feedbackRes.data || feedbackRes
-        const feedbackList = feedbackPayload?.data?.data || feedbackPayload?.data || []
-        if (feedbackList.length > 0) {
-          poFeedback.value[po.id] = feedbackList[0]
-        }
-      } catch (error) {
-        console.error('Error loading PO feedback:', error)
-      }
-    }
   } catch (error: any) {
     console.error('Failed to load POs:', error)
     toast.add({
@@ -547,30 +460,12 @@ const viewDetail = (id: number, status?: string) => {
   router.push(`/supplier-portal/pos/${id}`)
 }
 
-const goToDeliveryForm = (id: number) => {
-  localStorage.setItem('last_delivery_form_po_id', String(id))
-  lastDeliveryPoId.value = id
-  router.push(`/supplier-portal/pos/${id}/delivery-template`)
-}
-
 onMounted(() => {
-  const stored = localStorage.getItem('last_delivery_form_po_id')
-  lastDeliveryPoId.value = stored ? Number(stored) : null
   loadPOs()
 })
 </script>
 
 <style scoped>
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-/* iOS-style shadows */
-:deep(.p-card) {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
 :deep(.p-card .p-card-content) {
   padding: 0;
 }
@@ -579,55 +474,23 @@ onMounted(() => {
   padding: 0;
 }
 
-/* iOS-style table */
-:deep(.p-datatable) {
-  border-radius: 16px;
-  overflow: hidden;
-}
-
 :deep(.p-datatable .p-datatable-thead > tr > th) {
-  background-color: #f9fafb;
-  color: #6b7280;
-  font-weight: 500;
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 600;
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 0.75rem;
+  border-color: #e2e8f0;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  padding: 1rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 0.75rem;
+  border-color: #e2e8f0;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr:hover) {
-  background-color: #f9fafb;
-}
-
-/* iOS-style tags */
-:deep(.p-tag) {
-  border-radius: 9999px;
-  font-weight: 500;
+  background-color: #fff7ed;
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
-}
 </style>

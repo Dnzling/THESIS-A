@@ -4,7 +4,7 @@ import './axios';
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
-import { createApp, h } from 'vue';
+import { createApp, defineComponent, h } from 'vue';
 import { createPinia } from 'pinia';
 import SystemLayout from '@/Layouts/SystemLayout.vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
@@ -12,6 +12,7 @@ import EcommerceLayout from '@/Layouts/EcommerceLayout.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import PrimeVue from 'primevue/config';
 import Aura from '@primeuix/themes/aura';
+import { definePreset } from '@primeuix/themes';
 import 'primeicons/primeicons.css';
 import ToastService from 'primevue/toastservice';
 import ConfirmationService from 'primevue/confirmationservice';
@@ -19,6 +20,10 @@ import { Ziggy } from './ziggy';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useAuthStore } from '@/stores/auth';
 import axios from 'axios';
+import { captureDevConsole } from './utils/devConsoleCapture';
+import UnsavedCreateChangesGuard from '@/Components/UnsavedCreateChangesGuard.vue';
+
+captureDevConsole();
 
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
@@ -91,7 +96,7 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ).then((module) => {
             const component = module.default;
-            if (!component.layout) {
+            if (!Object.prototype.hasOwnProperty.call(component, 'layout')) {
                 if (name.startsWith('System/Admin/')) {
                     component.layout = AdminLayout;
                 } else if (name.startsWith('System/Ecommerce/')) {
@@ -110,15 +115,47 @@ createInertiaApp({
             return module;
         }),
     setup({ el, App, props, plugin }) {
-        const app = createApp({ render: () => h(App, props) });
+        const app = createApp(defineComponent({
+            setup: () => () => [h(App, props), h(UnsavedCreateChangesGuard)],
+        }));
         const pinia = createPinia();
+        let currentPageUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+        inertiaRouter.on('navigate', (event) => {
+            const nextPageUrl = event.detail.page.url;
+            if (nextPageUrl === currentPageUrl) return;
+
+            currentPageUrl = nextPageUrl;
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: 0, left: 0 });
+                document.querySelectorAll('[data-page-scroll-container]').forEach((container) => {
+                    container.scrollTo({ top: 0, left: 0 });
+                });
+            });
+        });
 
         app.use(plugin);
         app.use(ZiggyVue, Ziggy);
         app.use(pinia);
         app.use(PrimeVue, {
             theme: {
-                preset: Aura,
+                preset: definePreset(Aura, {
+                    semantic: {
+                        primary: {
+                            50: '{orange.50}',
+                            100: '{orange.100}',
+                            200: '{orange.200}',
+                            300: '{orange.300}',
+                            400: '{orange.400}',
+                            500: '{orange.500}',
+                            600: '{orange.600}',
+                            700: '{orange.700}',
+                            800: '{orange.800}',
+                            900: '{orange.900}',
+                            950: '{orange.950}',
+                        },
+                    },
+                }),
                 options: {
                     darkModeSelector: '.my-app-dark',
                 },
@@ -195,7 +232,6 @@ createInertiaApp({
 
         const routeNameAliases = {
             'inventory.products': 'inventory.products.index',
-            'inventory.products.create': 'inventory.products.index',
             'inventory.locations': 'inventory.locations.index',
             'inventory.serial-numbers': 'inventory.serial-numbers.index',
             'inventory.serial-numbers.detail': 'inventory.serial-numbers.show',
@@ -286,7 +322,6 @@ createInertiaApp({
         const authStore = useAuthStore(pinia);
         if (authStore.token) {
             axios.defaults.headers.common.Authorization = `Bearer ${authStore.token}`;
-            console.log('Auth token initialized:', authStore.token);
             if (authStore.user) {
                 authStore.initialize().catch((err) => {
                     console.warn('Failed to initialize auth store:', err);

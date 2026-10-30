@@ -2,7 +2,11 @@
 
 namespace App\Services\Store;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 class DocumentAutoValidationService
 {
@@ -167,19 +171,24 @@ class DocumentAutoValidationService
         return $this->extractText($absolutePath, $mime);
     }
 
-    public function extractLikelyIdNumber(string $text): ?string
+    public function extractLikelyIdNumber(string $text, ?string $type = null): ?string
     {
         $normalized = strtoupper(preg_replace('/\s+/', ' ', $text));
-        $patterns = [
-            '/\b\d{2}-\d{7}-\d{1}\b/',
-            '/\b\d{3}-\d{2}-\d{4}\b/',
-            '/\b\d{4}-\d{4}-\d{4}-\d{4}\b/',
-            '/\b[A-Z0-9]{8,20}\b/',
-        ];
+        $patterns = match ($type) {
+            'sss' => ['/\b\d{2}[- ]?\d{7}[- ]?\d\b/'],
+            'tin' => ['/\b\d{3}[- ]?\d{3}[- ]?\d{3}(?:[- ]?\d{3})?\b/'],
+            'national_id' => ['/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/'],
+            'passport' => ['/\b[A-Z]{1,2}\d{7,8}\b/'],
+            'driver_license' => ['/\b[A-Z]\d{2}[- ]?\d{2}[- ]?\d{6}\b/'],
+            'umid' => ['/\b\d{4}[- ]?\d{7}[- ]?\d\b/'],
+            default => [],
+        };
+
+        $patterns[] = '/(?:REFERENCE|REF|ID|IDENTIFICATION|LICENSE|LICENCE|PASSPORT|CRN|SSS|TIN|PSN|PCN)\s*(?:NO\.?|NUMBER|#|:)\s*[:#-]?\s*([A-Z0-9][A-Z0-9\- ]{5,24})/i';
 
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $normalized, $matches)) {
-                return $matches[0];
+                return trim($matches[1] ?? $matches[0]);
             }
         }
 
@@ -190,8 +199,95 @@ class DocumentAutoValidationService
         return null;
     }
 
+    public function detectGovernmentIdType(string $text): ?string
+    {
+        $normalized = strtoupper(preg_replace('/[^A-Z0-9]+/', ' ', $text));
+
+        if (preg_match('/\b(UMID|UNIFIED MULTI PURPOSE ID|UNIFIED MULTI PURPOSE IDENTIFICATION)\b/', $normalized)) {
+            return 'umid';
+        }
+        if (preg_match('/\b(SSS|SOCIAL SECURITY SYSTEM)\b/', $normalized)) {
+            return 'sss';
+        }
+        if (preg_match('/\b(TIN|BUREAU OF INTERNAL REVENUE|BIR)\b/', $normalized)) {
+            return 'tin';
+        }
+        if (preg_match('/\b(PASSPORT|DEPARTMENT OF FOREIGN AFFAIRS|DFA)\b/', $normalized)) {
+            return 'passport';
+        }
+        if (preg_match('/\b(DRIVER S LICENSE|DRIVERS LICENSE|DRIVING LICENSE|LAND TRANSPORTATION OFFICE|LTO)\b/', $normalized)) {
+            return 'driver_license';
+        }
+        if (preg_match('/\b(PHILSYS|PHILIPPINE IDENTIFICATION SYSTEM|PHILIPPINE IDENTIFICATION CARD|NATIONAL ID|PSN|PCN)\b/', $normalized)) {
+            return 'national_id';
+        }
+
+        return null;
+    }
+
+    public function extractDocumentReference(string $text, string $type): ?string
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $text));
+        $specificPattern = match ($type) {
+            'registration' => '/\bDTI[-\s]?\d{4}[-\s]?\d+[-\s]?\d+\b/',
+            'bir' => '/\b\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{3}\b/',
+            'mayor' => '/\b\d{4}-\d{6,9}\b/',
+            default => null,
+        };
+        if ($specificPattern && preg_match($specificPattern, $normalized, $specificMatch)) {
+            return trim($specificMatch[0]);
+        }
+
+        $labels = match ($type) {
+            'registration' => 'registration|certificate|business|reference|dti|sec',
+            'bir' => 'tin|taxpayer identification|certificate|registration|reference',
+            'mayor' => 'permit|business|license|licence|reference|control',
+            default => 'reference',
+        };
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/', strtoupper($text)) ?: [])));
+        foreach ($lines as $index => $line) {
+            if (!preg_match('/\b(?:' . $labels . ')\b/i', $line)) continue;
+            if (preg_match('/(?:' . $labels . ')(?:\s+(?:CERTIFICATE|REGISTRATION|PERMIT|CONTROL))?\s*(?:NO\.?|NUMBER|#|ID)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9\-\/]{5,29})\b/i', $line, $match)) {
+                $candidate = trim($match[1]);
+                if (preg_match('/\d/', $candidate)) return $candidate;
+            }
+            // OCR often puts a label and its value on consecutive lines.
+            if (preg_match('/(?:NO\.?|NUMBER|#|ID|TIN|REFERENCE)\s*[:#-]?\s*$/i', $line)
+                && isset($lines[$index + 1])
+                && preg_match('/^([A-Z0-9][A-Z0-9\-\/]{5,29})\b/', $lines[$index + 1], $match)
+                && preg_match('/\d/', $match[1])) {
+                return $match[1];
+            }
+        }
+        return null;
+    }
+
+    public function extractDocumentExpiration(string $text): ?string
+    {
+        $datePattern = '(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}|(?:\d{1,2}\s+)?[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})';
+        $normalized = preg_replace('/\s+/', ' ', $text);
+        if (preg_match('/\bvalid\s+from\s+' . $datePattern . '\s+to\s+' . $datePattern . '/i', $normalized, $match)) {
+            try { return \Carbon\Carbon::parse($match[2])->toDateString(); } catch (\Throwable) { /* Try other layouts below. */ }
+        }
+        if (preg_match('/\b(?:shall\s+)?expir(?:e|es|ation|y)\s+(?:date\s*[:#-]?\s*|on\s+)' . $datePattern . '/i', $normalized, $match)) {
+            try { return \Carbon\Carbon::parse($match[1])->toDateString(); } catch (\Throwable) { /* Try other layouts below. */ }
+        }
+        foreach (preg_split('/\R/', $text) ?: [] as $line) {
+            if (!preg_match('/(?:EXPIR(?:Y|ATION)|VALID\s*(?:UNTIL|THRU|TO))\s*(?:DATE)?\s*[:#-]?\s*(.+)|(?:DATE\s+OF\s+EXPIR(?:Y|ATION))\s*[:#-]?\s*(.+)/i', $line, $match)) continue;
+            if (preg_match('/\b' . $datePattern . '\b/', $match[1] ?: ($match[2] ?? ''), $date)) {
+                try { return \Carbon\Carbon::parse($date[1])->toDateString(); } catch (\Throwable) { continue; }
+            }
+        }
+        return null;
+    }
+
     private function extractText(string $absolutePath, string $mime): string
     {
+        $remoteText = $this->extractTextWithOcrSpace($absolutePath, $mime);
+        if ($remoteText !== '') {
+            return $remoteText;
+        }
+
         if (str_contains($mime, 'pdf')) {
             $text = $this->extractPdfText($absolutePath);
             if ($text !== '') {
@@ -207,6 +303,75 @@ class DocumentAutoValidationService
         }
 
         return '';
+    }
+
+    private function extractTextWithOcrSpace(string $absolutePath, string $mime): string
+    {
+        $apiKey = trim((string) config('services.ocr_space.key'));
+        if ($apiKey === '') {
+            return '';
+        }
+
+        $endpoint = (string) config('services.ocr_space.endpoint', 'https://api.ocr.space/parse/image');
+        $engine = (int) config('services.ocr_space.engine', 2);
+        $language = (string) config('services.ocr_space.language', 'auto');
+        $timeout = max(5, (int) config('services.ocr_space.timeout', 45));
+
+        if (!in_array($engine, [1, 2, 3], true)) {
+            $engine = 2;
+        }
+
+        $handle = fopen($absolutePath, 'rb');
+        if ($handle === false) {
+            return '';
+        }
+
+        try {
+            $response = Http::withHeaders(['apikey' => $apiKey])
+                ->timeout($timeout)
+                ->retry(2, 250, fn ($exception) => $exception instanceof ConnectionException)
+                ->attach('file', $handle, basename($absolutePath), [
+                    'Content-Type' => $mime ?: 'application/octet-stream',
+                ])
+                ->post($endpoint, [
+                    'language' => $engine === 1 && $language === 'auto' ? 'eng' : $language,
+                    'OCREngine' => (string) $engine,
+                    'isOverlayRequired' => 'false',
+                    'detectOrientation' => 'true',
+                    'scale' => 'true',
+                ]);
+
+            if (!$response->successful()) {
+                throw new RuntimeException("OCR.space returned HTTP {$response->status()}.");
+            }
+
+            $payload = $response->json();
+            if (!is_array($payload) || ($payload['IsErroredOnProcessing'] ?? false)) {
+                $messages = $payload['ErrorMessage'] ?? $payload['ErrorDetails'] ?? 'Unknown OCR processing error.';
+                $message = is_array($messages) ? implode(' ', $messages) : (string) $messages;
+                throw new RuntimeException($message);
+            }
+
+            $parsedResults = $payload['ParsedResults'] ?? [];
+            if (!is_array($parsedResults)) {
+                return '';
+            }
+
+            return trim(implode("\n", array_filter(array_map(
+                static fn ($result) => is_array($result) ? trim((string) ($result['ParsedText'] ?? '')) : '',
+                $parsedResults
+            ))));
+        } catch (\Throwable $exception) {
+            Log::warning('OCR.space extraction failed; using local OCR fallback.', [
+                'file' => basename($absolutePath),
+                'mime_type' => $mime,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return '';
+        } finally {
+            fclose($handle);
+        }
     }
 
     private function extractPdfText(string $absolutePath): string

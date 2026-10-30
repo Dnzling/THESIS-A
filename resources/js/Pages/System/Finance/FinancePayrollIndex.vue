@@ -1,11 +1,11 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-gray-900">Payroll</h1>
         <p class="mt-0.5 text-sm text-gray-500">Grouped by pay period for easier review and approval workflow.</p>
       </div>
-      <Button icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadPayrolls" />
+      <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadPayrolls" />
     </div>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -13,7 +13,8 @@
         <template #content>
           <div class="p-5">
             <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Pay Periods</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalPeriods }}</p>
+            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
+            <p v-else class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalPeriods }}</p>
           </div>
         </template>
       </Card>
@@ -21,7 +22,8 @@
         <template #content>
           <div class="p-5">
             <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Employees</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalEmployees }}</p>
+            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
+            <p v-else class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalEmployees }}</p>
           </div>
         </template>
       </Card>
@@ -29,7 +31,8 @@
         <template #content>
           <div class="p-5">
             <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Needs Approval</p>
-            <p class="mt-2 text-2xl font-semibold text-orange-600">{{ periodSummary.pendingApproval }}</p>
+            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
+            <p v-else class="mt-2 text-2xl font-semibold text-orange-600">{{ periodSummary.pendingApproval }}</p>
           </div>
         </template>
       </Card>
@@ -37,30 +40,33 @@
         <template #content>
           <div class="p-5">
             <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Total Net Salary</p>
-            <p class="mt-2 text-xl font-semibold text-green-700">P {{ formatMoney(periodSummary.totalNetSalary) }}</p>
+            <Skeleton v-if="loading" class="mt-2" width="7rem" height="1.75rem" />
+            <p v-else class="mt-2 text-xl font-semibold text-green-700">₱ {{ formatMoney(periodSummary.totalNetSalary) }}</p>
           </div>
         </template>
       </Card>
     </div>
 
     <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Payroll Periods</h2>
-        </div>
-      </template>
+      <template #header><div class="m-4 mt-6"><h2 class="text-sm font-semibold text-slate-900">Payroll Periods</h2></div></template>
       <template #content>
-        <div class="p-6 pt-2">
+        <div v-if="loading" class="space-y-3 px-4 pb-4">
+          <div class="grid grid-cols-5 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 5" :key="`head-${cell}`" height="0.75rem" /></div>
+          <div v-for="row in 6" :key="`payroll-${row}`" class="grid grid-cols-5 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 5" :key="`cell-${row}-${cell}`" height="1.25rem" /></div>
+        </div>
+        <div v-else>
           <DataTable
             :value="payPeriods"
-            :loading="loading"
-            stripedRows
+            rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+            <Column field="periodStart" header="Date" sortable style="min-width: 140px">
+              <template #body="{ data }">{{ data.periodStart ? formatDate(data.periodStart) : '-' }}</template>
+            </Column>
             <Column header="Pay Period" style="min-width: 220px">
               <template #body="{ data }">
                 <div>
@@ -84,11 +90,11 @@
             <Column header="Status Mix" style="min-width: 240px">
               <template #body="{ data }">
                 <div class="flex flex-wrap gap-1">
-                  <Tag v-if="data.counts.submitted" :value="`Submitted ${data.counts.submitted}`" severity="warn" />
-                  <Tag v-if="data.counts.processing" :value="`Processing ${data.counts.processing}`" severity="warning" />
-                  <Tag v-if="data.counts.approved" :value="`Approved ${data.counts.approved}`" severity="success" />
-                  <Tag v-if="data.counts.paid" :value="`Paid ${data.counts.paid}`" severity="info" />
-                  <Tag v-if="data.counts.draft" :value="`Draft ${data.counts.draft}`" severity="secondary" />
+                  <Badge v-if="data.counts.submitted" :value="`Submitted ${data.counts.submitted}`" severity="warn" />
+                  <Badge v-if="data.counts.processing" :value="`Processing ${data.counts.processing}`" severity="warn" />
+                  <Badge v-if="data.counts.approved" :value="`Approved ${data.counts.approved}`" severity="success" />
+                  <Badge v-if="data.counts.paid" :value="`Paid ${data.counts.paid}`" severity="success" />
+                  <Badge v-if="data.counts.draft" :value="`Draft ${data.counts.draft}`" severity="secondary" />
                 </div>
               </template>
             </Column>
@@ -96,7 +102,7 @@
             <Column header="Actions" style="width: 120px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button icon="pi pi-eye" text rounded severity="secondary" @click="openPeriodDetail(data)" />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="openPeriodDetail(data)" />
                 </div>
               </template>
             </Column>
@@ -117,12 +123,13 @@ import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Button from 'primevue/button'
+import Skeleton from 'primevue/skeleton'
 import financeService from '../../../services/finance.service'
 
 const router = useRouter()
-const loading = ref(false)
+const loading = ref(true)
 const payrolls = ref<any[]>([])
 
 const formatMoney = (value: number | string) => {
@@ -141,6 +148,7 @@ const payPeriods = computed(() => {
       groups.set(periodId, {
         pay_period_id: periodId,
         payPeriodName: row?.pay_period?.name || row?.payPeriod?.name || `Pay Period ${periodId}`,
+        periodStart: row?.pay_period?.start_date || row?.payPeriod?.start_date || null,
         employeeCount: 0,
         totalNetSalary: 0,
         counts: { draft: 0, submitted: 0, processing: 0, approved: 0, paid: 0 },

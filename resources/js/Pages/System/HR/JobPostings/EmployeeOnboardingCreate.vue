@@ -8,8 +8,8 @@
       <div class="mt-5 rounded-[2rem] border border-blue-100 bg-white/95 p-6 shadow-sm">
         <div class="space-y-2">
           <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Employee Onboarding</p>
-          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Create employee and build a weekly shift plan</h1>
-          <p class="text-sm leading-6 text-slate-500">This guided flow keeps hiring and shift planning together, with a final preview before anything is committed.</p>
+          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Complete employee onboarding</h1>
+          <p class="text-sm leading-6 text-slate-500">Confirm the employee details, set compensation and schedule, then create the employee after final review.</p>
         </div>
 
         <div class="mt-6">
@@ -74,6 +74,10 @@
                     <label class="text-sm font-medium text-slate-700">Employment Type</label>
                     <Select v-model="employeeForm.employment_type" :options="employmentTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
                   </div>
+                  <div v-if="employeeForm.employment_type === 'contract'" class="space-y-2">
+                    <label class="text-sm font-medium text-slate-700">Contract End Date</label>
+                    <DatePicker v-model="employeeForm.contract_end_date" class="w-full" fluid :minDate="employeeForm.hire_date" />
+                  </div>
                   <div class="space-y-2">
                     <label class="text-sm font-medium text-slate-700">Pay Type</label>
                     <Select v-model="employeeForm.pay_type" :options="payTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
@@ -115,7 +119,7 @@
                     <DatePicker v-model="shiftForm.week_start" class="w-full" />
                   </div>
                   <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                    Fill each day manually. Use 12-hour time like `08:00 AM`.
+                    Start and end times use your HR payroll defaults. Working hours are calculated from the selected time range.
                   </div>
                 </div>
 
@@ -147,7 +151,7 @@
                         <td class="border-b border-slate-100 px-3 py-3">
                           <InputText
                             :model-value="row.start_time"
-                            placeholder="08:00 AM"
+                            type="time"
                             class="w-full"
                             :disabled="!row.is_working"
                             @update:model-value="(value) => onPlannerStartTimeChange(row, String(value || ''))"
@@ -156,7 +160,7 @@
                         <td class="border-b border-slate-100 px-3 py-3">
                           <InputText
                             :model-value="row.end_time"
-                            placeholder="05:00 PM"
+                            type="time"
                             class="w-full"
                             :disabled="!row.is_working"
                             @update:model-value="(value) => onPlannerEndTimeChange(row, String(value || ''))"
@@ -176,11 +180,11 @@
                   </div>
                   <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
                     <p class="text-xs uppercase tracking-wide text-slate-500">Max Daily</p>
-                    <p class="mt-1 text-lg font-semibold text-slate-900">12 hrs</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ maxDailyHours }} hrs</p>
                   </div>
                   <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
                     <p class="text-xs uppercase tracking-wide text-slate-500">Max Weekly</p>
-                    <p class="mt-1 text-lg font-semibold text-slate-900">48 hrs</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ maxWeeklyHours }} hrs</p>
                   </div>
                 </div>
               </template>
@@ -198,6 +202,7 @@
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Name:</strong> {{ employeeForm.first_name }} {{ employeeForm.last_name }}</div>
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Salary:</strong> {{ formatCurrency(employeeForm.salary) }}</div>
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Hire Date:</strong> {{ formatDateOnly(employeeForm.hire_date) }}</div>
+                      <div v-if="employeeForm.employment_type === 'contract'" class="rounded-2xl bg-slate-50 p-4"><strong>Contract End Date:</strong> {{ formatDateOnly(employeeForm.contract_end_date) }}</div>
                     </div>
                   </div>
 
@@ -287,13 +292,15 @@ const errorBannerRef = ref<HTMLElement | null>(null)
 const application = ref<any | null>(null)
 const createdEmployeeId = ref<number | null>(null)
 const shiftTemplates = ref<ShiftTemplateOption[]>([])
+const shiftOptions = ref<{ label: string; value: number; start_time: string; end_time: string }[]>([])
 const templatesLoading = ref(false)
 const selectedTemplateId = ref<number | string | null>(null)
+const payrollScheduleDefaults = reactive({ workStart: '08:00', workEnd: '17:00', paidHours: 8, lunchBreak: 60 })
 
 const stepItems = [
-  { label: 'Create Employee' },
-  { label: 'Shift Planner' },
-  { label: 'Preview' },
+  { label: 'Employee setup' },
+  { label: 'Schedule' },
+  { label: 'Review and activate' },
 ]
 
 const branchOptions = ref<any[]>([])
@@ -334,6 +341,7 @@ const employeeForm = reactive({
   department_id: null as number | null,
   role_id: null as number | null,
   hire_date: new Date(),
+  contract_end_date: null as Date | null,
   employment_type: 'full_time',
   pay_type: 'monthly',
   salary: 0,
@@ -362,6 +370,8 @@ const cardForm = reactive({
 
 const applicantName = computed(() => application.value?.full_name || `${application.value?.first_name || ''} ${application.value?.last_name || ''}`.trim())
 const totalWeeklyHours = computed(() => weeklyPlanner.reduce((sum, row) => sum + Number(row.hours || 0), 0))
+const maxDailyHours = computed(() => Number(payrollScheduleDefaults.paidHours) || 8)
+const maxWeeklyHours = computed(() => maxDailyHours.value * 6)
 
 const salaryRangeMin = computed<number | null>(() => {
   const raw = application.value?.jobPosting?.salary_min
@@ -468,7 +478,7 @@ const formatTime12h = (value?: string) => {
 const parseTimeToMinutes = (value?: string) => {
   if (!value) return null
   const raw = String(value).trim().toUpperCase()
-  const match = raw.match(/^(\d{1,2}):(\d{2})\s*([AP]M)?$/)
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$/)
   if (!match) return null
   let hours = Number(match[1])
   const minutes = Number(match[2])
@@ -491,28 +501,29 @@ const calculateHours = (start?: string, end?: string) => {
   const endMinutes = parseTimeToMinutes(end)
   if (startMinutes === null || endMinutes === null) return 0
   const diff = endMinutes - startMinutes
-  return diff > 0 ? diff / 60 : 0
+  if (diff <= 0) return 0
+  const lunchBreakMinutes = Number(payrollScheduleDefaults.lunchBreak || 0)
+  const minimumSpanForLunch = (Number(payrollScheduleDefaults.paidHours) * 60) + lunchBreakMinutes
+  const breakMinutes = diff >= minimumSpanForLunch ? lunchBreakMinutes : 0
+  return Math.max(0, (diff - breakMinutes) / 60)
 }
 
 const detectMatchingShift = (start?: string, end?: string) => {
-  const normalizedStart = String(start || '').trim()
-  const normalizedEnd = String(end || '').trim()
-  if (!normalizedStart || !normalizedEnd) return null
+  const startMinutes = parseTimeToMinutes(start)
+  const endMinutes = parseTimeToMinutes(end)
+  if (startMinutes === null || endMinutes === null) return null
 
   return shiftOptions.value.find((shift: any) => {
-    const shiftStart = formatTime12h(shift.start_time)
-    const shiftEnd = formatTime12h(shift.end_time)
-    return shiftStart === normalizedStart && shiftEnd === normalizedEnd
+    return parseTimeToMinutes(shift.start_time) === startMinutes
+      && parseTimeToMinutes(shift.end_time) === endMinutes
   }) || null
 }
 
-const formatMinutesToTime12h = (minutesTotal: number) => {
+const formatMinutesToTime = (minutesTotal: number) => {
   const normalized = ((minutesTotal % 1440) + 1440) % 1440
   const hours24 = Math.floor(normalized / 60)
   const minutes = normalized % 60
-  const period = hours24 >= 12 ? 'PM' : 'AM'
-  const hours12 = ((hours24 + 11) % 12) + 1
-  return `${String(hours12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
+  return `${String(hours24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 const onPlannerStartTimeChange = (row: any, value: string) => {
@@ -525,29 +536,30 @@ const onPlannerStartTimeChange = (row: any, value: string) => {
     return
   }
 
-  const endMinutes = startMinutes + 9 * 60
-  row.end_time = formatMinutesToTime12h(endMinutes)
-  row.hours = 9
+  const defaultStart = parseTimeToMinutes(payrollScheduleDefaults.workStart) ?? startMinutes
+  const defaultEnd = parseTimeToMinutes(payrollScheduleDefaults.workEnd) ?? (defaultStart + 9 * 60)
+  const configuredSpan = Math.max(0, defaultEnd - defaultStart)
+  row.end_time = formatMinutesToTime(startMinutes + configuredSpan)
+  row.hours = calculateHours(row.start_time, row.end_time)
   row.is_working = true
-  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || null
 }
 
 const onPlannerEndTimeChange = (row: any, value: string) => {
   row.end_time = value
   row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
-  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || null
 }
 
 const onPlannerWorkingToggle = (row: any, checked: boolean) => {
   row.is_working = checked
 
   if (checked) {
-    const defaultStart = row.start_time || '09:00 AM'
+    const defaultStart = row.start_time || payrollScheduleDefaults.workStart
     row.start_time = defaultStart
-    const startMinutes = parseTimeToMinutes(defaultStart)
-    row.end_time = startMinutes === null ? '06:00 PM' : formatMinutesToTime12h(startMinutes + 9 * 60)
-    row.hours = calculateHours(row.start_time, row.end_time) || 9
-    row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+    row.end_time = row.end_time || payrollScheduleDefaults.workEnd
+    row.hours = calculateHours(row.start_time, row.end_time)
+    row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || null
     return
   }
 
@@ -727,14 +739,19 @@ const validateWeeklyPlanner = async (): Promise<boolean> => {
       return false
     }
 
-    if (row.hours > 9) {
-      await setError(`Working hours for ${formatDayLabel(row.day)} cannot exceed 9 hours.`)
+    if (row.hours > maxDailyHours.value) {
+      await setError(`Paid working hours for ${formatDayLabel(row.day)} cannot exceed ${maxDailyHours.value} hours.`)
+      return false
+    }
+
+    if (row.is_working && !detectMatchingShift(row.start_time, row.end_time)) {
+      await setError(`No saved shift matches ${formatDayLabel(row.day)}. Create a matching shift in HR settings before continuing.`)
       return false
     }
   }
 
-  if (totalWeeklyHours.value > 54) {
-    await setError('Total weekly working hours cannot exceed 54 hours.')
+  if (totalWeeklyHours.value > maxWeeklyHours.value) {
+    await setError(`Total weekly working hours cannot exceed ${maxWeeklyHours.value} hours.`)
     return false
   }
 
@@ -750,13 +767,34 @@ const loadPage = async () => {
       departments,
       roles,
       provinces,
+      settingsResponse,
+      shiftsResponse,
     ] = await Promise.all([
       hrService.getJobApplication(route.params.applicationId as string),
       hrService.getBranches(),
       hrService.getDepartments(),
       hrService.getRoles(),
       hrService.api.get('/api/address/provinces'),
+      hrService.getHrSettings(),
+      hrService.getShifts({ per_page: 200 }),
     ])
+
+    const payrollConfig = settingsResponse?.data?.payroll_configuration || {}
+    payrollScheduleDefaults.workStart = payrollConfig.workStart || payrollScheduleDefaults.workStart
+    payrollScheduleDefaults.workEnd = payrollConfig.workEnd || payrollScheduleDefaults.workEnd
+    payrollScheduleDefaults.paidHours = Number(payrollConfig.paidHours) || payrollScheduleDefaults.paidHours
+    payrollScheduleDefaults.lunchBreak = Number(payrollConfig.lunchBreak ?? payrollScheduleDefaults.lunchBreak)
+    weeklyPlanner.forEach((row) => {
+      row.start_time = payrollScheduleDefaults.workStart
+      row.end_time = payrollScheduleDefaults.workEnd
+    })
+    const shifts = shiftsResponse?.data?.data || shiftsResponse?.data || shiftsResponse || []
+    shiftOptions.value = shifts.map((shift: any) => ({
+      label: shift.name,
+      value: Number(shift.id),
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+    }))
 
     application.value = applicationResponse?.data || applicationResponse
 
@@ -890,6 +928,16 @@ const goNextStep = async () => {
       return
     }
 
+    if (employeeForm.employment_type === 'contract' && !employeeForm.contract_end_date) {
+      void setError('Please provide the contract end date.')
+      return
+    }
+
+    if (employeeForm.employment_type === 'contract' && toIsoDate(employeeForm.contract_end_date!) < toIsoDate(employeeForm.hire_date)) {
+      void setError('Contract end date must be on or after the hire date.')
+      return
+    }
+
     const isValid = await validateSalaryRange()
     if (!isValid) return
     activeStep.value += 1
@@ -922,6 +970,9 @@ const submitOnboarding = async () => {
       department_id: employeeForm.department_id as number,
       role_id: employeeForm.role_id as number,
       hire_date: toIsoDate(employeeForm.hire_date),
+      contract_end_date: employeeForm.employment_type === 'contract' && employeeForm.contract_end_date
+        ? toIsoDate(employeeForm.contract_end_date)
+        : null,
       employment_type: employeeForm.employment_type as any,
       pay_type: employeeForm.pay_type as any,
       salary: Number(employeeForm.salary),

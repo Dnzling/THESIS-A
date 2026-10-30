@@ -89,8 +89,8 @@
     </div>
 
     <!-- Notifications List -->
-    <div v-if="loading" class="space-y-3">
-      <Skeleton v-for="i in 5" :key="i" height="120px" class="rounded-lg" />
+    <div v-if="loading" class="py-12 text-center text-sm text-gray-500">
+      Loading notifications...
     </div>
 
     <div v-else-if="notifications.length === 0" class="text-center py-16">

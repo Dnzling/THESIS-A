@@ -3,6 +3,16 @@ import { ref, computed } from 'vue'
 import axios from '../axios'
 import { router } from '@inertiajs/vue3'
 
+const devLog = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.log(...args)
+}
+const devWarn = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.warn(...args)
+}
+const devError = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.error(...args)
+}
+
 interface User {
     id: number
     user_id: string
@@ -10,6 +20,7 @@ interface User {
     last_name: string
     role: string
     email: string
+    store?: { id: number; name: string; subscription_name?: string; subscription_key?: string } | null
     abilities?: string[]
 }
 
@@ -27,6 +38,13 @@ interface NavigationItem {
     meta: Record<string, any> | null
     is_active: boolean
     badge_count?: number
+}
+
+interface SystemModule {
+    id: number
+    key: string
+    name: string
+    description?: string | null
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -52,7 +70,10 @@ export const useAuthStore = defineStore('auth', () => {
     // RBAC State
     const permissions = ref<string[]>(readStoredArray<string>('permissions'))
     const navigation = ref<NavigationItem[]>(readStoredArray<NavigationItem>('navigation'))
-    const permissionsLoaded = ref(permissions.value.length > 0 || navigation.value.length > 0)
+    const systemModules = ref<SystemModule[]>(readStoredArray<SystemModule>('system_modules'))
+    // Cached permissions/navigation are used as a fallback only. Always refresh
+    // them once on a new app load so role changes are reflected in the sidebar.
+    const permissionsLoaded = ref(false)
     const isLoadingPermissions = ref(false)
     let permissionsPromise: Promise<void> | null = null
 
@@ -78,21 +99,67 @@ export const useAuthStore = defineStore('auth', () => {
             return '/shop'
         }
 
-        const normalizedRole = String(user.value?.role || '').toLowerCase()
-        if (normalizedRole === 'supplier') {
+        const normalizedRole = String(user.value?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
+        if (normalizedRole.includes('supplier')) {
             return '/supplier-portal/dashboard'
         }
 
-        if (user.value?.role === 'super_admin') {
+        if (normalizedRole === 'super_admin') {
             return '/admin/dashboard'
         }
+        if (normalizedRole === 'driver') {
+            return '/driver/deliveries'
+        }
 
+        const moduleOrder = ['admin', 'store', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance', 'logistics', 'sales', 'crm']
         const activeNav = navigation.value
-            .filter(item => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
-            .sort((a, b) => a.display_order - b.display_order)
+            .filter(item => {
+                const name = String(item.name || '').toLowerCase()
+                const path = String(item.route_path || '').trim()
+                return item.is_active
+                    && name !== 'account.profile'
+                    && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path.toLowerCase())
+                    && path
+                    && !item.meta?.is_group
+                    && !path.startsWith('#')
+                    && (normalizedRole.includes('supplier') || String(item.module || '').toLowerCase() !== 'supplier')
+            })
+            .map(item => {
+                const name = String(item.name || '').toLowerCase()
+                const routeName = String(item.route_name || '').toLowerCase()
+                const routePath = String(item.route_path || '').toLowerCase()
+                const isCrmItem = name === 'sales.crm'
+                    || name.startsWith('crm.')
+                    || routeName === 'sales.crm'
+                    || routeName.startsWith('crm.')
+                    || routePath.startsWith('/crm')
 
-        const firstAvailable = activeNav[0]
-        return firstAvailable?.route_path || '/store/index'
+                return isCrmItem
+                    ? {
+                        ...item,
+                        module: 'crm',
+                        route_path: name === 'sales.crm' || routeName === 'sales.crm' ? '/crm/dashboard' : item.route_path,
+                    }
+                    : item
+            })
+        const availableModules = [...new Set(activeNav.map(item => String(item.module || '').toLowerCase()))]
+            .sort((a, b) => {
+                const aOrder = moduleOrder.indexOf(a)
+                const bOrder = moduleOrder.indexOf(b)
+                if (aOrder < 0 && bOrder < 0) return a.localeCompare(b)
+                if (aOrder < 0) return 1
+                if (bOrder < 0) return -1
+                return aOrder - bOrder
+            })
+
+        for (const module of availableModules) {
+            const firstAvailable = activeNav
+                .filter(item => String(item.module || '').toLowerCase() === module)
+                .sort((a, b) => a.display_order - b.display_order)[0]
+            if (firstAvailable?.route_path) return firstAvailable.route_path
+        }
+
+        return '/unauthorized'
     }
 
     // Default route: first active navigation item that matches role/permission (fallback to /system/index)
@@ -109,12 +176,13 @@ export const useAuthStore = defineStore('auth', () => {
         if (isCustomer.value || user.value?.role === 'super_admin') {
             permissions.value = []
             navigation.value = []
+            systemModules.value = []
             permissionsLoaded.value = true
             return
         }
 
         if (permissionsLoaded.value) {
-            console.log('Permissions already loaded, skipping...')
+            devLog('Permissions already loaded, skipping...')
             return
         }
 
@@ -123,45 +191,47 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!token.value) {
-            console.warn('Cannot load permissions - no token')
+            devWarn('Cannot load permissions - no token')
             return
         }
 
         isLoadingPermissions.value = true
         permissionsPromise = (async () => {
             try {
-                console.log('Loading user permissions and navigation...')
+                devLog('Loading user permissions and navigation...')
                 const response = await axios.get('/api/user/navigation')
 
                 permissions.value = response.data.permissions || []
                 navigation.value = response.data.navigation || []
+                systemModules.value = response.data.modules || []
                 permissionsLoaded.value = true
                 const permissionsMeta = response.data.permissions_meta || null
 
                 localStorage.setItem('navigation', JSON.stringify(navigation.value))
                 localStorage.setItem('permissions', JSON.stringify(permissions.value))
+                localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
 
-                console.log('Permissions loaded:', permissions.value.length, 'permissions')
+                devLog('Permissions loaded:', permissions.value.length, 'permissions')
                 if (permissionsMeta) {
-                    console.log(
+                    devLog(
                         'Permissions meta:',
                         `raw=${permissionsMeta.raw_count ?? 0}`,
                         `filtered=${permissionsMeta.filtered_count ?? 0}`,
                         `filtered_out=${permissionsMeta.filtered_out_count ?? 0}`
                     )
                     if (Array.isArray(permissionsMeta.filtered_out) && permissionsMeta.filtered_out.length > 0) {
-                        console.log('Permissions filtered out:', permissionsMeta.filtered_out)
+                        devLog('Permissions filtered out:', permissionsMeta.filtered_out)
                     }
                 }
-                console.log('Navigation loaded:', navigation.value.length, 'items')
+                devLog('Navigation loaded:', navigation.value.length, 'items')
             } catch (err: any) {
-                console.error('Failed to load permissions:', err)
+                devError('Failed to load permissions:', err)
 
                 const cachedNav = localStorage.getItem('navigation')
                 const cachedPerms = localStorage.getItem('permissions')
 
                 if (cachedNav && cachedPerms) {
-                    console.log('Loading navigation from cache...')
+                    devLog('Loading navigation from cache...')
                     navigation.value = JSON.parse(cachedNav)
                     permissions.value = JSON.parse(cachedPerms)
                     permissionsLoaded.value = true
@@ -192,36 +262,38 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!token.value) {
-            console.warn('Cannot fetch navigation - no token')
+            devWarn('Cannot fetch navigation - no token')
             return
         }
 
         try {
-            console.log('Fetching navigation...')
+            devLog('Fetching navigation...')
             const response = await axios.get('/api/user/navigation')
             
             permissions.value = response.data.permissions || []
             navigation.value = response.data.navigation || []
+            systemModules.value = response.data.modules || []
             const permissionsMeta = response.data.permissions_meta || null
             
             // Update cache
             localStorage.setItem('navigation', JSON.stringify(navigation.value))
             localStorage.setItem('permissions', JSON.stringify(permissions.value))
+            localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
             
-            console.log('Navigation refreshed:', navigation.value.length, 'items')
+            devLog('Navigation refreshed:', navigation.value.length, 'items')
             if (permissionsMeta) {
-                console.log(
+                devLog(
                     'Permissions meta:',
                     `raw=${permissionsMeta.raw_count ?? 0}`,
                     `filtered=${permissionsMeta.filtered_count ?? 0}`,
                     `filtered_out=${permissionsMeta.filtered_out_count ?? 0}`
                 )
                 if (Array.isArray(permissionsMeta.filtered_out) && permissionsMeta.filtered_out.length > 0) {
-                    console.log('Permissions filtered out:', permissionsMeta.filtered_out)
+                    devLog('Permissions filtered out:', permissionsMeta.filtered_out)
                 }
             }
         } catch (error) {
-            console.error('Failed to fetch navigation:', error)
+            devError('Failed to fetch navigation:', error)
             
             // Fallback to cached navigation
             const cached = localStorage.getItem('navigation')
@@ -319,20 +391,26 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Login user
      */
-    const login = async (login: string, password: string) => {
+    const login = async (login: string, password: string, endpoint = '/api/auth/login') => {
         loading.value = true
         error.value = null
 
         try {
-            const location = await getCurrentLocation()
-            // Make login request
-            const response = await axios.post('/api/auth/login', {
+            let location: { latitude: number; longitude: number } | null = null
+            const loginData = {
                 login,
                 password,
                 device_name: 'web_browser',
-                latitude: location?.latitude ?? null,
-                longitude: location?.longitude ?? null,
-            })
+            }
+            let response
+            try {
+                response = await axios.post(endpoint, loginData)
+            } catch (loginError: any) {
+                if (loginError?.response?.data?.code !== 'location_required') throw loginError
+                location = await getCurrentLocation()
+                if (!location) throw loginError
+                response = await axios.post(endpoint, { ...loginData, ...location })
+            }
 
             const payload = response.data || {}
             const accessToken = payload?.data?.access_token || payload?.access_token || payload?.token
@@ -344,7 +422,7 @@ export const useAuthStore = defineStore('auth', () => {
             const normalizedRole = String(userData?.role || '')
                 .toLowerCase()
                 .replace(/[\s-]+/g, '_')
-            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin', 'applicant'].includes(normalizedRole)
+            const roleExcludedFromAttendance = ['supplier', 'customer', 'super_admin', 'applicant'].includes(normalizedRole)
             const customerUser = isCustomerRoleValue(userData?.role)
 
             token.value = accessToken
@@ -354,11 +432,10 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('user', JSON.stringify(userData))
 
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
-            document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
+            document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
 
-            // Load RBAC navigation immediately for roles that rely on DB permissions.
-            // (Fixes initial load showing only the account/profile nav until a reload.)
-            const shouldLoadRbac = !customerUser && normalizedRole !== 'super_admin' && !normalizedRole.includes('supplier')
+            // Load navigation before redirecting so supplier portals do not mount with an empty menu.
+            const shouldLoadRbac = !customerUser && normalizedRole !== 'super_admin'
             if (shouldLoadRbac) {
                 permissionsLoaded.value = false
                 await loadPermissions()
@@ -368,28 +445,38 @@ export const useAuthStore = defineStore('auth', () => {
                 permissionsLoaded.value = true
             }
 
-            // Clock-in is separate from RBAC loading; some roles are excluded from geofence/clock-in.
-            if (!roleExcludedFromGeoloc && !customerUser) {
+            // Free/Simple clock-in is returned by login; other employees use HR attendance.
+            let employeeAttendance = payload?.data?.simple_attendance ?? null
+            if (!roleExcludedFromAttendance && !customerUser && !employeeAttendance) {
                 try {
-                    await axios.post('/api/attendances/clock-in', {
+                    const clockResponse = await axios.post('/api/attendances/clock-in', {
                         user_id: userData.id,
                         method: 'web',
                         latitude: location?.latitude ?? null,
                         longitude: location?.longitude ?? null,
                     })
-                    console.log('Clock-in successful')
-                } catch (clockInError) {
-                    console.warn('Clock-in failed:', clockInError)
+                    if (clockResponse.data?.success && clockResponse.data?.data) {
+                        const record = clockResponse.data.data
+                        employeeAttendance = {
+                            state: record.clock_out ? 'completed' : clockResponse.data.already_clocked_in ? 'already_clocked_in' : 'clocked_in',
+                            late_seconds: Number(record.late_seconds || 0),
+                        }
+                    }
+                } catch (clockInError: any) {
+                    devWarn('Clock-in failed:', clockInError)
+                    employeeAttendance = { state: 'not_recorded', message: clockInError?.response?.data?.message || 'Attendance could not be recorded.' }
                 }
             }
+
+            if (payload?.data) payload.data.employee_attendance = employeeAttendance
 
             return response
 
         } catch (err: any) {
             // Log detailed server response for easier debugging
-            console.error('Login error:', err)
+            devError('Login error:', err)
             if (err?.response?.data) {
-                console.error('Login error response data:', err.response.data)
+                devError('Login error response data:', err.response.data)
             }
             error.value = err.response?.data?.message || err.message || 'Login failed'
             throw err
@@ -412,6 +499,27 @@ export const useAuthStore = defineStore('auth', () => {
         })
     }
 
+    const establishAuthenticatedSession = async (accessToken: string, userData: User) => {
+        token.value = accessToken
+        user.value = userData
+        permissions.value = []
+        navigation.value = []
+        systemModules.value = []
+        permissionsLoaded.value = true
+        isLoadingPermissions.value = false
+        permissionsPromise = null
+
+        localStorage.setItem('auth_token', accessToken)
+        localStorage.setItem('user', JSON.stringify(userData))
+        localStorage.removeItem('permissions')
+        localStorage.removeItem('navigation')
+        localStorage.removeItem('system_modules')
+        axios.defaults.headers.common.Authorization = `Bearer ${accessToken}`
+        document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
+
+        return userData
+    }
+
     /**
      * Logout user
      */
@@ -427,7 +535,7 @@ export const useAuthStore = defineStore('auth', () => {
             }
             // Token-based logout does not require web session logout.
         } catch (err) {
-            console.warn('Logout API error:', err)
+            devWarn('Logout API error:', err)
         } finally {
             // Clear everything
             token.value = null
@@ -441,6 +549,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.removeItem('user')
             localStorage.removeItem('navigation')
             localStorage.removeItem('permissions')
+            localStorage.removeItem('system_modules')
 
             delete axios.defaults.headers.common['Authorization']
             document.cookie = 'auth_token=; Max-Age=0; path=/; SameSite=Lax'
@@ -473,14 +582,21 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.user ??
                 payload
 
+            const previousRole = String(user.value?.role || '')
             user.value = resolvedUser
             localStorage.setItem('user', JSON.stringify(resolvedUser))
 
-            const shouldReloadPermissions = options?.reloadPermissions === true
+            const shouldReloadPermissions = options?.reloadPermissions === true || previousRole !== String(resolvedUser?.role || '')
             if (shouldReloadPermissions) {
                 // Explicit refresh requested (rare). Use this when role/permissions might have changed.
                 permissionsLoaded.value = false
                 isLoadingPermissions.value = false
+                permissions.value = []
+                navigation.value = []
+                systemModules.value = []
+                localStorage.removeItem('permissions')
+                localStorage.removeItem('navigation')
+                localStorage.removeItem('system_modules')
                 await loadPermissions()
             } else if (!permissionsLoaded.value && !isLoadingPermissions.value) {
                 // If permissions weren't loaded yet, load once. Otherwise keep cache to avoid reloading per page.
@@ -501,7 +617,7 @@ export const useAuthStore = defineStore('auth', () => {
      */
     const initialize = async () => {
         if (token.value && user.value) {
-            console.log('Initializing auth store...')
+            devLog('Initializing auth store...')
             axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
 
             const normalizedRole = String(user.value?.role || '').toLowerCase()
@@ -533,6 +649,7 @@ export const useAuthStore = defineStore('auth', () => {
         error,
         permissions,
         navigation,
+        systemModules,
         permissionsLoaded,
         isLoadingPermissions,
 
@@ -546,6 +663,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Auth Actions
         login,
+        establishAuthenticatedSession,
         logout,
         fetchCurrentUser,
         initialize,
@@ -563,5 +681,6 @@ export const useAuthStore = defineStore('auth', () => {
         getNavigationBySection,
         getChildNavigation,
         hasNavigationSection,
+        getFirstNavigationRoute,
     }
 })

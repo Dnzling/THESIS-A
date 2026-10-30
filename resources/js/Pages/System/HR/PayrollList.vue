@@ -1,26 +1,27 @@
 <template>
-  <div class="payroll-batches p-4">
-    <!-- Search and Filters -->
-    <div class="flex gap-3 mb-4 flex-wrap text-sm">
-      <IconField iconPosition="left">
+  <div class="payroll-batches space-y-3 text-xs">
+    <Card class="border border-slate-200 shadow-sm">
+      <template #content>
+    <div class="flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <IconField class="w-full sm:w-64">
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
-        <InputText v-model="filters.search" placeholder="Search period" @input="debouncedFetch" />
+        <InputText v-model="filters.search" showClear placeholder="Search pay periods" @input="debouncedFetch" size="small" fluid />
       </IconField>
-      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear
+      <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="All Statuses" showClear size="small" class="w-full sm:w-44"
         @change="fetchPayPeriods" />
       <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
-        :maxDate="new Date()" placeholder="Date Range" fluid @update:modelValue="fetchPayPeriods" />
-      <Button label="Generate Payroll" @click="showGenerateModal = true" severity="info" class="ml-auto" />
+        :maxDate="new Date()" placeholder="Date Range" class="w-full sm:w-60" @update:modelValue="fetchPayPeriods" />
+      <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="clearFilters" />
     </div>
   
     <!-- Batches Table -->
-    <DataTable :value="filteredBatches" class="w-full text-sm" :loading="loading" paginator :rows="10" rowHover
+    <DataTable :value="filteredBatches" class="mt-3 w-full text-xs" :loading="loading" paginator :rows="10" rowHover size="small"
       :rowsPerPageOptions="[5, 10, 20, 50]"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" showGridlines removableSort
-      responsiveLayout="scroll" sortField="periodName" :sortOrder="1" tableStyle="min-width: 50rem" @sort="handleSort">
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} pay periods" removableSort
+      scrollable scrollDirection="horizontal" tableStyle="min-width: 58rem">
   
       <Column field="name" header="Period" class="w-40" sortable>
         <template #body="{ data }">
@@ -59,7 +60,7 @@
   
       <Column field="employees_count" header="Employees" sortable>
         <template #body="{ data }">
-          <Tag :value="data.employees_count" :severity="getEmployeeCountSeverity(data)" />
+          <Badge :value="data.employees_count" :severity="getEmployeeCountSeverity(data)" />
           <div v-if="data.status === 'processing'" class="text-xs mt-1">
             <!-- <ProgressBar :value="getProcessingProgress(data)" style="height: 4px" /> -->
           </div>
@@ -75,21 +76,13 @@
   
       <Column field="status" header="Status" sortable>
         <template #body="{ data }">
-          <Tag :severity="getStatusSeverity(data.status)" :value="data.status" class="capitalize" />
+          <Badge :severity="getStatusSeverity(data.status)" :value="formatStatus(data.status)" />
         </template>
       </Column>
   
-      <Column header="Actions" style="min-width: 120px">
+      <Column header="Actions" style="width: 6rem">
         <template #body="{ data }">
-          <div class="flex gap-2">
-            <Button icon="pi pi-eye" severity="info" text @click="viewBatch(data)" v-tooltip.top="'View batch details'" />
-            <Button icon="pi pi-pencil" severity="success" text @click="editBatch(data)" v-tooltip.top="'Edit batch'"
-              :disabled="data.status === 'completed' || data.status === 'locked'" />
-            <Button icon="pi pi-file-export" severity="warning" text @click="exportBatch(data)"
-              v-tooltip.top="'Export CSV'" :disabled="data.employees_count === 0" />
-            <!-- <Button icon="pi pi-trash" severity="danger" text @click="confirmDeleteBatch(data)"
-                  v-tooltip.top="'Delete batch'" :disabled="data.status !== 'draft'" /> -->
-          </div>
+          <Button label="View" icon="pi pi-eye" rounded outlined size="small" severity="secondary" @click="viewBatch(data)" />
         </template>
       </Column>
   
@@ -97,31 +90,15 @@
         <div class="text-center py-8 text-gray-500">
           <i class="pi pi-calendar text-4xl mb-2"></i>
           <p>No pay periods found</p>
-          <Button label="Create First Period" icon="pi pi-plus" @click="showGenerateModal = true" class="mt-4" text />
+          <Button label="Generate Payroll" icon="pi pi-plus" @click="showGenerateModal = true" class="mt-4" text />
         </div>
       </template>
     </DataTable>
-  
-    <!-- Delete Confirmation Dialog -->
-    <Dialog v-model:visible="showDeleteModal" header="Confirm Delete" :style="{ width: '400px' }" modal>
-      <div class="text-center">
-        <i class="pi pi-exclamation-triangle text-4xl text-yellow-500 mb-3"></i>
-        <p>Are you sure you want to delete this period?</p>
-        <p class="font-bold">{{ batchToDelete?.name }}</p>
-        <p class="text-sm text-gray-600 mt-2">Period: {{ formatDate(batchToDelete?.start_date) }} - {{
-          formatDate(batchToDelete?.end_date) }}</p>
-        <small class="text-gray-500">This action cannot be undone.</small>
-      </div>
-  
-      <template #footer>
-        <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined @click="showDeleteModal = false"
-          :disabled="isDeleting" />
-        <Button label="Delete" icon="pi pi-trash" severity="danger" @click="deleteBatch" :loading="isDeleting" />
       </template>
-    </Dialog>
+    </Card>
   
     <!-- View Batch Details Dialog -->
-    <Dialog v-model:visible="showViewModal" header="Pay Period Details" :style="{ width: '800px' }" modal maximizable>
+    <Dialog v-model:visible="showViewModal" header="Pay Period Details" :style="{ width: 'min(900px, 96vw)' }" modal maximizable>
       <div v-if="selectedBatch" class="space-y-4">
         <!-- Period Summary -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -172,7 +149,7 @@
           </Column>
           <Column field="payroll.status" header="Status">
             <template #body="{ data }">
-              <Tag :severity="getStatusSeverity(data.payroll.status)" :value="data.payroll.status" size="small" />
+              <badge :severity="getStatusSeverity(data.payroll.status)" :value="data.payroll.status" size="small" />
             </template>
           </Column>
         </DataTable>
@@ -183,9 +160,9 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="showGenerateModal" header="Generate Payroll" :style="{ width: '600px' }" modal
-      :closable="!isGenerating" :closeOnEscape="!isGenerating" :dismissableMask="!isGenerating">
-      <GeneratePayrollDialog @close="showGenerateModal = false" @generated="handlePayrollGenerated" />
+    <Dialog v-model:visible="showGenerateModal" header="Generate Payroll" :style="{ width: 'min(96vw, 1100px)' }" modal
+      >
+      <PayrollCreateTab @generated="handlePayrollGenerated" />
     </Dialog>
   </div>
 </template>
@@ -194,7 +171,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
-import GeneratePayrollDialog from '@/Components/dialogs/GeneratePayrollDialog.vue'
+import PayrollCreateTab from '@/Pages/System/HR/Payroll/PayrollCreateTab.vue'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { debounce } from 'lodash'
@@ -233,13 +210,9 @@ const toast = useToast()
 const router = useRouter()
 const loading = ref(false)
 const loadingEmployees = ref(false)
-const showDeleteModal = ref(false)
 const showViewModal = ref(false)
-const batchToDelete = ref<PayPeriod | null>(null)
 const selectedBatch = ref<PayPeriod | null>(null)
 const showGenerateModal = ref(false)
-const isGenerating = ref(false)
-const isDeleting = ref(false)
 const authStore = useAuthStore()
 
 const payPeriods = ref<PayPeriod[]>([])
@@ -258,7 +231,15 @@ const filters = ref<Filters>({
 })
 
 // Options
-const statusOptions = ref(['draft', 'processing', 'locked', 'completed'])
+const statusOptions = ref([
+  { label: 'Draft', value: 'draft' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Locked', value: 'locked' },
+  { label: 'Completed', value: 'completed' },
+])
+const hasActiveFilters = computed(() => Boolean(
+  filters.value.search || filters.value.status || filters.value.dateRange?.some(Boolean)
+))
 const today = new Date()
 
 // ==================== COMPUTED ====================
@@ -410,10 +391,14 @@ const getStatusSeverity = (status: string): 'info' | 'success' | 'warn' | 'secon
     'completed': 'success',
     'approved': 'success',
     'paid': 'success',
-    'cancelled': 'danger'
+    'cancelled': 'secondary'
   }
-  return map[status] || 'info'
+  return map[String(status || '').toLowerCase()] || 'info'
 }
+
+const formatStatus = (status: string): string => String(status || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, character => character.toUpperCase())
 
 const getEmployeeCountSeverity = (period: PayPeriod): 'info' | 'success' | 'warn' | 'danger' => {
   if (period.employees_count === 0) return 'danger'
@@ -467,9 +452,9 @@ const getProcessingProgress = (period: PayPeriod): number => {
   return Math.round((passed / total) * 100)
 }
 
-const handleSort = (event: any) => {
-  // Handle sort if needed
-  console.log('Sort:', event)
+const clearFilters = () => {
+  filters.value = { search: '', status: null, dateRange: null }
+  fetchPayPeriods()
 }
 
 const viewBatch = async (batch: PayPeriod) => {
@@ -517,43 +502,7 @@ const exportBatch = async (batch: PayPeriod) => {
   }
 }
 
-const confirmDeleteBatch = (batch: PayPeriod) => {
-  batchToDelete.value = batch
-  showDeleteModal.value = true
-}
-
-const deleteBatch = async () => {
-  if (!batchToDelete.value) return
-
-  isDeleting.value = true
-  try {
-    await hrService.api.delete(`api/payroll/pay-periods/${batchToDelete.value.id}`)
-
-    payPeriods.value = payPeriods.value.filter(p => p.id !== batchToDelete.value?.id)
-
-    toast.add({
-      severity: 'success',
-      summary: 'Deleted',
-      detail: `Period "${batchToDelete.value.name}" has been deleted`,
-      life: 3000
-    })
-
-    showDeleteModal.value = false
-    batchToDelete.value = null
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to delete pay period',
-      life: 3000
-    })
-  } finally {
-    isDeleting.value = false
-  }
-}
-
 const handlePayrollGenerated = (newBatch: any) => {
-  isGenerating.value = false
   showGenerateModal.value = false
   fetchPayPeriods()
 

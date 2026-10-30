@@ -38,6 +38,8 @@ class MerchandisingPermissionsSeeder extends Seeder
             // Categories
             ['name' => 'merchandising.categories.view', 'display_name' => 'View Categories', 'module' => 'merchandising'],
             ['name' => 'merchandising.categories.edit', 'display_name' => 'Edit Categories', 'module' => 'merchandising'],
+            ['name' => 'merchandising.tags.view', 'display_name' => 'View Collections', 'module' => 'merchandising'],
+            ['name' => 'merchandising.tags.manage', 'display_name' => 'Manage Collections', 'module' => 'merchandising'],
 
             // Attributes
             ['name' => 'merchandising.attributes.view', 'display_name' => 'View Product Attributes', 'module' => 'merchandising'],
@@ -49,6 +51,7 @@ class MerchandisingPermissionsSeeder extends Seeder
 
             // Reports
             ['name' => 'merchandising.reports.view', 'display_name' => 'View Sales Reports', 'module' => 'merchandising'],
+            ['name' => 'merchandising.storefront.view', 'display_name' => 'View Storefront Settings', 'module' => 'merchandising'],
         ];
 
         foreach ($permissions as $permission) {

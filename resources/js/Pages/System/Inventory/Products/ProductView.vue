@@ -1,39 +1,77 @@
 ﻿<template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6 pb-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex items-center gap-3">
-        <Button
-          icon="pi pi-arrow-left"
-          text
-          rounded
-          @click="router.push({ name: 'inventory.products.index' })"
-        />
+        <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200">
+          <i class="pi pi-chevron-left text-lg text-gray-600"></i>
+        </button>
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">Item Details</h2>
-          <p class="text-sm text-gray-500 mt-1">View inventory item information, stock data, and attachments</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-3xl font-semibold tracking-tight text-gray-900">{{ detailTitle }}</h2>
+            <Badge v-if="product?.is_active" value="Active" severity="success" />
+            <Badge v-else-if="product" value="Inactive" severity="secondary" />
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Tag :value="displayItem?.variation_sku || product?.sku || '-'" severity="secondary" class="font-mono" />
+            <Tag v-for="tag in product?.tags || []" :key="tag.id" :value="tag.tag_name" severity="info" />
+          </div>
         </div>
       </div>
       <div class="flex gap-2">
         <Button
           v-if="primary3DModel"
-          label="View 3D"
-          icon="pi pi-cube"
+          label="3D"
+          icon="pi pi-box"
           severity="info"
+          size="small"
           @click="openView3DModal"
         />
         <Button
+          v-if="!selectedVariation"
           label="Edit"
           icon="pi pi-pencil"
-          severity="warning"
+          severity="warn"
+          size="small"
           @click="goToEdit"
         />
         <Button
-          label="Delete"
+          v-if="product?.is_active && !selectedVariation && canManageProducts"
+          label="Archive"
+          icon="pi pi-box"
+          severity="secondary"
+          outlined
+          size="small"
+          @click="confirmArchive"
+        />
+        <Button
+          v-if="product && !selectedVariation && canManageProducts"
+          label="Remove"
           icon="pi pi-trash"
           severity="danger"
           outlined
+          size="small"
           @click="confirmDelete"
         />
+      </div>
+    </div>
+
+    <div v-if="product" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Item Type</span><i class="pi pi-tag text-gray-400"></i></div>
+        <span class="text-base font-semibold text-gray-900">{{ productTypeLabel }}</span>
+      </div>
+      <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Available Stock</span><i class="pi pi-box text-gray-400"></i></div>
+        <span class="text-base font-semibold text-gray-900">{{ availableStock }}</span>
+      </div>
+      <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <span class="mb-3 block text-sm font-medium ">Cost per Unit</span>
+        <span class="text-2xl font-bold tracking-tight text-green-600">₱{{ formatPrice(unitCost) }}</span>
+      </div>
+            <div v-if="product?.product_type === 'finished_good'" class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
+        <span class="mb-3 block text-sm font-medium text-gray-400">Selling Price</span>
+        <span class="text-2xl font-bold tracking-tight text-white">₱{{ formatPrice(displaySellingPrice) }}</span>
       </div>
     </div>
 
@@ -44,99 +82,65 @@
     </div>
 
     <div v-else-if="product" class="space-y-6">
-      <Card>
-        <template #content>
-          <div class="space-y-4">
-            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-              <div>
-                <h1 class="text-3xl font-bold text-gray-900">{{ product.product_name }}</h1>
-                <div class="flex flex-wrap items-center gap-2 mt-2">
-                  <Tag :value="product.sku" severity="secondary" class="font-mono" />
-                  <Tag :value="productTypeLabel" :severity="productTypeSeverity" />
-                  <Tag :value="product.is_active ? 'Active' : 'Inactive'" :severity="product.is_active ? 'success' : 'secondary'" />
-                  <Tag v-if="product.is_featured" value="Featured" severity="warning" />
-                  <Tag v-if="product.is_new_arrival" value="New Arrival" severity="info" />
-                  <Tag v-if="product.is_bestseller" value="Bestseller" icon="pi pi-star-fill" severity="success" />
-                </div>
-              </div>
-              <div class="text-left lg:text-right">
-                <p class="text-3xl font-bold text-green-600">₱{{ formatPrice(product.base_price) }}</p>
-                <p class="text-sm text-gray-500 mt-1">{{ priceLabel }}</p>
-              </div>
-            </div>
+      
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Category</p>
-                <p class="text-sm font-semibold text-gray-900">{{ product.category?.category_name || 'N/A' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Type</p>
-                <p class="text-sm font-semibold text-gray-900">{{ productTypeLabel }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Variations</p>
-                <p class="text-sm font-semibold text-gray-900">{{ variations.length }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Stock</p>
-                <p class="text-sm font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</p>
-              </div>
-            </div>
-
-            <div v-if="product.description">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Description</h3>
-              <p class="text-gray-700 leading-relaxed">{{ product.description }}</p>
-            </div>
-          </div>
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Item Details</span>
         </template>
-      </Card>
-
-      <div class="grid grid-cols-1 xl:grid-cols-[1.4fr_0.8fr] gap-6">
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-box text-purple-600"></i>
-              <span>Item Details</span>
-            </div>
-          </template>
           <template #content>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <p class="text-xs text-gray-600 mb-1">Unit of Measurement</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.unit_of_measurement || 'N/A' }}</p>
+                <p class="text-lg capitalize font-semibold text-gray-900">{{ displayItem?.unit_of_measurement || product.unit_of_measurement || 'N/A' }}</p>
               </div>
-              <div>
+              <div v-show="product.product_type === 'finished_good'">
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.supplier_name || 'N/A' }}</p>
+                <div class="flex items-center gap-2">
+                  <p class="text-lg font-semibold text-gray-900">{{ supplierNames || '--' }}</p>
+                  <!-- <Button
+                    v-if="!hasSupplier"
+                    label="Create PR"
+                    icon="pi pi-file-plus"
+                    severity="warn"
+                    size="small"
+                    outlined
+                    @click="goToCreatePR"
+                  /> -->
+                </div>
               </div>
               <div>
-                <p class="text-xs text-gray-600 mb-1">Initial Stock</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.initial_stock ?? 'N/A' }}</p>
+                <p class="text-xs text-gray-600 mb-1">Cost Price per Unit</p>
+                <p class="text-lg font-semibold text-gray-900">
+                  ₱{{ formatPrice(unitCost) }}
+                </p>
               </div>
               <div>
-                <p class="text-xs text-gray-600 mb-1">Available Stock</p>
-                <p class="text-lg font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</p>
+                <p class="text-xs text-gray-600 mb-1">Reorder Level</p>
+                <p class="text-lg font-semibold text-gray-900">{{ displayReorderLevel }}</p>
               </div>
-              <div v-if="product.length_cm || product.width_cm || product.height_cm || product.weight_kg">
+
+              <div v-if="hasDimensions">
                 <p class="text-xs text-gray-600 mb-1">Dimensions</p>
                 <p class="text-lg font-semibold text-gray-900">{{ dimensionsLabel }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Created</p>
-                <p class="text-lg font-semibold text-gray-900">{{ formatDate(product.created_at) }}</p>
+                <p class="text-lg font-semibold text-gray-900">{{ formatDate(displayItem?.created_at || product.created_at) }}</p>
               </div>
+              <!-- <div>
+                <p class="text-xs text-gray-600 mb-1">Created By</p>
+                <p class="text-lg font-semibold text-gray-900">{{ product.created_by_name || 'N/A' }}</p>
+              </div> -->
             </div>
           </template>
         </Card>
 
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-bar text-blue-600"></i>
-              <span>Stock Summary</span>
-            </div>
-          </template>
+      <!-- <Card class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Stock Summary</span>
+        </template>
           <template #content>
             <div class="space-y-4">
               <div class="rounded-lg bg-gray-50 p-4">
@@ -153,72 +157,48 @@
               </div>
             </div>
           </template>
-        </Card>
-      </div>
+        </Card> -->
 
-      <Card v-if="variations.length > 0 && product?.product_type === 'finished_good'">
+            <Card v-if="productImages.length > 0" class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-th-large text-indigo-600"></i>
-            <span>Product Variations</span>
-          </div>
+          <span class="text-sm font-semibold text-gray-800">Attachments</span>
         </template>
         <template #content>
-          <DataTable :value="variations" class="p-datatable-sm">
-            <Column field="variation_name" header="Variation">
-              <template #body="{ data }">
-                <div class="flex items-center gap-2">
-                  <div
-                    v-if="data.color_hex"
-                    :style="{ backgroundColor: data.color_hex }"
-                    class="w-6 h-6 rounded border border-gray-300"
-                  ></div>
-                  <span class="font-medium">{{ data.variation_name }}</span>
+          <Carousel
+            v-if="productImages.length > 1"
+            :value="productImages"
+            :numVisible="1"
+            :numScroll="1"
+            :showNavigators="true"
+            :showIndicators="true"
+            class="product-view-carousel"
+          >
+            <template #item="{ data: image }">
+              <div class="relative mx-2 aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 group cursor-pointer">
+                <img
+                  :src="image.auth_url || image.url"
+                  :alt="image.file_name"
+                  class="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform"
+                  @error="handleImageError"
+                />
+                <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
+                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <Button icon="pi pi-search-plus" rounded severity="info" text @click="openImagePreview(image)" />
+                  <Button icon="pi pi-download" rounded severity="info" text @click.stop="downloadImageAsset(image)" />
                 </div>
-              </template>
-            </Column>
-            <Column field="variation_sku" header="SKU">
-              <template #body="{ data }">
-                <span class="font-mono text-sm">{{ data.variation_sku }}</span>
-              </template>
-            </Column>
-            <Column header="Attributes">
-              <template #body="{ data }">
-                <div class="flex flex-wrap gap-1">
-                  <Tag v-if="data.color" :value="data.color" severity="info" size="small" />
-                  <Tag v-if="data.size" :value="data.size" severity="secondary" size="small" />
-                  <Tag v-if="data.material" :value="data.material" severity="success" size="small" />
-                </div>
-              </template>
-            </Column>
-            <Column field="final_price" header="Price">
-              <template #body="{ data }">
-                <span class="font-semibold">₱{{ formatPrice(data.final_price || 0) }}</span>
-              </template>
-            </Column>
-          </DataTable>
-        </template>
-      </Card>
-
-      <Card v-if="productImages.length > 0">
-        <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-images text-pink-600"></i>
-            <span>Attachments</span>
-          </div>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              </div>
+            </template>
+          </Carousel>
+          <div v-else class="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <div
               v-for="image in productImages"
               :key="image.id"
-              class="relative rounded-lg overflow-hidden bg-gray-100 group cursor-pointer"
-              style="aspect-ratio: 1 / 1;"
+              class="relative mx-auto aspect-square max-w-md overflow-hidden rounded-xl bg-white group cursor-pointer"
             >
               <img
                 :src="image.auth_url || image.url"
                 :alt="image.file_name"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                class="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform"
                 @error="handleImageError"
               />
               <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
@@ -242,6 +222,82 @@
           </div>
         </template>
       </Card>
+      </div>
+
+      <Card v-if="product?.product_type === 'finished_good'" class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Product Variations</span>
+        </template>
+        <template #content>
+          <DataTable :value="variations" class="p-datatable-sm text-xs">
+            <template #empty>
+              <div class="py-8 text-center text-xs text-gray-500">
+                No variants yet. This product currently uses its own SKU and stock.
+              </div>
+            </template>
+            <Column field="variation_name" header="Variation">
+              <template #body="{ data }">
+                <div class="flex items-center gap-2 text-xs">
+                  <div
+                    v-if="data.color_hex"
+                    :style="{ backgroundColor: data.color_hex }"
+                    class="h-5 w-5 rounded border border-gray-300"
+                  ></div>
+                  <span class="font-medium text-xs">{{ data.variation_name }}</span>
+                </div>
+              </template>
+            </Column>
+            <Column field="variation_sku" header="SKU">
+              <template #body="{ data }">
+                <span class="font-mono text-xs">{{ data.variation_sku }}</span>
+              </template>
+            </Column>
+            <Column header="Attributes">
+              <template #body="{ data }">
+                <div class="flex flex-wrap gap-1">
+                  <Tag v-if="data.color" :value="data.color" severity="info" size="small" />
+                  <Tag v-if="data.size" :value="data.size" severity="secondary" size="small" />
+                  <Tag v-if="data.material" :value="data.material" severity="success" size="small" />
+                </div>
+              </template>
+            </Column>
+            <Column field="final_price" header="Price">
+              <template #body="{ data }">
+                <span class="font-semibold text-xs">₱{{ formatPrice(data.final_price || 0) }}</span>
+              </template>
+            </Column>
+            <Column header="Stock">
+              <template #body="{ data }">
+                <span class="text-xs font-semibold">{{ data.inventory?.[0]?.quantity_available ?? 0 }}</span>
+              </template>
+            </Column>
+            <Column header="Reorder Level">
+              <template #body="{ data }">
+                <span class="text-xs">{{ data.reorder_point ?? 0 }}</span>
+              </template>
+            </Column>
+            <Column header="Supplier">
+              <template #body="{ data }">
+                <span class="text-xs">{{ data.supplier_name || 'No supplier' }}</span>
+              </template>
+            </Column>
+            <Column header="Action" style="width: 6rem">
+              <template #body="{ data }">
+                <Button
+                  label="Edit"
+                  icon="pi pi-pencil"
+                  severity="warn"
+                  size="small"
+                  text
+                  @click.stop="goToEditVariation(data)"
+                />
+              </template>
+            </Column>
+          </DataTable>
+        </template>
+      </Card>
+
+  
 
       <Dialog
         v-model:visible="view3DModalVisible"
@@ -302,7 +358,6 @@
     </div>
 
     <div v-else class="text-center py-12">
-      <i class="pi pi-exclamation-triangle text-6xl text-red-500 mb-4"></i>
       <h3 class="text-xl font-semibold text-gray-800 mb-2">Item Not Found</h3>
       <p class="text-gray-600 mb-4">The item you're looking for doesn't exist or has been deleted.</p>
       <Button
@@ -312,19 +367,29 @@
       />
     </div>
 
-    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
-      <div class="flex items-center gap-3">
-        <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
-        <div>
-          <p class="font-semibold">Are you sure you want to delete this item?</p>
-          <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
-        </div>
+    <Dialog v-model:visible="archiveDialogVisible" header="Archive Item" :modal="true" class="w-[min(92vw,26rem)]" :closable="!archiving">
+      <div class="space-y-3">
+        <p class="text-sm font-semibold text-gray-900">Archive {{ product?.product_name }}?</p>
+        <p class="text-sm text-gray-600">It will no longer appear in active shopping listings. Stock and transaction history will be preserved. You can reactivate it from Edit.</p>
+        <p v-if="archiveError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ archiveError }}</p>
       </div>
       <template #footer>
-        <Button @click="deleteDialogVisible = false" label="Cancel" severity="secondary" text />
-        <Button @click="deleteProduct" label="Delete" severity="danger" :loading="deleting" />
+        <Button @click="archiveDialogVisible = false" label="Keep Item" severity="secondary" text :disabled="archiving" />
+        <Button @click="archiveProduct" label="Archive Item" severity="warn" :loading="archiving" :disabled="archiving" />
       </template>
     </Dialog>
+    <Dialog v-model:visible="deleteDialogVisible" header="Remove Item" :modal="true" class="w-[min(92vw,26rem)]" :closable="!deleting">
+      <div class="space-y-3">
+        <p class="text-sm font-semibold text-gray-900">Remove {{ product?.product_name }}?</p>
+        <p class="text-sm text-gray-600">This removes the item from the catalog. Every branch must have zero stock and no reserved units. Otherwise, archive it instead.</p>
+        <p v-if="deleteError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ deleteError }}</p>
+      </div>
+      <template #footer>
+        <Button label="Keep Item" severity="secondary" text :disabled="deleting" @click="deleteDialogVisible = false" />
+        <Button label="Remove Item" severity="danger" :loading="deleting" :disabled="deleting" @click="deleteProduct" />
+      </template>
+    </Dialog>
+  </div>
   </div>
 </template>
 
@@ -342,6 +407,7 @@ import Badge from 'primevue/badge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import Carousel from 'primevue/carousel'
 import Skeleton from 'primevue/skeleton'
 import Model3DPreview from '../../../../Components/merchandising/Model3DPreview.vue'
 
@@ -351,8 +417,13 @@ const authStore = useAuthStore()
 
 const productId = computed(() => Number(route.params.id))
 const loading = ref(false)
+const archiving = ref(false)
+const archiveDialogVisible = ref(false)
+const archiveError = ref('')
 const deleting = ref(false)
 const deleteDialogVisible = ref(false)
+const deleteError = ref('')
+const canManageProducts = computed(() => authStore.hasPermission('inventory.products.manage'))
 const view3DModalVisible = ref(false)
 const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)
@@ -362,6 +433,18 @@ const variations = ref<any[]>([])
 const allAssets = ref<any[]>([])
 const primary3DModel = ref<any>(null)
 const productImages = ref<any[]>([])
+
+const selectedVariationId = computed(() => Number(route.query.variation_id || 0))
+const selectedVariation = computed(() => {
+  if (!selectedVariationId.value) return null
+  return variations.value.find((variation: any) => Number(variation.id) === selectedVariationId.value) || null
+})
+const displayItem = computed(() => selectedVariation.value || product.value)
+const detailTitle = computed(() => {
+  if (!product.value) return 'Product Details'
+  if (!selectedVariation.value) return product.value.product_name
+  return `${product.value.product_name} - ${selectedVariation.value.variation_name}`
+})
 
 const showActionResponse = (severity: 'success' | 'error' | 'info' | 'warn', title: string, message: string) => {
   showResponseDialog({
@@ -373,20 +456,70 @@ const showActionResponse = (severity: 'success' | 'error' | 'info' | 'warn', tit
 
 const productTypeLabel = computed(() => {
   const type = product.value?.product_type
-  return type === 'raw_material' ? 'Raw Material' : type === 'supply' ? 'Supply' : 'Finished Good'
+  return type === 'raw_material' ? 'Raw Material' : type === 'supply' ? 'Supply' : 'Product'
 })
 
 const productTypeSeverity = computed(() => {
   const type = product.value?.product_type
   if (type === 'raw_material') return 'info'
-  if (type === 'supply') return 'warning'
+  if (type === 'supply') return 'warn'
   return 'success'
 })
 
+const hasSupplier = computed(() => {
+  return supplierNames.value.length > 0
+})
+
+const supplierNames = computed(() => {
+  const normalized = Array.isArray(product.value?.supplier_names)
+    ? product.value.supplier_names.filter((name: any) => name && String(name).trim())
+    : []
+  if (normalized.length > 0) return [...new Set(normalized.map((name: string) => String(name).trim()))].join(', ')
+
+  const linked = Array.isArray(product.value?.suppliers) ? product.value.suppliers : []
+  const names = linked
+    .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+    .filter((name: any) => name && String(name).trim())
+
+  if (names.length > 0) return [...new Set(names.map((name: string) => String(name).trim()))].join(', ')
+  return product.value?.supplier_name ? String(product.value.supplier_name).trim() : ''
+})
+
+// Keep the detail view consistent with the product index/API fallback order.
+const unitCost = computed(() => {
+  return Number(
+    selectedVariation.value?.cost_price
+      ?? product.value?.inventory_cost_price
+      ?? product.value?.cost_price
+      ?? product.value?.base_price
+      ?? 0
+  )
+})
+
 const branchInventory = computed(() => {
+  if (selectedVariation.value) {
+    return Array.isArray(selectedVariation.value.inventory) ? selectedVariation.value.inventory[0] || null : null
+  }
   const inventory = Array.isArray(product.value?.inventory) ? product.value.inventory[0] : null
   return inventory || null
 })
+
+const availableStock = computed(() => {
+  if (selectedVariation.value) {
+    return Number(branchInventory.value?.quantity_available || 0)
+  }
+  if (variations.value.length > 0) {
+    return variations.value.reduce(
+      (total: number, variation: any) => total + Number(variation.inventory?.[0]?.quantity_available || 0),
+      0,
+    )
+  }
+  return Number(branchInventory.value?.quantity_available || 0)
+})
+
+const displaySellingPrice = computed(() => selectedVariation.value?.final_price ?? product.value?.base_price ?? 0)
+const displayReorderLevel = computed(() => selectedVariation.value?.reorder_point ?? branchInventory.value?.reorder_point ?? product.value?.reorder_point ?? 'N/A')
+const hasDimensions = computed(() => ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((key) => displayItem.value?.[key]))
 
 const priceLabel = computed(() => {
   const type = product.value?.product_type
@@ -396,10 +529,11 @@ const priceLabel = computed(() => {
 
 const dimensionsLabel = computed(() => {
   const parts = [
-    product.value?.length_cm ? `${product.value.length_cm} cm` : null,
-    product.value?.width_cm ? `${product.value.width_cm} cm` : null,
-    product.value?.height_cm ? `${product.value.height_cm} cm` : null,
-    product.value?.weight_kg ? `${product.value.weight_kg} kg` : null,
+    displayItem.value?.length_cm ? `${displayItem.value.length_cm} cm` : null,
+    displayItem.value?.width_cm ? `${displayItem.value.width_cm} cm` : null,
+    displayItem.value?.height_cm ? `${displayItem.value.height_cm} cm` : null,
+    displayItem.value?.depth_cm ? `${displayItem.value.depth_cm} cm` : null,
+    displayItem.value?.weight_kg ? `${displayItem.value.weight_kg} kg` : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(' × ') : 'N/A'
@@ -425,6 +559,18 @@ const loadProduct = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToCreatePR = () => {
+  const inventoryId = branchInventory.value?.id
+  router.push({
+    name: 'inventory.requisites.create',
+    query: {
+      branch_inventory_id: inventoryId || undefined,
+      requested_quantity: branchInventory.value?.reorder_quantity || undefined,
+      notes: `Auto-generated from ${product.value?.product_name || 'product'}`
+    }
+  })
 }
 
 const loadImageWithAuth = async (image: any) => {
@@ -458,11 +604,16 @@ const loadAssets = async () => {
     allAssets.value = assets
 
     const models = assets.filter((asset: any) => asset.asset_type === '3D_Model')
-    primary3DModel.value = models.find((asset: any) => asset.is_primary) || models[0] || null
+    primary3DModel.value = selectedVariation.value?.custom_3d_model
+      || models.find((asset: any) => asset.is_primary)
+      || models[0]
+      || null
 
     const mainImages = assets.filter((asset: any) => asset.asset_type === 'Image_Main')
     const galleryImages = assets.filter((asset: any) => asset.asset_type === 'Image_Gallery')
-    productImages.value = [...mainImages, ...galleryImages]
+    productImages.value = selectedVariation.value?.custom_image
+      ? [selectedVariation.value.custom_image]
+      : [...mainImages, ...galleryImages]
 
     for (const image of productImages.value) {
       if (image?.url) {
@@ -475,7 +626,30 @@ const loadAssets = async () => {
 }
 
 const goToEdit = () => {
+  if (selectedVariation.value) {
+    goToEditVariation(selectedVariation.value)
+    return
+  }
   router.push({ name: 'inventory.products.edit', params: { id: productId.value } })
+}
+
+const goToAddVariant = () => {
+  router.push({
+    name: 'inventory.products.variants.create',
+    params: { productId: productId.value },
+    query: { product_id: productId.value },
+  })
+}
+
+const goToEditVariation = (variation: any) => {
+  router.push({
+    name: 'inventory.products.variants.edit',
+    params: { productId: productId.value, id: variation.id },
+  })
+}
+
+const goBack = () => {
+  window.history.back()
 }
 
 const openView3DModal = () => {
@@ -493,21 +667,47 @@ const downloadModel = () => {
   showActionResponse('success', 'Download Started', `Downloading ${primary3DModel.value.file_name}`)
 }
 
+const confirmArchive = () => {
+  archiveError.value = ''
+  archiveDialogVisible.value = true
+}
+
+const archiveProduct = async () => {
+  if (!product.value?.is_active || selectedVariation.value || !canManageProducts.value) return
+  archiving.value = true
+  archiveError.value = ''
+  try {
+    const response = await inventoryService.archiveProduct(productId.value)
+    if (response?.success === false) throw new Error(response.message || 'Failed to archive item')
+    product.value.is_active = false
+    archiveDialogVisible.value = false
+    showActionResponse('success', 'Item Archived', response.message || 'Item archived successfully')
+  } catch (error: any) {
+    archiveError.value = error.response?.data?.message || error.message || 'Failed to archive item'
+  } finally {
+    archiving.value = false
+  }
+}
+
 const confirmDelete = () => {
+  deleteError.value = ''
   deleteDialogVisible.value = true
 }
 
 const deleteProduct = async () => {
+  if (!product.value || selectedVariation.value || !canManageProducts.value) return
   deleting.value = true
+  deleteError.value = ''
   try {
-    await inventoryService.deleteProduct(productId.value)
-    showActionResponse('success', 'Item Deleted', 'Item deleted successfully')
+    const response = await inventoryService.deleteProduct(productId.value, true)
+    if (response?.success === false) throw new Error(response.message || 'Failed to delete item')
+    deleteDialogVisible.value = false
+    showActionResponse('success', 'Item Deleted', response.message || 'Item deleted successfully')
     router.push({ name: 'inventory.products.index' })
   } catch (error: any) {
-    showActionResponse('error', 'Delete Failed', error.response?.data?.message || 'Failed to delete item')
+    deleteError.value = error.response?.data?.message || error.message || 'Failed to delete item'
   } finally {
     deleting.value = false
-    deleteDialogVisible.value = false
   }
 }
 

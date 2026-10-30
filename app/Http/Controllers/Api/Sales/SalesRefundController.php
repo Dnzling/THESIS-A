@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
+use App\Models\Sales\SalesOrder;
 use App\Services\Finance\CashflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -55,26 +56,38 @@ class SalesRefundController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'order_type' => ['required', 'string', 'max:20'],
-            'order_id' => ['required', 'integer'],
-            'order_number' => ['nullable', 'string', 'max:100'],
-            'customer_name' => ['nullable', 'string', 'max:190'],
-            'reason' => ['nullable', 'string', 'max:2000'],
-            'amount' => ['required', 'numeric', 'min:0'],
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:2000'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'refund_method' => ['required', 'in:gcash,maya,bank_transfer,card'],
+            'refund_account_name' => ['required', 'string', 'max:255'],
+            'refund_account_number' => ['required', 'string', 'max:100'],
         ]);
 
         $user = $request->user();
+        $sale = SalesOrder::query()->where('store_id', $user->store_id)
+            ->where('payment_status', 'paid')->find($data['order_id']);
+        if (!$sale || (float) $data['amount'] > (float) $sale->total_amount) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['order_id' => ['Select a paid sale from this store with enough refundable value.']]);
+        }
+        if (SalesRefund::query()->where('store_id', $sale->store_id)->where('order_type', 'sales')
+            ->where('order_id', $sale->id)->whereNotIn('status', ['rejected'])->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['order_id' => ['A refund request already exists for this sale.']]);
+        }
 
         $refund = SalesRefund::create([
-            'store_id' => $user?->store_id,
-            'branch_id' => $user?->branch_id,
-            'order_type' => $request->string('order_type'),
-            'order_id' => $request->integer('order_id'),
-            'order_number' => $request->string('order_number')->toString(),
-            'customer_name' => $request->string('customer_name')->toString(),
-            'reason' => $request->string('reason')->toString(),
-            'amount' => $request->input('amount'),
+            'store_id' => $sale->store_id,
+            'branch_id' => $sale->branch_id,
+            'order_type' => 'sales',
+            'order_id' => $sale->id,
+            'order_number' => $sale->order_number,
+            'customer_name' => $sale->customer_name ?: 'Walk-in customer',
+            'reason' => $data['reason'],
+            'amount' => $data['amount'],
+            'refund_method' => $data['refund_method'],
+            'refund_account_name' => $data['refund_account_name'],
+            'refund_account_number' => $data['refund_account_number'],
             'status' => 'pending',
             'requested_by' => $user?->id,
         ]);

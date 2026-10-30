@@ -16,17 +16,7 @@
       </div>
       <div class="flex items-center gap-2">
         <Button
-          v-if="canCreateInvoice"
-          :loading="invoiceCreating"
-          :disabled="invoiceCreating"
-          label="Create Invoice"
-          icon="pi pi-file"
-          severity="success"
-          text
-          @click="createInvoiceFromReceipt"
-        />
-        <Button
-          v-else-if="existingInvoice"
+          v-if="existingInvoice"
           label="View Invoice"
           icon="pi pi-eye"
           severity="info"
@@ -175,7 +165,9 @@
                   <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
                     <tr>
                       <th class="px-4 py-3 text-left">Item</th>
-                      <th class="px-4 py-3 text-right">Qty</th>
+                      <th class="px-4 py-3 text-right">Qty / UOM</th>
+                      <th class="px-4 py-3 text-right">Weight</th>
+                      <th class="px-4 py-3 text-right">Dimensions</th>
                       <th class="px-4 py-3 text-right">Price</th>
                       <th class="px-4 py-3 text-right">Line Total</th>
                     </tr>
@@ -183,10 +175,19 @@
                   <tbody class="divide-y divide-gray-200">
                     <tr v-for="item in po?.items || []" :key="item.id" class="hover:bg-gray-50 transition-colors">
                       <td class="px-4 py-3">
-                        <div class="font-medium text-gray-900">{{ item.product?.product_name || 'Item' }}</div>
-                        <div class="text-xs text-gray-500 mt-0.5">{{ item.product?.sku || '' }}</div>
+                        <div class="font-medium text-gray-900">
+                          {{ item.variation?.variation_name
+                            ? `${item.product?.product_name || 'Item'} — ${item.variation.variation_name}`
+                            : (item.product?.product_name || 'Item') }}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5">{{ item.variation?.variation_sku || item.product?.sku || '' }}</div>
                       </td>
-                      <td class="px-4 py-3 text-right font-medium">{{ item.quantity_ordered }}</td>
+                      <td class="px-4 py-3 text-right font-medium">{{ formatQuantity(item.quantity_ordered) }} {{ item.variation?.unit_of_measurement || item.product?.unit_of_measurement || 'unit' }}</td>
+                      <td class="px-4 py-3 text-right">
+                        <div>{{ formatDecimal(itemWeight(item), 3) }} kg/unit</div>
+                        <div class="text-xs text-slate-500">{{ formatDecimal(Number(itemWeight(item) || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
+                      </td>
+                      <td class="px-4 py-3 text-right">{{ formatDimensions(item) }}</td>
                       <td class="px-4 py-3 text-right">₱{{ formatMoney(item.unit_cost) }}</td>
                       <td class="px-4 py-3 text-right font-semibold text-green-600">₱{{ formatMoney(item.line_total) }}</td>
                     </tr>
@@ -194,21 +195,6 @@
                 </table>
               </div>
 
-              <!-- Totals Summary -->
-              <div class="mt-4 bg-gray-50 rounded-xl p-4">
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-gray-600">Subtotal (Items)</span>
-                  <span class="font-semibold text-gray-900">₱{{ formatMoney(po?.subtotal) }}</span>
-                </div>
-                <div class="flex items-center justify-between text-sm mt-2">
-                  <span class="text-gray-600">Delivery Charge</span>
-                  <span class="font-semibold text-emerald-600">₱{{ formatMoney(deliveryCharge) }}</span>
-                </div>
-                <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 text-base font-semibold">
-                  <span class="text-gray-900">Total</span>
-                  <span class="text-blue-600">₱{{ formatMoney(totalWithDelivery) }}</span>
-                </div>
-              </div>
             </div>
           </template>
         </Card>
@@ -216,8 +202,27 @@
 
       <!-- Right Column - Shipment Information -->
       <div v-if="!isDeclined" class="space-y-6">
-        <!-- Delivery Information Card -->
         <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">All Fees</h3></div></template>
+          <template #content>
+            <div class="space-y-3 p-6 pt-0 text-sm">
+              <div class="flex justify-between"><span class="text-gray-500">Items subtotal</span><span class="font-medium">₱{{ formatMoney(po?.subtotal) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Contract discount ({{ formatDecimal(contractDiscountPercent) }}%)</span><span class="font-medium text-rose-600">− ₱{{ formatMoney(po?.discount_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Taxable amount</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">VAT / Tax ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Shipping fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
+              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">₱{{ formatMoney(po?.total_amount) }}</span></div>
+            </div>
+          </template>
+        </Card>
+
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">Fulfillment</h3></div></template>
+          <template #content><div class="p-6 pt-0"><Tag :value="fulfillmentLabel" :severity="po?.fulfillment_method === 'supplier_delivery' ? 'info' : 'success'" /><p class="mt-3 text-sm text-gray-600">{{ fulfillmentDescription }}</p></div></template>
+        </Card>
+
+        <!-- Delivery Information Card -->
+        <Card v-if="shipment" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
@@ -230,16 +235,20 @@
               <div class="space-y-3">
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Driver</span>
-                  <span class="font-medium text-gray-900">{{ shipment?.driver_name || '-' }}</span>
+                  <span class="font-medium text-gray-900">{{ assignedDriverName }}</span>
                 </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Employee Number</span><span class="font-medium text-gray-900">{{ shipment?.driver_employee?.employee_number || '-' }}</span></div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Contact</span><span class="font-medium text-gray-900">{{ shipment?.driver_contact || shipment?.driver_user?.phone_number || '-' }}</span></div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Email</span><span class="font-medium text-gray-900">{{ shipment?.driver_user?.email || shipment?.driver_employee?.user?.email || '-' }}</span></div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Plate Number</span>
                   <span class="font-medium text-gray-900">{{ shipment?.plate_number || '-' }}</span>
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Truck</span>
-                  <span class="font-medium text-gray-900">{{ shipment?.truck_brand || shipment?.truck_type || '-' }}</span>
+                  <span class="font-medium text-gray-900">{{ vehicleDescription }}</span>
                 </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Capacity</span><span class="font-medium text-gray-900">{{ shipment?.vehicle?.capacity_kg ? `${formatDecimal(shipment.vehicle.capacity_kg)} kg` : '-' }}</span></div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Distance</span>
                   <span class="font-medium text-gray-900">{{ shipment?.distance_km || '-' }} km</span>
@@ -254,7 +263,7 @@
         </Card>
 
         <!-- Shipment Summary Card -->
-        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <Card v-if="shipment" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
@@ -382,6 +391,44 @@
           </template>
         </Card>
 
+        <Card v-for="resolution in receiptResolutions" :key="resolution.id" class="rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="flex items-center justify-between px-6 pt-6">
+              <div class="flex items-center gap-2"><i class="pi pi-flag text-amber-600"></i><h3 class="font-semibold text-gray-900">Receipt Resolution</h3></div>
+              <Tag :value="formatStatus(resolution.status)" :severity="resolutionSeverity(resolution.status)" />
+            </div>
+          </template>
+          <template #content>
+            <div class="space-y-4 p-6 pt-0 text-sm">
+              <div class="grid grid-cols-2 gap-3 rounded-xl bg-amber-50 p-4">
+                <div><p class="text-xs text-gray-500">Reference</p><p class="font-semibold">{{ resolution.resolution_number }}</p></div>
+                <div><p class="text-xs text-gray-500">Required Action</p><p class="font-semibold">{{ formatStatus(resolution.resolution_type) }}</p></div>
+              </div>
+              <p v-if="resolution.procurement_notes" class="text-gray-600">{{ resolution.procurement_notes }}</p>
+              <div class="overflow-hidden rounded-xl border border-gray-200">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50"><tr><th class="p-3 text-left">Item</th><th class="p-3 text-right">Quantity Due</th></tr></thead>
+                  <tbody><tr v-for="item in resolution.items || []" :key="`${resolution.id}-${item.product_id}`" class="border-t"><td class="p-3">{{ resolutionProductName(resolution, item.product_id) }}</td><td class="p-3 text-right font-semibold">{{ item.quantity_due }}</td></tr></tbody>
+                </table>
+              </div>
+              <div v-if="resolution.status === 'pending_supplier'" class="flex justify-end gap-2">
+                <Button label="Reject" severity="danger" outlined size="small" @click="openRejectResolution(resolution)" />
+                <Button label="Accept" severity="success" size="small" @click="confirmAcceptResolution(resolution)" />
+              </div>
+              <div v-if="['accepted', 'delivery_submitted'].includes(resolution.status)" class="space-y-4 rounded-xl border border-gray-200 p-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div><label class="mb-2 block font-medium">Promised delivery date</label><DatePicker v-model="deliveryForms[resolution.id].promised_delivery_date" :minDate="new Date()" dateFormat="M d, yy" fluid /></div>
+                  <div><label class="mb-2 block font-medium">Delivery note number</label><InputText v-model="deliveryForms[resolution.id].delivery_note_number" fluid /></div>
+                </div>
+                <div><label class="mb-2 block font-medium">Delivery notes</label><Textarea v-model="deliveryForms[resolution.id].supplier_delivery_notes" rows="3" fluid /></div>
+                <div><label class="mb-2 block font-medium">Proof attachment</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full rounded-lg border border-gray-200 p-2 text-sm" @change="onResolutionProof($event, resolution.id)" /></div>
+                <div class="flex justify-end"><Button label="Confirm Delivery Details" icon="pi pi-send" size="small" :loading="resolutionSavingId === resolution.id" @click="submitResolutionDelivery(resolution)" /></div>
+              </div>
+              <p v-if="resolution.supplier_rejection_reason" class="rounded-lg bg-red-50 p-3 text-red-700">Rejected: {{ resolution.supplier_rejection_reason }}</p>
+            </div>
+          </template>
+        </Card>
+
         <Card v-if="existingInvoice" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
@@ -406,6 +453,19 @@
         </Card>
       </div>
     </div>
+
+    <ConfirmDialog />
+    <Dialog v-model:visible="rejectResolutionVisible" modal header="Reject Receipt Resolution" :style="{ width: 'min(92vw, 480px)' }">
+      <div class="space-y-2">
+        <label class="block text-sm font-medium">Reason for rejection</label>
+        <Textarea v-model="resolutionRejectReason" rows="5" fluid autofocus />
+        <small v-if="resolutionRejectError" class="text-red-500">{{ resolutionRejectError }}</small>
+      </div>
+      <template #footer>
+        <Button label="No" severity="secondary" text @click="rejectResolutionVisible = false" />
+        <Button label="Reject" severity="danger" :loading="resolutionSavingId === selectedResolution?.id" @click="confirmRejectResolution" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -413,19 +473,29 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 
 const loading = ref(false)
 const po = ref<any>(null)
 const shipment = ref<any>(null)
 const goodsReceipt = ref<any>(null)
 const existingInvoice = ref<any>(null)
-const invoiceCreating = ref(false)
 const rejectionReason = ref<string | null>(null)
+const contractTaxRate = ref(0)
+const contractDiscountPercent = ref(0)
+const receiptResolutions = ref<any[]>([])
+const deliveryForms = ref<Record<number, any>>({})
+const resolutionSavingId = ref<number | null>(null)
+const rejectResolutionVisible = ref(false)
+const selectedResolution = ref<any>(null)
+const resolutionRejectReason = ref('')
+const resolutionRejectError = ref('')
 
 // Computed properties
 const deliveryCharge = computed(() => {
@@ -437,19 +507,26 @@ const totalWithDelivery = computed(() => {
   return subtotal + deliveryCharge.value
 })
 
+const taxableAmount = computed(() => Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0)))
+const fulfillmentLabel = computed(() => po.value?.fulfillment_method === 'supplier_delivery' ? 'Supplier Delivery' : po.value?.fulfillment_method === 'store_pickup' ? 'Store Pickup' : 'Not selected')
+const fulfillmentDescription = computed(() => po.value?.fulfillment_method === 'supplier_delivery'
+  ? 'Your supplier team is responsible for delivering this order to the store.'
+  : po.value?.fulfillment_method === 'store_pickup'
+    ? 'The store will assign a driver and vehicle to collect this order.'
+    : 'The fulfillment method has not been selected yet.')
+const assignedDriverName = computed(() => {
+  const user = shipment.value?.driver_employee?.user || shipment.value?.driver_user
+  return [user?.fname, user?.lname].filter(Boolean).join(' ') || shipment.value?.driver_name || '-'
+})
+const vehicleDescription = computed(() => {
+  const vehicle = shipment.value?.vehicle
+  return [vehicle?.brand, vehicle?.model, vehicle?.vehicle_type].filter(Boolean).join(' ') || shipment.value?.truck_brand || shipment.value?.truck_type || '-'
+})
+
 const isDeclined = computed(() => {
   const status = po.value?.status
   return status === 'declined_supplier' || status === 'declined_by_supplier'
 })
-
-const canCreateInvoice = computed(() => {
-  const eligibleStatuses = ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered', 'goods_received']
-  return (
-    eligibleStatuses.includes(String(po.value?.status || '')) &&
-    !existingInvoice.value
-  )
-})
-
 
 const goodsReceiptItems = computed(() => goodsReceipt.value?.items || [])
 
@@ -522,11 +599,23 @@ const goodsReceiptStatusSeverity = (status: string): 'success' | 'warn' | 'dange
 }
 
 const getGoodsReceiptProductName = (item: any): string => {
-  return item?.product?.product_name || 'Item'
+  const parent = item?.product?.product_name || 'Item'
+  return item?.variation?.variation_name ? `${parent} — ${item.variation.variation_name}` : parent
 }
 
 const formatQuantity = (value?: number): string => {
   return Number(value ?? 0).toLocaleString('en-PH')
+}
+
+const formatDecimal = (value?: number, digits = 2): string => Number(value ?? 0).toLocaleString('en-PH', { maximumFractionDigits: digits })
+const itemWeight = (item: any): number => Number(item?.variation?.weight_kg ?? item?.product?.weight_kg ?? item?.weight_kg ?? 0)
+const formatDimensions = (item: any): string => {
+  const length = item?.variation?.length_cm ?? item?.product?.length_cm ?? item?.length_cm
+  const width = item?.variation?.width_cm ?? item?.product?.width_cm ?? item?.width_cm
+  const height = item?.variation?.height_cm ?? item?.product?.height_cm ?? item?.height_cm
+  return length != null && width != null && height != null
+    ? `${formatDecimal(length)} × ${formatDecimal(width)} × ${formatDecimal(height)} cm`
+    : '-'
 }
 
 const formatStatus = (status: string): string => {
@@ -575,6 +664,18 @@ const goToInvoice = () => {
       shipment.value = payload?.data?.shipment || null
       goodsReceipt.value = payload?.data?.goods_receipt || null
       existingInvoice.value = payload?.data?.invoice || null
+      contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0)
+      contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0)
+      const resolutionResponse = await supplierService.getReceiptResolutions(id)
+      receiptResolutions.value = resolutionResponse?.data || []
+      receiptResolutions.value.forEach((resolution: any) => {
+        deliveryForms.value[resolution.id] = {
+          promised_delivery_date: resolution.promised_delivery_date ? new Date(resolution.promised_delivery_date) : null,
+          delivery_note_number: resolution.delivery_note_number || '',
+          supplier_delivery_notes: resolution.supplier_delivery_notes || '',
+          proof: null,
+        }
+      })
 
       if (!isDeclined.value && po.value?.id && !shipment.value) {
         const shipmentRes = await supplierService.getPOShipment(id)
@@ -593,40 +694,74 @@ const goToInvoice = () => {
     }
   }
 
-  const createInvoiceFromReceipt = async () => {
-    if (!po.value?.id) return
-    invoiceCreating.value = true
+const resolutionSeverity = (status: string) => status === 'resolved' ? 'success' : status === 'rejected' ? 'danger' : status === 'delivery_submitted' ? 'info' : 'warn'
+const resolutionProductName = (resolution: any, productId: number) => resolution.original_receipt?.items?.find((item: any) => Number(item.product_id) === Number(productId))?.product?.product_name || `Product #${productId}`
+
+const confirmAcceptResolution = (resolution: any) => confirm.require({
+  header: 'Accept Resolution',
+  message: `Accept ${resolution.resolution_number} and prepare the required delivery?`,
+  rejectLabel: 'No',
+  acceptLabel: 'Accept',
+  acceptClass: 'p-button-success',
+  accept: async () => {
+    resolutionSavingId.value = resolution.id
     try {
-      const response = await supplierService.createInvoiceFromGoodsReceipt({
-        purchase_order_id: po.value.id,
-        goods_receipt_id: goodsReceipt.value?.id || null,
-        submitted_by_supplier: true,
-      })
-
-      const invoicePayload = response?.data || response
-      existingInvoice.value = invoicePayload?.data || invoicePayload
-
-      toast.add({
-        severity: 'success',
-        summary: 'Invoice Submitted',
-        detail: 'Invoice has been submitted to finance accounts payable.',
-        life: 4000,
-      })
-
-      if (existingInvoice.value?.id) {
-        router.push({ name: 'supplier.pos.invoice-view', params: { id: po.value.id } })
-      }
+      await supplierService.acceptReceiptResolution(resolution.id)
+      await loadDetail()
+      toast.add({ severity: 'success', summary: 'Accepted', detail: 'Resolution accepted.', life: 3000 })
     } catch (error: any) {
-      toast.add({
-        severity: 'error',
-        summary: 'Invoice Error',
-        detail: error.response?.data?.message || 'Failed to create invoice.',
-        life: 4000,
-      })
-    } finally {
-      invoiceCreating.value = false
-    }
+      toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to accept resolution', life: 4000 })
+    } finally { resolutionSavingId.value = null }
+  },
+})
+
+const openRejectResolution = (resolution: any) => {
+  selectedResolution.value = resolution
+  resolutionRejectReason.value = ''
+  resolutionRejectError.value = ''
+  rejectResolutionVisible.value = true
+}
+
+const confirmRejectResolution = async () => {
+  if (resolutionRejectReason.value.trim().length < 5) {
+    resolutionRejectError.value = 'Please provide at least 5 characters.'
+    return
   }
+  resolutionSavingId.value = selectedResolution.value.id
+  try {
+    await supplierService.rejectReceiptResolution(selectedResolution.value.id, resolutionRejectReason.value.trim())
+    rejectResolutionVisible.value = false
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Rejected', detail: 'The store has been informed.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to reject resolution', life: 4000 })
+  } finally { resolutionSavingId.value = null }
+}
+
+const onResolutionProof = (event: Event, resolutionId: number) => {
+  deliveryForms.value[resolutionId].proof = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+const submitResolutionDelivery = async (resolution: any) => {
+  const form = deliveryForms.value[resolution.id]
+  if (!form?.promised_delivery_date || !form?.proof) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'Select the delivery date and proof attachment.', life: 3000 })
+    return
+  }
+  const payload = new FormData()
+  payload.append('promised_delivery_date', new Date(form.promised_delivery_date).toISOString().slice(0, 10))
+  if (form.delivery_note_number) payload.append('delivery_note_number', form.delivery_note_number)
+  if (form.supplier_delivery_notes) payload.append('supplier_delivery_notes', form.supplier_delivery_notes)
+  payload.append('proof', form.proof)
+  resolutionSavingId.value = resolution.id
+  try {
+    await supplierService.submitResolutionDelivery(resolution.id, payload)
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Submitted', detail: 'Delivery details and proof submitted.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to submit delivery details', life: 4000 })
+  } finally { resolutionSavingId.value = null }
+}
 
 onMounted(loadDetail)
 </script>

@@ -44,7 +44,7 @@ class JobApplicationController extends Controller
             'job_posting_id' => 'required|exists:job_postings,id',
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
-            'email' => 'required|email|max:255',
+            'email' => ['required', 'email', 'max:255', 'regex:/@gmail\.com\z/i'],
             'phone' => 'required|string|max:20',
             'current_position' => 'nullable|string|max:255',
             'current_company' => 'nullable|string|max:255',
@@ -52,6 +52,8 @@ class JobApplicationController extends Controller
             'employee_id' => 'nullable|exists:employees,id|required_if:is_internal,true',
             'documents' => 'nullable|array',
             'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png'
+        ], [
+            'email.regex' => 'Invalid Gmail address. Please check your email and try again.',
         ]);
 
         $application = JobApplication::create([

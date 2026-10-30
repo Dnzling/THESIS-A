@@ -22,13 +22,13 @@
         <div class="flex items-center gap-3">
           <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="goBack" />
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Employee Profile</p>
             <h1 class="text-2xl font-semibold text-slate-900">Employee Information</h1>
             <p class="text-sm text-slate-500">Complete record, activity, and payroll summary in one view.</p>
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button label="Update Role & Salary" icon="pi pi-id-card" severity="warning" outlined @click="openEditDialog" />
+          <Button label="Change Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
+          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Record Resignation" severity="warn" outlined @click="showResignationDialog = true" />
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
@@ -38,15 +38,18 @@
       <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
         <div class="flex flex-wrap items-start gap-6">
           <div class="relative">
-            <Avatar :label="getInitials(employeeInfo.basic_info?.name)" size="xlarge"
-              class="bg-blue-100 text-blue-600 text-2xl font-semibold" />
+            <img v-if="employeeInfo.basic_info?.avatar_url" :src="employeeInfo.basic_info.avatar_url" :alt="`${employeeInfo.basic_info?.name} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
+            <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-2xl font-semibold text-blue-600">{{ getInitials(employeeInfo.basic_info?.name) }}</div>
+            <label class="absolute -bottom-1 -left-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload employee photo">
+              <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadEmployeePhoto" />
+            </label>
             <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"></div>
           </div>
 
           <div class="flex-1">
             <div class="flex flex-wrap items-center gap-3">
               <h2 class="text-2xl font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
-              <Tag :value="employeeInfo.employment_details?.status || 'Active'"
+              <Badge class="capitalize" :value="employeeInfo.employment_details?.status || 'Active'"
                 :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
             </div>
             <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
@@ -55,6 +58,18 @@
               <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
               <span class="text-slate-300">|</span>
               <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
+            </div>
+            <div v-if="employeeInfo.employment_details?.resignation_date" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <span class="font-semibold">Resignation notice:</span>
+              {{ formatDate(employeeInfo.employment_details.resignation_date) }}
+              <span class="mx-1">|</span>
+              Last working day: {{ formatDate(employeeInfo.employment_details.last_working_day) }}
+              <span class="mx-1">|</span>
+              Handover: {{ formatLabel(employeeInfo.employment_details.handover_status) }}
+              <span class="mx-1">|</span>
+              Reason: {{ formatLabel(employeeInfo.employment_details.resignation_reason) }}
+              <a v-if="employeeInfo.employment_details.resignation_letter_url" :href="employeeInfo.employment_details.resignation_letter_url" target="_blank" rel="noopener" class="ml-2 font-semibold underline">View letter</a>
+              <p v-if="employeeInfo.employment_details.resignation_notes" class="mt-1">{{ employeeInfo.employment_details.resignation_notes }}</p>
             </div>
 
             <!-- <div class="mt-5 grid gap-3 md:grid-cols-5">
@@ -245,6 +260,44 @@
         </template>
       </Dialog>
 
+      <Dialog v-model:visible="showResignationDialog" header="Record Resignation" modal :style="{ width: 'min(34rem, 95vw)' }">
+        <div class="space-y-4 text-sm">
+          <p class="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">The employee remains active during notice. The last working day must be at least 7 days after the notice date.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block font-medium">Resignation Date *</label>
+              <DatePicker v-model="resignationForm.resignationDate" :minDate="new Date()" dateFormat="M d, yy" showIcon fluid />
+            </div>
+            <div>
+              <label class="mb-1 block font-medium">Last Working Day *</label>
+              <DatePicker v-model="resignationForm.lastWorkingDay" :minDate="minimumLastWorkingDay" dateFormat="M d, yy" showIcon fluid />
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Reason *</label>
+            <Select v-model="resignationForm.reason" :options="resignationReasons" optionLabel="label" optionValue="value" placeholder="Select reason" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Handover Status *</label>
+            <Select v-model="resignationForm.handoverStatus" :options="handoverStatuses" optionLabel="label" optionValue="value" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Notes</label>
+            <Textarea v-model="resignationForm.notes" rows="3" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Resignation Letter (optional, max 10 MB)</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="w-full text-xs" @change="onResignationLetterChange" />
+          </div>
+          <p v-if="resignationForm.lastWorkingDay && resignationForm.lastWorkingDay < minimumLastWorkingDay" class="text-xs text-red-600">Choose a last working day at least 7 days after the notice date.</p>
+          <p v-if="resignationError" class="text-xs text-red-600">{{ resignationError }}</p>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text @click="showResignationDialog = false" />
+          <Button label="Record Resignation" severity="warn" :loading="savingResignation" :disabled="!canSubmitResignation || savingResignation" @click="submitResignation" />
+        </template>
+      </Dialog>
+
       <Dialog v-model:visible="showEditDialog" header="Edit Employee Profile" :style="{ width: '860px' }" modal>
         <div class="space-y-5">
           <Message v-if="editDialogError" severity="error" :closable="false">
@@ -308,7 +361,7 @@
             <div class="mb-4 grid gap-4 lg:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
-                <DatePicker v-model="editWeekStart" class="w-full" fluid />
+                <DatePicker v-model="editWeekStart" class="w-full" fluid @update:model-value="setEditScheduleWeek" />
               </div>
               <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 Fill each day manually. Use 12-hour time like <code>08:00 AM</code>. Start time will auto-calculate a 9-hour shift, and the end time stays editable.
@@ -386,8 +439,8 @@
         <template #footer>
           <Button label="Cancel" text @click="showEditDialog = false" />
           <Button v-if="activeEditStep > 0" label="Back" severity="secondary" text @click="activeEditStep -= 1" />
-          <Button v-if="activeEditStep === 0" label="Next" severity="info" @click="activeEditStep = 1" />
-          <Button v-else label="Save Changes" icon="pi pi-save" severity="info" :loading="savingEdit" @click="submitEditEmployee" />
+          <Button v-if="activeEditStep === 0" label="Next" @click="activeEditStep = 1" />
+          <Button v-else label="Save Changes" :loading="savingEdit" @click="submitEditEmployee" />
         </template>
       </Dialog>
 
@@ -433,7 +486,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showGovernmentIdDialog = false" />
-          <Button label="Save ID" icon="pi pi-save" severity="info" :loading="savingGovernmentId" @click="submitGovernmentId" />
+          <Button label="Save ID" icon="pi pi-save"  :loading="savingGovernmentId" @click="submitGovernmentId" />
         </template>
       </Dialog>
 
@@ -475,7 +528,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showCreditCardDialog = false" />
-          <Button label="Save Card" icon="pi pi-save" severity="info" :loading="savingCreditCard" @click="submitCreditCard" />
+          <Button label="Save Card" icon="pi pi-save"  :loading="savingCreditCard" @click="submitCreditCard" />
         </template>
       </Dialog>
     </template>
@@ -495,6 +548,8 @@ import InputNumber from 'primevue/inputnumber'
 import InputMask from 'primevue/inputmask'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import Textarea from 'primevue/textarea'
 
 // Import tab components
 import EmployeeInfoTab from './components/tabs/EmployeeInfoTab.vue'
@@ -525,10 +580,77 @@ const roleOptions = ref<{ label: string; value: number; department?: string }[]>
 const departmentOptions = ref<{ label: string; value: number; name?: string }[]>([])
 const branchOptions = ref<{ id: number; name: string }[]>([])
 const showEditDialog = ref(false)
+const showResignationDialog = ref(false)
+const savingResignation = ref(false)
+const resignationError = ref('')
+const resignationReasons = [
+  { label: 'Personal', value: 'personal' },
+  { label: 'Better Opportunity', value: 'better_opportunity' },
+  { label: 'Relocation', value: 'relocation' },
+  { label: 'Health', value: 'health' },
+  { label: 'End of Contract', value: 'end_of_contract' },
+  { label: 'Other', value: 'other' },
+]
+const handoverStatuses = [
+  { label: 'Not Started', value: 'not_started' },
+  { label: 'In Progress', value: 'in_progress' },
+  { label: 'Complete', value: 'complete' },
+]
+const resignationForm = ref({
+  resignationDate: new Date(),
+  lastWorkingDay: new Date(Date.now() + 7 * 86400000),
+  reason: null as string | null,
+  handoverStatus: 'not_started',
+  notes: '',
+  letter: null as File | null,
+})
+const minimumLastWorkingDay = computed(() => {
+  const date = new Date(resignationForm.value.resignationDate)
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + 7)
+  return date
+})
+const canSubmitResignation = computed(() => Boolean(
+  resignationForm.value.resignationDate && resignationForm.value.lastWorkingDay
+  && resignationForm.value.lastWorkingDay >= minimumLastWorkingDay.value
+  && resignationForm.value.reason && resignationForm.value.handoverStatus
+  && (!resignationForm.value.letter || resignationForm.value.letter.size <= 10 * 1024 * 1024)
+))
+const resignationDateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const onResignationLetterChange = (event: Event) => {
+  resignationForm.value.letter = (event.target as HTMLInputElement).files?.[0] || null
+  resignationError.value = resignationForm.value.letter && resignationForm.value.letter.size > 10 * 1024 * 1024
+    ? 'The resignation letter must be 10 MB or smaller.' : ''
+}
+const submitResignation = async () => {
+  if (!canSubmitResignation.value) return
+  resignationError.value = ''
+  savingResignation.value = true
+  try {
+    const payload = new FormData()
+    payload.append('resignation_date', resignationDateString(resignationForm.value.resignationDate))
+    payload.append('last_working_day', resignationDateString(resignationForm.value.lastWorkingDay))
+    payload.append('resignation_reason', resignationForm.value.reason || '')
+    payload.append('handover_status', resignationForm.value.handoverStatus)
+    if (resignationForm.value.notes) payload.append('resignation_notes', resignationForm.value.notes)
+    if (resignationForm.value.letter) payload.append('resignation_letter', resignationForm.value.letter)
+    await hrService.api.post(`/api/employees/${employeeId}/resignation`, payload)
+    showResignationDialog.value = false
+    await fetchEmployeeData()
+    toast.add({ severity: 'success', summary: 'Resignation Recorded', detail: 'Notice and handover details have been saved.', life: 3500 })
+  } catch (error: any) {
+    const errors = error?.response?.data?.errors
+    resignationError.value = Object.values(errors || {}).flat()[0] as string || error?.response?.data?.message || 'Unable to record resignation.'
+  } finally {
+    savingResignation.value = false
+  }
+}
 const savingEdit = ref(false)
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
+const payrollScheduleDefaults = ref({ workStart: '08:00', workEnd: '17:00', lunchBreak: 60, paidHours: 8 })
+const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
 const showCreditCardDialog = ref(false)
 const savingGovernmentId = ref(false)
@@ -558,7 +680,7 @@ const requiredGovernmentIdLabels = computed(() => governmentIdTypeOptions.value.
 const selectedGovernmentIdOption = computed(() => governmentIdTypeOptions.value.find((item) => String(item.value) === String(governmentIdForm.value.deduction_type_id || '')) || null)
 
 // State
-const activeTab = ref('info')
+const activeTab = ref(route.query.tab === 'overtime' ? 'overtime' : 'info')
 const employeeInfo = ref<EmployeeDetails | any>({
   basic_info: {},
   employment_details: {},
@@ -573,10 +695,10 @@ const employeeInfo = ref<EmployeeDetails | any>({
 const editForm = ref({
   fname: '',
   lname: '',
-  phone: '',
   address: '',
   branch_id: null as number | null,
   department_id: null as number | null,
+  role_id: null as number | null,
   pay_type: 'monthly',
   salary: 0,
   shift_id: null as number | null,
@@ -599,14 +721,11 @@ const weeklyScheduleForm = ref<Array<{
 const payTypeOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Hourly', value: 'hourly' },
+  { label: 'Daily', value: 'daily' },
   { label: 'Hybrid', value: 'hybrid' },
 ]
 const filteredRoleOptions = computed(() => {
-  if (!editForm.value.department_id) return roleOptions.value
-  return roleOptions.value.filter((role) => {
-    const departmentName = (role.department || '').toLowerCase()
-    return departmentName && departmentName === String(selectedDepartmentName.value || '').toLowerCase()
-  })
+  return roleOptions.value
 })
 const selectedDepartmentName = computed(() => {
   const selected = departmentOptions.value.find((department) => Number(department.value) === Number(editForm.value.department_id || 0))
@@ -653,6 +772,25 @@ const detectMatchingShift = (start?: string, end?: string) => {
 }
 
 // API Functions
+const uploadingPhoto = ref(false)
+const uploadEmployeePhoto = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('avatar', file)
+  uploadingPhoto.value = true
+  try {
+    const response = await hrService.api.post(`/api/employees/${employeeId}/avatar`, body)
+    employeeInfo.value.basic_info.avatar_url = response.data.data.avatar_url
+    toast.add({ severity: 'success', summary: 'Employee photo updated', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Photo upload failed', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    uploadingPhoto.value = false
+    input.value = ''
+  }
+}
 const fetchEmployeeData = async () => {
   loading.value = true
   error.value = ''
@@ -697,6 +835,22 @@ const loadBranches = async () => {
     branchOptions.value = Array.isArray(raw) ? raw : []
   } catch (err) {
     console.error('Failed to load branches', err)
+  }
+}
+
+const loadPayrollScheduleDefaults = async () => {
+  try {
+    const response = await hrService.getHrSettings()
+    const configuration = response?.data?.payroll_configuration || {}
+    const lunchBreak = configuration.lunchBreak ?? configuration.lunchDuration ?? 60
+    payrollScheduleDefaults.value = {
+      workStart: configuration.workStart || '08:00',
+      workEnd: configuration.workEnd || '17:00',
+      lunchBreak: Math.max(0, Number(lunchBreak) || 0),
+      paidHours: Number(configuration.paidHours) || 8,
+    }
+  } catch (err) {
+    console.error('Failed to load payroll schedule defaults', err)
   }
 }
 
@@ -875,13 +1029,28 @@ const toIsoDate = (value: Date | string) => {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const addDays = (value: Date | string, days: number) => {
   const date = value instanceof Date ? new Date(value) : new Date(value)
   date.setDate(date.getDate() + days)
   return date
+}
+
+const mondayOfWeek = (value: Date) => {
+  const date = new Date(value)
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  return date
+}
+
+const setEditScheduleWeek = (value: Date | null) => {
+  if (!value) return
+  editWeekStart.value = mondayOfWeek(value)
+  weeklyScheduleForm.value.forEach((row, index) => {
+    row.effective_from = toIsoDate(addDays(editWeekStart.value!, index))
+  })
 }
 
 const calculateGrossPay = (payslip: any) => {
@@ -920,16 +1089,17 @@ const goBack = () => {
   router.push('/hr/employees')
 }
 
-const openEditDialog = () => {
+const openEditDialog = async () => {
+  await loadPayrollScheduleDefaults()
   activeEditStep.value = 0
-  editWeekStart.value = new Date()
+  editWeekStart.value = mondayOfWeek(new Date())
   editForm.value = {
     fname: employeeInfo.value?.basic_info?.first_name || '',
     lname: employeeInfo.value?.basic_info?.last_name || '',
-    phone: employeeInfo.value?.contact_info?.phone || '',
     address: employeeInfo.value?.contact_info?.address || '',
     branch_id: employeeInfo.value?.employment_details?.branch_id || null,
     department_id: departmentOptions.value.find((department) => department.name === employeeInfo.value?.employment_details?.department)?.value || null,
+    role_id: null,
     pay_type: employeeInfo.value?.employment_details?.pay_type || 'monthly',
     salary: Number(employeeInfo.value?.employment_details?.monthly_salary || 0),
     shift_id: employeeInfo.value?.current_shift?.shift_id || null,
@@ -964,8 +1134,7 @@ const openEditDialog = () => {
     } : row
   })
   weeklyScheduleForm.value.forEach((row, index) => {
-    const effectiveDate = addDays(editWeekStart.value || new Date(), index)
-    row.effective_from = row.effective_from || toIsoDate(effectiveDate)
+    row.effective_from = toIsoDate(addDays(editWeekStart.value || mondayOfWeek(new Date()), index))
     row.effective_to = row.effective_to || ''
   })
   showEditDialog.value = true
@@ -1011,7 +1180,8 @@ const calculateHours = (start?: string, end?: string) => {
   const endMinutes = parseTimeToMinutes(end)
   if (startMinutes === null || endMinutes === null) return 0
   const diff = endMinutes - startMinutes
-  return diff > 0 ? diff / 60 : 0
+  if (diff <= 0) return 0
+  return Math.max(0, (diff - Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)) / 60)
 }
 
 const onEditStartTimeChange = (row: any, value: string) => {
@@ -1025,8 +1195,9 @@ const onEditStartTimeChange = (row: any, value: string) => {
   }
 
   row.is_off = false
-  row.end_time = formatMinutesToTime12h(startMinutes + 9 * 60)
-  row.hours = 9
+  const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+  row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
+  row.hours = maximumDailyShiftHours.value
 }
 
 const onEditEndTimeChange = (row: any, value: string) => {
@@ -1038,11 +1209,19 @@ const onEditEndTimeChange = (row: any, value: string) => {
 const onEditWorkingToggle = (row: any, checked: boolean) => {
   row.is_off = !checked
   if (checked) {
-    const defaultStart = formatShiftTime(row.start_time || '09:00 AM')
+    const existingStartIsValid = parseTimeToMinutes(row.start_time) !== null
+    const existingEndIsValid = parseTimeToMinutes(row.end_time) !== null
+    const defaultStart = formatShiftTime(existingStartIsValid ? row.start_time : payrollScheduleDefaults.value.workStart)
     row.start_time = defaultStart
     const startMinutes = parseTimeToMinutes(defaultStart)
-    row.end_time = startMinutes === null ? '06:00 PM' : formatMinutesToTime12h(startMinutes + 9 * 60)
-    row.hours = calculateHours(row.start_time, row.end_time) || 9
+    row.end_time = existingEndIsValid
+      ? formatShiftTime(row.end_time)
+      : formatShiftTime(payrollScheduleDefaults.value.workEnd)
+    if (startMinutes !== null && parseTimeToMinutes(row.end_time) === null) {
+      const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+      row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
+    }
+    row.hours = calculateHours(row.start_time, row.end_time) || maximumDailyShiftHours.value
     return
   }
 
@@ -1246,7 +1425,6 @@ const submitEditEmployee = async () => {
     const payload: any = {
       fname: editForm.value.fname,
       lname: editForm.value.lname,
-      phone: editForm.value.phone || null,
       address: editForm.value.address || null,
       branch_id: editForm.value.branch_id || null,
       role_id: editForm.value.role_id,
@@ -1281,7 +1459,6 @@ const submitEditEmployee = async () => {
     savingEdit.value = false
   }
 }
-
 const validateEditWeeklySchedule = () => {
   if (!editForm.value.role_id) {
     editDialogError.value = 'Please select a role before saving changes.'
@@ -1307,8 +1484,8 @@ const validateEditWeeklySchedule = () => {
       return false
     }
 
-    if (hours > 9) {
-      editDialogError.value = `${row.day_label} cannot exceed 9 hours.`
+    if (hours > maximumDailyShiftHours.value) {
+      editDialogError.value = `${row.day_label} cannot exceed ${maximumDailyShiftHours.value} paid hours.`
       return false
     }
   }
@@ -1490,6 +1667,7 @@ onMounted(() => {
   fetchEmployeeData()
   loadDepartments().then(() => loadRoles())
   loadBranches()
+  loadPayrollScheduleDefaults()
   loadShifts()
   loadGovernmentIdTypes()
 })

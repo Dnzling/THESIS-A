@@ -12,7 +12,7 @@ class ProductVariation extends Model
     use SoftDeletes;
 
     protected $table = 'product_variations';
-    
+
     protected $fillable = [
         'store_id',
         'product_id',
@@ -22,21 +22,35 @@ class ProductVariation extends Model
         'color_hex',
         'size',
         'material',
+        'texture',
+        'finish',
         'price_adjustment',
+        'base_price',
+        'discounted_price',
+        'cost_price',
+        'reorder_point',
+        'supplier_name',
+        'unit_of_measurement',
         'custom_3d_model_id',
         'custom_image_id',
         'length_cm',
         'width_cm',
         'height_cm',
+        'depth_cm',
         'weight_kg',
         'is_active'
     ];
 
     protected $casts = [
         'price_adjustment' => 'decimal:2',
+        'base_price' => 'decimal:2',
+        'discounted_price' => 'decimal:2',
+        'cost_price' => 'decimal:2',
+        'reorder_point' => 'integer',
         'length_cm' => 'decimal:2',
         'width_cm' => 'decimal:2',
         'height_cm' => 'decimal:2',
+        'depth_cm' => 'decimal:2',
         'weight_kg' => 'decimal:2',
         'is_active' => 'boolean'
     ];
@@ -67,6 +81,11 @@ class ProductVariation extends Model
         return $this->hasMany(PricingHistory::class, 'variation_id');
     }
 
+    public function inventory()
+    {
+        return $this->hasMany(\App\Models\Inventory\BranchInventory::class, 'variation_id');
+    }
+
     // Scopes
     public function scopeActive($query)
     {
@@ -80,7 +99,9 @@ class ProductVariation extends Model
     // Accessors
     public function getFinalPriceAttribute()
     {
-        return $this->product->current_price + $this->price_adjustment;
+        return $this->discounted_price
+            ?? $this->base_price
+            ?? ($this->product->current_price + $this->price_adjustment);
     }
 
     public function getDisplayNameAttribute()

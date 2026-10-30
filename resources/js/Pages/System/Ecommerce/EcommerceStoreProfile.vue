@@ -140,7 +140,7 @@
               @click="goProduct(product.id)">
               <template #content>
                 <div class="space-y-2">
-                  <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+                  <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async"
                     class="h-40 w-full rounded-xl border border-slate-100 object-cover md:h-44" @error="onImageError" />
                   <p class="line-clamp-2 text-sm font-semibold text-slate-900">{{ product.product_name }}</p>
                   <p class="text-xs text-slate-500">PHP {{ Number(product.final_price ?? product.base_price ??

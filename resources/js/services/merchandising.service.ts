@@ -2,7 +2,7 @@ import axiosClient from '../axios'
 
 export interface Product {
     id?: number
-    sku: string
+    sku?: string | null
     product_name: string
     description?: string
     category_id: number
@@ -17,6 +17,7 @@ export interface Product {
     length_cm?: number
     width_cm?: number
     height_cm?: number
+    depth_cm?: number
     weight_kg?: number
     assembly_required?: boolean
     is_featured?: boolean
@@ -65,11 +66,19 @@ export interface ProductVariation {
     size?: string
     material?: string
     price_adjustment: number
+    base_price?: number | null
+    discounted_price?: number | null
+    cost_price?: number | null
+    reorder_point?: number
+    supplier_name?: string
+    unit_of_measurement?: string
+    initial_stock?: number
     custom_3d_model_id?: number
     custom_image_id?: number
     length_cm?: number | null
     width_cm?: number | null
     height_cm?: number | null
+    depth_cm?: number | null
     weight_kg?: number | null
     is_active?: boolean
 }
@@ -91,6 +100,46 @@ class MerchandisingService {
 
     async getDashboardStats() {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/stats`)
+        return response.data
+    }
+    async getDashboardOverview(days = 30) {
+        const response = await axiosClient.get(`${this.baseUrl}/dashboard/overview`, { params: { days } })
+        return response.data
+    }
+
+    // ==================== PROMOTIONS ====================
+    async getPromotions(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions`, { params })
+        return response.data
+    }
+
+    async getPromotionOptions() {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions/options`)
+        return response.data
+    }
+
+    async createPromotion(data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions`, data)
+        return response.data
+    }
+
+    async updatePromotion(id: number, data: any) {
+        const response = await axiosClient.put(`${this.baseUrl}/promotions/${id}`, data)
+        return response.data
+    }
+
+    async togglePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/toggle`)
+        return response.data
+    }
+
+    async duplicatePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/duplicate`)
+        return response.data
+    }
+
+    async deletePromotion(id: number) {
+        const response = await axiosClient.delete(`${this.baseUrl}/promotions/${id}`)
         return response.data
     }
     async getActivityLog(params: any) {
@@ -245,6 +294,11 @@ class MerchandisingService {
         return response.data
     }
 
+    async getVariationRequests() {
+        const response = await axiosClient.get(`${this.baseUrl}/variation-requests`)
+        return response.data
+    }
+
     async getVariation(id: number) {
         const response = await axiosClient.get(`${this.baseUrl}/variations/${id}`)
         return response.data
@@ -252,6 +306,11 @@ class MerchandisingService {
 
     async getVariationsByProduct(productId: number) {
         const response = await axiosClient.get(`${this.baseUrl}/products/${productId}/variations`)
+        return response.data
+    }
+
+    async initializeStandardVariation(productId: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/variations/initialize-standard`)
         return response.data
     }
 
@@ -265,15 +324,8 @@ class MerchandisingService {
         return response.data
     }
 
-    async deleteVariation(id: number) {
-        const response = await axiosClient.delete(`${this.baseUrl}/variations/${id}`)
-        return response.data
-    }
-
-    async bulkUpdateStock(variations: Array<{ id: number; stock_quantity: number }>) {
-        const response = await axiosClient.post(`${this.baseUrl}/variations/bulk/stock`, {
-            variations
-        })
+    async archiveVariation(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/variations/${id}/archive`)
         return response.data
     }
 
@@ -298,6 +350,13 @@ class MerchandisingService {
             headers: {
                 'Content-Type': 'multipart/form-data'
             }
+        })
+        return response.data
+    }
+
+    async uploadProduct3DModel(productId: number, formData: FormData) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/3d-model`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
         })
         return response.data
     }

@@ -8,8 +8,9 @@ use App\Models\Hr\Payroll;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use League\Config\Exception\ValidationException;
+use Illuminate\Validation\ValidationException;
 use App\Http\Controllers\Controller;
 
 class PayPeriodController extends Controller
@@ -86,7 +87,7 @@ class PayPeriodController extends Controller
         try {
             $user = Auth::user();
 
-            $period = PayPeriod::with(['createdBy:id,fname,lname'])
+            $period = PayPeriod::with(['createdBy:id,fname,lname', 'store:id,name'])
                 ->where('store_id', $user->store_id)
                 ->findOrFail($id);
 
@@ -95,6 +96,7 @@ class PayPeriodController extends Controller
                 'data' => [
                     'id'           => $period->id,
                     'name'         => $period->name,
+                    'store_name'   => $period->store?->name,
                     'start_date'   => $period->start_date,
                     'end_date'     => $period->end_date,
                     'cutoff_date'  => $period->cutoff_date,
@@ -155,6 +157,17 @@ class PayPeriodController extends Controller
                 ], 422);
             }
 
+            if (PayPeriod::withTrashed()
+                ->where('store_id', $user->store_id)
+                ->whereDate('start_date', $validated['start_date'])
+                ->whereDate('end_date', $validated['end_date'])
+                ->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This store already has a pay period for these dates. Contact an administrator if it was deleted.',
+                ], 409);
+            }
+
             // Check for overlapping periods (only for this store)
             $overlapping = PayPeriod::where('store_id', $user->store_id)
                 ->where(function ($q) use ($validated) {
@@ -197,8 +210,21 @@ class PayPeriodController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation Failed',
-                // 'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
+        } catch (QueryException $e) {
+            if ((string) $e->getCode() === '23000'
+                && str_contains($e->getMessage(), 'pay_periods_store_dates_unique')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This store already has a pay period for these dates.',
+                ], 409);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create pay period.',
+            ], 500);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -280,27 +306,46 @@ class PayPeriodController extends Controller
     public function destroy($id)
     {
         try {
-            $period = PayPeriod::findOrFail($id);
-
-            // Cannot delete if has payrolls
-            if ($period->payrolls()->exists()) {
+            $user = Auth::user();
+            if (!$user?->store_id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot delete pay period with payroll records'
-                ], 400);
+                    'message' => 'User is not associated with any store.',
+                ], 403);
             }
 
-            $period->delete();
+            DB::transaction(function () use ($id, $user) {
+                $period = PayPeriod::where('store_id', $user->store_id)
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                if ($period->status !== 'draft') {
+                    abort(409, 'Only draft pay periods can be deleted.');
+                }
+
+                $payrolls = $period->payrolls()->lockForUpdate()->get();
+                if ($payrolls->contains(fn (Payroll $payroll) => !in_array($payroll->status, ['draft', 'calculated'], true))) {
+                    abort(409, 'This period contains payroll that has been submitted or paid and cannot be deleted.');
+                }
+
+                $period->payrolls()->delete();
+                $period->delete();
+            });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pay period deleted successfully'
+                'message' => 'Draft pay period and its unsubmitted payroll records deleted successfully.'
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Pay period not found'
             ], 404);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -340,7 +385,9 @@ class PayPeriodController extends Controller
                     $query->where('store_id', $user->store_id);
                 })
                 ->with([
-                    'employee:id,fname,lname,employee_number,department',
+                    'employee' => fn ($query) => $query
+                        ->select('id', 'user_id', 'employee_number', 'department')
+                        ->with('user:id,fname,lname'),
                     'items:id,payroll_id,type,name,amount,calculation_type,rate'
                 ])
                 ->get();
@@ -452,10 +499,15 @@ class PayPeriodController extends Controller
         try {
             $user = Auth::user();
 
+            if (!$user?->store_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not associated with any store.',
+                ], 403);
+            }
+
             $query = PayPeriod::with(['createdBy:id,fname,lname'])
-                ->whereHas('payrolls.employee', function ($q) use ($user) {
-                    $q->where('store_id', $user->store_id);
-                })
+                ->where('store_id', $user->store_id)
                 ->withCount(['payrolls as employees_count' => function ($q) use ($user) {
                     $q->whereHas('employee', function ($query) use ($user) {
                         $query->where('store_id', $user->store_id);
@@ -689,7 +741,9 @@ class PayPeriodController extends Controller
 
         // Latest payroll updates
         $recentPayrolls = Payroll::where('pay_period_id', $payPeriod->id)
-            ->with('employee:id,fname,lname')
+            ->with(['employee' => fn ($query) => $query
+                ->select('id', 'user_id')
+                ->with('user:id,fname,lname')])
             ->orderBy('updated_at', 'desc')
             ->limit(5)
             ->get();

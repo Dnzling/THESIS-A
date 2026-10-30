@@ -48,6 +48,8 @@
           <img
             :src="normalizeImageUrl(product.image) || '/F.svg'"
             :alt="product.product_name"
+            loading="lazy"
+            decoding="async"
             class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
             @error="onImageError"
           />

@@ -6,6 +6,8 @@ namespace App\Models\Procurement\Receiving;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
@@ -57,6 +59,11 @@ class GoodsReceipt extends Model
     public function items(): HasMany
     {
         return $this->hasMany(GoodsReceiptItem::class);
+    }
+
+    public function supplierEvaluation(): HasOne
+    {
+        return $this->hasOne(SupplierPerformanceEvaluation::class);
     }
 
     // Scopes

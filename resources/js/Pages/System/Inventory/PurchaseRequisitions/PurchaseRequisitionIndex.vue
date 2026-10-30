@@ -1,61 +1,65 @@
 <template>
   <div class="min-h-screen p-4">
-    <div class="max-w-6xl mx-auto">
+    <div class=" mx-auto">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 class="text-xl font-bold text-gray-800">Purchase Requisitions</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Replenishment requests for your branch.</p>
+          <h1 class="text-2xl font-bold text-gray-800">Purchase Requisitions</h1>
         </div>
-        <Button
-          v-if="canManage"
-          label="Create"
-          icon="pi pi-plus"
-          severity="success"
-          size="small"
-          @click="router.push({ name: 'inventory.requisites.create' })"
-        />
+        <div class="flex items-center gap-2">
+          <Button v-if="!props.warehouseMode && canManage" label="From Reorder Suggestions" icon="pi pi-list" outlined size="small" @click="openSuggestions" />
+          <Button
+            v-if="!props.warehouseMode && canManage"
+            label="Receipts"
+            severity="info"
+            size="small"
+            @click="router.push({ name: 'inventory.goods-receipts' })"
+          />
+          <Button
+            v-if="canManage"
+            label="Create PR" 
+            severity="warn"
+            size="small"
+            @click="router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.create' : 'inventory.requisites.create' })"
+          />
+        </div>
       </div>
-
-      <Card class="mb-3">
-        <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Search</label>
-              <InputText v-model="filters.search" placeholder="Product, SKU, branch" />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Status</label>
-              <Select
-                v-model="filters.status"
-                :options="statusOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="All"
-                showClear
-              />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Per Page</label>
-              <Select v-model="perPage" :options="[10, 15, 20, 50]" />
-            </div>
-            <div class="flex justify-end gap-2">
-              <Button
-                type="button"
-                label="Refresh"
-                icon="pi pi-refresh"
-                severity="secondary"
-                outlined
-                size="small"
-                :loading="loading"
-                @click="load()"
-              />
-            </div>
-          </div>
-        </template>
-      </Card>
 
       <Card>
         <template #content>
+          <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-4 mb-4">
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search requisition, product, or SKU" fluid  size="small" />
+            </IconField>
+            <Select
+              v-model="filters.status"
+              :options="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="All Statuses"
+              showClear
+              fluid
+              size="small"
+            />
+            <DatePicker
+              v-model="filters.date_range"
+              selectionMode="range"
+              dateFormat="M dd, yy"
+              placeholder="Date range"
+              showIcon
+              :maxDate="new Date()"
+              showButtonBar
+              fluid
+              class="w-full"
+              size="small"
+              @date-select="onDateRangeChange"
+              @clear="onDateRangeChange"
+            />
+            <div v-if="hasActiveFilters">
+              <Button label="Clear All" severity="danger" size="small" @click="resetFilters" />
+            </div>
+          </div>
+          <!-- Requisition Table -->
           <div v-if="loading" class="space-y-3">
             <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
               <Skeleton height="24px" class="col-span-1" />
@@ -78,19 +82,26 @@
           <DataTable
             v-else
             :value="rows"
-            class="p-datatable-sm text-xs p-datatable-fluid"
+            class="p-datatable-sm text-sm p-datatable-fluid"
             responsiveLayout="scroll"
             paginator
             :rows="perPage"
             :totalRecords="total"
+            :lazy="true"
             :first="(page - 1) * perPage"
             @page="onPageChange"
             :sortField="sortField"
             :sortOrder="sortOrder"
             @sort="onSort"
-            @row-click="onRowClick"
-            :rowClass="rowClass"
+            rowHover
+            :rowsPerPageOptions="[15, 25, 50]"
           >
+            <template #empty>
+              <div class="py-8 text-center">
+                <i class="pi pi-inbox text-3xl text-gray-400"></i>
+                <p class="mt-2 text-xs text-gray-600">No purchase requisitions found</p>
+              </div>
+            </template>
             <Column field="created_at" header="Date" sortable style="width: 130px">
               <template #body="{ data }">
                 <div class="text-xs">
@@ -100,15 +111,23 @@
               </template>
             </Column>
 
-            <Column field="pr_number" header="PR No." style="width: 170px">
+            <Column field="pr_number" header="PR No." style="width: 200px">
               <template #body="{ data }">
                 <span class="font-semibold text-gray-900">{{ data.pr_number || `PR #${data.id}` }}</span>
               </template>
             </Column>
 
-            <Column header="Status" style="width: 170px">
+        <Column header="Requested By" style="min-width: 180px">
+          <template #body="{ data }">
+            <span class="text-gray-700">
+              {{ data.requestedBy?.user?.full_name || data.requested_by_name || '—' }}
+            </span>
+          </template>
+        </Column>
+
+            <Column header="Status" style="width: 230px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+                <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
 
@@ -118,28 +137,51 @@
               </template>
             </Column>
 
-            <Column header="Reason" style="min-width: 260px">
+            <Column field="estimated_amount" header="Request Amount" style="width: 150px">
+              <template #body="{ data }">
+                <span class="font-semibold text-green-600 justify-end flex">{{
+                  formatCurrency(data.estimated_amount)
+                }}</span>
+              </template>
+            </Column>
+
+            <Column header="Reason" style="min-width: 230px">
               <template #body="{ data }">
                 <span class="text-gray-700">{{ String(data.reason || '—') }}</span>
               </template>
             </Column>
-
-            <Column header="Actions" style="width: 120px">
+            <Column header="Action" style="width: 90px">
               <template #body="{ data }">
-                <div class="flex gap-2 items-center">
-                  <Button
-                    icon="pi pi-eye"
-                    severity="info"
-                    outlined
-                    rounded
-                    @click="router.push({ name: 'inventory.requisites.detail', params: { id: data.id } })"
-                  />
-                </div>
+                <Button
+                  icon="pi pi-eye"
+                  size="small"
+                  outlined
+                  label="View"
+                  rounded
+                  @click.stop="router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.view' : 'inventory.requisites.detail', params: { id: data.id } })"
+                />
               </template>
             </Column>
           </DataTable>
-        </template>
+          </template>
       </Card>
+      <Dialog v-model:visible="suggestionsVisible" modal header="Create PR from Reorder Suggestions" :style="{ width: 'min(94vw, 720px)' }">
+        <p class="mb-3 text-sm text-slate-600">Select pending items. Suggestions from different branches or procurement routes become separate draft PRs.</p>
+        <div v-if="suggestionsLoading" class="space-y-2"><Skeleton v-for="n in 4" :key="n" height="3rem" /></div>
+        <template v-else>
+          <div v-if="!suggestions.length" class="py-6 text-center text-sm text-slate-500">No pending reorder suggestions are available.</div>
+          <DataTable v-else v-model:selection="selectedSuggestions" :value="suggestions" dataKey="id" size="small" scrollable scrollHeight="360px">
+            <Column selectionMode="multiple" headerStyle="width: 3rem" />
+            <Column header="Item"><template #body="{ data }"><div class="font-medium">{{ data.variation?.variation_name || data.product?.product_name || data.product?.name || `Item #${data.product_id}` }}</div><div class="text-xs text-slate-500">{{ data.variation?.variation_sku || data.product?.sku || '' }}</div></template></Column>
+            <Column header="Branch"><template #body="{ data }">{{ data.branch?.name || `Branch #${data.branch_id}` }}</template></Column>
+            <Column field="suggested_quantity" header="Suggested Qty" />
+          </DataTable>
+        </template>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text @click="suggestionsVisible = false" />
+          <Button :label="`Create Draft PR (${selectedSuggestions.length})`" severity="warn" :loading="creatingGroupedPr" :disabled="!selectedSuggestions.length" @click="createGroupedPr" />
+        </template>
+      </Dialog>
     </div>
   </div>
 </template>
@@ -150,10 +192,15 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
 
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
+const props = defineProps<{ warehouseMode?: boolean }>()
+const service: any = props.warehouseMode ? WarehouseService : inventoryService
 
 const loading = ref(false)
 const rows = ref<any[]>([])
@@ -162,12 +209,47 @@ const page = ref(1)
 const perPage = ref(15)
 const sortField = ref('created_at')
 const sortOrder = ref(-1)
+const suggestionsVisible = ref(false)
+const suggestionsLoading = ref(false)
+const creatingGroupedPr = ref(false)
+const suggestions = ref<any[]>([])
+const selectedSuggestions = ref<any[]>([])
 
-const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const openSuggestions = async () => {
+  suggestionsVisible.value = true
+  suggestionsLoading.value = true
+  selectedSuggestions.value = []
+  try {
+    const response = await inventoryService.getReorderSuggestions({ status: 'pending', expired: false, per_page: 100 })
+    suggestions.value = response?.data?.data || []
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load suggestions', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    suggestionsLoading.value = false
+  }
+}
 
-const filters = reactive<{ search: string; status: string | null }>({
+const createGroupedPr = async () => {
+  creatingGroupedPr.value = true
+  try {
+    const response = await inventoryService.createGroupedReorderPrs(selectedSuggestions.value.map((item) => item.id))
+    suggestionsVisible.value = false
+    toast.add({ severity: 'success', summary: 'Draft PRs created', detail: response.message, life: 4000 })
+    load()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to create PR', detail: error?.response?.data?.errors?.suggestion_ids?.[0] || error?.response?.data?.message || 'Please try again.', life: 5000 })
+  } finally {
+    creatingGroupedPr.value = false
+  }
+}
+
+const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
+const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status || filters.date_range?.length))
+
+const filters = reactive<{ search: string; status: string | null; date_range: Date[] | null }>({
   search: '',
   status: null,
+  date_range: null,
 })
 
 const statusOptions = [
@@ -180,9 +262,10 @@ const statusOptions = [
 
 const statusSeverity = (status: string) => {
   const s = String(status || '').toLowerCase()
-  if (s === 'procurement_processing' || s === 'approved') return 'success'
+  if (s === 'procurement_processing' || s === 'approved') return 'info'
   if (s === 'rejected' || s === 'cancelled') return 'danger'
   if (s === 'draft') return 'secondary'
+  if (s === 'po_created') return 'success'
   return 'warning'
 }
 
@@ -201,7 +284,7 @@ const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
 
 const onRowClick = (event: any) => {
   const id = event?.data?.id
-  if (id) router.push({ name: 'inventory.requisites.detail', params: { id } })
+  if (id) router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.view' : 'inventory.requisites.detail', params: { id } })
 }
 
 const formatTime = (value: any) => {
@@ -210,20 +293,45 @@ const formatTime = (value: any) => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+}).format(Number(value || 0))
+
+const formatDateParam = (value: Date | null | undefined) => {
+  if (!value) return undefined
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const onDateRangeChange = () => {
+  if (filters.date_range?.length === 2) {
+    page.value = 1
+    load()
+  } else if (!filters.date_range?.length) {
+    page.value = 1
+    load()
+  }
+}
+
 const load = async () => {
   loading.value = true
   try {
-    const response = await inventoryService.getPurchaseRequisitions({
+    const response = await service[props.warehouseMode ? 'purchaseRequisitions' : 'getPurchaseRequisitions']({
       page: page.value,
       per_page: perPage.value,
       sort_by: sortField.value,
       sort_order: sortOrder.value === 1 ? 'asc' : 'desc',
       status: filters.status || undefined,
       search: filters.search || undefined,
+      date_from: formatDateParam(filters.date_range?.[0]),
+      date_to: formatDateParam(filters.date_range?.[1]),
     })
 
-    if (response?.success) {
-      const payload = response.data
+    if (props.warehouseMode ? response : response?.success) {
+      const payload = props.warehouseMode ? response : response.data
       rows.value = payload?.data || []
       total.value = payload?.total || 0
     } else {
@@ -243,8 +351,19 @@ const load = async () => {
 }
 
 const onPageChange = (e: any) => {
-  page.value = Math.floor(e.first / e.rows) + 1
+  page.value = e.page + 1
   perPage.value = e.rows
+  load()
+}
+
+const resetFilters = () => {
+  filters.search = ''
+  filters.status = null
+  filters.date_range = null
+  page.value = 1
+  perPage.value = 15
+  sortField.value = 'created_at'
+  sortOrder.value = -1
   load()
 }
 
@@ -254,13 +373,20 @@ const onSort = (e: any) => {
   load()
 }
 
-watch(
-  () => [filters.search, filters.status, perPage.value],
-  () => {
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch([() => filters.status, () => perPage.value], () => {
+  page.value = 1
+  load()
+})
+
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
     page.value = 1
     load()
-  }
-)
+  }, 350)
+})
 
 onMounted(async () => {
   try {

@@ -19,6 +19,7 @@ class EcommerceCartItem extends Model
         'quantity',
         'unit_price',
         'tax_rate',
+        'customization_request',
     ];
 
     protected $casts = [

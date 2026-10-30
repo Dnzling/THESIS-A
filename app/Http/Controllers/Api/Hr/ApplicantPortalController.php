@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ApplicantPortalController extends Controller
 {
@@ -67,14 +68,14 @@ class ApplicantPortalController extends Controller
         $useProfile = $request->boolean('use_profile');
         $profile = null;
 
-        if (JobApplication::where('job_posting_id', $posting->id)->where('user_id', $user->id)->exists()) {
+        if ($user && JobApplication::where('job_posting_id', $posting->id)->where('user_id', $user->id)->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You already submitted an application for this job posting.',
             ], 422);
         }
 
-        if ($useProfile) {
+        if ($useProfile && $user) {
             $profile = ApplicantProfile::with('documents')
                 ->where('user_id', $user->id)
                 ->first();
@@ -109,30 +110,40 @@ class ApplicantPortalController extends Controller
         } else {
             $validated = $request->validate([
                 'first_name' => 'required|string|max:100',
+                'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
-                'email' => ['required', 'email', 'max:255', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
-                'phone' => 'required|string|max:20',
-                'birthday' => 'required|date',
-                'city' => 'required|string|max:255',
-                'province' => 'required|string|max:255',
-                'barangay' => 'required|string|max:255',
-                'address' => 'required|string|max:255',
+                'email' => ['required', 'email', 'max:255', 'regex:/@gmail\.com\z/i', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
+                'phone' => 'nullable|string|max:20',
+                'birthday' => 'nullable|date',
+                'city' => 'nullable|string|max:255',
+                'province' => 'nullable|string|max:255',
+                'barangay' => 'nullable|string|max:255',
+                'address' => 'nullable|string|max:255',
                 'current_position' => 'nullable|string|max:255',
                 'current_company' => 'nullable|string|max:255',
-                'documents' => 'nullable|array',
+                'documents' => 'required|array|min:1',
                 'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png',
-                'document_types' => 'nullable|array',
-                'document_types.*' => ['nullable', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
+                'document_types' => 'required|array|min:1',
+                'document_types.*' => ['required', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
+            ], [
+                'email.regex' => 'Invalid Gmail address. Please check your email and try again.',
+            ]);
+        }
+
+        if (! preg_match('/@gmail\.com\z/i', $validated['email'])) {
+            throw ValidationException::withMessages([
+                'email' => ['Invalid Gmail address. Please check your email and try again.'],
             ]);
         }
 
         $application = JobApplication::create([
             'job_posting_id' => $posting->id,
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'first_name' => $validated['first_name'],
+            'middle_name' => $validated['middle_name'] ?? null,
             'last_name' => $validated['last_name'],
             'email' => $validated['email'],
-            'phone' => $validated['phone'],
+            'phone' => $validated['phone'] ?? '',
             'birthday' => $validated['birthday'] ?? null,
             'city' => $validated['city'] ?? null,
             'province' => $validated['province'] ?? null,
@@ -147,7 +158,7 @@ class ApplicantPortalController extends Controller
         ApplicationTimeline::create([
             'application_id' => $application->id,
             'status' => 'Applied',
-            'changed_by' => $user->id,
+            'changed_by' => $user?->id,
             'changed_at' => now(),
             'notes' => 'Application submitted via job portal',
         ]);
@@ -182,11 +193,11 @@ class ApplicantPortalController extends Controller
                         'applicant_name' => trim("{$application->first_name} {$application->last_name}"),
                     ],
                 ],
-                [$user->id]
+                $user ? [$user->id] : []
             );
         }
 
-        if (empty($recipientIds) && (int) ($posting->created_by ?? 0) > 0 && (int) $posting->created_by !== (int) $user->id) {
+        if (empty($recipientIds) && (int) ($posting->created_by ?? 0) > 0 && (int) $posting->created_by !== (int) ($user?->id ?? 0)) {
             $this->notify((int) $posting->created_by, [
                 'store_id' => $posting->store_id,
                 'module' => 'hr',

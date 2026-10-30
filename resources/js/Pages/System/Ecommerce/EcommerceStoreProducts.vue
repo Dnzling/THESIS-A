@@ -98,7 +98,7 @@
           >
             <template #content>
               <div class="space-y-2">
-                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async"
                   class="h-44 w-full rounded-lg border border-slate-100 object-cover" @error="onImageError" />
                 <p class="line-clamp-2 text-base font-semibold text-slate-900">{{ product.product_name }}</p>
                 <p class="text-sm font-bold text-slate-800">PHP {{ Number(product.price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>

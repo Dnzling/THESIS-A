@@ -1,20 +1,20 @@
 <template>
   <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-slate-200/80 bg-linear-to-br from-amber-50 via-white to-sky-50 p-6 shadow-sm">
+    <header class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
           <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Return Pickup</h1>
+            <h1 class="text-xl font-semibold text-slate-900">{{ returnIdLabel }}</h1>
             <p class="mt-1 text-sm text-slate-600">
-              {{ orderNumber }} • {{ formatStatus(pickup?.status) }}
+              Customer Return Pickup
             </p>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadPickup" />
+          <Tag :value="formatStatus(pickup?.status || 'ready_for_dispatch')" :severity="pickup?.status === 'picked_up' ? 'success' : 'warning'" />
           <Button
-            v-if="pickup && pickup.status !== 'picked_up' && pickup.status !== 'cancelled'"
+            v-if="pickup && ['ready_for_dispatch', 'scheduled'].includes(pickup.status)"
             icon="pi pi-calendar"
             label="Edit Schedule"
             severity="secondary"
@@ -22,35 +22,56 @@
             @click="openScheduleDialog"
           />
           <Button
-            v-if="pickup && pickup.status !== 'picked_up' && pickup.status !== 'cancelled'"
-            icon="pi pi-user-plus"
-            label="Assign Driver"
-            severity="info"
-            @click="assignDialogVisible = true"
-          />
-          <Button
-            v-if="pickup && pickup.status !== 'picked_up' && pickup.status !== 'cancelled'"
-            icon="pi pi-check-circle"
-            label="Upload Pickup Proof"
-            severity="success"
-            @click="proofDialogVisible = true"
+            v-if="pickup && ['ready_for_dispatch', 'scheduled'].includes(pickup.status)"
+            icon="pi pi-send"
+            label="Add to Trip"
+            severity="warn"
+            size="small"
+            @click="openAssignment"
           />
         </div>
       </div>
-    </div>
+    </header>
 
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Pickup Snapshot</template>
+    <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+      <template #title><span class="text-base">Pickup & Courier Overview</span></template>
       <template #content>
         <div v-if="loading" class="text-sm text-slate-500">Loading...</div>
         <div v-else-if="!pickup" class="text-sm text-slate-500">No pickup data found.</div>
         <div v-else class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
           <div><span class="text-slate-500">Scheduled:</span> <strong>{{ pickup.scheduled_at ? formatDateTime(pickup.scheduled_at) : '-' }}</strong></div>
           <div><span class="text-slate-500">Driver:</span> <strong>{{ driverLabel }}</strong></div>
+          <div><span class="text-slate-500">Vehicle:</span> <strong>{{ vehicleLabel }}</strong></div>
+          <div><span class="text-slate-500">Plate Number:</span> <strong>{{ pickup.vehicle?.plate_number || '-' }}</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Pickup Address:</span> <strong>{{ pickup.pickup_address || '-' }}</strong></div>
+          <div class="md:col-span-2"><span class="text-slate-500">Delivery Destination:</span> <strong>{{ pickup.destination_branch ? `${pickup.destination_branch.name} - ${pickup.destination_branch.address || ''}` : '-' }}</strong></div>
           <div><span class="text-slate-500">Contact:</span> <strong>{{ pickup.pickup_name || '-' }}</strong></div>
           <div><span class="text-slate-500">Phone:</span> <strong>{{ pickup.pickup_phone || '-' }}</strong></div>
           <div><span class="text-slate-500">Picked Up At:</span> <strong>{{ pickup.picked_up_at ? formatDateTime(pickup.picked_up_at) : '-' }}</strong></div>
+          <div><span class="text-slate-500">Distance:</span> <strong>{{ pickup.distance_km != null ? `${pickup.distance_km} km` : '-' }}</strong></div>
+          <div><span class="text-slate-500">Estimated Fee:</span> <strong>₱ {{ formatMoney(pickup.estimated_fee) }}</strong></div>
+          <div v-if="pickup.assistants?.length" class="md:col-span-2">
+            <span class="text-slate-500">Delivery Assistants:</span>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <Chip v-for="assistant in pickup.assistants" :key="assistant.id" :label="assistant.name" />
+            </div>
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <Card v-if="pickup?.logs?.length" class="rounded-2xl border border-slate-200/80 shadow-sm">
+      <template #title><span class="text-base">Delivery Activity</span></template>
+      <template #content>
+        <div class="divide-y divide-slate-100">
+          <div v-for="log in pickup.logs" :key="log.id" class="py-3 first:pt-0 last:pb-0">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div><p class="font-medium text-slate-900">{{ formatStatus(log.event_type) }}</p><p class="mt-1 text-sm text-slate-600">{{ formatLogMessage(log.message) }}</p></div>
+              <span class="text-xs text-slate-500">{{ formatDateTime(log.created_at) }}</span>
+            </div>
+            <p v-if="log.location_address" class="mt-1 text-xs text-slate-500"><i class="pi pi-map-marker mr-1"></i>{{ log.location_address }}</p>
+            <a v-if="log.proof_photo_url" :href="log.proof_photo_url" target="_blank" class="mt-2 block h-20 w-20 overflow-hidden rounded-lg border border-slate-200"><img :src="log.proof_photo_url" alt="Delivery proof" class="h-full w-full object-cover" /></a>
+          </div>
         </div>
       </template>
     </Card>
@@ -59,29 +80,36 @@
       <template #title>Return Context</template>
       <template #content>
         <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <div><span class="text-slate-500">Return ID:</span> <strong>#{{ pickup.return_request?.id || pickup.return_id || '-' }}</strong></div>
+          <div><span class="text-slate-500">Return Number:</span> <strong>{{ pickup.return_request?.return_number || '-' }}</strong></div>
           <div><span class="text-slate-500">Customer:</span> <strong>{{ pickup.return_request?.user?.full_name || pickup.return_request?.user?.email || '-' }}</strong></div>
           <div><span class="text-slate-500">Email:</span> <strong>{{ pickup.return_request?.user?.email || '-' }}</strong></div>
           <div><span class="text-slate-500">Reason:</span> <strong>{{ pickup.return_request?.reason || '-' }}</strong></div>
           <div><span class="text-slate-500">Qty:</span> <strong>{{ pickup.return_request?.requested_quantity ?? 1 }}</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Details:</span> <strong>{{ pickup.return_request?.details || '-' }}</strong></div>
-          <div class="md:col-span-2 flex flex-wrap gap-2">
-            <Button
-              v-if="pickup.return_request?.evidence_urls?.length"
-              icon="pi pi-images"
-              label="View Evidence"
-              severity="warn"
-              outlined
-              @click="evidenceDialogVisible = true"
-            />
-            <Button
-              v-if="pickup.return_request?.order_id"
-              icon="pi pi-external-link"
-              label="Open Order"
-              outlined
-              severity="secondary"
-              @click="openOrder(pickup.return_request.order_id)"
-            />
+          <div class="md:col-span-2 space-y-2">
+            <p class="text-slate-500">Evidence</p>
+            <div v-if="evidenceItems.length" class="flex flex-wrap gap-3">
+              <button v-for="(evidence, index) in evidenceItems" :key="evidence.url" type="button"
+                class="group relative h-24 w-24 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                :aria-label="`Preview ${evidence.name}`" @click="openEvidence(index)">
+                <img :src="evidence.url" :alt="evidence.name"
+                  class="h-full w-full object-cover transition group-hover:scale-105" />
+                <span class="absolute inset-x-0 bottom-0 bg-slate-950/60 px-1.5 py-1 text-center text-[10px] text-white">
+                  {{ evidence.name }}
+                </span>
+              </button>
+            </div>
+            <p v-else class="text-sm text-slate-400">No evidence attached.</p>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                v-if="pickup.return_request?.order_id"
+                icon="pi pi-external-link"
+                label="Open Order"
+                outlined
+                severity="secondary"
+                @click="openOrder(pickup.return_request.order_id)"
+              />
+            </div>
             <!-- <Button
               v-if="pickup.return_id"
               icon="pi pi-external-link"
@@ -112,44 +140,11 @@
       </template>
     </Card>
 
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Proof</template>
-      <template #content>
-        <div v-if="pickup?.proof_photo_url" class="flex flex-wrap gap-2">
-          <Button v-if="pickup?.proof_photo_url" icon="pi pi-image" severity="warn" label="View Photo" outlined @click="openMedia(pickup.proof_photo_url)" />
-        </div>
-        <Message v-else severity="info" :closable="false">No pickup proof uploaded yet.</Message>
-      </template>
-    </Card>
-
-    <Dialog v-model:visible="assignDialogVisible" modal header="Assign Driver" class="w-full max-w-xl">
-      <div class="space-y-3">
-        <Select v-model="assignForm.driver_user_id" :options="drivers" optionLabel="name" optionValue="id" fluid placeholder="Select driver" />
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="assignDialogVisible = false" />
-        <Button icon="pi pi-check" label="Assign" :loading="assigning" :disabled="!assignForm.driver_user_id" @click="assignDriver" />
-      </template>
-    </Dialog>
-
-    <Dialog v-model:visible="proofDialogVisible" modal header="Upload Pickup Proof" class="w-full max-w-xl">
-      <div class="space-y-3">
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Pickup Photo</label>
-          <input type="file" accept="image/*" class="block w-full text-sm" @change="onProofPhoto" />
-        </div>
-        <Textarea v-model="proofNotes" rows="3" fluid placeholder="Notes (optional)" />
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="proofDialogVisible = false" />
-        <Button icon="pi pi-upload" label="Upload" severity="success" :loading="uploading" :disabled="!proofPhoto" @click="uploadProof" />
-      </template>
-    </Dialog>
-
     <Dialog v-model:visible="evidenceDialogVisible" header="Evidence" modal class="w-full max-w-5xl">
       <Galleria
         v-if="evidenceItems.length"
         :value="evidenceItems"
+        v-model:activeIndex="activeEvidenceIndex"
         :numVisible="6"
         :circular="true"
         :showItemNavigators="true"
@@ -168,15 +163,6 @@
       <div v-else class="py-10 text-center text-sm text-gray-600">No evidence.</div>
       <template #footer>
         <Button label="Close" severity="secondary" outlined @click="evidenceDialogVisible = false" />
-      </template>
-    </Dialog>
-
-    <Dialog v-model:visible="mediaDialogVisible" modal header="Preview" class="w-full max-w-5xl">
-      <div class="flex justify-center bg-black/5 rounded-lg overflow-hidden">
-        <img v-if="mediaUrl" :src="mediaUrl" alt="Preview" class="max-h-[75vh] w-auto object-contain" />
-      </div>
-      <template #footer>
-        <Button label="Close" severity="secondary" outlined @click="mediaDialogVisible = false" />
       </template>
     </Dialog>
 
@@ -225,6 +211,48 @@
         <Button icon="pi pi-save" label="Save" :loading="savingSchedule" @click="saveSchedule" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="tripChoiceVisible" modal header="Assign Return Pickup to a Trip" class="w-full max-w-2xl">
+      <div class="space-y-4">
+        <div v-if="pickup" class="rounded-xl border border-orange-100 bg-orange-50/70 p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Return pickup</p>
+          <p class="mt-1 font-semibold text-slate-900">{{ returnIdLabel }}</p>
+          <p class="text-sm text-slate-600">{{ pickup.pickup_name || 'Customer' }} · {{ pickup.pickup_address || 'No pickup address' }}</p>
+          <p class="mt-1 text-xs text-slate-500">Estimated item weight: {{ returnPickupWeightKg.toFixed(2) }} kg</p>
+        </div>
+
+        <div v-if="loadingCompatibleTrips" class="space-y-3">
+          <Skeleton height="5.5rem" borderRadius="12px" />
+          <Skeleton height="5.5rem" borderRadius="12px" />
+        </div>
+        <div v-else-if="compatibleTrips.length" class="space-y-3">
+          <p class="text-sm font-medium text-slate-700">Select a compatible planned trip</p>
+          <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-slate-900">Trip #{{ trip.id }} · {{ trip.driver_name }}</p>
+              <p class="mt-1 text-sm text-slate-600">{{ trip.vehicle_name }}<span v-if="trip.plate_number"> · {{ trip.plate_number }}</span></p>
+              <p class="mt-1 text-xs text-slate-500">
+                {{ trip.assigned_stops }}{{ trip.max_stops ? ` / ${trip.max_stops}` : '' }} stops
+                <span v-if="trip.remaining_capacity_after_kg !== null"> · {{ trip.remaining_capacity_after_kg }} kg remaining after adding</span>
+                <span v-if="trip.scheduled_departure_at"> · Departs {{ formatDateTime(trip.scheduled_departure_at) }}</span>
+              </p>
+            </div>
+            <Button label="Select Trip" icon="pi pi-plus" size="small" severity="warn"
+              :loading="assigningTripId === trip.id" :disabled="Boolean(assigningTripId)"
+              @click="addPickupToTrip(trip)" />
+          </article>
+        </div>
+        <div v-else-if="!loadingCompatibleTrips" class="rounded-xl border border-dashed border-slate-300 p-5 text-center">
+          <i class="pi pi-inbox text-2xl text-slate-400" />
+          <p class="mt-2 text-sm font-semibold text-slate-700">No compatible planned trips</p>
+          <p class="mt-1 text-xs text-slate-500">A trip may not have enough vehicle capacity or stop slots, or may serve a different pickup area.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined :disabled="Boolean(assigningTripId)" @click="tripChoiceVisible = false" />
+        <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId) || !pickup" @click="createTripForPickup" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -235,8 +263,10 @@ import { useToast } from 'primevue/usetoast'
 import logisticsService from '@/services/logistics.service'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Chip from 'primevue/chip'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
 
 const route = useRoute()
 const router = useRouter()
@@ -245,8 +275,12 @@ const toast = useToast()
 const id = computed(() => Number((route as any).params?.id))
 const loading = ref(false)
 const pickup = ref<any>(null)
+const tripChoiceVisible = ref(false)
+const loadingCompatibleTrips = ref(false)
+const compatibleTrips = ref<any[]>([])
+const assigningTripId = ref<number | null>(null)
 
-const orderNumber = computed(() => pickup.value?.return_request?.order?.order_number || `Return #${pickup.value?.return_id || '-'}`)
+const returnIdLabel = computed(() => pickup.value?.return_request?.return_number || 'Return number unavailable')
 
 const driverLabel = computed(() => {
   const d = pickup.value?.driver
@@ -254,8 +288,13 @@ const driverLabel = computed(() => {
   const name = `${d.fname || ''} ${d.lname || ''}`.trim()
   return name || d.email || '-'
 })
+const vehicleLabel = computed(() => {
+  const vehicle = pickup.value?.vehicle
+  if (!vehicle) return '-'
+  return [vehicle.vehicle_name, [vehicle.brand, vehicle.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+})
 
-const goBack = () => router.push({ name: 'logistics.return-pickups' })
+const goBack = () => router.push({ name: 'logistics.deliveries' })
 
 const loadPickup = async () => {
   loading.value = true
@@ -271,8 +310,10 @@ const loadPickup = async () => {
 
 const formatStatus = (status?: string) => {
   if (!status) return '-'
+  if (status === 'ready_for_dispatch') return 'For Dispatch'
   return String(status).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
+const formatLogMessage = (message?: string) => String(message || '').replace(/\b(ready_for_dispatch|out_for_delivery|in_transit|assigned|delivered)\b/g, value => formatStatus(value))
 
 const formatDateTime = (value: any) => {
   const date = new Date(value)
@@ -306,75 +347,62 @@ const formatMoney = (value: any) => {
   return num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const drivers = ref<any[]>([])
-const assignDialogVisible = ref(false)
-const assigning = ref(false)
-const assignForm = reactive({ driver_user_id: null as null | number })
+const returnPickupWeightKg = computed(() => {
+  const product = pickup.value?.return_request?.order_item?.product || pickup.value?.return_request?.orderItem?.product
+  return Number(product?.weight_kg || 0) * Number(pickup.value?.return_request?.requested_quantity || 0)
+})
 
-const loadDrivers = async () => {
+const openAssignment = async () => {
+  tripChoiceVisible.value = true
+  loadingCompatibleTrips.value = true
+  compatibleTrips.value = []
   try {
-    const res = await logisticsService.getDrivers()
-    drivers.value = res?.data || []
-  } catch {
-    drivers.value = []
+    const response = await logisticsService.getCompatibleTripsForOrder('return_pickup', id.value)
+    compatibleTrips.value = response?.data || []
+  } catch (error: any) {
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'error', summary: 'Could Not Load Trips', detail: error?.response?.data?.message || 'Unable to check planned trips for this return pickup.', life: 3500 })
+  } finally {
+    loadingCompatibleTrips.value = false
   }
 }
 
-const assignDriver = async () => {
-  if (!assignForm.driver_user_id) return
-  assigning.value = true
+const addPickupToTrip = async (trip: any) => {
+  if (!pickup.value || assigningTripId.value) return
+  assigningTripId.value = Number(trip.id)
   try {
-    await logisticsService.assignReturnPickupDriver(id.value, { driver_user_id: assignForm.driver_user_id })
-    toast.add({ severity: 'success', summary: 'Assigned', detail: 'Driver assigned.', life: 2500 })
-    assignDialogVisible.value = false
+    const response = await logisticsService.addOrdersToTrip(trip.id, {
+      source_type: 'return_pickup',
+      order_ids: [id.value],
+    })
+    if (Number(response?.data?.added || 0) !== 1) {
+      throw new Error(response?.message || 'The return pickup could not be added to this trip.')
+    }
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'success', summary: 'Trip Updated', detail: 'The return pickup was added to the selected trip.', life: 3000 })
     await loadPickup()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Failed to assign driver.', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add the return pickup to this trip.', life: 4000 })
   } finally {
-    assigning.value = false
+    assigningTripId.value = null
   }
 }
 
-const proofDialogVisible = ref(false)
-const uploading = ref(false)
-const proofPhoto = ref<File | null>(null)
-const proofNotes = ref('')
-
-const onProofPhoto = (e: any) => {
-  const file = e?.target?.files?.[0]
-  proofPhoto.value = file || null
-}
-const uploadProof = async () => {
-  if (!proofPhoto.value) return
-  uploading.value = true
-  try {
-    const fd = new FormData()
-    fd.append('photo', proofPhoto.value)
-    if (proofNotes.value.trim()) fd.append('notes', proofNotes.value.trim())
-    await logisticsService.uploadReturnPickupProof(id.value, fd)
-    toast.add({ severity: 'success', summary: 'Uploaded', detail: 'Pickup proof uploaded.', life: 2500 })
-    proofDialogVisible.value = false
-    proofPhoto.value = null
-    proofNotes.value = ''
-    await loadPickup()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Failed to upload proof.', life: 3000 })
-  } finally {
-    uploading.value = false
-  }
+const createTripForPickup = () => {
+  if (!pickup.value) return
+  tripChoiceVisible.value = false
+  router.push({ name: 'logistics.trips.create', query: { source: 'return_pickup', order_id: String(id.value) } })
 }
 
 const evidenceDialogVisible = ref(false)
+const activeEvidenceIndex = ref(0)
 const evidenceItems = computed(() => {
   const urls: string[] = pickup.value?.return_request?.evidence_urls || []
   return urls.map((url: string, idx: number) => ({ url, name: `Evidence ${idx + 1}` }))
 })
-
-const mediaDialogVisible = ref(false)
-const mediaUrl = ref<string | null>(null)
-const openMedia = (url: string) => {
-  mediaUrl.value = url
-  mediaDialogVisible.value = true
+const openEvidence = (index: number) => {
+  activeEvidenceIndex.value = index
+  evidenceDialogVisible.value = true
 }
 
 const scheduleDialogVisible = ref(false)
@@ -539,6 +567,6 @@ onBeforeUnmount(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadPickup(), loadDrivers()])
+  await loadPickup()
 })
 </script>
