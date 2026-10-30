@@ -3,6 +3,16 @@ import { ref, computed } from 'vue'
 import axios from '../axios'
 import { router } from '@inertiajs/vue3'
 
+const devLog = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.log(...args)
+}
+const devWarn = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.warn(...args)
+}
+const devError = (...args: unknown[]) => {
+    if (import.meta.env.DEV) console.error(...args)
+}
+
 interface User {
     id: number
     user_id: string
@@ -172,7 +182,7 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (permissionsLoaded.value) {
-            console.log('Permissions already loaded, skipping...')
+            devLog('Permissions already loaded, skipping...')
             return
         }
 
@@ -181,14 +191,14 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!token.value) {
-            console.warn('Cannot load permissions - no token')
+            devWarn('Cannot load permissions - no token')
             return
         }
 
         isLoadingPermissions.value = true
         permissionsPromise = (async () => {
             try {
-                console.log('Loading user permissions and navigation...')
+                devLog('Loading user permissions and navigation...')
                 const response = await axios.get('/api/user/navigation')
 
                 permissions.value = response.data.permissions || []
@@ -201,27 +211,27 @@ export const useAuthStore = defineStore('auth', () => {
                 localStorage.setItem('permissions', JSON.stringify(permissions.value))
                 localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
 
-                console.log('Permissions loaded:', permissions.value.length, 'permissions')
+                devLog('Permissions loaded:', permissions.value.length, 'permissions')
                 if (permissionsMeta) {
-                    console.log(
+                    devLog(
                         'Permissions meta:',
                         `raw=${permissionsMeta.raw_count ?? 0}`,
                         `filtered=${permissionsMeta.filtered_count ?? 0}`,
                         `filtered_out=${permissionsMeta.filtered_out_count ?? 0}`
                     )
                     if (Array.isArray(permissionsMeta.filtered_out) && permissionsMeta.filtered_out.length > 0) {
-                        console.log('Permissions filtered out:', permissionsMeta.filtered_out)
+                        devLog('Permissions filtered out:', permissionsMeta.filtered_out)
                     }
                 }
-                console.log('Navigation loaded:', navigation.value.length, 'items')
+                devLog('Navigation loaded:', navigation.value.length, 'items')
             } catch (err: any) {
-                console.error('Failed to load permissions:', err)
+                devError('Failed to load permissions:', err)
 
                 const cachedNav = localStorage.getItem('navigation')
                 const cachedPerms = localStorage.getItem('permissions')
 
                 if (cachedNav && cachedPerms) {
-                    console.log('Loading navigation from cache...')
+                    devLog('Loading navigation from cache...')
                     navigation.value = JSON.parse(cachedNav)
                     permissions.value = JSON.parse(cachedPerms)
                     permissionsLoaded.value = true
@@ -252,12 +262,12 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!token.value) {
-            console.warn('Cannot fetch navigation - no token')
+            devWarn('Cannot fetch navigation - no token')
             return
         }
 
         try {
-            console.log('Fetching navigation...')
+            devLog('Fetching navigation...')
             const response = await axios.get('/api/user/navigation')
             
             permissions.value = response.data.permissions || []
@@ -270,20 +280,20 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('permissions', JSON.stringify(permissions.value))
             localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
             
-            console.log('Navigation refreshed:', navigation.value.length, 'items')
+            devLog('Navigation refreshed:', navigation.value.length, 'items')
             if (permissionsMeta) {
-                console.log(
+                devLog(
                     'Permissions meta:',
                     `raw=${permissionsMeta.raw_count ?? 0}`,
                     `filtered=${permissionsMeta.filtered_count ?? 0}`,
                     `filtered_out=${permissionsMeta.filtered_out_count ?? 0}`
                 )
                 if (Array.isArray(permissionsMeta.filtered_out) && permissionsMeta.filtered_out.length > 0) {
-                    console.log('Permissions filtered out:', permissionsMeta.filtered_out)
+                    devLog('Permissions filtered out:', permissionsMeta.filtered_out)
                 }
             }
         } catch (error) {
-            console.error('Failed to fetch navigation:', error)
+            devError('Failed to fetch navigation:', error)
             
             // Fallback to cached navigation
             const cached = localStorage.getItem('navigation')
@@ -453,7 +463,7 @@ export const useAuthStore = defineStore('auth', () => {
                         }
                     }
                 } catch (clockInError: any) {
-                    console.warn('Clock-in failed:', clockInError)
+                    devWarn('Clock-in failed:', clockInError)
                     employeeAttendance = { state: 'not_recorded', message: clockInError?.response?.data?.message || 'Attendance could not be recorded.' }
                 }
             }
@@ -464,9 +474,9 @@ export const useAuthStore = defineStore('auth', () => {
 
         } catch (err: any) {
             // Log detailed server response for easier debugging
-            console.error('Login error:', err)
+            devError('Login error:', err)
             if (err?.response?.data) {
-                console.error('Login error response data:', err.response.data)
+                devError('Login error response data:', err.response.data)
             }
             error.value = err.response?.data?.message || err.message || 'Login failed'
             throw err
@@ -525,7 +535,7 @@ export const useAuthStore = defineStore('auth', () => {
             }
             // Token-based logout does not require web session logout.
         } catch (err) {
-            console.warn('Logout API error:', err)
+            devWarn('Logout API error:', err)
         } finally {
             // Clear everything
             token.value = null
@@ -607,7 +617,7 @@ export const useAuthStore = defineStore('auth', () => {
      */
     const initialize = async () => {
         if (token.value && user.value) {
-            console.log('Initializing auth store...')
+            devLog('Initializing auth store...')
             axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
 
             const normalizedRole = String(user.value?.role || '').toLowerCase()

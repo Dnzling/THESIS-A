@@ -999,23 +999,38 @@ class EcommerceController extends Controller
         $user = Auth::user();
 
         $carts = EcommerceCart::query()
-            ->with(['store:id,name'])
-            ->withCount('items')
+            ->with([
+                'store:id,name',
+                'items.product.store:id,name',
+                'items.product.assets' => function ($query) {
+                    $query->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
+                },
+                'items.variation',
+            ])
             ->where('user_id', $user->id)
             ->orderByDesc('updated_at')
-            ->get()
-            ->map(fn (EcommerceCart $cart) => [
-                'id' => (int) $cart->id,
+            ->get();
+
+        $favoriteIds = EcommerceFavorite::query()
+            ->where('user_id', $user->id)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $favoriteMap = array_fill_keys($favoriteIds, true);
+
+        $data = $carts->map(fn (EcommerceCart $cart) => array_merge(
+            $this->formatCart($cart, $favoriteMap),
+            [
                 'store_id' => (int) $cart->store_id,
                 'store_name' => $cart->store?->name ?? 'Store',
-                'items_count' => (int) ($cart->items_count ?? 0),
                 'updated_at' => $cart->updated_at,
-            ])
+            ]
+        ))
             ->values();
 
         return response()->json([
             'success' => true,
-            'data' => $carts,
+            'data' => $data,
         ]);
     }
 

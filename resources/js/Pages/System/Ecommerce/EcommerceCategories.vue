@@ -22,7 +22,7 @@
         <button v-for="category in categories" :key="category.id" type="button"
           class="group relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
           @click="openCategory(category.id)">
-          <img v-if="category.icon_url" :src="normalizeImageUrl(category.icon_url)" :alt="category.category_name"
+          <img v-if="category.icon_url" :src="normalizeImageUrl(category.icon_url)" :alt="category.category_name" loading="lazy" decoding="async"
             class="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" @error="hideBrokenImage" />
           <div v-else class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-50 to-amber-100 text-orange-300">
             <i class="pi pi-box text-4xl sm:text-5xl" />

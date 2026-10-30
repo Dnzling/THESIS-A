@@ -96,7 +96,8 @@
                 <h3 class="text-base font-semibold text-slate-800">Order Status | Last 30 Days</h3>
               <p class="text-xs text-slate-500">Distribution of order statuses.</p>
             </div>
-            <Chart type="doughnut" :data="orderStatusData" :options="doughnutOptions" class="h-72" />
+            <Chart v-if="orderStatusData.labels.length" type="doughnut" :data="orderStatusData" :options="doughnutOptions" class="h-72" />
+            <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No orders recorded in the last 30 days.</p>
           </template>
         </Card>
       </div>
@@ -238,12 +239,32 @@ const salesTrendData = computed(() => ({
   ],
 }))
 
+const formatStatus = (value: string) => {
+  if (!value) return 'Unknown'
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+const statusColor = (status: string) => {
+  const normalized = String(status || '').toLowerCase()
+  if (['completed', 'delivered', 'paid'].includes(normalized)) return '#16a34a'
+  if (['pending', 'pending_payment', 'awaiting_payment'].includes(normalized)) return '#f59e0b'
+  if (['processing', 'confirmed', 'ready_to_dispatch', 'for_dispatch', 'shipped', 'out_for_delivery'].includes(normalized)) return '#3b82f6'
+  if (['rejected', 'failed', 'voided'].includes(normalized)) return '#dc2626'
+  if (['cancelled', 'refunded'].includes(normalized)) return '#94a3b8'
+  return '#64748b'
+}
+
 const orderStatusData = computed(() => ({
-  labels: dashboard.value?.charts?.order_status?.labels || [],
+  labels: (dashboard.value?.charts?.order_status?.labels || []).map(formatStatus),
   datasets: [
     {
       data: dashboard.value?.charts?.order_status?.values || [],
-      backgroundColor: ['#22c55e', '#f97316', '#facc15', '#94a3b8', '#ef4444'],
+      backgroundColor: (dashboard.value?.charts?.order_status?.labels || []).map(statusColor),
+      borderColor: '#ffffff',
+      borderWidth: 2,
+      hoverOffset: 5,
     },
   ],
 }))
@@ -305,13 +326,6 @@ const formatDate = (value: string) => {
   if (!value) return ''
   const date = new Date(value)
   return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-const formatStatus = (value: string) => {
-  if (!value) return 'Unknown'
-  return value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
 const loadDashboard = async () => {

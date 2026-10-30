@@ -2,61 +2,71 @@
     <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
-                <h1 class="text-lg font-semibold tracking-tight text-slate-900">
+                <h1 class="text-xl font-semibold tracking-tight text-slate-900">
                     My Deliveries
                 </h1>
+                <p class="mt-1 text-sm text-slate-500">Active deliveries assigned to you.</p>
             </div>
             <Button
                 icon="pi pi-refresh"
                 size="small"
                 label="Refresh"
+                severity="secondary"
+                outlined
                 :loading="loading"
                 @click="load"
             />
         </div>
         <Card class="rounded-3xl border border-slate-200/80 shadow-sm"
             ><template #content>
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
+                <div class="mb-4 grid grid-cols-1 items-center gap-3 md:grid-cols-12">
                     <InputText
                         v-model="search"
-                        placeholder="Search reference, customer, address"
-                        fluid
-                    /><Select
+                        placeholder="Search reference, recipient, or address"
+                        class="w-full md:col-span-4"
+                    />
+                    <Select
                         v-model="source"
                         :options="sources"
                         optionLabel="label"
                         optionValue="value"
-                        fluid
-                    /><Select
+                        class="w-full md:col-span-2"
+                    />
+                    <Select
                         v-model="status"
                         :options="statuses"
                         optionLabel="label"
                         optionValue="value"
-                        fluid
-                    /><Select
+                        class="w-full md:col-span-2"
+                    />
+                    <Select
                         v-model="truck"
                         :options="truckOptions"
                         optionLabel="label"
                         optionValue="value"
                         placeholder="All trucks"
                         filter
-                        fluid
-                    /><Button
-                        label="Clear"
+                        class="w-full md:col-span-2"
+                    />
+                    <Button
+                        v-if="hasActiveFilters"
+                        label="Clear Filter"
                         icon="pi pi-filter-slash"
+                        severity="danger"
+                        size="small"
                         outlined
+                        class="w-full md:col-span-2"
                         @click="clear"
                     />
-                </div> </template
-        ></Card>
-        <Card class="rounded-3xl border border-slate-200/80 shadow-sm"
-            ><template #content>
-                <div class="hidden md:block">
+                </div>
+                <div v-if="loading" class="hidden space-y-3 md:block">
+                    <Skeleton v-for="row in 6" :key="row" height="2.75rem" borderRadius="0.5rem" />
+                </div>
+                <div v-else class="hidden md:block">
                     <DataTable
                         :value="deliveries"
                         paginator
                         :rows="10"
-                        :loading="loading"
                         rowHover
                         class="text-sm"
                         responsiveLayout="scroll"
@@ -66,46 +76,45 @@
                                 No active deliveries assigned to you.
                             </div>
                         </template>
-                           <Column header="Expected Delivery"
-                            ><template #body="{ data }">{{
-                                formatDate(data.expected_pickup_date)
-                            }}</template></Column
-                        >
-                        <Column header="Reference Number"
-                            ><template #body="{ data }"
-                                ><span class="font-medium">{{
-                                    data.order_number
-                                }}</span></template
-                            ></Column
-                        >
-                        <Column header="Source"
-                            ><template #body="{ data }">{{
-                                sourceLabel(data.source_type)
-                            }}</template></Column
-                        >
-                        <Column header="Date"
-                            ><template #body="{ data }">{{
+                        <Column field="created_at" header="Date" sortable>
+                            <template #body="{ data }">{{
                                 formatDate(data.created_at)
-                            }}</template></Column
-                        >
-                     
-                        <Column header="Recipient"
-                            ><template #body="{ data }">
+                            }}</template>
+                        </Column>
+                        <Column field="order_number" header="Reference">
+                            <template #body="{ data }">
+                                <span class="font-semibold text-slate-900">{{
+                                    data.order_number
+                                }}</span>
+                            </template>
+                        </Column>
+                        <Column header="Source">
+                            <template #body="{ data }">
+                                <Tag :value="sourceLabel(data.source_type)" :severity="sourceSeverity(data.source_type)" />
+                            </template>
+                        </Column>
+                        <Column header="Recipient">
+                            <template #body="{ data }">
                                 <span class="font-medium text-slate-800">{{
                                     data.customer_name || "-"
                                 }}</span>
-                                <small class="block text-slate-500">{{
+                                <small class="mt-0.5 block text-slate-500">{{
                                     data.customer_contact || "-"
                                 }}</small>
-                            </template></Column
-                        >
-                        <Column header="Weight"
-                            ><template #body="{ data }">{{
+                            </template>
+                        </Column>
+                        <Column header="Expected Delivery">
+                            <template #body="{ data }">{{
+                                formatDate(data.expected_pickup_date)
+                            }}</template>
+                        </Column>
+                        <Column header="Weight">
+                            <template #body="{ data }">{{
                                 weight(data.weight_kg)
-                            }}</template></Column
-                        >
-                        <Column header="Truck"
-                            ><template #body="{ data }">
+                            }}</template>
+                        </Column>
+                        <Column header="Truck">
+                            <template #body="{ data }">
                                 <span class="font-medium text-slate-800">{{
                                     truckName(data)
                                 }}</span>
@@ -114,35 +123,29 @@
                                     class="block text-slate-500"
                                     >{{ data.vehicle.plate_number }}</small
                                 >
-                            </template></Column
-                        >
-                        <Column header="Status" style="width: 13%"
-                            ><template #body="{ data }">
+                            </template>
+                        </Column>
+                        <Column header="Status">
+                            <template #body="{ data }">
                                 <Badge
                                     :value="label(data.delivery_status)"
                                     :severity="severity(data.delivery_status)"
-                                /> </template
-                        ></Column>
-                        <Column header="Action"
-                            ><template #body="{ data }"
-                                ><Button
-                                    icon="pi pi-eye"
-                                    label="View"
-                                    size="small"
-                                    outlined
-                                    @click="view(data)" /></template
-                        ></Column>
+                                />
+                            </template>
+                        </Column>
+                        <Column header="Actions">
+                            <template #body="{ data }">
+                                <Button icon="pi pi-eye" label="View" size="small" outlined rounded @click="view(data)" />
+                            </template>
+                        </Column>
                     </DataTable>
                 </div>
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
+                <div v-if="loading" class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
+                    <Skeleton v-for="row in 4" :key="row" height="13rem" borderRadius="1rem" />
+                </div>
+                <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
                     <div
-                        v-if="loading"
-                        class="col-span-full py-8 text-center text-sm text-slate-500"
-                    >
-                        Loading deliveries...
-                    </div>
-                    <div
-                        v-else-if="!deliveries.length"
+                        v-if="!deliveries.length"
                         class="col-span-full py-8 text-center text-sm text-slate-500"
                     >
                         No active deliveries assigned to you.
@@ -162,11 +165,9 @@
                                 >
                                     {{ delivery.order_number }}
                                 </p>
-                                <p class="mt-0.5 text-xs text-slate-500">
-                                    {{ sourceLabel(delivery.source_type) }}
-                                </p>
+                                <Tag class="mt-1" :value="sourceLabel(delivery.source_type)" :severity="sourceSeverity(delivery.source_type)" />
                             </div>
-                            <Tag
+                            <Badge
                                 :value="label(delivery.delivery_status)"
                                 :severity="severity(delivery.delivery_status)"
                             />
@@ -200,7 +201,7 @@
                             </div>
                             <div>
                                 <p class="text-xs text-slate-500">Status</p>
-                                <Tag
+                                <Badge
                                     class="mt-1"
                                     :value="label(delivery.delivery_status)"
                                     :severity="
@@ -237,6 +238,7 @@
                                 icon="pi pi-eye"
                                 label="View Delivery"
                                 size="small"
+                                outlined
                                 fluid
                                 @click="view(delivery)"
                             />
@@ -255,6 +257,8 @@ import Button from "primevue/button";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import Tag from "primevue/tag";
+import Badge from "primevue/badge";
+import Skeleton from "primevue/skeleton";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import logisticsService from "@/services/logistics.service";
@@ -265,6 +269,9 @@ const search = ref("");
 const source = ref("all");
 const status = ref("");
 const truck = ref("all");
+const hasActiveFilters = computed(() => Boolean(
+    search.value.trim() || source.value !== "all" || status.value || truck.value !== "all",
+));
 const sources = [
     { label: "All sources", value: "all" },
     { label: "Sales", value: "sales" },
@@ -386,11 +393,23 @@ const sourceLabel = (v: string) =>
         }) as Record<string, string>
     )[v] || label(v);
 const severity = (v: string) =>
-    v === "delivered" || v === "picked_up"
+    ["delivered", "picked_up"].includes(String(v || "").toLowerCase())
         ? "success"
-        : ["in_transit", "out_for_delivery"].includes(v)
+        : ["assigned", "packed", "in_transit", "out_for_delivery"].includes(String(v || "").toLowerCase())
           ? "info"
-          : "warn";
+          : ["cancelled", "canceled"].includes(String(v || "").toLowerCase())
+            ? "secondary"
+            : ["failed_delivery", "failed"].includes(String(v || "").toLowerCase())
+              ? "danger"
+              : "warn";
+const sourceSeverity = (v: string) => ({
+    ecommerce: "info",
+    sales: "success",
+    pickup: "warn",
+    replacement: "danger",
+    return_pickup: "secondary",
+    stock_transfer: "contrast",
+} as Record<string, string>)[String(v || "").toLowerCase()] || "secondary";
 const formatDate = (v: any) =>
     v
         ? new Intl.DateTimeFormat("en-US", {

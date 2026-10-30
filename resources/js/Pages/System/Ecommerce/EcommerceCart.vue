@@ -56,7 +56,7 @@
                 <div v-for="item in group.items" :key="item.id" class="border-b border-slate-200 px-1 py-4 last:border-b-0">
                   <div class="flex items-start gap-3">
                     <Checkbox :modelValue="selectedIdsForStore(group.store_id).includes(item.id)" binary @update:modelValue="(checked) => toggleSelected(group.store_id, item.id, checked)" />
-                    <img :src="item.image || '/F.svg'" :alt="item.product_name" class="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                    <img :src="item.image || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
                     <div class="min-w-0 flex-1">
                       <p class="text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                       <p class="text-xs text-slate-500">{{ item.variation_name || item.variation_sku || 'Standard' }}</p>
@@ -93,7 +93,7 @@
                     <template #body="{ data }">
                       <div class="flex items-start justify-between gap-3">
                         <div class="flex min-w-0 items-start gap-3">
-                          <img :src="data.image || '/F.svg'" :alt="data.product_name" class="h-14 w-14 rounded-lg border border-slate-200 object-cover" />
+                          <img :src="data.image || '/F.svg'" :alt="data.product_name" loading="lazy" decoding="async" class="h-14 w-14 rounded-lg border border-slate-200 object-cover" />
                           <div class="min-w-0">
                             <p class="truncate text-sm font-semibold text-slate-900">{{ data.product_name }}</p>
                             <p class="truncate text-xs text-slate-500">Variant: {{ data.variation_name || data.variation_sku || 'Standard' }}</p>
@@ -304,22 +304,14 @@ async function loadCartGroups() {
   try {
     const cartsRes = await ecommerceService.getCarts()
     const carts = cartsRes.data?.data || []
-
-    const details = await Promise.all(
-      carts.map(async (c: any) => {
-        const storeId = Number(c.store_id)
-        const cartRes = await ecommerceService.getCart({ store_id: storeId })
-        const data = cartRes.data?.data || {}
-        return {
-          store_id: storeId,
-          store_name: String(c.store_name || data?.store_name || 'Store'),
-          items: Array.isArray(data.items) ? data.items : [],
-          summary: data.summary || {},
-        } as CartGroup
-      }),
-    )
-
-    cartGroups.value = details.filter((g) => g.items.length)
+    cartGroups.value = carts
+      .map((cart: any) => ({
+        store_id: Number(cart.store_id),
+        store_name: String(cart.store_name || 'Store'),
+        items: Array.isArray(cart.items) ? cart.items : [],
+        summary: cart.summary || {},
+      } as CartGroup))
+      .filter((group: CartGroup) => group.items.length)
 
     for (const group of cartGroups.value) {
       const storeId = group.store_id

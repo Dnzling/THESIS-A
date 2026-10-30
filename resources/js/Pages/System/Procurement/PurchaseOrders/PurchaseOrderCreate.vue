@@ -718,6 +718,7 @@ const prefillFromRFQ = async (rfqId: number) => {
         ? selectedApprovedFeedbacks.map((feedback: any) => ({
             ...feedback.rfq_item,
             id: feedback.rfq_item_id || feedback.rfq_item?.id,
+            feedback_id: feedback.id,
             product: feedback.rfq_item?.product,
             quantity: feedback.rfq_item?.quantity,
             selected_supplier_id: feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
@@ -734,6 +735,7 @@ const prefillFromRFQ = async (rfqId: number) => {
           const product = item.product || {}
           return {
             id: `rfq-item-${item.id || Date.now()}`,
+            feedback_id: item.feedback_id || null,
             rfq_item_id: item.id || null,
             product_id: item.product_id || product.id || null,
             variation_id: item.variation_id || item.variation?.id || null,
@@ -926,6 +928,7 @@ let supplierLookupRequest = 0
 const loadEligibleSuppliers = async () => {
   const requestId = ++supplierLookupRequest
   const productIds = listedProductIds.value
+  const approvedFeedbackId = Number(route.query.feedback_id || 0)
 
   if (splitPoMode.value) {
     eligibleSuppliers.value = []
@@ -958,6 +961,24 @@ const loadEligibleSuppliers = async () => {
       display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
     }))
     eligibleSuppliers.value = options
+
+    // An RFQ's approved feedback determines the supplier. Do not replace it
+    // with the product-catalog supplier lookup, which may return a different
+    // supplier or omit a valid RFQ supplier.
+    if (approvedFeedbackId > 0 && form.supplier_id) {
+      const selectedOption = options.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+        || suppliers.value.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+      if (selectedOption && !options.some((supplier: any) => Number(supplier.id) === Number(selectedOption.id))) {
+        eligibleSuppliers.value.unshift({
+          ...selectedOption,
+          display_name: selectedOption.supplier_name || selectedOption.company_name || `Supplier #${selectedOption.id}`,
+        })
+      }
+      if (Number(selectedSupplier.value?.id) !== Number(form.supplier_id)) {
+        await onSupplierChange()
+      }
+      return
+    }
 
     const selectedIsEligible = options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
     if (isEditing.value && form.supplier_id && !selectedIsEligible) {
@@ -1076,7 +1097,9 @@ const onSupplierChange = async () => {
       }
 
       await loadProductsBySupplier(form.supplier_id)
-      syncItemUnitCostsFromProducts()
+      if (!Number(route.query.feedback_id || 0)) {
+        syncItemUnitCostsFromProducts()
+      }
       updateTotals()
     }
   } catch (error) {
@@ -1306,6 +1329,7 @@ const submitForm = async (confirmedSplitMode = false) => {
         items: form.items.map((item) => ({
         product_id: item.product_id,
         variation_id: item.variation_id || item.variation?.id || null,
+          feedback_id: item.feedback_id || null,
           rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost

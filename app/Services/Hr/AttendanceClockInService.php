@@ -49,24 +49,31 @@ class AttendanceClockInService
                 return ['schedule' => null, 'shift' => null, 'start_time' => null, 'is_rest_day' => true];
             }
 
-            if ($weekly->shift) {
-                $dailySchedule = $this->materializeSchedule(
-                    $employee,
-                    $date,
-                    $weekly->shift,
-                    null,
-                    $actorId,
-                    [
-                        'weekly_schedule_id' => $weekly->id,
-                        'start_time' => $weekly->start_time ?: $weekly->shift->start_time,
-                        'end_time' => $weekly->end_time ?: $weekly->shift->end_time,
-                    ]
-                );
+            $startTime = $weekly->start_time ?: $weekly->shift?->start_time;
+            $endTime = $weekly->end_time ?: $weekly->shift?->end_time;
+
+            if ($startTime) {
+                $dailySchedule = $weekly->shift
+                    ? $this->materializeSchedule(
+                        $employee,
+                        $date,
+                        $weekly->shift,
+                        null,
+                        $actorId,
+                        [
+                            'weekly_schedule_id' => $weekly->id,
+                            'start_time' => $startTime,
+                            'end_time' => $endTime,
+                        ]
+                    )
+                    : null;
 
                 return [
                     'schedule' => $dailySchedule,
                     'shift' => $weekly->shift,
-                    'start_time' => $weekly->start_time ?: $weekly->shift->start_time,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'weekly_schedule' => $weekly,
                     'is_rest_day' => false,
                 ];
             }
@@ -117,14 +124,14 @@ class AttendanceClockInService
             return ['status' => 'present', 'late_minutes' => 0];
         }
 
-        if (!$resolved['shift'] || !$resolved['start_time']) {
+        if (empty($resolved['start_time'])) {
             return ['status' => 'unscheduled', 'late_minutes' => 0];
         }
 
         $clockInAt = Carbon::instance($clockInAt)->setTimezone($timezone);
         $shiftStart = $this->combineDateAndTime($date, $resolved['start_time'], $timezone);
         $minutesAfterStart = (int) max(0, $shiftStart->diffInMinutes($clockInAt, false));
-        $shiftGrace = (int) ($resolved['shift']->grace_period_minutes ?? 15);
+        $shiftGrace = (int) ($resolved['shift']?->grace_period_minutes ?? 15);
         $gracePeriod = array_key_exists('gracePeriod', $attendanceRules)
             ? max(0, (int) $attendanceRules['gracePeriod'])
             : $shiftGrace;

@@ -29,7 +29,7 @@
                   <button type="button" class="absolute right-0 top-0 z-10 grid h-7 w-7 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-600"
                     aria-label="Remove from comparison" @click="removeProduct(product.id)"><i class="pi pi-times" /></button>
                   <button type="button" class="flex w-full min-w-0 items-start gap-2 pr-7 text-left" @click="viewProduct(product.id)">
-                    <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" class="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-cover" @error="onImageError" />
+                    <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async" class="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-cover" @error="onImageError" />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-[10px] font-semibold text-orange-600">{{ product.category || 'Furniture' }}</span>
                       <span class="mt-0.5 block line-clamp-2 break-words text-xs font-semibold leading-4 text-slate-900">{{ product.product_name }}</span>

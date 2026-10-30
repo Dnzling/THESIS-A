@@ -47,7 +47,7 @@
               class="block w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-600"
               @change="onAttachmentChange" />
             <p class="text-xs text-slate-500">JPG, PNG, or WebP up to 5 MB.</p>
-            <img v-if="attachmentPreview" :src="attachmentPreview" alt="Review photo preview"
+            <img v-if="attachmentPreview" :src="attachmentPreview" alt="Review photo preview" loading="lazy" decoding="async"
               class="h-24 w-24 rounded-xl border border-slate-200 object-cover" />
           </div>
 

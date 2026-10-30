@@ -1,33 +1,32 @@
 <template>
   <Toast />
-  <div class="min-h-screen bg-slate-50">
-    <div class="h-screen w-full bg-white">
-      <div class="grid h-full gap-0 lg:grid-cols-2">
-        <div class="flex flex-col justify-center p-8 lg:p-12">
-          <div class="mb-6 text-center sm:mb-8">
-            <div class="portal-title text-orange-500 text-2xl font-bold">Furnisync Shop</div>
-            <p class="text-sm text-slate-500 sm:mt-2 sm:text-lg">Log in to continue shopping in 3D</p>
+  <div class="min-h-screen bg-white">
+    <div class="grid min-h-screen w-full bg-white lg:grid-cols-2">
+        <div class="order-2 flex flex-col justify-center px-5 py-8 sm:p-8 lg:order-1 lg:p-12">
+          <div class="mb-5 text-center sm:mb-8">
+            <div class="portal-title text-xl font-bold text-orange-500 sm:text-2xl">Furnisync Shop</div>
+            <p class="mt-1 text-sm text-slate-500 sm:mt-2 sm:text-lg">Log in to continue shopping in 3D</p>
           </div>
 
           <Message v-if="status" severity="success" :closable="false" class="mb-5">
             {{ status }}
           </Message>
   
-          <form class="space-y-5 sm:space-y-6" @submit.prevent="submitLogin">
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-xl">Email</label>
+          <form class="mx-auto w-full max-w-md space-y-4 sm:space-y-6" @submit.prevent="submitLogin">
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Email</label>
               <InputText v-model="form.login" fluid placeholder="Email address"
-                class="px-3 py-2.5 text-base sm:px-4 sm:py-3 sm:text-lg" autocomplete="username" />
+                class="px-3 py-2.5 text-sm sm:px-4 sm:py-3 sm:text-base" autocomplete="username" />
             </div>
   
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-xl">Password</label>
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Password</label>
               <Password v-model="form.password" fluid :feedback="false" toggleMask placeholder="Password"
-                inputClass="rounded-xl border border-slate-300 px-3 py-2.5 text-base sm:px-4 sm:py-3 sm:text-lg"
+                inputClass="rounded-xl border border-slate-300 px-3 py-2.5 text-sm sm:px-4 sm:py-3 sm:text-base"
                 autocomplete="current-password" />
             </div>
   
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-row flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2 text-sm text-slate-700 sm:text-base">
                 <Checkbox v-model="rememberMe" inputId="rememberCustomer" :binary="true" />
                 <label for="rememberCustomer">Remember me</label>
@@ -38,7 +37,7 @@
             </div>
   
             <Button type="submit" :loading="isSubmitting" fluid severity="warn"
-              class="text-base font-semibold text-white sm:py-3 sm:text-xl">
+              class="text-sm font-semibold text-white sm:py-3 sm:text-base">
               Log In
             </Button>
   
@@ -55,10 +54,15 @@
           </form>
         </div>
   
-        <CustomerAuth3DHero class="h-full" title="Welcome Back!"
-          subtitle="Spin, zoom, and inspect your furniture picks before you check out."
-          footer="Continue your immersive shopping journey with Furnisync." />
-      </div>
+        <div class="order-2 hidden min-h-screen lg:order-2 lg:block">
+          <CustomerAuth3DHero class="h-full" title="Welcome Back!"
+            subtitle="Spin, zoom, and inspect your furniture picks before you check out."
+            footer="Continue your immersive shopping journey with Furnisync." />
+        </div>
+        <section class="order-1 bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-5 text-white lg:hidden">
+          <h2 class="text-2xl font-semibold">Welcome Back!</h2>
+          <p class="mt-2 max-w-sm text-sm leading-6 text-orange-50">Spin, zoom, and inspect your furniture picks before you check out.</p>
+        </section>
     </div>
   </div>
 

@@ -327,7 +327,6 @@ const exploreLinks = [
 const opportunityLinks = [
     { label: 'Become a Supplier', href: '/supplier/register' },
     { label: 'Find Jobs', href: '/job-portal' },
-    { label: 'Admin', href: '/super-admin/login' }
 ]
 
 const legalLinks = [

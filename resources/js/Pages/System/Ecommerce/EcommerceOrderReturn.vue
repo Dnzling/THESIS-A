@@ -61,7 +61,7 @@
               <button v-for="(item, index) in evidenceItems" :key="item.url" type="button"
                 class="group relative h-24 w-24 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                 :aria-label="`Preview ${item.name}`" @click="evidenceDialogVisible = true">
-                <img :src="item.url" :alt="item.name" class="h-full w-full object-cover" />
+                <img :src="item.url" :alt="item.name" loading="lazy" decoding="async" class="h-full w-full object-cover" />
                 <span class="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-1 text-[10px] text-white">Preview</span>
                 <span role="button" tabindex="0" aria-label="Remove photo"
                   class="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-600 shadow"
@@ -96,11 +96,11 @@
     >
       <template #item="{ item }">
         <div class="flex justify-center bg-black/5 rounded-lg overflow-hidden">
-          <img :src="item.url" :alt="item.name" class="max-h-[520px] w-auto object-contain" />
+          <img :src="item.url" :alt="item.name" loading="lazy" decoding="async" class="max-h-[520px] w-auto object-contain" />
         </div>
       </template>
       <template #thumbnail="{ item }">
-        <img :src="item.url" :alt="item.name" class="h-14 w-14 object-cover rounded-md" />
+        <img :src="item.url" :alt="item.name" loading="lazy" decoding="async" class="h-14 w-14 object-cover rounded-md" />
       </template>
     </Galleria>
     <div v-else class="py-10 text-center text-sm text-gray-600">No photos selected.</div>

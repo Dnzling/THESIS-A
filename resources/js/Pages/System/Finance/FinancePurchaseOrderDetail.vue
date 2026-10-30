@@ -517,13 +517,17 @@ const approvePO = async () => {
       life: 2000
     })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to approve purchase order', error)
+    const serverMessage = error?.response?.data?.message
+    const isSelfApprovalBlocked = String(serverMessage || '').toLowerCase().includes('self-approval')
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to approve purchase order',
-      life: 3000
+      summary: isSelfApprovalBlocked ? 'Approval Not Allowed' : 'Error',
+      detail: isSelfApprovalBlocked
+        ? 'You created this purchase order, and workflow settings do not allow self-approval for this amount. Ask another authorized finance approver to approve it.'
+        : serverMessage || 'Failed to approve purchase order',
+      life: 5000
     })
   }
 }

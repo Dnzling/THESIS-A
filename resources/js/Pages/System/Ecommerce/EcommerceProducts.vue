@@ -129,7 +129,7 @@
               class="group rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
               @click="goStore(store.id)">
               <div class="mx-auto h-16 w-16 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                <img :src="normalizeImageUrl(store.store_logo) || '/F.svg'" :alt="`${store.store_name} logo`" class="h-full w-full object-cover" @error="onImageError" />
+                <img :src="normalizeImageUrl(store.store_logo) || '/F.svg'" :alt="`${store.store_name} logo`" loading="lazy" decoding="async" class="h-full w-full object-cover" @error="onImageError" />
               </div>
               <p class="mt-3 truncate text-center text-xs font-semibold text-slate-900 group-hover:text-orange-600">{{ store.store_name }}</p>
               <p class="mt-1 text-center text-[10px] text-slate-400">{{ store.matching_products_count }} products · {{ store.sales_last_30_days }} sold in 30 days</p>
@@ -170,7 +170,7 @@
               </label>
               <div class="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6 lg:block lg:flex-1">
                 <button type="button" class="aspect-square overflow-hidden rounded-xl bg-slate-50 lg:block lg:w-full" @click="goProduct(item.id)">
-                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-full w-full object-contain" @error="onImageError" />
+                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-full w-full object-contain" @error="onImageError" />
                 </button>
                 <div class="flex min-w-0 flex-col items-start lg:mt-3">
                   <span class="text-[11px] font-semibold text-orange-600">{{ Math.round((item.score || 0) * 100) }}% match</span>
@@ -195,7 +195,7 @@
             </label>
             <div class="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6 lg:block lg:flex-1">
               <button type="button" class="relative aspect-square overflow-hidden rounded-xl bg-slate-50 lg:block lg:w-full" @click="goProduct(product.id)">
-                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" class="h-full w-full object-contain" @error="onImageError" />
+                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async" class="h-full w-full object-contain" @error="onImageError" />
                 <Badge v-if="product.discounted_price && Number(product.discounted_price) < Number(product.base_price)" :value="`${Math.round((1 - Number(product.discounted_price) / Number(product.base_price)) * 100)}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
               </button>
               <div class="flex min-w-0 flex-col items-start lg:mt-3">
@@ -226,7 +226,7 @@
         </div>
 
         <Paginator
-          v-if="(activeCategoryId || route.query.room) && totalProducts > perPage"
+          v-if="totalProducts > perPage"
           :first="(currentPage - 1) * perPage"
           :rows="perPage"
           :totalRecords="totalProducts"
@@ -249,7 +249,7 @@
           </div>
           <div class="flex gap-2 overflow-x-auto">
             <div v-for="item in comparisonProducts" :key="item.id" class="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-              <img :src="normalizeImageUrl(String(item.image || '')) || '/F.svg'" :alt="item.product_name" class="h-full w-full object-cover" />
+              <img :src="normalizeImageUrl(String(item.image || '')) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-full w-full object-cover" />
               <button type="button" class="absolute right-0 top-0 grid h-5 w-5 place-items-center rounded-bl-md bg-slate-900/75 text-white" @click="removeComparison(item.id)">
                 <i class="pi pi-times text-[9px]" />
               </button>
@@ -311,7 +311,7 @@ const products = ref<any[]>([])
 const topStores = ref<any[]>([])
 const activeCategoryName = ref('')
 const currentPage = ref(1)
-const perPage = 12
+const perPage = 24
 const totalProducts = ref(0)
 const activeCategoryId = computed(() => Number(route.query.category_id || 0))
 const pageMode = computed(() => route.name === 'ecommerce.new-products' ? 'new' : route.name === 'ecommerce.trending.view' ? 'trending' : 'shop')
@@ -652,8 +652,8 @@ async function loadProducts() {
   loading.value = true
   try {
     const response = await ecommerceService.getActiveStockProducts({
-      per_page: activeCategoryId.value || route.query.room ? perPage : 80,
-      page: activeCategoryId.value || route.query.room ? currentPage.value : 1,
+      per_page: perPage,
+      page: currentPage.value,
       search: search.value.trim() || undefined,
       sort: sort.value,
       color: selectedColor.value || undefined,
@@ -681,6 +681,7 @@ onMounted(() => {
 
 watch(() => route.query.search, (value) => {
   search.value = String(value || '')
+  currentPage.value = 1
   sort.value = 'match'
   selectedCategory.value = 'all'
   dssResults.value = []

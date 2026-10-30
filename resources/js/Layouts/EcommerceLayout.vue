@@ -1,7 +1,7 @@
 <template>
   <Head v-if="pageTitle" :title="pageTitle" />
   <div class="min-h-screen bg-linear-to-b from-[#e0e7f5] to-[#f6f9fd]">
-    <Toast />
+    <Toast class="ecommerce-toast" />
     <ConfirmDialog group="ecommerce-logout" />
     <div class="sticky top-0 z-30">
       <header class="hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
@@ -584,6 +584,16 @@ onUnmounted(() => {
   padding: 0 0.25rem !important;
   font-size: 0.65rem !important;
   line-height: 1.15rem !important;
+}
+
+@media (max-width: 767px) {
+  :deep(.ecommerce-toast.p-toast-top-right) {
+    top: calc(env(safe-area-inset-top, 0px) + 8.75rem) !important;
+    right: auto !important;
+    left: 50% !important;
+    width: min(24rem, calc(100vw - 1.5rem));
+    transform: translateX(-50%);
+  }
 }
 
 @media (max-width: 640px) {

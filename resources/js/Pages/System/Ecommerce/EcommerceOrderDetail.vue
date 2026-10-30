@@ -45,7 +45,7 @@
                 <p class="mt-1 text-xs text-slate-600">{{ formatTimelineDescription(item.description) }}</p>
                 <div v-if="proofUrls(item).length" class="mt-3 flex flex-wrap gap-3">
                   <button v-for="proof in proofUrls(item)" :key="proof.url" type="button" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50" @click="previewMedia(proof.url, proof.title)">
-                    <img :src="proof.url" :alt="proof.title" class="h-28 w-36 object-cover transition group-hover:scale-105" />
+                    <img :src="proof.url" :alt="proof.title" loading="lazy" decoding="async" class="h-28 w-36 object-cover transition group-hover:scale-105" />
                     <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-xs text-white">{{ proof.title }}</span>
                   </button>
                 </div>
@@ -135,7 +135,7 @@
             <div v-for="item in order.items || []" :key="item.id"
               class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
               <div class="flex min-w-0 items-center gap-3">
-                <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
+                <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product" loading="lazy" decoding="async"
                   class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
                 <div class="min-w-0">
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
@@ -305,7 +305,7 @@
                   <button v-for="proof in proofUrls(item)" :key="proof.url" type="button"
                     class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                     @click="previewMedia(proof.url, proof.title)">
-                    <img :src="proof.url" :alt="proof.title" class="h-28 w-36 object-cover transition group-hover:scale-105" />
+                    <img :src="proof.url" :alt="proof.title" loading="lazy" decoding="async" class="h-28 w-36 object-cover transition group-hover:scale-105" />
                     <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-xs text-white">{{ proof.title }}</span>
                   </button>
                 </div>
@@ -357,7 +357,7 @@
 
     <Dialog v-model:visible="mediaPreview.visible" modal :header="mediaPreview.title" class="w-full max-w-4xl">
       <div class="flex items-center justify-center rounded-lg bg-slate-50 p-2">
-        <img v-if="mediaPreview.url" :src="mediaPreview.url" alt="Delivery proof"
+        <img v-if="mediaPreview.url" :src="mediaPreview.url" alt="Delivery proof" loading="lazy" decoding="async"
           class="max-h-[70vh] w-auto rounded-lg object-contain" />
       </div>
       <template #footer>

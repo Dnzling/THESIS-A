@@ -110,6 +110,8 @@
                         v-if="category.icon_url"
                         :src="normalizeImageUrl(category.icon_url)"
                         :alt="category.category_name"
+                        loading="lazy"
+                        decoding="async"
                         class="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         @error="onImageError"
                     />
@@ -185,6 +187,8 @@
                                 '/F.svg'
                             "
                             :alt="product.product_name"
+                            loading="lazy"
+                            decoding="async"
                             class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                             @error="onImageError"
                         />
@@ -243,6 +247,8 @@
                     <img v-if="idea.image_url"
                         :src="idea.image_url"
                         :alt="idea.name"
+                        loading="lazy"
+                        decoding="async"
                         class="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-110"
                     />
                     <div v-else class="absolute inset-0 bg-gradient-to-br from-amber-200 via-orange-100 to-slate-200" />
@@ -309,6 +315,8 @@
                         <img
                             :src="normalizeImageUrl(product.image) || '/F.svg'"
                             :alt="product.product_name"
+                            loading="lazy"
+                            decoding="async"
                             class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                             @error="onImageError"
                         />
@@ -393,6 +401,8 @@
                         <img
                             :src="normalizeImageUrl(product.image) || '/F.svg'"
                             :alt="product.product_name"
+                            loading="lazy"
+                            decoding="async"
                             class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                             @error="onImageError"
                         />
@@ -562,17 +572,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
-import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import ecommerceService from '@/services/ecommerce.service'
 import axiosClient from '@/axios'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Skeleton from 'primevue/skeleton'
 import { useRecentlyViewedProducts } from '@/composables/useRecentlyViewedProducts'
+
+const Model3DPreview = defineAsyncComponent(() => import('@/Components/merchandising/Model3DPreview.vue'))
 
 defineOptions({ layout: EcommerceMobileWrapper })
 

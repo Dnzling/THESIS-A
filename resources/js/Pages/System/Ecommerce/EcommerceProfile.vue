@@ -218,7 +218,7 @@
                 </div>
                 <div class="mt-3 space-y-2">
                   <div v-for="item in getReturnedItems(order)" :key="item.id" class="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-                    <img v-if="item.image" :src="item.image" :alt="item.product_name" class="h-12 w-12 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                    <img v-if="item.image" :src="item.image" :alt="item.product_name" loading="lazy" decoding="async" class="h-12 w-12 shrink-0 rounded-lg border border-slate-200 object-cover" />
                     <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-400"><i class="pi pi-image" /></span>
                     <div class="min-w-0 flex-1">
                       <p class="truncate font-semibold text-slate-800">{{ item.product_name }}</p>

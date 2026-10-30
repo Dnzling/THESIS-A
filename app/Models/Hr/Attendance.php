@@ -157,7 +157,7 @@ class Attendance extends Model
      */
     public function calculateLate(): void
     {
-        if (!$this->shift || !$this->clock_in) {
+        if (!$this->clock_in) {
             return;
         }
 
@@ -166,12 +166,21 @@ class Attendance extends Model
         $attendanceRules = $settings['hr_attendance_rules'] ?? [];
         $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
         $date = $this->attendance_date->toDateString();
-        $scheduleMetadata = is_array($this->schedule?->metadata) ? $this->schedule->metadata : [];
-        $resolved = [
-            'is_rest_day' => (bool) $this->is_restday_work,
-            'shift' => $this->shift,
-            'start_time' => $scheduleMetadata['start_time'] ?? $this->shift->start_time,
-        ];
+        $resolved = app(AttendanceClockInService::class)->resolveSchedule(
+            $employee,
+            $date,
+            $this->clock_in->copy()->setTimezone($timezone),
+        );
+
+        if (empty($resolved['start_time']) && !$resolved['is_rest_day'] && $this->shift) {
+            $scheduleMetadata = is_array($this->schedule?->metadata) ? $this->schedule->metadata : [];
+            $resolved = [
+                'is_rest_day' => (bool) $this->is_restday_work,
+                'shift' => $this->shift,
+                'start_time' => $scheduleMetadata['start_time'] ?? $this->shift->start_time,
+            ];
+        }
+
         $calculated = app(AttendanceClockInService::class)->calculateStatus(
             $resolved,
             $this->clock_in->copy()->setTimezone($timezone),

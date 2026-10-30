@@ -24,7 +24,7 @@
       <article v-for="product in products" :key="product.id"
         class="group flex min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl sm:block">
         <div class="relative aspect-square w-32 shrink-0 cursor-pointer overflow-hidden bg-slate-100 sm:w-auto" @click="viewProduct(product.id)">
-          <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+          <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async"
             class="h-full w-full object-cover transition duration-500 group-hover:scale-105" @error="onImageError" />
           <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger"
             class="!absolute !left-3 !top-3 !text-[10px]" />

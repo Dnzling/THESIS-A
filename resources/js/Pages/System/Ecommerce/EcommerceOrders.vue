@@ -44,7 +44,7 @@
               <div v-for="item in group.items" :key="`${item.order_id}-${item.item_id}`"
                 class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
                 <div class="flex min-w-0 items-center gap-3">
-                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
+                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product" loading="lazy" decoding="async"
                     class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
                   <div class="min-w-0">
                     <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>

@@ -91,6 +91,8 @@
                       <img
                         v-if="item.image_url"
                         :src="item.image_url"
+                        loading="lazy"
+                        decoding="async"
                         :alt="item.product_name"
                         class="h-12 w-12 shrink-0 rounded-lg border border-slate-200 object-cover"
                       />

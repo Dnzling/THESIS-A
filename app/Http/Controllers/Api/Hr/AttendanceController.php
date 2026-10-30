@@ -589,13 +589,13 @@ class AttendanceController extends Controller
             $schedule = $resolved['schedule'];
             $calculated = $attendanceClockIn->calculateStatus($resolved, $clockInAt, $today, $timezone, $attendanceRules);
             $lateSeconds = 0;
-            if (!$resolved['is_rest_day'] && $resolved['shift'] && $resolved['start_time']) {
+            if (!$resolved['is_rest_day'] && !empty($resolved['start_time'])) {
                 $startTime = $resolved['start_time'] instanceof \Carbon\CarbonInterface
                     ? $resolved['start_time']->format('H:i:s') : (string) $resolved['start_time'];
                 $shiftStart = Carbon::parse($today . ' ' . $startTime, $timezone);
                 $graceMinutes = array_key_exists('gracePeriod', $attendanceRules)
                     ? max(0, (int) $attendanceRules['gracePeriod'])
-                    : max(0, (int) ($resolved['shift']->grace_period_minutes ?? 15));
+                    : max(0, (int) ($resolved['shift']?->grace_period_minutes ?? 15));
                 $lateSeconds = max(0, (int) $shiftStart->addMinutes($graceMinutes)->diffInSeconds($clockInAt, false));
             }
 

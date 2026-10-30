@@ -373,6 +373,7 @@ class PurchaseOrderController extends Controller
             'status' => 'nullable|in:draft,pending_finance_approval',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.feedback_id' => 'nullable|integer|exists:supplier_rfq_feedbacks,id',
             'items.*.rfq_item_id' => 'nullable|exists:rfq_items,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
             'items.*.quantity_ordered' => 'required|integer|min:1',
@@ -578,22 +579,30 @@ class PurchaseOrderController extends Controller
                         : null;
                     $approvedFeedback = null;
                     if (!empty($validated['rfq_id'])) {
-                        $approvedFeedback = SupplierRFQFeedback::query()
+                        $feedbackQuery = SupplierRFQFeedback::query()
                             ->where('rfq_id', $validated['rfq_id'])
-                            ->where('rfq_item_id', $item['rfq_item_id'] ?? 0)
                             ->where('status', 'approved')
                             ->whereHas('supplierPortal', fn ($query) => $query->where('supplier_id', $validated['supplier_id']))
-                            ->first();
+                            ->whereHas('rfq', fn ($query) => $query->where('store_id', $storeId));
+
+                        if (!empty($item['feedback_id'])) {
+                            $feedbackQuery->whereKey($item['feedback_id']);
+                        } else {
+                            $feedbackQuery->where('rfq_item_id', $item['rfq_item_id'] ?? 0);
+                        }
+
+                        $approvedFeedback = $feedbackQuery->first();
 
                         if (!$approvedFeedback) {
                             throw ValidationException::withMessages([
-                                "items.{$index}.rfq_item_id" => 'This item does not have an approved quotation from the selected supplier.',
+                                "items.{$index}.feedback_id" => 'This item does not have an approved quotation from the selected supplier.',
                             ]);
                         }
 
-                        if ((int) $approvedFeedback->rfqItem?->product_id !== (int) $item['product_id']) {
+                        if ((int) $approvedFeedback->rfq_item_id !== (int) ($item['rfq_item_id'] ?? 0)
+                            || (int) $approvedFeedback->rfqItem?->product_id !== (int) $item['product_id']) {
                             throw ValidationException::withMessages([
-                                "items.{$index}.product_id" => 'The product does not match the approved RFQ item.',
+                                "items.{$index}.rfq_item_id" => 'The product does not match the approved RFQ item.',
                             ]);
                         }
                     }
@@ -961,16 +970,12 @@ class PurchaseOrderController extends Controller
             ? 'finance.purchase_orders.approve'
             : 'procurement.purchase_orders.approve';
         $settings = ProcurementSettings::forStore((int) $user->store_id);
-        $isSelfApproval = $this->isSelfApproval($po, $user);
 
-        if ($isSelfApproval && $settings->enforce_separation_of_duties) {
-            $canBypass = $settings->isSelfApprovalAllowedForAmount((float) $po->total_amount);
-            if (!$canBypass) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Self-approval is restricted by workflow settings for this amount.',
-                ], 403);
-            }
+        if (!$this->userHasAnyPermission([$approvalPermission], $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to approve this purchase order.',
+            ], 403);
         }
 
         // Check if this permission has already approved

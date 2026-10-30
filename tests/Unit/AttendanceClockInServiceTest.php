@@ -27,6 +27,18 @@ it('marks clock-ins beyond grace as late using the store attendance setting', fu
     ))->toBe(['status' => 'late', 'late_minutes' => 13]);
 });
 
+it('calculates attendance from weekly schedule hours without a linked shift', function () {
+    $service = new AttendanceClockInService();
+
+    expect($service->calculateStatus(
+        ['is_rest_day' => false, 'shift' => null, 'start_time' => '09:00:00'],
+        Carbon::parse('2026-09-25 09:20:00', 'Asia/Manila'),
+        '2026-09-25',
+        'Asia/Manila',
+        ['gracePeriod' => 5],
+    ))->toBe(['status' => 'late', 'late_minutes' => 15]);
+});
+
 it('flags clock-ins without a resolved shift for schedule review', function () {
     $service = new AttendanceClockInService();
 

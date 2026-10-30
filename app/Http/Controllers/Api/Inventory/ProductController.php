@@ -114,7 +114,6 @@ class ProductController extends Controller
                 ? (float) $discountedPrice
                 : null,
             'cost_price' => $costPrice !== null ? (float) $costPrice : null,
-            'reorder_point' => (int) ($data['reorder_point'] ?? 10),
             'is_active' => $data['is_active'] ?? true,
             'unit_of_measurement' => $data['unit_of_measurement'] ?? null,
             'supplier_name' => $data['supplier_name'] ?? null,

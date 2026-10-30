@@ -1,44 +1,43 @@
 <template>
   <Toast />
-  <div class="min-h-screen bg-slate-50">
-    <div class="h-screen w-full bg-white">
-      <div class="grid h-full gap-0 lg:grid-cols-2">
-        <div class="flex flex-col justify-center p-8 lg:p-12">
-          <div class="mb-6 text-center sm:mb-8">
-            <div class="portal-title text-orange-500 text-2xl font-bold">Furnisync Shop</div>
-            <p class="mt-2 text-sm text-slate-500 sm:text-lg">Create your customer account to start shopping</p>
+  <div class="min-h-screen bg-white">
+    <div class="grid min-h-screen w-full bg-white lg:grid-cols-2">
+        <div class="order-2 flex flex-col justify-center px-5 py-8 sm:p-8 lg:order-1 lg:p-12">
+          <div class="mb-5 text-center sm:mb-8">
+            <div class="portal-title text-xl font-bold text-orange-500 sm:text-2xl">Furnisync Shop</div>
+            <p class="mt-1 text-sm text-slate-500 sm:mt-2 sm:text-lg">Create your customer account to start shopping</p>
           </div>
   
-          <form class="space-y-5 sm:space-y-6" @submit.prevent="submitRegister">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div class="space-y-2">
-                <label class="text-base font-semibold text-slate-900 sm:text-lg">First Name</label>
+          <form class="mx-auto w-full max-w-md space-y-4 sm:space-y-6" @submit.prevent="submitRegister">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <div class="space-y-1.5 sm:space-y-2">
+                <label class="text-sm font-semibold text-slate-900 sm:text-base">First Name</label>
                 <InputText :model-value="form.fname" fluid placeholder="First name" autocomplete="given-name" @update:model-value="form.fname = sanitizeName($event)" />
                 <small v-if="validationErrors.fname" class="text-xs text-red-600">{{ validationErrors.fname }}</small>
               </div>
-              <div class="space-y-2">
-                <label class="text-base font-semibold text-slate-900 sm:text-lg">Last Name</label>
+              <div class="space-y-1.5 sm:space-y-2">
+                <label class="text-sm font-semibold text-slate-900 sm:text-base">Last Name</label>
                 <InputText :model-value="form.lname" fluid placeholder="Last name" autocomplete="family-name" @update:model-value="form.lname = sanitizeName($event)" />
                 <small v-if="validationErrors.lname" class="text-xs text-red-600">{{ validationErrors.lname }}</small>
               </div>
             </div>
   
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">Email</label>
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Email</label>
               <InputText v-model="form.email" type="email" fluid placeholder="Email address" autocomplete="email"
                 :class="{ 'p-invalid': validationErrors.email }" @blur="validateEmail" @input="validationErrors.email = ''" />
               <small v-if="validationErrors.email" class="text-xs text-red-600">{{ validationErrors.email }}</small>
             </div>
   
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">Birthday</label>
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Birthday</label>
               <DatePicker v-model="form.birthday" :maxDate="minimumAdultDate" fluid showIcon dateFormat="yy-mm-dd"
                 placeholder="Select birthday" />
             </div>
   
   
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">Password</label>
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Password</label>
               <Password v-model="form.password" fluid :feedback="false" autocomplete="new-password"
                 name="new_password" toggleMask
                 placeholder="Password"
@@ -66,15 +65,15 @@
                 </div>
               </Transition>
             </div>
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">Confirm Password</label>
+            <div class="space-y-1.5 sm:space-y-2">
+              <label class="text-sm font-semibold text-slate-900 sm:text-base">Confirm Password</label>
               <Password v-model="form.confirmPassword" autocomplete="new-password"
   name="new_password" fluid :feedback="false" toggleMask
                 placeholder="Confirm password" />
             </div>
   
   
-            <div class="flex items-start gap-2 text-sm sm:text-base">
+            <div class="flex items-start gap-2 text-xs sm:text-sm">
               <Checkbox v-model="acceptedTerms" inputId="acceptedTerms" :binary="true" />
               <div class="leading-6 text-slate-700">
                 <label for="acceptedTerms" class="cursor-pointer">I agree to the</label>
@@ -85,7 +84,7 @@
             </div>
   
             <Button type="submit" :loading="isSubmitting" fluid severity="warn"
-              class="text-base font-semibold text-white sm:py-3 sm:text-xl">
+              class="text-sm font-semibold text-white sm:py-3 sm:text-base">
               Register
             </Button>
   
@@ -97,10 +96,15 @@
           </form>
         </div>
   
-        <CustomerAuth3DHero class="h-full" title="Register to join!"
-          subtitle="Save favorites, build a cart, and inspect every piece from every angle."
-          footer="Furnisync makes furniture shopping feel real before delivery." />
-      </div>
+        <div class="order-2 hidden min-h-screen lg:order-2 lg:block">
+          <CustomerAuth3DHero class="h-full" title="Register to join!"
+            subtitle="Save favorites, build a cart, and inspect every piece from every angle."
+            footer="Furnisync makes furniture shopping feel real before delivery." />
+        </div>
+        <section class="order-1 bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-5 text-white lg:hidden">
+          <h2 class="text-2xl font-semibold">Welcome to Furnisync Shop</h2>
+          <p class="mt-2 max-w-sm text-sm leading-6 text-orange-50">Save favorites, build a cart, and explore furniture in 3D.</p>
+        </section>
     </div>
   </div>
 

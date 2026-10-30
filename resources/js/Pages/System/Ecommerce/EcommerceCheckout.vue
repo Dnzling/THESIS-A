@@ -248,7 +248,7 @@
             <div class="border-t border-slate-200 pt-3">
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
               <div v-for="item in checkoutItems" :key="`summary-${item.id}`" class="flex gap-2 py-2 text-xs">
-                <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-11 w-11 rounded-lg border border-slate-200 object-cover" @error="onImageError" />
+                <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-11 w-11 rounded-lg border border-slate-200 object-cover" @error="onImageError" />
                 <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-slate-900">{{ item.product_name }}</span><span class="text-slate-500">Qty {{ item.quantity }}</span></span>
                 <span class="font-semibold text-slate-900">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
               </div>
@@ -310,7 +310,7 @@
     <Drawer v-model:visible="mobileSummaryVisible" position="top" header="Order summary" class="!h-auto max-h-[85vh] lg:hidden">
       <div class="max-h-[65vh] space-y-4 overflow-y-auto text-sm">
         <div v-for="item in checkoutItems" :key="`mobile-summary-${item.id}`" class="flex gap-3 border-b border-slate-100 pb-3">
-          <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" class="h-14 w-14 rounded-lg object-cover" @error="onImageError" />
+          <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-14 w-14 rounded-lg object-cover" @error="onImageError" />
           <div class="min-w-0 flex-1"><p class="truncate font-semibold">{{ item.product_name }}</p><p class="text-xs text-slate-500">Qty {{ item.quantity }}</p></div>
           <span class="font-semibold">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
         </div>
@@ -530,7 +530,8 @@ const authStore = useAuthStore()
 const placing = ref(false)
 const paymongoCreating = ref(false)
 const applyingVoucher = ref(false)
-const loading = ref(false)
+const loading = ref(true)
+const checkoutInitializing = ref(true)
 const checkingPaymongoResult = ref(false)
 const completedPaymongoOrderId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
@@ -935,12 +936,12 @@ watch(selectedAddressId, () => {
 watch(
   [selectedAddressId, () => checkoutItems.value.length, customerLatitude, customerLongitude],
   () => {
-    estimateShippingFee()
+    if (!checkoutInitializing.value) estimateShippingFee()
   },
 )
 
 watch(bulkTripEnabled, () => {
-  estimateShippingFee()
+  if (!checkoutInitializing.value) estimateShippingFee()
 })
 
 async function loadAddressTemplates() {
@@ -1010,7 +1011,6 @@ async function saveNewAddress() {
 
     showAddAddressForm.value = false
     resetAddressForm()
-    estimateShippingFee()
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to save address' })
   }
@@ -1040,7 +1040,6 @@ async function loadCheckoutItems() {
     showAlert({ severity: 'warn', summary: 'Cart Empty', detail: 'Please select cart items first.' })
     router.push({ name: 'ecommerce.cart' })
   }
-  await estimateShippingFee()
 }
 
 function toggleCustomization(itemId: number) {
@@ -1081,7 +1080,7 @@ async function applyVoucher() {
 }
 
 async function estimateShippingFee() {
-  if (!checkoutItems.value.length) return
+  if (checkoutInitializing.value || !checkoutItems.value.length) return
 
   const address = selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
@@ -1583,13 +1582,15 @@ onMounted(async () => {
   }
 
   loading.value = true
+  checkoutInitializing.value = true
   try {
-    await fetchProvinces()
-    await loadAddressTemplates()
-    await loadCheckoutItems()
-    await loadAvailablePaymentMethods()
-    await estimateShippingFee()
+    await Promise.all([fetchProvinces(), loadAddressTemplates(), loadCheckoutItems()])
+    checkoutInitializing.value = false
+    loading.value = false
+    void loadAvailablePaymentMethods()
+    void estimateShippingFee()
   } finally {
+    checkoutInitializing.value = false
     loading.value = false
   }
 })
