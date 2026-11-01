@@ -63,13 +63,23 @@ class WholesaleQuoteController extends Controller
             ]);
         $products = BranchInventory::query()->where('store_id', $storeId)
             ->whereHas('product', fn ($query) => $query->where('product_type', 'finished_good')->where('is_active', true))
-            ->with(['product:id,product_name,sku,base_price', 'branch:id,name'])
+            ->with([
+                'product:id,product_name,sku,base_price',
+                'variation:id,variation_name,variation_sku,color,size,material',
+                'branch:id,name',
+            ])
             ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_available'])
             ->map(fn ($stock) => [
                 'id' => $stock->id, 'branch_id' => $stock->branch_id,
                 'branch_name' => $stock->branch?->name,
                 'product_name' => $stock->product?->product_name,
-                'sku' => $stock->product?->sku,
+                'variant_name' => $stock->variation?->variation_name,
+                'variant_specs' => collect([
+                    $stock->variation?->color,
+                    $stock->variation?->size,
+                    $stock->variation?->material,
+                ])->filter()->implode(' · '),
+                'sku' => $stock->variation?->variation_sku ?: $stock->product?->sku,
                 'available' => (int) $stock->quantity_available,
                 'base_price' => (float) ($stock->product?->base_price ?? 0),
             ]);

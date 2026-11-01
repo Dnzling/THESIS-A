@@ -272,6 +272,7 @@ const searchLoading = ref(false)
 const searchError = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 let searchRequest = 0
+let notificationCountPoller: number | null = null
 
 async function loadSearchSuggestions(term: string, request: number) {
   searchLoading.value = true
@@ -522,7 +523,6 @@ async function loadChatThreads() {
 watch(() => route.fullPath, () => {
   loadCartCount()
   loadFavoriteCount()
-  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(() => page.url, () => {
   productSearch.value = searchFromUrl()
@@ -531,7 +531,7 @@ watch(isLoggedIn, () => {
   loadCartCount()
   loadFavoriteCount()
   loadChatThreads()
-  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
+  loadUnreadNotificationCount()
 })
 
 onMounted(() => {
@@ -539,7 +539,8 @@ onMounted(() => {
   loadCartCount()
   loadFavoriteCount()
   loadChatThreads()
-  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
+  loadUnreadNotificationCount()
+  notificationCountPoller = window.setInterval(loadUnreadNotificationCount, 45000)
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
   window.addEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
@@ -549,6 +550,8 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', handleOutsideSearch)
   clearTimeout(searchTimer)
   searchRequest++
+  if (notificationCountPoller !== null) window.clearInterval(notificationCountPoller)
+  notificationCountPoller = null
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
   window.removeEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.removeEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)

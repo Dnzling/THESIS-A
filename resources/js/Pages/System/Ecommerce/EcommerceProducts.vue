@@ -317,10 +317,10 @@ const activeCategoryId = computed(() => Number(route.query.category_id || 0))
 const pageMode = computed(() => route.name === 'ecommerce.new-products' ? 'new' : route.name === 'ecommerce.trending.view' ? 'trending' : 'shop')
 const pageHeading = computed(() => route.query.room
   ? `Shop ${String(route.query.room).replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}`
-  : pageMode.value === 'new' ? 'New Products This Month' : pageMode.value === 'trending' ? 'Trending Products' : 'Featured Products')
+  : pageMode.value === 'new' ? 'New Products' : pageMode.value === 'trending' ? 'Trending Products' : 'Featured Products')
 const pageDescription = computed(() => route.query.room
   ? `${totalProducts.value} available products`
-  : pageMode.value === 'new' ? `${filteredProducts.value.length} products added this month` : pageMode.value === 'trending' ? 'Popular products ranked by monthly sales' : `Showing ${filteredProducts.value.length} items`)
+  : pageMode.value === 'new' ? `${totalProducts.value} products added in the last 30 days` : pageMode.value === 'trending' ? 'Popular products ranked by monthly sales' : `Showing ${filteredProducts.value.length} items`)
 const search = ref(String(route.query.search || ''))
 const selectedCategory = ref<string>('all')
 const selectedColor = ref('')

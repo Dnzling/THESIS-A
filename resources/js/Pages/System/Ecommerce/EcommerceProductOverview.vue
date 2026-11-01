@@ -164,7 +164,7 @@
                   <span class="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                     <img :src="variationImageUrl(variation)" :alt="variationLabel(variation)" loading="lazy" decoding="async"
                       class="h-full w-full object-contain p-1 transition duration-200 group-hover:scale-105"
-                      loading="lazy" @error="onImageError" />
+                      @error="onImageError" />
                     <span v-if="Number(selectedVariationId) === Number(variation.id)"
                       class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-orange-500 text-white shadow">
                       <i class="pi pi-check text-[8px]" />

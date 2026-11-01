@@ -11,9 +11,6 @@ importers:
       '@remotion/cli':
         specifier: ^4.0.372
         version: 4.0.535(postcss@8.5.30)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)
-      '@remotion/google-fonts':
-        specifier: ^4.0.372
-        version: 4.0.535(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.3.1)
@@ -391,9 +388,6 @@ packages:
 
   '@remotion/elevenlabs@4.0.535':
     resolution: {integrity: sha512-zlahnfRRtwUKFWzjC3pjgqIFawlYLnoRqJGK58MU/nldz15x3ByIykM9w4AcR4pL/4cBC1J7pnwUFOwPxhl1Jg==}
-
-  '@remotion/google-fonts@4.0.535':
-    resolution: {integrity: sha512-0GylXu/KqgWW1mMtjhy+g1RldEapKbuNDj48dUKKnNOFB0QftfF7FgXYPWTbO8Y79IUf8NoI/17IknSPKpOnLg==}
 
   '@remotion/licensing@4.0.535':
     resolution: {integrity: sha512-rLh99jYpCHrJVk0LHA5fvHX0YBGI4TPQnwEVmHAQyxCOGG7jw0cbKC9nYRKyOAbObfHwzwl7Dk1Xg0k0t2yqig==}
@@ -1629,13 +1623,13 @@ snapshots:
       '@remotion/timeline-utils': 4.0.535(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@rspack/core': 1.7.11
       '@rspack/plugin-react-refresh': 1.6.1(react-refresh@0.18.0)
-      css-loader: 7.1.4(@rspack/core@1.7.11)(webpack@5.105.0(postcss@8.5.30))
+      css-loader: 7.1.4(@rspack/core@1.7.11)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.30))
       esbuild: 0.28.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-refresh: 0.18.0
       remotion: 4.0.535(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      style-loader: 4.0.0(webpack@5.105.0(postcss@8.5.30))
+      style-loader: 4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.30))
       webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.30)
     transitivePeerDependencies:
       - '@minify-html/node'
@@ -1738,13 +1732,6 @@ snapshots:
     dependencies:
       '@remotion/captions': 4.0.535
       zod: 4.5.4
-
-  '@remotion/google-fonts@4.0.535(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
-    dependencies:
-      remotion: 4.0.535(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-    transitivePeerDependencies:
-      - react
-      - react-dom
 
   '@remotion/licensing@4.0.535': {}
 
@@ -2245,7 +2232,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@7.1.4(@rspack/core@1.7.11)(webpack@5.105.0(postcss@8.5.30)):
+  css-loader@7.1.4(@rspack/core@1.7.11)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.30)):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.30)
       postcss: 8.5.30
@@ -2619,7 +2606,7 @@ snapshots:
 
   strip-final-newline@2.0.0: {}
 
-  style-loader@4.0.0(webpack@5.105.0(postcss@8.5.30)):
+  style-loader@4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.30)):
     dependencies:
       webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.30)
 

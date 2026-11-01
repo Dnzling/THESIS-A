@@ -219,7 +219,7 @@
 
               <Button
                 v-if="delivery.trip_id"
-                :label="`View Trip #${delivery.trip_id}`"
+                :label="`View ${delivery.trip_reference || tripReference(delivery.trip)}`"
                 icon="pi pi-external-link"
                 severity="secondary"
                 outlined
@@ -1316,7 +1316,9 @@ const openAssign = async () => {
   }
 }
 
-const tripReference = (trip: any) => `TRIP-${String(trip.id).padStart(6, '0')}`
+const tripReference = (trip: any) => trip?.id
+  ? `TRIP-${new Date(trip.created_at || Date.now()).getFullYear()}-${String(trip.id).padStart(6, '0')}`
+  : 'View Trip'
 
 const addDeliveryToTrip = async (tripId: number | string) => {
   if (assigningTripId.value) return

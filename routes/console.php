@@ -8,7 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('inventory:reorder-suggestions:auto-run')->everyMinute();
+Schedule::command('inventory:reorder-suggestions:auto-run')
+    ->dailyAt('00:05')
+    ->timezone('Asia/Manila')
+    ->withoutOverlapping();
 
 Schedule::call(function () {
     \App\Models\Ecommerce\EcommerceOrder::query()

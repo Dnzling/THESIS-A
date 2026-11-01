@@ -1,6 +1,10 @@
-# FurniSync Ecommerce Promo
+# FurniSync Ecommerce Promos
 
-A 60-second, 1920x1080 Remotion video focused on the FurniSync customer ecommerce experience.
+Three 60-second Remotion videos focused on the FurniSync customer ecommerce experience.
+
+- `FurniSyncEcommerce` uses generated interface mockups.
+- `FurniSyncImagePromo` animates the supplied FurniSync logo and mobile screenshots.
+- `FurniSyncVerticalPromo` recreates the interface as independently animated elements in a 1080x1920 portrait composition.
 
 ## Preview
 
@@ -10,7 +14,7 @@ pnpm install
 pnpm start
 ```
 
-Select `FurniSyncEcommerce` in Remotion Studio.
+Select either composition in Remotion Studio.
 
 ## Render
 
@@ -19,6 +23,22 @@ pnpm render
 ```
 
 The MP4 is written to `out/furnisync-ecommerce-promo.mp4`.
+
+To render the supplied-image version:
+
+```powershell
+pnpm render:images
+```
+
+The MP4 is written to `out/furnisync-ecommerce-image-promo.mp4`.
+
+To render the portrait animated-interface version:
+
+```powershell
+pnpm render:vertical
+```
+
+The MP4 is written to `out/furnisync-ecommerce-vertical-promo.mp4`.
 
 ## Structure
 
@@ -30,4 +50,4 @@ The MP4 is written to `out/furnisync-ecommerce-promo.mp4`.
 - 48–55s: order tracking
 - 55–60s: closing call to action
 
-The composition uses generated interface mockups and does not require live application data or external image assets.
+The image-based composition uses the files in `public/assets/` and does not require live application data.

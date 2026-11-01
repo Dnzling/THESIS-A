@@ -40,14 +40,20 @@ class BranchInventoryObserver
 
     }
 
+    public function created(BranchInventory $inventory): void
+    {
+        $this->manageAlerts($inventory);
+        $this->refreshReorderSuggestion($inventory);
+    }
+
     /**
      * Handle the BranchInventory "updated" event.
      * After a quantity change: generate/resolve alerts and log a transaction.
      */
     public function updated(BranchInventory $inventory): void
     {
-        $quantityChanged = $inventory->wasChanged('quantity_on_hand');
-        if (!$quantityChanged) {
+        $stockStateChanged = $inventory->wasChanged(['quantity_on_hand', 'quantity_available', 'reorder_point']);
+        if (!$stockStateChanged) {
             if ($inventory->shouldSuppressAutomaticTransactionLog()) {
                 $inventory->clearAutomaticTransactionLogSuppression();
             }
@@ -55,6 +61,7 @@ class BranchInventoryObserver
         }
 
         $this->manageAlerts($inventory);
+        $this->refreshReorderSuggestion($inventory);
 
         // The calling workflow writes a detailed reference-linked transaction.
         if ($inventory->shouldSuppressAutomaticTransactionLog()) {
@@ -62,7 +69,30 @@ class BranchInventoryObserver
             return;
         }
 
-        $this->logTransaction($inventory);
+        if ($inventory->wasChanged('quantity_on_hand')) {
+            $this->logTransaction($inventory);
+        }
+    }
+
+    private function refreshReorderSuggestion(BranchInventory $inventory): void
+    {
+        if (!$inventory->store_id || !$inventory->branch_id) {
+            return;
+        }
+
+        try {
+            app(\App\Services\Inventory\ReorderSuggestionService::class)->generateSuggestions(
+                (int) $inventory->store_id,
+                (int) $inventory->branch_id,
+                (int) $inventory->id,
+            );
+        } catch (\Throwable $exception) {
+            // Reorder suggestions are helpful automation, but must never block a stock transaction.
+            \Illuminate\Support\Facades\Log::warning('BranchInventoryObserver: Failed to refresh reorder suggestion.', [
+                'branch_inventory_id' => $inventory->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**

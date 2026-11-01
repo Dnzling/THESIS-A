@@ -66,6 +66,13 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     // Admin (Super Admin only)
     Route::middleware('role:super_admin')->group(function () use ($inertia) {
         $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
+        Route::get('/admin/activity-log', function () {
+            return Inertia::render('System/Shared/AuditLogs/Index', [
+                'title' => 'Platform Audit Logs',
+                'subtitle' => 'Platform-wide account and store activity',
+                'auditScope' => 'platform',
+            ]);
+        })->name('admin.activity-logs');
         $inertia('/admin/3d-model-requests', 'System/Admin/Model3dRequests', 'admin.3d-model-requests', '3D Model Requests');
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
@@ -97,6 +104,13 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     Route::middleware('role:owner')->group(function () use ($inertia) {
         $inertia('/store/positions/setup', 'System/StoreAdmin/PositionSetup', 'store.positions.setup', 'Position Setup');
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
+        Route::get('/store/settings/audit-logs', function () {
+            return Inertia::render('System/Shared/AuditLogs/Index', [
+                'title' => 'Store Audit Logs',
+                'subtitle' => 'Activity recorded for your store',
+                'auditScope' => 'store',
+            ]);
+        })->name('store.settings.audit-logs');
         Route::get('/store/settings', [WebStoreSettingsController::class, 'show'])
             ->name('store.settings');
         Route::get('/store/billing', [StoreBillingController::class, 'show'])

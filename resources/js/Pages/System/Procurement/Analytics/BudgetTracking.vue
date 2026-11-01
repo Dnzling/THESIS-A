@@ -1,290 +1,192 @@
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
+  <div class="space-y-5">
+    <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Budget Tracking</h2>
-        <p class="text-sm text-gray-500 mt-1">Monitor procurement spending against allocated budgets</p>
+        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Budget Tracking</h1>
+        <p class="mt-1 text-sm text-slate-500">Compare store budget allocations with approved and active purchase orders.</p>
       </div>
-      <Button
-        icon="pi pi-refresh"
-        rounded
-        text
-        @click="loadBudgetData"
-        :loading="loading"
-      />
+      <div class="flex items-end gap-2">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-slate-600">Year</label>
+          <Select v-model="selectedYear" :options="yearOptions" class="w-28" @change="loadBudgetData" />
+        </div>
+        <Button icon="pi pi-refresh" label="Refresh" size="small" severity="secondary" outlined :loading="loading" @click="loadBudgetData" />
+      </div>
+    </header>
+
+    <Message v-if="loadError" severity="error" :closable="false">{{ loadError }}</Message>
+    <div v-if="loading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Skeleton v-for="item in 4" :key="item" height="6rem" borderRadius="0.75rem" />
     </div>
+    <section v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Card v-for="card in summaryCards" :key="card.label" class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs font-medium text-slate-500">{{ card.label }}</p>
+          <p class="mt-2 text-xl font-semibold text-slate-900">{{ card.value }}</p>
+          <p v-if="card.hint" class="mt-1 text-xs text-slate-500">{{ card.hint }}</p>
+        </template>
+      </Card>
+    </section>
 
-    <!-- Overall Budget Summary -->
-    <Card>
-      <template #title>Annual Budget Summary</template>
+    <Card class="border border-slate-200 shadow-none">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p class="text-gray-600 text-sm">Total Annual Budget</p>
-            <p class="text-2xl font-bold text-blue-600 mt-1">₱ {{ formatNumber(totalBudget) }}</p>
+            <p class="text-sm font-semibold text-slate-900">Annual Budget Utilization</p>
+            <p class="mt-1 text-xs text-slate-500">Store-wide budgets compared with commitments in approved and active POs.</p>
           </div>
-          <div>
-            <p class="text-gray-600 text-sm">YTD Spent</p>
-            <p class="text-2xl font-bold text-green-600 mt-1">₱ {{ formatNumber(ytdSpent) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ ytdPercentage }}% utilized</p>
-          </div>
-          <div>
-            <p class="text-gray-600 text-sm">Remaining Budget</p>
-            <p class="text-2xl font-bold text-orange-600 mt-1">₱ {{ formatNumber(remainingBudget) }}</p>
-          </div>
-          <div>
-            <p class="text-gray-600 text-sm">Monthly Avg</p>
-            <p class="text-2xl font-bold text-purple-600 mt-1">₱ {{ formatNumber(monthlyAvg) }}</p>
-          </div>
+          <Badge :value="budgetData.budget_status || 'On Track'" :severity="budgetStatusSeverity(budgetData.budget_status)" />
         </div>
-
-        <!-- Overall Progress -->
-        <div class="mt-6">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-sm font-semibold">Budget Utilization</span>
-            <span class="text-sm text-gray-600">{{ ytdPercentage }}%</span>
-          </div>
-          <ProgressBar :value="ytdPercentage" class="h-8"></ProgressBar>
+        <div class="mt-4 flex items-center gap-3">
+          <ProgressBar :value="Math.min(Number(budgetData.utilization_percentage || 0), 100)" class="h-3 flex-1" />
+          <span class="w-14 text-right text-sm font-semibold text-slate-700">{{ number(budgetData.utilization_percentage) }}%</span>
         </div>
+        <p v-if="!Number(budgetData.annual_budget) && Number(budgetData.period_spend)" class="mt-3 text-xs text-amber-700">
+          Purchase orders have been committed, but no budget allocation is recorded for {{ selectedYear }}.
+        </p>
+        <p v-else-if="!Number(budgetData.annual_budget)" class="mt-3 text-xs text-slate-500">
+          No budget allocation has been recorded for {{ selectedYear }}. Budget entries are managed from Finance.
+        </p>
       </template>
     </Card>
 
-    <!-- Department/Category Budgets -->
-    <Card>
-      <template #title>Budget by Category</template>
-      <template #content>
-        <DataTable :value="categoryBudgets" :loading="loading" class="p-datatable-sm">
-          <Column field="category_name" header="Category" style="width: 25%"></Column>
-          <Column header="Budget" style="width: 15%">
-            <template #body="{ data }">
-              ₱ {{ formatNumber(data.budget) }}
-            </template>
-          </Column>
-          <Column header="Spent" style="width: 15%">
-            <template #body="{ data }">
-              ₱ {{ formatNumber(data.spent) }}
-            </template>
-          </Column>
-          <Column header="Remaining" style="width: 15%">
-            <template #body="{ data }">
-              <span :class="data.remaining >= 0 ? 'text-green-600' : 'text-red-600'">
-                ₱ {{ formatNumber(data.remaining) }}
-              </span>
-            </template>
-          </Column>
-          <Column header="Usage %" style="width: 15%">
-            <template #body="{ data }">
-              <Badge
-                :value="`${data.percentage}%`"
-                :severity="data.percentage > 80 ? 'danger' : data.percentage > 60 ? 'warning' : 'success'"
-              />
-            </template>
-          </Column>
-          <Column header="Progress" style="width: 15%">
-            <template #body="{ data }">
-              <ProgressBar :value="data.percentage" class="h-6"></ProgressBar>
-            </template>
-          </Column>
-        </DataTable>
-      </template>
-    </Card>
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <Card class="border border-slate-200 shadow-none">
+        <template #title><span class="text-base font-semibold">Monthly Budget vs PO Commitments</span></template>
+        <template #content>
+          <Chart v-if="monthlyRows.length" type="bar" :data="monthlyChartData" :options="chartOptions" class="h-72 w-full" />
+          <div v-else class="py-10 text-center text-sm text-slate-500">No monthly data available.</div>
+        </template>
+      </Card>
 
-    <!-- Monthly Trend vs Budget -->
-    <Card>
-      <template #title>Monthly Spend vs Budget Forecast</template>
-      <template #content>
-        <Chart
-          type="line"
-          :data="monthlyBudgetChartData"
-          :options="monthlyBudgetChartOptions"
-          class="w-full"
-          style="height: 400px"
-        />
-      </template>
-    </Card>
-
-    <!-- Budget Alerts -->
-    <Card v-if="budgetAlerts.length > 0">
-      <template #title>Budget Alerts</template>
-      <template #content>
-        <div class="space-y-3">
-          <div
-            v-for="alert in budgetAlerts"
-            :key="alert.id"
-            class="flex items-start gap-3 p-3 rounded border"
-            :class="alert.severity === 'danger' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'"
-          >
-            <i
-              :class="[
-                'pi',
-                alert.severity === 'danger' ? 'pi-exclamation-circle text-red-600' : 'pi-info-circle text-yellow-600',
-              ]"
-            ></i>
-            <div>
-              <p class="font-semibold" :class="alert.severity === 'danger' ? 'text-red-800' : 'text-yellow-800'">
-                {{ alert.title }}
-              </p>
-              <p class="text-sm" :class="alert.severity === 'danger' ? 'text-red-700' : 'text-yellow-700'">
-                {{ alert.message }}
-              </p>
-            </div>
+      <Card class="border border-slate-200 shadow-none">
+        <template #title><span class="text-base font-semibold">Budget by Category</span></template>
+        <template #content>
+          <DataTable v-if="!loading" :value="categoryBudgets" rowHover responsiveLayout="scroll" class="text-sm">
+            <template #empty>
+              <div class="py-8 text-center text-sm text-slate-500">No purchase-order spend or budget categories found for {{ selectedYear }}.</div>
+            </template>
+            <Column field="category_name" header="Category" sortable />
+            <Column field="budget" header="Budget" sortable>
+              <template #body="{ data }">{{ currency(data.budget) }}</template>
+            </Column>
+            <Column field="spent" header="PO Commitments" sortable>
+              <template #body="{ data }">{{ currency(data.spent) }}</template>
+            </Column>
+            <Column field="remaining" header="Remaining" sortable>
+              <template #body="{ data }">
+                <span :class="Number(data.remaining) < 0 ? 'font-semibold text-red-700' : 'font-medium text-slate-800'">{{ currency(data.remaining) }}</span>
+              </template>
+            </Column>
+            <Column header="Usage">
+              <template #body="{ data }">
+                <div class="flex min-w-32 items-center gap-2">
+                  <ProgressBar :value="Math.min(Number(data.percentage || 0), 100)" class="h-2 flex-1" />
+                  <span class="w-12 text-right text-xs text-slate-600">{{ data.percentage === null ? 'No budget' : `${number(data.percentage)}%` }}</span>
+                </div>
+              </template>
+            </Column>
+            <Column header="Status">
+              <template #body="{ data }"><Badge :value="categoryStatusLabel(data.status)" :severity="categoryStatusSeverity(data.status)" /></template>
+            </Column>
+          </DataTable>
+          <div v-else class="space-y-2">
+            <Skeleton v-for="row in 5" :key="row" height="2.5rem" borderRadius="0.5rem" />
           </div>
-        </div>
-      </template>
-    </Card>
-
-    <Toast />
+        </template>
+      </Card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
-import { useToast } from 'primevue/usetoast'
+import { computed, onMounted, ref } from 'vue'
 import procurementService from '../../../../services/procurement.service'
+import Card from 'primevue/card'
+import Button from 'primevue/button'
+import Select from 'primevue/select'
+import Badge from 'primevue/badge'
+import ProgressBar from 'primevue/progressbar'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Skeleton from 'primevue/skeleton'
+import Message from 'primevue/message'
+import Chart from 'primevue/chart'
 
-const toast = useToast()
-
-// State
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear)
+const yearOptions = Array.from({ length: 6 }, (_, index) => currentYear - index)
 const loading = ref(false)
+const loadError = ref('')
 const categoryBudgets = ref<any[]>([])
-const monthlyDataComparison = ref<any[]>([])
+const monthlyRows = ref<any[]>([])
+const budgetData = ref<any>({})
 
-// Computed
-const totalBudget = computed(() => {
-  return categoryBudgets.value.reduce((sum, c) => sum + c.budget, 0)
-})
+const summaryCards = computed(() => [
+  { label: 'Annual Budget', value: currency(budgetData.value.annual_budget), hint: `Recorded for ${selectedYear.value}` },
+  { label: 'Committed PO Spend', value: currency(budgetData.value.ytd_spend), hint: 'Approved and active purchase orders' },
+  { label: 'Budget Remaining', value: currency(budgetData.value.remaining_budget), hint: 'Annual budget less commitments to date' },
+  { label: 'Current Month PO Spend', value: currency(budgetData.value.current_month_spend), hint: 'Current-year month only' },
+])
 
-const ytdSpent = computed(() => {
-  return categoryBudgets.value.reduce((sum, c) => sum + c.spent, 0)
-})
-
-const ytdPercentage = computed(() => {
-  return totalBudget.value > 0 ? Math.round((ytdSpent.value / totalBudget.value) * 100) : 0
-})
-
-const remainingBudget = computed(() => {
-  return totalBudget.value - ytdSpent.value
-})
-
-const monthlyAvg = computed(() => {
-  const currentMonth = new Date().getMonth() + 1
-  return currentMonth > 0 ? ytdSpent.value / currentMonth : 0
-})
-
-const budgetAlerts = computed(() => {
-  const alerts: Array<{
-    id: number
-    severity: string
-    title: string
-    message: string
-  }> = []
-  categoryBudgets.value.forEach(c => {
-    if (c.percentage > 90) {
-      alerts.push({
-        id: c.category_id,
-        severity: 'danger',
-        title: `${c.category_name} Budget Critical`,
-        message: `${c.percentage}% of budget used. Only ₱${formatNumber(c.remaining)} remaining.`,
-      })
-    } else if (c.percentage > 75) {
-      alerts.push({
-        id: c.category_id,
-        severity: 'warning',
-        title: `${c.category_name} Budget Warning`,
-        message: `${c.percentage}% of budget used. Please review spending.`,
-      })
-    }
-  })
-  return alerts
-})
-
-// Chart Data
-const monthlyBudgetChartData = computed(() => {
-  const now = new Date()
-  const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-
-  const filtered = monthlyDataComparison.value.filter(m => {
-    if (!m?.month) return false
-    const [y, mm] = m.month.split('-').map(Number)
-    const asDate = new Date(y || now.getFullYear(), (mm || 1) - 1, 1)
-    return asDate <= startOfCurrentMonth
-  })
-
-  return {
-    labels: filtered.map(m => m.month),
-    datasets: [
-      {
-        label: 'Budgeted',
-        data: filtered.map(m => m.budgeted),
-        backgroundColor: '#93c5fd33',
-        borderColor: '#3b82f6',
-        fill: true,
-        tension: 0.25,
-      },
-      {
-        label: 'Actual Spend',
-        data: filtered.map(m => m.actual),
-        backgroundColor: '#86efac66',
-        borderColor: '#10b981',
-        fill: true,
-        tension: 0.25,
-      },
-    ],
-  }
-})
-
-const monthlyBudgetChartOptions = {
+const monthlyChartData = computed(() => ({
+  labels: monthlyRows.value.map(row => monthLabel(row.month)),
+  datasets: [
+    { label: 'Budgeted', data: monthlyRows.value.map(row => Number(row.budgeted || 0)), backgroundColor: '#fed7aa', borderColor: '#f97316', borderWidth: 1, borderRadius: 5 },
+    { label: 'PO Commitments', data: monthlyRows.value.map(row => Number(row.actual || 0)), backgroundColor: '#334155', borderColor: '#334155', borderWidth: 1, borderRadius: 5 },
+  ],
+}))
+const chartOptions = {
   maintainAspectRatio: false,
   responsive: true,
-  plugins: {
-    legend: { display: true, position: 'bottom' },
-  },
+  plugins: { legend: { position: 'bottom' } },
   scales: {
-    y: {
-      beginAtZero: true,
-      ticks: { callback: value => `₱ ${formatNumber(Number(value))}` },
-    },
-    x: {
-      ticks: { autoSkip: false },
-    },
+    y: { beginAtZero: true, ticks: { callback: (value: number) => currency(value) } },
+    x: { grid: { display: false } },
   },
 }
 
-// Methods
 async function loadBudgetData() {
   loading.value = true
+  loadError.value = ''
   try {
-    const response = await procurementService.getBudgetTracking({ year: new Date().getFullYear() })
-    const payload = response?.data || {}
-    const data = payload.data || payload
-
-    categoryBudgets.value = Array.isArray(data?.categories) ? data.categories : []
-    monthlyDataComparison.value = Array.isArray(data?.monthly) ? data.monthly : []
-
-    // Calculate percentages
-    categoryBudgets.value = categoryBudgets.value.map(c => ({
-      ...c,
-      remaining: c.budget - c.spent,
-      percentage: c.budget > 0 ? Math.round((c.spent / c.budget) * 100) : 0,
-    }))
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load budget data',
-      life: 3000,
-    })
+    const response = await procurementService.getBudgetTracking({ year: selectedYear.value })
+    const payload = response?.data?.data ?? response?.data ?? {}
+    budgetData.value = payload
+    categoryBudgets.value = Array.isArray(payload.categories) ? payload.categories : []
+    monthlyRows.value = Array.isArray(payload.monthly) ? payload.monthly : []
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load procurement budget tracking.'
+    budgetData.value = {}
+    categoryBudgets.value = []
+    monthlyRows.value = []
   } finally {
     loading.value = false
   }
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-PH').format(Math.round(value))
+function currency(value: unknown) {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 }).format(Number(value || 0))
+}
+function number(value: unknown) {
+  return Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 1 })
+}
+function monthLabel(value: string) {
+  const [year, month] = String(value || '').split('-').map(Number)
+  return year && month ? new Intl.DateTimeFormat('en-PH', { month: 'short' }).format(new Date(year, month - 1, 1)) : value
+}
+function budgetStatusSeverity(value: string) {
+  if (value === 'Over Budget') return 'danger'
+  if (value === 'At Risk') return 'warn'
+  if (value === 'Unbudgeted') return 'secondary'
+  return 'success'
+}
+function categoryStatusLabel(value: string) {
+  return ({ over_budget: 'Over Budget', at_risk: 'At Risk', unbudgeted: 'Unbudgeted', on_track: 'On Track' } as Record<string, string>)[value] || 'On Track'
+}
+function categoryStatusSeverity(value: string) {
+  return ({ over_budget: 'danger', at_risk: 'warn', unbudgeted: 'secondary', on_track: 'success' } as Record<string, string>)[value] || 'secondary'
 }
 
-onMounted(() => {
-  loadBudgetData()
-})
+onMounted(loadBudgetData)
 </script>

@@ -167,8 +167,8 @@ class InventoryService {
     return response.data
   }
 
-  async getInventoryItem(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`)
+  async getInventoryItem(id: number, params?: Record<string, any>) {
+    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`, { params })
     return response.data
   }
 

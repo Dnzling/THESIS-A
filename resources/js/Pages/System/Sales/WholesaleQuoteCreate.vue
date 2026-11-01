@@ -85,8 +85,30 @@
               <tbody class="divide-y">
                 <tr v-for="(item, index) in form.items" :key="index">
                   <td class="p-3"><Select v-model="item.branch_inventory_id" :options="availableFor(index)"
-                      optionLabel="label" optionValue="id" filter fluid placeholder="Select product"
-                      @change="selectProduct(item)" /></td>
+                      optionLabel="product_name" optionValue="id" filter :filterFields="['product_name', 'variant_name', 'variant_specs', 'sku']" fluid placeholder="Select product"
+                      @change="selectProduct(item)">
+                      <template #option="{ option }">
+                        <div class="min-w-0 py-0.5">
+                          <p class="truncate text-sm font-semibold text-slate-900">{{ option.product_name }}</p>
+                          <p class="mt-0.5 truncate text-xs text-slate-500">
+                            {{ option.variant_name || option.variant_specs || 'Standard item' }}
+                            <span class="mx-1">·</span>SKU {{ option.sku || '—' }}
+                            <span class="mx-1">·</span>{{ option.available }} in stock
+                          </p>
+                        </div>
+                      </template>
+                      <template #value="{ value, placeholder }">
+                        <div v-if="value" class="min-w-0">
+                          <p class="truncate text-sm font-medium text-slate-900">{{ selected({ branch_inventory_id: value })?.product_name }}</p>
+                          <p class="truncate text-xs text-slate-500">
+                            {{ selected({ branch_inventory_id: value })?.variant_name || selected({ branch_inventory_id: value })?.variant_specs || 'Standard item' }}
+                            <span class="mx-1">·</span>SKU {{ selected({ branch_inventory_id: value })?.sku || '—' }}
+                            <span class="mx-1">·</span>{{ selected({ branch_inventory_id: value })?.available }} in stock
+                          </p>
+                        </div>
+                        <span v-else class="text-slate-400">{{ placeholder }}</span>
+                      </template>
+                    </Select></td>
                   <td class="p-3">{{ selected(item)?.available ?? '—' }}</td>
                   <td class="p-3">
                     <InputNumber v-model="item.quantity" :min="1" :max="selected(item)?.available || undefined" fluid />
@@ -163,11 +185,7 @@ const paymentTerms = [
 const branchProducts = computed(() =>
   products.value
     .filter(x => Number(x.branch_id) === Number(form.branch_id))
-    .map(x => ({
-      ...x,
-      label: `${x.product_name} (${x.sku || 'No SKU'}) · ${x.available
-        } available`
-    }))
+    .map(x => ({ ...x, label: x.product_name }))
 )
 const selected = (item: any) =>
   products.value.find(x => x.id === item.branch_inventory_id)

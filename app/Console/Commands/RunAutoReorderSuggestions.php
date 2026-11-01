@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Core\SystemNotification;
-use App\Models\Inventory\InventoryConfiguration;
+use App\Models\Inventory\BranchInventory;
 use App\Services\Inventory\ReorderSuggestionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +12,7 @@ class RunAutoReorderSuggestions extends Command
 {
     protected $signature = 'inventory:reorder-suggestions:auto-run {--store_id=}';
 
-    protected $description = 'Auto-generate reorder suggestions per store based on configured daily time and send grouped notifications.';
+    protected $description = 'Run a daily safety scan to catch reorder suggestions missed during stock updates.';
 
     public function __construct(private readonly ReorderSuggestionService $reorderSuggestionService)
     {
@@ -21,29 +21,29 @@ class RunAutoReorderSuggestions extends Command
 
     public function handle(): int
     {
-        $nowHm = now()->format('H:i');
         $storeId = $this->option('store_id');
 
-        $configs = InventoryConfiguration::query()
-            ->where('enable_auto_reorder_suggestions', true)
+        $storeIds = BranchInventory::query()
+            ->whereNotNull('store_id')
             ->when($storeId, fn ($query) => $query->where('store_id', (int) $storeId))
-            ->where('auto_reorder_suggestions_time', $nowHm)
-            ->get(['store_id']);
+            ->distinct()
+            ->pluck('store_id');
 
-        if ($configs->isEmpty()) {
-            $this->info("No stores scheduled for auto reorder suggestions at {$nowHm}.");
+        if ($storeIds->isEmpty()) {
+            $this->info('No stores with inventory were found for the reorder safety scan.');
             return self::SUCCESS;
         }
 
-        foreach ($configs as $config) {
-            $result = $this->reorderSuggestionService->generateSuggestions((int) $config->store_id);
+        foreach ($storeIds as $id) {
+            $id = (int) $id;
+            $result = $this->reorderSuggestionService->generateSuggestions($id);
             $generated = (int) ($result['total_generated'] ?? 0);
 
             if ($generated > 0) {
-                $this->createGroupedNotifications((int) $config->store_id, $generated);
+                $this->createGroupedNotifications($id, $generated);
             }
 
-            $this->info("Store {$config->store_id}: generated {$generated} suggestion(s).");
+            $this->info("Store {$id}: refreshed {$generated} suggestion(s).");
         }
 
         return self::SUCCESS;

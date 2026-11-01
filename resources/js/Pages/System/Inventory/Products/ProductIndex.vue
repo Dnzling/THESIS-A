@@ -7,9 +7,9 @@
         <p class="text-xs text-gray-500">Manage product details, categories, suppliers, and purchasing costs.</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button v-if="canManageProducts" label="Import File" icon="pi pi-upload" severity="secondary" outlined
+        <Button v-if="canManageProducts" label="Import File" icon="pi pi-upload" severity="secondary" rounded outlined
           size="small" @click="router.push({ name: 'inventory.products.import' })" />
-        <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" @click="router.push({name: 'inventory.products.create'})"/>
+        <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" rounded @click="router.push({name: 'inventory.products.create'})"/>
         <Button v-if="canManageProducts" icon="pi pi-ellipsis-h" outlined rounded contrast size="small" aria-label="Product actions"
           @click="productCreateMenu?.toggle($event)" />
         <Menu ref="productCreateMenu" :model="productCreateItems" popup />

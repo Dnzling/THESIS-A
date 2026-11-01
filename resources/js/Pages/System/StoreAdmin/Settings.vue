@@ -2,12 +2,14 @@
     <div>
         <Toast />
         <div class="space-y-3">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h1 class="text-xl font-semibold text-slate-900">
                         Store Settings
                     </h1>
                 </div>
+                <Button label="Audit Logs" icon="pi pi-history" size="small" severity="secondary" outlined
+                    @click="router.visit('/store/settings/audit-logs')" />
             </div>
             <div class="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
                 <Card class="border border-slate-200 shadow-sm">

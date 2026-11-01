@@ -75,6 +75,7 @@
             <div v-if="isPickupOrder && !isCancelledOrder"><span class="text-slate-500">Pickup Date:</span> <span class="font-semibold">{{ order.pickup_date ? formatPickupDate(order.pickup_date) : 'To be scheduled' }}</span></div>
             <div v-else><span class="text-slate-500">Estimated Delivery:</span> <span class="font-semibold">{{ formatEstimatedDelivery(order.delivery?.estimated_delivery_at) }}</span></div>
             <div v-if="order.requested_fulfillment_date && !isCancelledOrder"><span class="text-slate-500">Preferred {{ isPickupOrder ? 'pickup' : 'delivery' }}:</span> <span class="font-semibold">{{ formatPickupDate(order.requested_fulfillment_date) }} <span v-if="order.requested_fulfillment_window">({{ order.requested_fulfillment_window }})</span></span></div>
+            <div v-if="order.delivery?.trip_reference"><span class="text-slate-500">Delivery Trip:</span> <span class="font-semibold">{{ order.delivery.trip_reference }}</span></div>
             <div><span class="text-slate-500">Status:</span>
               <Badge :value="statusLabel(order.primary_status || order.status)" />
             </div>

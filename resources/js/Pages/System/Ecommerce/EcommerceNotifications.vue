@@ -18,6 +18,7 @@
             :loading="markingAll"
             @click="markAllAsRead"
           />
+          <Button icon="pi pi-refresh" aria-label="Refresh notifications" size="small" severity="secondary" outlined :loading="loading" @click="refresh" />
         </div>
 
         <div class="mt-4 flex gap-2">
@@ -33,15 +34,15 @@
       </header>
 
       <div class="p-4 sm:p-6">
-        <div v-if="loading" class="py-12 text-center text-sm text-slate-500">
+        <div v-if="loading && !notifications.length" class="py-12 text-center text-sm text-slate-500">
           Loading notifications...
         </div>
-        <div v-else-if="loadError" class="py-12 text-center text-sm text-slate-600">
+        <div v-else-if="loadError && !notifications.length" class="py-12 text-center text-sm text-slate-600">
           <p>{{ loadError }}</p>
           <Button label="Try again" size="small" severity="warn" class="mt-3" @click="refresh" />
         </div>
 
-        <div v-else-if="notifications.length === 0" class="flex min-h-64 flex-col items-center justify-center text-center">
+        <div v-else-if="!loading && notifications.length === 0" class="flex min-h-64 flex-col items-center justify-center text-center">
           <span class="flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 text-orange-500">
             <i class="pi pi-bell text-2xl" />
           </span>
@@ -123,6 +124,7 @@
             </div>
           </button>
 
+          <p v-if="loadingMore" class="pt-2 text-center text-xs text-slate-500">Loading more updates...</p>
           <div v-if="currentPage < lastPage" class="flex justify-center pt-3">
             <Button label="Load more" outlined severity="secondary" :loading="loadingMore" @click="loadMore" />
           </div>
@@ -133,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/axios'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
@@ -151,38 +153,43 @@ const currentPage = ref(1)
 const lastPage = ref(1)
 const loadError = ref('')
 let requestVersion = 0
+const notificationCache = reactive({
+  all: { items: [] as any[], currentPage: 1, lastPage: 1, loaded: false },
+  unread: { items: [] as any[], currentPage: 1, lastPage: 1, loaded: false },
+})
 
-async function loadNotifications(page = 1, append = false, version = requestVersion) {
+async function loadNotifications(page = 1, append = false, version = requestVersion, target: 'all' | 'unread' = filter.value) {
   const response = await axiosClient.get('/api/notifications', {
     params: {
       module: 'ecommerce',
-      unread_only: filter.value === 'unread' ? 1 : 0,
-      per_page: 15,
+      unread_only: target === 'unread' ? 1 : 0,
+      per_page: 10,
       page,
     },
     headers: { 'X-Suppress-Dialog': '1' },
   })
   if (version !== requestVersion) return
+  const cache = notificationCache[target]
   const items = response.data?.data || []
-  notifications.value = append ? [...notifications.value, ...items] : items
-  currentPage.value = Number(response.data?.meta?.current_page || page)
-  lastPage.value = Number(response.data?.meta?.last_page || 1)
-}
-
-async function loadUnreadCount() {
-  const response = await axiosClient.get('/api/notifications/unread', {
-    params: { module: 'ecommerce' },
-    headers: { 'X-Suppress-Dialog': '1' },
-  })
-  unreadCount.value = Number(response.data?.data?.unread_count || 0)
+  cache.items = append ? [...cache.items, ...items] : items
+  cache.currentPage = Number(response.data?.meta?.current_page || page)
+  cache.lastPage = Number(response.data?.meta?.last_page || 1)
+  cache.loaded = true
+  unreadCount.value = Number(response.data?.meta?.unread_count ?? unreadCount.value)
+  if (filter.value === target) {
+    notifications.value = cache.items
+    currentPage.value = cache.currentPage
+    lastPage.value = cache.lastPage
+  }
 }
 
 async function refresh() {
+  const target = filter.value
   const version = ++requestVersion
   loading.value = true
   loadError.value = ''
   try {
-    await Promise.all([loadNotifications(1, false, version), loadUnreadCount()])
+    await loadNotifications(1, false, version, target)
   } catch {
     if (version === requestVersion) loadError.value = 'Notifications could not be loaded.'
   } finally {
@@ -193,13 +200,33 @@ async function refresh() {
 async function setFilter(value: 'all' | 'unread') {
   if (filter.value === value) return
   filter.value = value
-  await refresh()
+  loadError.value = ''
+  const cache = notificationCache[value]
+  notifications.value = cache.items
+  currentPage.value = cache.currentPage
+  lastPage.value = cache.lastPage
+  if (cache.loaded) {
+    loading.value = false
+    return
+  }
+
+  const version = ++requestVersion
+  loading.value = true
+  try {
+    await loadNotifications(1, false, version, value)
+  } catch {
+    if (version === requestVersion) loadError.value = 'Notifications could not be loaded.'
+  } finally {
+    if (version === requestVersion) loading.value = false
+  }
 }
 
 async function loadMore() {
+  if (loadingMore.value || currentPage.value >= lastPage.value) return
+  const target = filter.value
   loadingMore.value = true
   try {
-    await loadNotifications(currentPage.value + 1, true)
+    await loadNotifications(currentPage.value + 1, true, requestVersion, target)
   } catch {
     loadError.value = 'More notifications could not be loaded. Please try again.'
   } finally {
@@ -214,8 +241,17 @@ async function markAllAsRead() {
       headers: { 'X-Suppress-Dialog': '1' },
     })
     unreadCount.value = 0
-    if (filter.value === 'unread') notifications.value = []
-    else notifications.value = notifications.value.map((item) => ({ ...item, is_read: true, read_at: new Date().toISOString() }))
+    const now = new Date().toISOString()
+    notificationCache.all.items = notificationCache.all.items.map((item) => ({ ...item, is_read: true, read_at: now }))
+    notificationCache.unread.items = []
+    notificationCache.unread.currentPage = 1
+    notificationCache.unread.lastPage = 1
+    notificationCache.unread.loaded = true
+    notifications.value = filter.value === 'unread' ? [] : notificationCache.all.items
+    if (filter.value === 'unread') {
+      currentPage.value = 1
+      lastPage.value = 1
+    }
     window.dispatchEvent(new CustomEvent('ecommerce-notifications-updated'))
   } finally {
     markingAll.value = false
@@ -229,9 +265,12 @@ async function openNotification(notification: any) {
         headers: { 'X-Suppress-Dialog': '1' },
       })
       notification.is_read = true
+      notification.read_at = new Date().toISOString()
       unreadCount.value = Math.max(0, unreadCount.value - 1)
+      notificationCache.all.items = notificationCache.all.items.map((item) => item.id === notification.id ? { ...item, is_read: true, read_at: notification.read_at } : item)
+      notificationCache.unread.items = notificationCache.unread.items.filter((item) => item.id !== notification.id)
       window.dispatchEvent(new CustomEvent('ecommerce-notifications-updated'))
-      if (filter.value === 'unread') notifications.value = notifications.value.filter((item) => item.id !== notification.id)
+      if (filter.value === 'unread') notifications.value = notificationCache.unread.items
     } catch {
       // Keep the destination accessible if updating the read state fails.
     }

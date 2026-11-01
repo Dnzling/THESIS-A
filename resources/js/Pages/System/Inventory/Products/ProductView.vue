@@ -25,13 +25,14 @@
           icon="pi pi-box"
           severity="info"
           size="small"
+          rounded
           @click="openView3DModal"
         />
         <Button
           v-if="!selectedVariation"
           label="Edit"
           icon="pi pi-pencil"
-          severity="warn"
+          rounded
           size="small"
           @click="goToEdit"
         />

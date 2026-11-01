@@ -36,6 +36,9 @@ class InventoryConfiguration extends Model
         'cost_per_km',
         'reporting_frequency',
         'include_sub_branches',
+    ];
+
+    protected $hidden = [
         'enable_auto_reorder_suggestions',
         'auto_reorder_suggestions_time',
     ];
@@ -58,8 +61,6 @@ class InventoryConfiguration extends Model
         'transfer_cost_model' => 'string',
         'fixed_transfer_cost' => 'decimal:2',
         'cost_per_km' => 'decimal:2',
-        'enable_auto_reorder_suggestions' => 'boolean',
-        'auto_reorder_suggestions_time' => 'string',
     ];
 
     // Relationships

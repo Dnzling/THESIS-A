@@ -20,11 +20,10 @@
       </template>
     </Card>
 
-    <div v-else class="space-y-4">
-      <Card v-for="group in cartGroups" :key="group.store_id" class="border border-slate-200 shadow-none">
+    <div v-else class="space-y-4 pb-40 md:pb-0">
+      <Card v-for="group in cartGroups" :key="group.store_id" class="border border-slate-200 shadow-none" :class="focusedStoreId === group.store_id ? 'border-orange-300 ring-1 ring-orange-100' : ''">
         <template #content>
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <section class="min-w-0 lg:col-span-2">
+          <section class="min-w-0">
               <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div>
                   <p class="text-base font-semibold text-slate-900">{{ group.store_name }}</p>
@@ -55,7 +54,7 @@
               <div class="mt-3 md:hidden">
                 <div v-for="item in group.items" :key="item.id" class="border-b border-slate-200 px-1 py-4 last:border-b-0">
                   <div class="flex items-start gap-3">
-                    <Checkbox :modelValue="selectedIdsForStore(group.store_id).includes(item.id)" binary @update:modelValue="(checked) => toggleSelected(group.store_id, item.id, checked)" />
+                    <Checkbox :modelValue="selectedIdsForStore(group.store_id).includes(Number(item.id))" binary @update:modelValue="(checked) => toggleSelected(group.store_id, Number(item.id), checked)" />
                     <img :src="item.image || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
                     <div class="min-w-0 flex-1">
                       <p class="text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
@@ -82,9 +81,9 @@
                   <Column header="" style="width: 56px">
                     <template #body="{ data }">
                       <Checkbox
-                        :modelValue="selectedIdsForStore(group.store_id).includes(data.id)"
+                        :modelValue="selectedIdsForStore(group.store_id).includes(Number(data.id))"
                         :binary="true"
-                        @update:modelValue="(checked) => toggleSelected(group.store_id, data.id, checked)"
+                        @update:modelValue="(checked) => toggleSelected(group.store_id, Number(data.id), checked)"
                       />
                     </template>
                   </Column>
@@ -142,46 +141,31 @@
                   </Column>
                 </DataTable>
               </div>
-            </section>
-
-            <aside class="lg:col-span-1">
-              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 lg:sticky lg:top-24">
-                <h2 class="text-base font-semibold text-slate-900">Order Summary</h2>
-                <p class="mt-1 text-xs text-slate-500">{{ group.store_name }}</p>
-
-                <div class="mt-5 space-y-3 text-sm">
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-slate-600">Subtotal ({{ selectedCountForStore(group.store_id) }} item{{ selectedCountForStore(group.store_id) === 1 ? '' : 's' }})</span>
-                    <span class="font-medium text-slate-900">{{ formatMoney(selectedTotalForStore(group.store_id)) }}</span>
-                  </div>
-                </div>
-
-                <Divider />
-
-                <div class="flex items-end justify-between gap-3">
-                  <span class="font-semibold text-slate-900">Selected subtotal</span>
-                  <span class="text-xl font-bold text-slate-900">{{ formatMoney(selectedTotalForStore(group.store_id)) }}</span>
-                </div>
-                <p class="mt-2 text-xs leading-5 text-slate-500">
-                  Delivery options and any fee are confirmed at checkout.
-                </p>
-
-                <Button
-                  label="Proceed to Checkout"
-                  icon="pi pi-arrow-right"
-                  iconPos="right"
-                  severity="warn"
-                  class="mt-5"
-                  fluid
-                  :loading="checkingOutStoreId === group.store_id"
-                  :disabled="!selectedIdsForStore(group.store_id).length"
-                  @click="goCheckout(group.store_id)"
-                />
-              </div>
-            </aside>
-          </div>
+          </section>
         </template>
       </Card>
+
+      <aside v-if="focusedCartGroup" class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:static md:rounded-xl md:border md:p-5 md:shadow-none">
+        <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-slate-500">Order summary · {{ focusedCartGroup.store_name }}</p>
+            <div class="mt-1 flex items-baseline gap-2">
+              <span class="text-lg font-bold text-slate-900">{{ formatMoney(selectedTotalForStore(focusedCartGroup.store_id)) }}</span>
+              <span class="text-xs text-slate-500">{{ selectedCountForStore(focusedCartGroup.store_id) }} item{{ selectedCountForStore(focusedCartGroup.store_id) === 1 ? '' : 's' }}</span>
+            </div>
+            <p class="text-[11px] text-slate-500">Delivery options and any fee are confirmed at checkout.</p>
+          </div>
+          <Button
+            label="Proceed to Checkout"
+            icon="pi pi-arrow-right"
+            iconPos="right"
+            severity="warn"
+            class="w-full sm:w-auto sm:min-w-56"
+            :loading="checkingOutStoreId === focusedCartGroup.store_id"
+            @click="goCheckout(focusedCartGroup.store_id)"
+          />
+        </div>
+      </aside>
     </div>
 
     <Dialog v-model:visible="customizationDialogVisible" modal :closable="false" :closeOnEscape="false" :dismissableMask="false" class="mx-4 w-full max-w-xl" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
@@ -212,7 +196,7 @@
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
@@ -241,6 +225,7 @@ type CartGroup = {
 
 const cartGroups = ref<CartGroup[]>([])
 const selectedItemIdsByStore = reactive<Record<number, number[]>>({})
+const focusedStoreId = ref<number | null>(null)
 const savedQuantities = reactive<Record<number, number>>({})
 const dirtyItemIds = reactive(new Set<number>())
 const quantityVersions = new Map<number, number>()
@@ -322,6 +307,7 @@ async function loadCartGroups() {
         savedQuantities[Number(item.id)] = Number(item.quantity || 1)
       }
     }
+    focusedStoreId.value = cartGroups.value.find((group) => selectedIdsForStore(group.store_id).length)?.store_id ?? null
 
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load cart' })
@@ -331,6 +317,7 @@ async function loadCartGroups() {
 }
 
 const selectedIdsForStore = (storeId: number) => selectedItemIdsByStore[storeId] || []
+const focusedCartGroup = computed(() => cartGroups.value.find((group) => group.store_id === focusedStoreId.value && selectedIdsForStore(group.store_id).length) || null)
 
 const selectedCountForStore = (storeId: number) => {
   const ids = new Set(selectedIdsForStore(storeId))
@@ -357,20 +344,35 @@ const allSelectedForStore = (storeId: number) => {
 function toggleSelected(storeId: number, itemId: number, checked: boolean) {
   const current = selectedItemIdsByStore[storeId] || []
   if (checked) {
-    if (!current.includes(itemId)) current.push(itemId)
-    selectedItemIdsByStore[storeId] = current
+    focusStoreSelection(storeId)
+    const focusedItems = selectedItemIdsByStore[storeId] || []
+    if (!focusedItems.includes(itemId)) focusedItems.push(itemId)
+    selectedItemIdsByStore[storeId] = focusedItems
     return
   }
   selectedItemIdsByStore[storeId] = current.filter((id) => id !== itemId)
+  if (!selectedItemIdsByStore[storeId].length) focusedStoreId.value = null
+}
+
+function focusStoreSelection(storeId: number) {
+  for (const group of cartGroups.value) {
+    if (group.store_id !== storeId) selectedItemIdsByStore[group.store_id] = []
+  }
+  focusedStoreId.value = storeId
 }
 
 function toggleSelectAll(storeId: number) {
   const group = cartGroups.value.find((candidate) => candidate.store_id === storeId)
   if (!group) return
 
-  selectedItemIdsByStore[storeId] = allSelectedForStore(storeId)
-    ? []
-    : group.items.map((item) => Number(item.id))
+  if (allSelectedForStore(storeId)) {
+    selectedItemIdsByStore[storeId] = []
+    focusedStoreId.value = null
+    return
+  }
+
+  focusStoreSelection(storeId)
+  selectedItemIdsByStore[storeId] = group.items.map((item) => Number(item.id))
 }
 
 function recalculateGroup(group: CartGroup) {

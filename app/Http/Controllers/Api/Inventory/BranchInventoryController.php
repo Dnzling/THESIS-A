@@ -205,20 +205,22 @@ class BranchInventoryController extends Controller
      * Display a specific inventory item (must belong to user's branch)
      * GET /api/inventory/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         try {
             $context = $this->getUserContext();
+            $targetBranchId = $request->integer('branch_id') ?: $context['branch_id'];
             
             $inventory = BranchInventory::with([
                 'product.suppliers',
+                'product.assets',
                 'variation',
                 'branch',
                 'store',
                 'lastCountedBy',
             ])
             ->where('store_id', $context['store_id'])
-            ->where('branch_id', $context['branch_id'])
+            ->where('branch_id', $targetBranchId)
             ->findOrFail($id);
 
             $rule = ReorderRule::query()

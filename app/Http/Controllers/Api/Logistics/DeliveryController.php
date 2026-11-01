@@ -66,6 +66,7 @@ class DeliveryController extends Controller
                 'order.items:id,order_id,product_name,sku,quantity,unit_price,line_total',
                 'vehicle:id,branch_id,vehicle_name,plate_number,vehicle_type,status,capacity_kg,max_orders_per_trip',
                 'driver:id,fname,lname,email',
+                'trip:id,created_at',
                 'logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'logs.creator:id,fname,lname,email',
             ]);
@@ -74,6 +75,9 @@ class DeliveryController extends Controller
         $delivery = $query->findOrFail($id);
 
         $data = $delivery->toArray();
+        $data['trip_reference'] = $delivery->trip
+            ? sprintf('TRIP-%s-%06d', $delivery->trip->created_at?->format('Y') ?? now()->format('Y'), $delivery->trip->id)
+            : null;
         $data['proof_photo_url'] = $delivery->proof_of_delivery_path ? Storage::disk('public')->url($delivery->proof_of_delivery_path) : null;
         $data['proof_signature_url'] = $delivery->proof_signature_path ? Storage::disk('public')->url($delivery->proof_signature_path) : null;
 

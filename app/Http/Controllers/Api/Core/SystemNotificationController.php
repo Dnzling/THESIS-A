@@ -22,15 +22,20 @@ class SystemNotificationController extends Controller
     {
         try {
             $user = auth()->user();
-            $perPage = (int) $request->get('per_page', 15);
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
+            $perPage = min(50, max(1, (int) $request->get('per_page', 15)));
+            $sortBy = in_array($request->get('sort_by', 'created_at'), ['created_at', 'id'], true)
+                ? $request->get('sort_by', 'created_at')
+                : 'created_at';
+            $sortOrder = strtolower((string) $request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
             $onlyUnread = $request->boolean('unread_only', false);
 
-            $query = $this->visibleNotificationsFor($user);
+            $visibleQuery = $this->visibleNotificationsFor($user);
+            $unreadCountQuery = clone $visibleQuery;
+            $query = clone $visibleQuery;
 
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
+                $unreadCountQuery->where('module', $request->module);
             }
 
             if ($request->filled('branch_id')) {
@@ -68,7 +73,7 @@ class SystemNotificationController extends Controller
                     'per_page' => $notifications->perPage(),
                     'current_page' => $notifications->currentPage(),
                     'last_page' => $notifications->lastPage(),
-                    'unread_count' => $this->visibleNotificationsFor($user)->where('is_read', false)->count(),
+                    'unread_count' => $unreadCountQuery->where('is_read', false)->count(),
                 ],
             ], 200);
         } catch (\Exception $e) {

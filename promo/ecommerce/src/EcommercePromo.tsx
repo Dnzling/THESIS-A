@@ -25,10 +25,9 @@ import {
   Star,
   Truck,
 } from 'lucide-react';
-import {loadFont} from '@remotion/google-fonts/Inter';
 import './styles.css';
 
-const {fontFamily} = loadFont();
+const fontFamily = 'Arial, Helvetica, sans-serif';
 const orange = '#f56617';
 const dark = '#111827';
 

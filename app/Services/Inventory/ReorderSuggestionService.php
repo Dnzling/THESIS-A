@@ -278,21 +278,36 @@ class ReorderSuggestionService
     /**
      * Generate reorder suggestions based on reorder rules
      */
-    public function generateSuggestions(int $storeId, ?int $branchId = null): array
+    public function generateSuggestions(int $storeId, ?int $branchId = null, ?int $inventoryItemId = null): array
     {
         $this->salesCache = [];
+        $targetInventoryItem = $inventoryItemId
+            ? BranchInventory::query()
+                ->where('store_id', $storeId)
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->find($inventoryItemId)
+            : null;
+
+        if ($inventoryItemId && !$targetInventoryItem) {
+            return ['suggestions' => [], 'errors' => [], 'total_generated' => 0, 'total_errors' => 0];
+        }
+
         $allowsForecast = app(ForecastPlanService::class)->allowsForecast($storeId);
         $rules = ReorderRule::query()
             ->with(['product', 'branch'])
             ->where('is_active', true)
             ->whereHas('branch', fn ($query) => $query->where('store_id', $storeId))
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($targetInventoryItem, fn ($query) => $query
+                ->where('branch_id', $targetInventoryItem->branch_id)
+                ->where('product_id', $targetInventoryItem->product_id))
             ->get();
 
         $inventoryItems = BranchInventory::query()
             ->with(['product', 'variation', 'branch'])
             ->where('store_id', $storeId)
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($inventoryItemId, fn ($query) => $query->whereKey($inventoryItemId))
             ->get();
         $this->primeSalesCache($storeId, $branchId);
 

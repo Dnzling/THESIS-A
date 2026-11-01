@@ -123,7 +123,7 @@
                         class="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/15 to-transparent"
                     ></div>
                     <span class="absolute inset-x-0 bottom-0 p-3 text-white">
-                        <span class="block truncate text-sm font-semibold">{{
+                        <span class="block whitespace-normal break-words text-sm font-semibold leading-tight">{{
                             category.category_name
                         }}</span>
                         <span class="mt-0.5 block text-[10px] text-white/75"
@@ -200,7 +200,7 @@
                             {{ product.category || 'Furniture' }}
                         </p>
                         <h3
-                            class="mt-1 truncate text-sm font-semibold text-slate-900"
+                            class="mt-1 min-h-10 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-900"
                         >
                             {{ product.product_name }}
                         </h3>
@@ -328,7 +328,7 @@
                     </div>
                     <div class="px-1 pb-1 pt-3">
                         <h3
-                            class="truncate text-sm font-semibold text-slate-900 group-hover:text-orange-600"
+                            class="min-h-10 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-900 group-hover:text-orange-600"
                         >
                             {{ product.product_name }}
                         </h3>
@@ -428,7 +428,7 @@
                             sold in the last 30 days
                         </p>
                         <h3
-                            class="mt-1 truncate text-sm font-semibold text-slate-900 group-hover:text-orange-600"
+                            class="mt-1 min-h-10 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-900 group-hover:text-orange-600"
                         >
                             {{ product.product_name }}
                         </h3>

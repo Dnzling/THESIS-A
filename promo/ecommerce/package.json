@@ -6,11 +6,14 @@
   "scripts": {
     "start": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts FurniSyncEcommerce out/furnisync-ecommerce-promo.mp4",
+    "render:images": "remotion render src/index.ts FurniSyncImagePromo out/furnisync-ecommerce-image-promo.mp4",
+    "preview:images": "remotion still src/index.ts FurniSyncImagePromo out/furnisync-ecommerce-image-preview.png --frame=775",
+    "render:vertical": "remotion render src/index.ts FurniSyncVerticalPromo out/furnisync-ecommerce-vertical-promo.mp4",
+    "preview:vertical": "remotion still src/index.ts FurniSyncVerticalPromo out/furnisync-ecommerce-vertical-preview.png --frame=600",
     "check": "tsc --noEmit"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.372",
-    "@remotion/google-fonts": "^4.0.372",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

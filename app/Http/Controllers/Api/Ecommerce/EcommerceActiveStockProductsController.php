@@ -175,7 +175,7 @@ class EcommerceActiveStockProductsController extends Controller
         }
 
         if ($request->boolean('new_this_month')) {
-            $query->whereBetween('products.created_at', [now()->startOfMonth(), now()->endOfMonth()]);
+            $query->whereBetween('products.created_at', [now()->subDays(30), now()]);
         }
 
         if ($request->filled('color')) {
@@ -208,7 +208,7 @@ class EcommerceActiveStockProductsController extends Controller
         } elseif ($sort === 'name') {
             $query->orderBy('products.product_name')->orderBy('products.id');
         } elseif ($sort === 'latest') {
-            $query->orderByDesc('products.id');
+            $query->orderByDesc('products.created_at')->orderByDesc('products.id');
         } else {
             $query->orderByDesc('sales_last_30_days')->orderByDesc('products.id');
         }

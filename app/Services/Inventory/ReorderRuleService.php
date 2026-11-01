@@ -19,6 +19,7 @@ class ReorderRuleService
         try {
             // Set default values
             $data['is_active'] = $data['is_active'] ?? true;
+            $data['auto_generate_po'] = false;
             $data = $this->hydrateDemandDefaults($data);
 
             $rule = ReorderRule::create($data);
@@ -49,6 +50,7 @@ class ReorderRuleService
     {
         try {
             $oldData = $rule->toArray();
+            $data['auto_generate_po'] = false;
             $mergedData = array_merge($oldData, $data);
             $data = $this->hydrateDemandDefaults($data, $mergedData);
 

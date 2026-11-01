@@ -2183,7 +2183,7 @@ class EcommerceController extends Controller
             ->with([
                 'store:id,name',
                 'assignedBranch:id,name,branch_code,city,province,latitude,longitude',
-                'delivery',
+                'delivery.trip:id,created_at',
                 'cancellationRequests',
                 'cancellationRefund',
                 'items.product.assets',
@@ -2225,6 +2225,7 @@ class EcommerceController extends Controller
                 'items.review',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
+                'delivery.trip:id,created_at',
             ])
             ->withCount('items')
             ->where('user_id', $user->id)
@@ -2640,11 +2641,11 @@ class EcommerceController extends Controller
     {
         $validated = $request->validate([
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'appearance_rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'assembly_rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'quality_rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'value_rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'expectations_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'appearance_rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'assembly_rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'quality_rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'value_rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'expectations_rating' => ['nullable', 'integer', 'min:1', 'max:5'],
             'is_recommended' => ['required', 'boolean'],
             'review_text' => ['nullable', 'string', 'max:2000'],
             'attachment' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
@@ -2685,11 +2686,11 @@ class EcommerceController extends Controller
             'product_id' => $orderItem->product_id,
             'store_id' => $orderItem->order->store_id,
             'rating' => (int) $validated['rating'],
-            'appearance_rating' => (int) $validated['appearance_rating'],
-            'assembly_rating' => (int) $validated['assembly_rating'],
-            'quality_rating' => (int) $validated['quality_rating'],
-            'value_rating' => (int) $validated['value_rating'],
-            'expectations_rating' => (int) $validated['expectations_rating'],
+            'appearance_rating' => isset($validated['appearance_rating']) ? (int) $validated['appearance_rating'] : null,
+            'assembly_rating' => isset($validated['assembly_rating']) ? (int) $validated['assembly_rating'] : null,
+            'quality_rating' => isset($validated['quality_rating']) ? (int) $validated['quality_rating'] : null,
+            'value_rating' => isset($validated['value_rating']) ? (int) $validated['value_rating'] : null,
+            'expectations_rating' => isset($validated['expectations_rating']) ? (int) $validated['expectations_rating'] : null,
             'is_recommended' => (bool) $validated['is_recommended'],
             'review_text' => $validated['review_text'] ?? null,
             'status' => 'published',
@@ -3686,6 +3687,9 @@ class EcommerceController extends Controller
             'items_count' => (int) $order->items_count,
             'delivery' => $order->delivery ? [
                 'id' => $order->delivery->id,
+                'trip_reference' => $order->delivery->trip
+                    ? sprintf('TRIP-%s-%06d', $order->delivery->trip->created_at?->format('Y') ?? now()->format('Y'), $order->delivery->trip->id)
+                    : null,
                 'status' => $order->delivery->status,
                 'delivered_at' => $order->delivery->delivered_at,
                 'tracking_number' => $order->delivery->tracking_number,

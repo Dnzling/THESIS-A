@@ -313,8 +313,49 @@ class DeliveryTripController extends Controller
             if ((string) $validated['status'] === 'out_for_delivery') {
                 $now = now();
                 $trip->ecommerceDeliveries()
+                    ->with('order')
                     ->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])
-                    ->update(['status' => 'out_for_delivery', 'dispatched_at' => $now, 'out_for_delivery_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
+                    ->get()
+                    ->each(function (EcommerceOrderDelivery $delivery) use ($request, $now) {
+                        $previousDeliveryStatus = (string) $delivery->status;
+                        $order = $delivery->order;
+                        $previousOrderStatus = (string) ($order?->status ?? '');
+
+                        $delivery->status = 'out_for_delivery';
+                        $delivery->dispatched_at = $delivery->dispatched_at ?: $now;
+                        $delivery->out_for_delivery_at = $delivery->out_for_delivery_at ?: $now;
+                        $delivery->updated_by = $request->user()->id;
+                        $delivery->save();
+
+                        if ($previousDeliveryStatus !== 'out_for_delivery') {
+                            EcommerceDeliveryLog::query()->create([
+                                'delivery_id' => $delivery->id,
+                                'order_id' => $delivery->order_id,
+                                'store_id' => $delivery->store_id,
+                                'event_type' => 'status_updated',
+                                'status_from' => $previousDeliveryStatus,
+                                'status_to' => 'out_for_delivery',
+                                'message' => "Delivery status updated from {$previousDeliveryStatus} to out_for_delivery.",
+                                'created_by' => $request->user()->id,
+                            ]);
+                        }
+
+                        if ($order && $previousOrderStatus !== 'out_for_delivery') {
+                            $order->status = 'out_for_delivery';
+                            $order->save();
+
+                            EcommerceDeliveryLog::query()->create([
+                                'delivery_id' => $delivery->id,
+                                'order_id' => $order->id,
+                                'store_id' => $order->store_id,
+                                'event_type' => 'status_updated',
+                                'status_from' => $previousOrderStatus,
+                                'status_to' => 'out_for_delivery',
+                                'message' => "Order status updated from {$previousOrderStatus} to out_for_delivery.",
+                                'created_by' => $request->user()->id,
+                            ]);
+                        }
+                    });
                 $trip->salesDeliveries()
                     ->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])
                     ->update(['status' => 'out_for_delivery', 'dispatched_at' => $now, 'out_for_delivery_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);

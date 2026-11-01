@@ -11,9 +11,15 @@ use App\Models\Procurement\Analytics\SupplierPerformance;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Carbon\CarbonImmutable;
 
 class AnalyticsController extends Controller
 {
+    private const COMMITTED_PO_STATUSES = [
+        'approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit',
+        'pending_receipt', 'partially_received', 'delivered', 'goods_received',
+    ];
+
     /**
      * Get procurement dashboard stats
      * GET /api/procurement/analytics/dashboard
@@ -250,17 +256,20 @@ class AnalyticsController extends Controller
     public function getSpendAnalytics(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $year = (int) $request->get('year', now()->year);
-            $dateFrom = now()->setDate($year, 1, 1)->startOfDay();
-            $dateTo = now()->setDate($year, 12, 31)->endOfDay();
+            $validated = $request->validate(['year' => 'nullable|integer|min:2000|max:2100']);
+            $storeId = (int) auth()->user()->store_id;
+            $year = (int) ($validated['year'] ?? now()->year);
+            $dateFrom = CarbonImmutable::create($year, 1, 1)->toDateString();
+            $dateTo = CarbonImmutable::create($year, 12, 31)->toDateString();
 
             // Monthly spend + PO count
             $monthly = DB::table('purchase_orders')
                 ->where('store_id', $storeId)
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
-                ->groupByRaw('DATE_FORMAT(created_at, "%Y-%m")')
-                ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month')
+                ->whereNull('deleted_at')
+                ->whereIn('status', self::COMMITTED_PO_STATUSES)
+                ->whereBetween('order_date', [$dateFrom, $dateTo])
+                ->groupByRaw("DATE_FORMAT(order_date, '%Y-%m')")
+                ->selectRaw("DATE_FORMAT(order_date, '%Y-%m') as month")
                 ->selectRaw('SUM(total_amount) as amount')
                 ->selectRaw('COUNT(id) as po_count')
                 ->orderBy('month')
@@ -270,7 +279,10 @@ class AnalyticsController extends Controller
             $suppliers = DB::table('purchase_orders')
                 ->join('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
                 ->where('purchase_orders.store_id', $storeId)
-                ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
+                ->whereNull('purchase_orders.deleted_at')
+                ->whereNull('suppliers.deleted_at')
+                ->whereIn('purchase_orders.status', self::COMMITTED_PO_STATUSES)
+                ->whereBetween('purchase_orders.order_date', [$dateFrom, $dateTo])
                 ->groupBy('suppliers.id', 'suppliers.supplier_name')
                 ->select(
                     'suppliers.id',
@@ -288,7 +300,9 @@ class AnalyticsController extends Controller
                 ->leftJoin('products', 'products.id', '=', 'purchase_order_items.product_id')
                 ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
                 ->where('purchase_orders.store_id', $storeId)
-                ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
+                ->whereNull('purchase_orders.deleted_at')
+                ->whereIn('purchase_orders.status', self::COMMITTED_PO_STATUSES)
+                ->whereBetween('purchase_orders.order_date', [$dateFrom, $dateTo])
                 ->groupBy('categories.id', 'categories.category_name')
                 ->select(
                     DB::raw('COALESCE(categories.category_name, "Uncategorized") as category_name'),
@@ -306,6 +320,15 @@ class AnalyticsController extends Controller
                     'suppliers' => $suppliers,
                     'categories' => $categories,
                     'total_spend' => $totalSpend,
+                    'po_count' => (int) $monthly->sum('po_count'),
+                    'supplier_count' => (int) DB::table('purchase_orders')
+                        ->where('store_id', $storeId)
+                        ->whereNull('deleted_at')
+                        ->whereIn('status', self::COMMITTED_PO_STATUSES)
+                        ->whereBetween('order_date', [$dateFrom, $dateTo])
+                        ->distinct('supplier_id')
+                        ->count('supplier_id'),
+                    'year' => $year,
                 ],
             ]);
 
@@ -375,14 +398,18 @@ class AnalyticsController extends Controller
     public function getReceivingAccuracy(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $dateFrom = $request->get('date_from', now()->subMonth()->toDateString());
-            $dateTo = $request->get('date_to', now()->toDateString());
+            $validated = $request->validate([
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]);
+            $storeId = (int) auth()->user()->store_id;
+            $dateFrom = $validated['date_from'] ?? now()->startOfYear()->toDateString();
+            $dateTo = $validated['date_to'] ?? now()->toDateString();
 
             $totalReceipts = GoodsReceipt::whereHas('purchaseOrder', function($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             })
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->whereBetween('receipt_date', [$dateFrom, $dateTo])
                 ->count();
 
             // Receipts with no discrepancies - this would need a discrepancy tracking mechanism
@@ -391,7 +418,7 @@ class AnalyticsController extends Controller
                 $q->where('store_id', $storeId);
             })
                 ->where('receipt_status', 'full')
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->whereBetween('receipt_date', [$dateFrom, $dateTo])
                 ->count();
 
             $accuracy = $totalReceipts > 0 ? ($perfectReceipts / $totalReceipts) * 100 : 0;
@@ -402,8 +429,9 @@ class AnalyticsController extends Controller
                     'total_receipts' => $totalReceipts,
                     'perfect_receipts' => $perfectReceipts,
                     'accuracy_rate' => round($accuracy, 2),
-                    'accuracy_status' => $accuracy > 95 ? 'Excellent' : 
-                                        ($accuracy > 90 ? 'Good' : 'Needs Improvement'),
+                    'accuracy_status' => $totalReceipts === 0 ? 'No Data' : ($accuracy > 95 ? 'Excellent' :
+                                        ($accuracy > 90 ? 'Good' : 'Needs Improvement')),
+                    'period' => $dateFrom . ' - ' . $dateTo,
                 ],
             ]);
 
@@ -421,92 +449,7 @@ class AnalyticsController extends Controller
      */
     public function getBudgetTracking(Request $request): JsonResponse
     {
-        try {
-            $storeId = auth()->user()->store_id;
-            $branchId = $request->get('branch_id', auth()->user()->branch_id);
-            $year = (int) $request->get('year', now()->year);
-            $dateFrom = now()->setDate($year, 1, 1)->startOfDay();
-            $dateTo = now()->setDate($year, 12, 31)->endOfDay();
-
-            // Placeholder budgets; replace with real budget tables if available
-            $annualBudget = 0;
-            $monthlyBudget = 0;
-
-            $ytdSpend = PurchaseOrder::where('store_id', $storeId)
-                ->where('branch_id', $branchId)
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
-                ->sum('total_amount');
-
-            $currentMonthSpend = PurchaseOrder::where('store_id', $storeId)
-                ->where('branch_id', $branchId)
-                ->whereBetween('created_at', [now()->startOfMonth(), now()])
-                ->sum('total_amount');
-
-            // Monthly comparison (budget vs actual)
-            $monthly = DB::table('purchase_orders')
-                ->where('store_id', $storeId)
-                ->where('branch_id', $branchId)
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
-                ->groupByRaw('DATE_FORMAT(created_at, "%Y-%m")')
-                ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month')
-                ->selectRaw('SUM(total_amount) as actual')
-                ->orderBy('month')
-                ->get()
-                ->map(function ($row) use ($monthlyBudget) {
-                    return [
-                        'month' => $row->month,
-                        'budgeted' => $monthlyBudget,
-                        'actual' => (float) $row->actual,
-                        'variance' => (float) $row->actual - $monthlyBudget,
-                    ];
-                });
-
-            // Category-level budgets (placeholder)
-            $categories = DB::table('purchase_order_items')
-                ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
-                ->leftJoin('products', 'products.id', '=', 'purchase_order_items.product_id')
-                ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
-                ->where('purchase_orders.store_id', $storeId)
-                ->where('purchase_orders.branch_id', $branchId)
-                ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
-                ->groupBy('categories.id', 'categories.category_name')
-                ->select(
-                    DB::raw('COALESCE(categories.id, 0) as category_id'),
-                    DB::raw('COALESCE(categories.category_name, "Uncategorized") as category_name'),
-                    DB::raw('SUM(purchase_order_items.line_total) as spent')
-                )
-                ->orderByDesc('spent')
-                ->get()
-                ->map(function ($row) {
-                    return [
-                        'category_id' => (int) $row->category_id,
-                        'category_name' => $row->category_name,
-                        'budget' => 0, // placeholder until real budgets exist
-                        'spent' => (float) $row->spent,
-                    ];
-                });
-
-            $data = [
-                'annual_budget' => $annualBudget,
-                'monthly_budget' => $monthlyBudget,
-                'ytd_spend' => $ytdSpend,
-                'current_month_spend' => $currentMonthSpend,
-                'budget_status' => 'On Track', // placeholder
-                'categories' => $categories,
-                'monthly' => $monthly,
-            ];
-
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to retrieve budget tracking',
-            ], 500);
-        }
+        return app(BudgetController::class)->summary($request);
     }
 
     /**
@@ -516,16 +459,29 @@ class AnalyticsController extends Controller
     public function getLeadTimeAnalysis(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
+            $validated = $request->validate(['year' => 'nullable|integer|min:2000|max:2100']);
+            $storeId = (int) auth()->user()->store_id;
+            $year = (int) ($validated['year'] ?? now()->year);
+            $dateFrom = CarbonImmutable::create($year, 1, 1)->toDateString();
+            $dateTo = CarbonImmutable::create($year, 12, 31)->toDateString();
+            $firstReceiptDates = DB::table('goods_receipts')
+                ->groupBy('purchase_order_id')
+                ->select('purchase_order_id')
+                ->selectRaw('MIN(COALESCE(receipt_date, DATE(created_at))) as first_receipt_date');
 
-            $leadTimes = DB::table('purchase_orders')
-                ->join('goods_receipts', 'purchase_orders.id', '=', 'goods_receipts.purchase_order_id')
-                ->join('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
-                ->where('purchase_orders.store_id', $storeId)
+            $leadTimes = DB::table('purchase_orders as orders')
+                ->joinSub($firstReceiptDates, 'receipts', 'receipts.purchase_order_id', '=', 'orders.id')
+                ->join('suppliers', 'orders.supplier_id', '=', 'suppliers.id')
+                ->where('orders.store_id', $storeId)
+                ->whereNull('orders.deleted_at')
+                ->whereNull('suppliers.deleted_at')
+                ->whereIn('orders.status', self::COMMITTED_PO_STATUSES)
+                ->whereBetween('orders.order_date', [$dateFrom, $dateTo])
                 ->select(
                     'suppliers.id',
                     'suppliers.supplier_name',
-                    DB::raw('AVG(DATEDIFF(goods_receipts.created_at, purchase_orders.order_date)) as avg_lead_time')
+                    DB::raw('AVG(DATEDIFF(receipts.first_receipt_date, orders.order_date)) as avg_lead_time'),
+                    DB::raw('COUNT(orders.id) as purchase_order_count')
                 )
                 ->groupBy('suppliers.id', 'suppliers.supplier_name')
                 ->orderBy('avg_lead_time', 'asc')

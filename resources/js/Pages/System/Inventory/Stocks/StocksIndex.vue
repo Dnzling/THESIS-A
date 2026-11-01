@@ -11,6 +11,7 @@
           label="Reorder Suggestions"
           size="small"
           class="text-sm"
+          rounded
           @click="router.push({ name: 'inventory.reorder-suggestions' })"
         />
       </div>
@@ -155,7 +156,7 @@
           <Column header="Actions" style="width: 120px">
             <template #body="{ data }">
               <div class="flex gap-1">
-                <Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" aria-label="View product" @click.stop="openProduct(data)" />
+                <Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" aria-label="View inventory item" @click.stop="openItem(data)" />
                 <Button v-if="canCreateAdjustments" icon="pi pi-plus-minus" text rounded size="small" severity="warn"
                   aria-label="Adjust stock" @click.stop="openAdjustment(data)" />
               </div>
@@ -173,6 +174,7 @@
                 <Column header="On Hand"><template #body="{ data: row }">{{ row.quantity_on_hand ?? 0 }}</template></Column>
                 <Column header="Available"><template #body="{ data: row }">{{ row.quantity_available ?? 0 }}</template></Column>
                 <Column header="Stock Value"><template #body="{ data: row }">{{ formatMoney(getStockValue(row)) }}</template></Column>
+                <Column header="Action" style="width: 6rem"><template #body="{ data: row }"><Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" @click.stop="openItem(row)" /></template></Column>
               </DataTable>
             </div>
           </template>
@@ -448,9 +450,13 @@ const getStockLocation = (data: any) => {
   return [...new Set(locations)].join(', ')
 }
 
-const openProduct = (data: any) => {
-  const id = data?.product_id || data?.product?.id
-  if (id) router.push({ name: 'inventory.products.detail', params: { id } })
+const openItem = (data: any) => {
+  const id = Number(data?.id || 0)
+  if (id) router.push({
+    name: 'inventory.items.show',
+    params: { id },
+    query: data?.branch_id ? { branch_id: String(data.branch_id) } : undefined,
+  })
 }
 
 const openAdjustment = (data: any) => {
@@ -478,17 +484,7 @@ const onItemRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null
   if (target?.closest('button, input, a')) return
 
-  const id = event?.data?.product_id || event?.data?.product?.id
-  if (!id) return
-
-  const variation = event?.data?.variation
-  router.push({
-    name: 'inventory.products.detail',
-    params: { id },
-    query: variation?.id
-      ? { variation_id: variation.id, sku: variation.variation_sku }
-      : { sku: event?.data?.product?.sku },
-  })
+  openItem(event?.data)
 }
 
 onMounted(async () => {

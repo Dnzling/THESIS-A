@@ -803,18 +803,15 @@ class ProcurementService {
 
   // ==================== REPORTS ====================
   async getSpendAnalysisReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/spend-analysis`, { params })
-    return response.data
+    return this.getSpendAnalytics(params)
   }
 
   async getSupplierPerformanceReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/supplier-performance`, { params })
-    return response.data
+    return this.getSupplierPerformanceAnalytics(params)
   }
 
   async getProcurementCycleTimeReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/cycle-time`, { params })
-    return response.data
+    return this.getLeadTimeAnalysis(params)
   }
 
   // ==================== PRINT & EMAIL ====================

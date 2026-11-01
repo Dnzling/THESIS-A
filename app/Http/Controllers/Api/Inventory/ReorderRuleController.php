@@ -99,7 +99,7 @@ class ReorderRuleController extends Controller
             $context = $this->getUserContext();
 
             if (!$this->hasGlobalAccess() && empty($context['store_id']) && empty($context['branch_id'])) {
-                $perPage = $request->get('per_page', 15);
+                $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
                 $empty = ReorderRule::query()->whereRaw('1 = 0')->paginate($perPage);
 
                 return response()->json([
@@ -156,7 +156,8 @@ class ReorderRuleController extends Controller
                 });
             }
 
-            $rules = $query->orderBy('priority', 'desc')->orderBy('product_id')->paginate(15);
+            $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
+            $rules = $query->orderBy('priority', 'desc')->orderBy('product_id')->paginate($perPage);
 
             return response()->json([
                 'success' => true,

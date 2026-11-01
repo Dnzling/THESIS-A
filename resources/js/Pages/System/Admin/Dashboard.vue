@@ -18,9 +18,12 @@
             </div>
           </div>
         </div>
-        <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
-          <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
-          <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+        <div class="flex flex-col items-stretch gap-3 sm:items-end">
+          <Button label="Audit Logs" icon="pi pi-history" size="small" severity="secondary" outlined @click="goToActivityLog" />
+          <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
+            <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+            </div>
           </div>
         </div>
       </div>
