@@ -17,6 +17,11 @@
      
     </div>
 
+    <div v-if="queueTotal > 1 && !completedPaymongoOrderId" class="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950" role="status">
+      <p class="font-semibold">Store {{ queueStep }} of {{ queueTotal }}{{ checkoutStoreName ? `: ${checkoutStoreName}` : '' }}</p>
+      <p class="mt-1 text-xs leading-5 text-orange-900">You selected products from {{ queueTotal }} different stores. Each store has a separate order, pickup or delivery arrangement, delivery fee, and payment. After this payment is confirmed, you will continue to the next store.</p>
+    </div>
+
     <Card v-if="completedPaymongoOrderId" class="border border-emerald-200 bg-emerald-50/60 shadow-none">
       <template #content>
         <div class="flex flex-col items-center px-4 py-8 text-center">
@@ -492,6 +497,7 @@ import Drawer from 'primevue/drawer'
 import InputSwitch from 'primevue/inputswitch'
 import Badge from 'primevue/badge'
 import ecommerceService from '@/services/ecommerce.service'
+import { encodeCheckoutQueue, parseCheckoutQueue, remainingCheckoutQueue } from '@/utils/ecommerceCheckoutQueue'
 import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
@@ -534,7 +540,15 @@ const loading = ref(true)
 const checkoutInitializing = ref(true)
 const checkingPaymongoResult = ref(false)
 const completedPaymongoOrderId = ref<number | null>(null)
+const completedPaymongoStoreId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
+const checkoutStoreName = ref('')
+const checkoutQueue = computed(() => parseCheckoutQueue(typeof route.query.checkout_queue === 'string' ? route.query.checkout_queue : ''))
+const currentQueuedGroup = computed(() => checkoutQueue.value[0] || null)
+const queueTotal = computed(() => checkoutQueue.value.length
+  ? Math.max(checkoutQueue.value.length, Number(route.query.queue_total) || checkoutQueue.value.length)
+  : 1)
+const queueStep = computed(() => queueTotal.value - checkoutQueue.value.length + 1)
 const checkoutSteps = ['Address', 'Service', 'Payment']
 const checkoutStep = ref(1)
 const mobileSummaryVisible = ref(false)
@@ -1017,19 +1031,36 @@ async function saveNewAddress() {
 }
 
 async function loadCheckoutItems() {
-  const storeId = route.query.store_id ? Number(route.query.store_id) : null
-  const response = await ecommerceService.getCart(storeId ? { store_id: storeId } : undefined)
-  const cart = response.data?.data
-  const allItems = cart?.items || []
+  if (route.query.checkout_queue && !currentQueuedGroup.value) {
+    showAlert({ severity: 'error', summary: 'Checkout unavailable', detail: 'The selected store checkout could not be restored. Please select your items again.' })
+    router.push({ name: 'ecommerce.cart' })
+    return
+  }
 
-  selectedItemIds.value = String(route.query.item_ids || '')
+  const storeId = currentQueuedGroup.value?.storeId || (route.query.store_id ? Number(route.query.store_id) : null)
+  const response = currentQueuedGroup.value
+    ? await ecommerceService.getCarts()
+    : await ecommerceService.getCart(storeId ? { store_id: storeId } : undefined)
+  const cart = currentQueuedGroup.value
+    ? (response.data?.data || []).find((entry: any) => Number(entry.store_id) === storeId)
+    : response.data?.data
+  const allItems = cart?.items || []
+  checkoutStoreName.value = String(cart?.store_name || (storeId ? `Store ${storeId}` : ''))
+
+  selectedItemIds.value = currentQueuedGroup.value?.itemIds || String(route.query.item_ids || '')
     .split(',')
     .map((id) => Number(id.trim()))
     .filter((id) => Number.isInteger(id) && id > 0)
 
   checkoutItems.value = selectedItemIds.value.length
-    ? allItems.filter((item: any) => selectedItemIds.value.includes(item.id))
+    ? allItems.filter((item: any) => selectedItemIds.value.includes(Number(item.id)))
     : allItems
+
+  if (currentQueuedGroup.value && checkoutItems.value.length !== selectedItemIds.value.length) {
+    showAlert({ severity: 'warn', summary: 'Cart changed', detail: 'Some selected items are no longer in this store\'s cart. Please review your cart and start checkout again.' })
+    router.push({ name: 'ecommerce.cart' })
+    return
+  }
 
   checkoutItems.value.filter((item: any) => item.is_customizable).forEach((item: any) => {
     if (customizationRequests[item.id] === undefined) customizationRequests[item.id] = item.customization_request || ''
@@ -1326,9 +1357,12 @@ async function placeOrder() {
         window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
         throw new Error('This order can no longer be paid. Please start a new checkout.')
       }
+      if (currentQueuedGroup.value && Number(order.store_id) !== currentQueuedGroup.value.storeId) {
+        throw new Error('This payment belongs to a different store. Please return to your cart.')
+      }
       const orderId = Number(order.id)
-      const successUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_success: '1' } }).href, window.location.origin).toString()
-      const cancelUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_cancel: '1' } }).href, window.location.origin).toString()
+      const successUrl = paymentReturnUrl(orderId, 'success')
+      const cancelUrl = paymentReturnUrl(orderId, 'cancel')
       paymongoCreating.value = true
       const sessionResponse = await paymongoService.createCheckoutSession({
         amount: Math.max(Math.round(Number(order.total_amount) * 100), 1),
@@ -1437,10 +1471,14 @@ async function placeOrder() {
 
       paymongoCreating.value = true
 
-      const successUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_success: '1' } }).href, window.location.origin).toString()
-      const cancelUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_cancel: '1' } }).href, window.location.origin).toString()
+      const successUrl = paymentReturnUrl(Number(orderId), 'success')
+      const cancelUrl = paymentReturnUrl(Number(orderId), 'cancel')
+      const orderTotal = Number(response.data?.data?.total_amount)
+      if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
+        throw new Error('This store order does not have a valid amount for online payment. Please contact support.')
+      }
       const sessionResponse = await paymongoService.createCheckoutSession({
-        amount: Math.max(Math.round(totalAmount.value * 100), 1),
+        amount: Math.round(orderTotal * 100),
         currency: 'PHP',
         description: `Order #${orderId}`,
         store_id: orderStoreId,
@@ -1485,6 +1523,17 @@ function onImageError(event: Event) {
   if (target) target.src = '/F.svg'
 }
 
+function paymentReturnUrl(orderId: number, result: 'success' | 'cancel') {
+  const queueQuery = currentQueuedGroup.value ? {
+    store_id: String(currentQueuedGroup.value.storeId),
+    item_ids: currentQueuedGroup.value.itemIds.join(','),
+    checkout_queue: encodeCheckoutQueue(checkoutQueue.value),
+    queue_total: String(queueTotal.value),
+  } : {}
+  const query = { ...queueQuery, paymongo_order_id: String(orderId), [`paymongo_${result}`]: '1' }
+  return new URL(router.resolve({ name: 'ecommerce.checkout', query }).href, window.location.origin).toString()
+}
+
 async function checkPaymongoResult(orderId: number): Promise<string> {
   checkingPaymongoResult.value = true
   try {
@@ -1505,6 +1554,7 @@ async function checkPaymongoResult(orderId: number): Promise<string> {
       }
 
       completedPaymongoOrderId.value = orderId
+      completedPaymongoStoreId.value = Number(order.store_id)
       try {
         window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
       } catch {}
@@ -1545,13 +1595,30 @@ onMounted(async () => {
   if (!paymongoOrderId) {
     try {
       const stored = Number(window.sessionStorage.getItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY) || 0)
-      if (stored > 0) paymongoOrderId = stored
+      if (stored > 0 && currentQueuedGroup.value) {
+        const pendingOrder = (await ecommerceService.getOrder(stored))?.data?.data
+        if (Number(pendingOrder?.store_id) === currentQueuedGroup.value.storeId) paymongoOrderId = stored
+      } else if (stored > 0) {
+        paymongoOrderId = stored
+      }
     } catch {}
   }
   if (paymongoOrderId > 0) {
     paymongoResultStatus = await checkPaymongoResult(paymongoOrderId)
     if (paymongoResultStatus === 'succeeded') {
       loading.value = false
+      const remaining = remainingCheckoutQueue(checkoutQueue.value, Number(completedPaymongoStoreId.value))
+      if (remaining?.length) {
+        const next = remaining[0]
+        const nextUrl = router.resolve({ name: 'ecommerce.checkout', query: {
+          store_id: String(next.storeId),
+          item_ids: next.itemIds.join(','),
+          checkout_queue: encodeCheckoutQueue(remaining),
+          queue_total: String(queueTotal.value),
+        } }).href
+        window.location.replace(new URL(nextUrl, window.location.origin).toString())
+        return
+      }
       router.replace({ name: 'ecommerce.order-detail', params: { id: paymongoOrderId } })
       return
     }

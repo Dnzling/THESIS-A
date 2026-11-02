@@ -20,14 +20,28 @@
       </template>
     </Card>
 
-    <div v-else class="space-y-4 pb-40 md:pb-0">
-      <Card v-for="group in cartGroups" :key="group.store_id" class="border border-slate-200 shadow-none" :class="focusedStoreId === group.store_id ? 'border-orange-300 ring-1 ring-orange-100' : ''">
+    <div v-else class="space-y-4 pb-40 lg:grid lg:grid-cols-3 lg:items-start lg:gap-5 lg:space-y-0 lg:pb-0">
+      <div class="min-w-0 space-y-4 lg:col-span-2">
+      <Card v-for="group in cartGroups" :key="group.store_id" class="border border-slate-200 shadow-none" :class="selectedIdsForStore(group.store_id).length ? 'border-orange-300 ring-1 ring-orange-100' : ''">
         <template #content>
           <section class="min-w-0">
               <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div>
-                  <p class="text-base font-semibold text-slate-900">{{ group.store_name }}</p>
-                  <p class="text-xs text-slate-500">{{ group.items.length }} product{{ group.items.length === 1 ? '' : 's' }}</p>
+                <div class="flex min-w-0 items-center gap-3">
+                  <div class="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <img
+                      v-if="group.store_logo"
+                      :src="group.store_logo"
+                      :alt="`${group.store_name} logo`"
+                      class="h-full w-full object-contain p-1"
+                      loading="lazy"
+                      @error="handleStoreLogoError(group)"
+                    />
+                    <i v-else class="pi pi-shop text-lg text-slate-400" aria-hidden="true" />
+                  </div>
+                  <div class="min-w-0">
+                    <p class="truncate text-base font-semibold text-slate-900">{{ group.store_name }}</p>
+                    <p class="text-xs text-slate-500">{{ group.items.length }} product{{ group.items.length === 1 ? '' : 's' }}</p>
+                  </div>
                 </div>
                 <div class="flex items-center gap-2">
                   <Button
@@ -144,25 +158,52 @@
           </section>
         </template>
       </Card>
+      </div>
 
-      <aside v-if="focusedCartGroup" class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:static md:rounded-xl md:border md:p-5 md:shadow-none">
-        <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            <p class="text-xs font-medium text-slate-500">Order summary · {{ focusedCartGroup.store_name }}</p>
-            <div class="mt-1 flex items-baseline gap-2">
-              <span class="text-lg font-bold text-slate-900">{{ formatMoney(selectedTotalForStore(focusedCartGroup.store_id)) }}</span>
-              <span class="text-xs text-slate-500">{{ selectedCountForStore(focusedCartGroup.store_id) }} item{{ selectedCountForStore(focusedCartGroup.store_id) === 1 ? '' : 's' }}</span>
+      <aside class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur lg:sticky lg:inset-x-auto lg:top-24 lg:bottom-auto lg:col-span-1 lg:self-start lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white lg:p-5 lg:shadow-sm lg:backdrop-blur-0" :class="{ 'hidden lg:block': !selectedGroups.length }">
+        <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:items-stretch lg:flex-col lg:justify-start">
+          <div class="hidden min-w-0 lg:block">
+            <h2 class="border-b border-slate-100 pb-3 text-base font-semibold text-slate-900">Checkout summary</h2>
+            <div v-if="selectedGroups.length" class="space-y-3 py-4">
+              <div v-for="group in selectedGroups" :key="group.store_id" class="min-w-0">
+                <p class="truncate text-sm font-semibold text-slate-900" :title="group.store_name">{{ group.store_name }}</p>
+                <div class="mt-1 flex items-center justify-between gap-3 text-xs text-slate-600">
+                  <span>{{ selectedCountForStore(group.store_id) }} item{{ selectedCountForStore(group.store_id) === 1 ? '' : 's' }}</span>
+                  <span class="font-medium text-slate-800">{{ formatMoney(selectedTotalForStore(group.store_id)) }}</span>
+                </div>
+              </div>
             </div>
-            <p class="text-[11px] text-slate-500">Delivery options and any fee are confirmed at checkout.</p>
+            <p v-else class="py-4 text-sm text-slate-500">Select products from your cart to see your checkout total.</p>
+            <div class="space-y-2 border-t border-slate-100 pt-3">
+              <div class="flex items-center justify-between gap-3 text-sm text-slate-600">
+                <span>Selected items</span>
+                <span class="font-medium text-slate-900">{{ selectedCount }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-3 text-sm font-semibold text-slate-900">
+                <span>Total</span>
+                <span class="text-lg">{{ formatMoney(selectedTotal) }}</span>
+              </div>
+            </div>
+            <p v-if="selectedGroups.length > 1" class="mt-3 text-xs leading-4 font-semibold text-orange-800">Each store has its own order, fulfillment, and payment. You will check out one store at a time.</p>
+            <p v-else-if="selectedGroups.length" class="mt-3 text-xs text-slate-500">Delivery options and any fee are confirmed at checkout.</p>
+          </div>
+          <div v-if="selectedGroups.length" class="min-w-0 lg:hidden">
+            <p class="text-xs font-medium text-slate-500">{{ selectedGroups.length === 1 ? selectedGroups[0].store_name : `${selectedGroups.length} stores selected` }}</p>
+            <div class="mt-1 flex items-baseline gap-2">
+              <span class="text-lg font-bold text-slate-900">{{ formatMoney(selectedTotal) }}</span>
+              <span class="text-xs text-slate-500">{{ selectedCount }} item{{ selectedCount === 1 ? '' : 's' }}</span>
+            </div>
+            <p v-if="selectedGroups.length > 1" class="mt-1 max-w-xl text-xs leading-4 text-orange-800">You selected products from {{ selectedGroups.length }} different stores. Each store has its own order, pickup or delivery details, fee, and payment. You will check out one store at a time.</p>
+            <p v-else class="text-[11px] text-slate-500">Delivery options and any fee are confirmed at checkout.</p>
           </div>
           <Button
-            label="Proceed to Checkout"
-            icon="pi pi-arrow-right"
-            iconPos="right"
+            :label="selectedGroups.length > 1 ? `Checkout ${selectedGroups.length} stores` : 'Proceed to Checkout'"
+
             severity="warn"
-            class="w-full sm:w-auto sm:min-w-56"
-            :loading="checkingOutStoreId === focusedCartGroup.store_id"
-            @click="goCheckout(focusedCartGroup.store_id)"
+            class="w-full sm:w-auto sm:min-w-56 lg:min-w-0 lg:w-full"
+            :disabled="!selectedGroups.length"
+            :loading="checkingOut"
+            @click="goCheckout"
           />
         </div>
       </aside>
@@ -201,6 +242,7 @@ import { useRouter } from 'vue-router'
 import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
 import ecommerceService from '@/services/ecommerce.service'
+import { encodeCheckoutQueue } from '@/utils/ecommerceCheckoutQueue'
 import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -209,7 +251,7 @@ defineOptions({
 
 const router = useRouter()
 const loading = ref(false)
-const checkingOutStoreId = ref<number | null>(null)
+const checkingOut = ref(false)
 const customizationDialogVisible = ref(false)
 const activeCustomizationItem = ref<any | null>(null)
 const customizationDraft = ref('')
@@ -219,13 +261,13 @@ const savingCustomization = ref(false)
 type CartGroup = {
   store_id: number
   store_name: string
+  store_logo: string | null
   items: any[]
   summary: any
 }
 
 const cartGroups = ref<CartGroup[]>([])
 const selectedItemIdsByStore = reactive<Record<number, number[]>>({})
-const focusedStoreId = ref<number | null>(null)
 const savedQuantities = reactive<Record<number, number>>({})
 const dirtyItemIds = reactive(new Set<number>())
 const quantityVersions = new Map<number, number>()
@@ -293,6 +335,7 @@ async function loadCartGroups() {
       .map((cart: any) => ({
         store_id: Number(cart.store_id),
         store_name: String(cart.store_name || 'Store'),
+        store_logo: cart.store_logo || null,
         items: Array.isArray(cart.items) ? cart.items : [],
         summary: cart.summary || {},
       } as CartGroup))
@@ -307,8 +350,6 @@ async function loadCartGroups() {
         savedQuantities[Number(item.id)] = Number(item.quantity || 1)
       }
     }
-    focusedStoreId.value = cartGroups.value.find((group) => selectedIdsForStore(group.store_id).length)?.store_id ?? null
-
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load cart' })
   } finally {
@@ -316,8 +357,14 @@ async function loadCartGroups() {
   }
 }
 
+function handleStoreLogoError(group: CartGroup) {
+  group.store_logo = null
+}
+
 const selectedIdsForStore = (storeId: number) => selectedItemIdsByStore[storeId] || []
-const focusedCartGroup = computed(() => cartGroups.value.find((group) => group.store_id === focusedStoreId.value && selectedIdsForStore(group.store_id).length) || null)
+const selectedGroups = computed(() => cartGroups.value.filter((group) => selectedIdsForStore(group.store_id).length > 0))
+const selectedCount = computed(() => selectedGroups.value.reduce((sum, group) => sum + selectedCountForStore(group.store_id), 0))
+const selectedTotal = computed(() => selectedGroups.value.reduce((sum, group) => sum + selectedTotalForStore(group.store_id), 0))
 
 const selectedCountForStore = (storeId: number) => {
   const ids = new Set(selectedIdsForStore(storeId))
@@ -344,21 +391,10 @@ const allSelectedForStore = (storeId: number) => {
 function toggleSelected(storeId: number, itemId: number, checked: boolean) {
   const current = selectedItemIdsByStore[storeId] || []
   if (checked) {
-    focusStoreSelection(storeId)
-    const focusedItems = selectedItemIdsByStore[storeId] || []
-    if (!focusedItems.includes(itemId)) focusedItems.push(itemId)
-    selectedItemIdsByStore[storeId] = focusedItems
+    if (!current.includes(itemId)) selectedItemIdsByStore[storeId] = [...current, itemId]
     return
   }
   selectedItemIdsByStore[storeId] = current.filter((id) => id !== itemId)
-  if (!selectedItemIdsByStore[storeId].length) focusedStoreId.value = null
-}
-
-function focusStoreSelection(storeId: number) {
-  for (const group of cartGroups.value) {
-    if (group.store_id !== storeId) selectedItemIdsByStore[group.store_id] = []
-  }
-  focusedStoreId.value = storeId
 }
 
 function toggleSelectAll(storeId: number) {
@@ -367,11 +403,9 @@ function toggleSelectAll(storeId: number) {
 
   if (allSelectedForStore(storeId)) {
     selectedItemIdsByStore[storeId] = []
-    focusedStoreId.value = null
     return
   }
 
-  focusStoreSelection(storeId)
   selectedItemIdsByStore[storeId] = group.items.map((item) => Number(item.id))
 }
 
@@ -532,29 +566,39 @@ async function deleteSelected(storeId: number) {
   }
 }
 
-async function goCheckout(storeId: number) {
-  const ids = selectedIdsForStore(storeId)
-  if (!ids.length) {
+async function goCheckout() {
+  const groups = selectedGroups.value
+  if (checkingOut.value) return
+  if (!groups.length) {
     showAlert({ severity: 'warn', summary: 'No items selected', detail: 'Please select at least one item to checkout.' })
     return
   }
 
-  checkingOutStoreId.value = storeId
-  const group = cartGroups.value.find((candidate) => candidate.store_id === storeId)
-  const dirtyItems = group?.items.filter((item) => dirtyItemIds.has(Number(item.id))) || []
-  const saved = await Promise.all(dirtyItems.map((item) => {
-    const itemId = Number(item.id)
-    const pendingTimer = quantitySaveTimers.get(itemId)
-    if (pendingTimer) clearTimeout(pendingTimer)
-    return saveQuantityNow(storeId, item, quantityVersions.get(itemId) || 0)
-  }))
-  if (saved.some((success) => !success)) {
-    checkingOutStoreId.value = null
-    return
-  }
+  const queue = groups.map((group) => ({ storeId: group.store_id, itemIds: [...selectedIdsForStore(group.store_id)] }))
+  checkingOut.value = true
+  const dirtyEntries = groups.flatMap((group) => group.items
+    .filter((item) => dirtyItemIds.has(Number(item.id)))
+    .map((item) => ({ storeId: group.store_id, item })))
+  try {
+    const saved = await Promise.all(dirtyEntries.map(({ storeId, item }) => {
+      const itemId = Number(item.id)
+      const pendingTimer = quantitySaveTimers.get(itemId)
+      if (pendingTimer) clearTimeout(pendingTimer)
+      return saveQuantityNow(storeId, item, quantityVersions.get(itemId) || 0)
+    }))
+    if (saved.some((success) => !success)) return
 
-  router.push({ name: 'ecommerce.checkout', query: { store_id: String(storeId), item_ids: ids.join(',') } })
-  checkingOutStoreId.value = null
+    const first = queue[0]
+    await router.push({ name: 'ecommerce.checkout', query: {
+      store_id: String(first.storeId),
+      item_ids: first.itemIds.join(','),
+      ...(queue.length > 1 ? { checkout_queue: encodeCheckoutQueue(queue), queue_total: String(queue.length) } : {}),
+    } })
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Checkout unavailable', detail: error?.message || 'Please try again.' })
+  } finally {
+    checkingOut.value = false
+  }
 }
 
 onMounted(loadCartGroups)

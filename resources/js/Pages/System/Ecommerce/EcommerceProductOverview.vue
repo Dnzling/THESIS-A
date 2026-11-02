@@ -36,7 +36,7 @@
                 <Tag v-if="product?.is_bestseller" value="Bestseller" severity="success" />
                 <Tag v-if="product?.is_featured" value="Featured" severity="warning" />
               </div>
-              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" rounded :icon="show3DViewer ? 'pi pi-image' : 'pi pi-arrows-alt'" />
+              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" rounded size="small" :icon="show3DViewer ? 'pi pi-image' : 'pi pi-arrows-alt'" />
             </div>
   
             <div v-if="hasOpened3DViewer && selectedModel3D" v-show="show3DViewer" class="relative w-full aspect-square">
@@ -44,7 +44,7 @@
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
                 :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" allow-bottom-view />
-            </div>
+            </div>c
   
             <div v-if="!show3DViewer && primaryImage" class="group relative w-full aspect-square cursor-zoom-in"
               @mouseenter="startHoverZoom" @mousemove="updateHoverZoom"

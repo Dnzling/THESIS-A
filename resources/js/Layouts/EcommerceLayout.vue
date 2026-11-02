@@ -375,7 +375,15 @@ async function loadCartCount() {
   try {
     const response = await ecommerceService.getCarts()
     const carts = response.data?.data || []
-    cartCount.value = carts.reduce((sum: number, c: any) => sum + Number(c.items_count || 0), 0)
+    cartCount.value = carts.reduce((sum: number, cart: any) => {
+      const itemCount = cart?.summary?.items_count ?? cart?.items_count
+      if (itemCount !== undefined && itemCount !== null) {
+        return sum + Math.max(0, Number(itemCount) || 0)
+      }
+
+      const items = Array.isArray(cart?.items) ? cart.items : []
+      return sum + items.reduce((itemSum: number, item: any) => itemSum + Math.max(0, Number(item?.quantity) || 0), 0)
+    }, 0)
   } catch {
     cartCount.value = 0
   }

@@ -127,49 +127,50 @@
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-              <p class="text-sm font-semibold text-slate-800">Store: {{ order.store_name || 'Store' }}</p>
+            <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <p class="min-w-0 break-words text-sm font-semibold text-slate-800">Store: {{ order.store_name || 'Store' }}</p>
               <Button v-if="order.store_id" label="Chat" icon="pi pi-comments" size="small" severity="help" text
                 @click="goChatStore" />
             </div>
   
             <div v-for="item in order.items || []" :key="item.id"
-              class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
-              <div class="flex min-w-0 items-center gap-3">
-                <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product" loading="lazy" decoding="async"
-                  class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
-                <div class="min-w-0">
-                  <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
-                  <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>Unit: {{ item.unit_of_measurement || '-' }}</span>
-                    <span v-if="item.category_name">Category: {{ item.category_name }}</span>
-                    <span v-if="item.brand">Brand: {{ item.brand }}</span>
-                    <span v-if="item.weight_kg !== null && item.weight_kg !== undefined">Weight: {{ item.weight_kg }} kg</span>
+              class="min-w-0 rounded-2xl border border-slate-200 p-3 sm:p-4">
+              <div class="min-w-0">
+                <div class="flex min-w-0 items-start gap-3">
+                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async"
+                    class="h-16 w-16 shrink-0 rounded-xl border border-slate-200 object-cover sm:h-14 sm:w-14" @error="onImageError" />
+                  <div class="min-w-0 flex-1">
+                    <p class="break-words text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
+                    <p class="mt-0.5 break-all text-xs text-slate-500">{{ item.sku ? `SKU: ${item.sku}` : 'Standard variant' }}</p>
                   </div>
-                  <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm || item.dimensions.depth_cm)" class="text-xs text-slate-500">
-                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm x {{ item.dimensions.width_cm || 0 }} cm x {{ item.dimensions.height_cm || 0 }} cm x {{ item.dimensions.depth_cm || 0 }} cm
-                  </p>
-                  <div v-if="String(item.customization_request || '').trim()" class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
-                    <div class="flex flex-wrap items-center justify-between gap-2"><p class="font-semibold"><i class="pi pi-palette mr-1" />Customization request</p><Tag :value="item.customization_status === 'approved' ? 'Approved' : item.customization_status === 'rejected' ? 'Not available' : 'Pending store review'" :severity="item.customization_status === 'approved' ? 'success' : item.customization_status === 'rejected' ? 'danger' : 'warn'" /></div>
-                    <p class="mt-1 whitespace-pre-line">{{ item.customization_request }}</p>
-                    <p v-if="item.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span class="font-semibold">Store response:</span> {{ item.customization_response }}</p>
-                  </div>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:flex sm:flex-wrap sm:gap-x-4">
+                  <p class="text-slate-600"><span class="text-slate-400">Unit</span> {{ item.unit_of_measurement || '-' }}</p>
+                  <p v-if="item.category_name" class="min-w-0 break-words text-slate-600"><span class="text-slate-400">Category</span> {{ item.category_name }}</p>
+                  <p v-if="item.brand" class="min-w-0 break-words text-slate-600"><span class="text-slate-400">Brand</span> {{ item.brand }}</p>
+                  <p v-if="item.weight_kg !== null && item.weight_kg !== undefined" class="text-slate-600"><span class="text-slate-400">Weight</span> {{ item.weight_kg }} kg</p>
+                </div>
+                <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm || item.dimensions.depth_cm)" class="mt-2 break-words text-xs leading-5 text-slate-600">
+                  <span class="text-slate-400">Dimensions (L x W x H x D)</span>
+                  {{ item.dimensions.length_cm || 0 }} x {{ item.dimensions.width_cm || 0 }} x {{ item.dimensions.height_cm || 0 }} x {{ item.dimensions.depth_cm || 0 }} cm
+                </p>
+                <div v-if="String(item.customization_request || '').trim()" class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                  <div class="flex flex-wrap items-center justify-between gap-2"><p class="font-semibold"><i class="pi pi-palette mr-1" />Customization request</p><Tag :value="item.customization_status === 'approved' ? 'Approved' : item.customization_status === 'rejected' ? 'Not available' : 'Pending store review'" :severity="item.customization_status === 'approved' ? 'success' : item.customization_status === 'rejected' ? 'danger' : 'warn'" /></div>
+                  <p class="mt-1 whitespace-pre-line">{{ item.customization_request }}</p>
+                  <p v-if="item.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span class="font-semibold">Store response:</span> {{ item.customization_response }}</p>
                 </div>
               </div>
   
-              <div class="mt-2 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row sm:items-center sm:gap-5">
+              <div class="mt-3 border-t border-slate-100 pt-3">
                 <Tag :value="statusLabel(order.primary_status || order.status)" severity="secondary" class="w-fit" />
 
-                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:flex sm:items-center sm:gap-5">
-                  <p class="text-slate-600">{{ formatMoney(item.unit_price) }}</p>
-                  <p class="font-semibold text-slate-700">Qty {{ item.quantity }}</p>
-                  <p class="col-span-2 text-base font-semibold text-slate-900 sm:col-span-1">
-                    {{ formatMoney(item.line_total) }}
-                  </p>
+                <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <div><p class="text-xs text-slate-500">Unit price</p><p class="font-medium text-slate-800">{{ formatMoney(item.unit_price) }}</p></div>
+                  <div><p class="text-xs text-slate-500">Quantity</p><p class="font-medium text-slate-800">{{ item.quantity }}</p></div>
+                  <div class="col-span-2 border-t border-slate-100 pt-2 sm:col-span-1 sm:border-0 sm:pt-0"><p class="text-xs text-slate-500">Item total</p><p class="text-base font-semibold text-slate-900">{{ formatMoney(item.line_total) }}</p></div>
                 </div>
 
-                <div class="flex flex-wrap gap-2 sm:flex-nowrap">
+                <div class="mt-3 flex flex-wrap gap-2 sm:flex-nowrap">
                   <Button
                     v-if="item.can_return"
                     label="Return"
@@ -200,7 +201,7 @@
                 </div>
               </div>
               <div v-if="item.return_request || item.review"
-                class="w-full space-y-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+                class="mt-3 space-y-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
                 <p v-if="item.review">Your review: {{ item.review.rating }}/5</p>
                 <div v-if="item.return_request?.return_type"
                   class="rounded-xl border border-orange-100 bg-orange-50 p-3 text-sm text-orange-950">
@@ -268,7 +269,7 @@
             </div>
           </div>
   
-          <div class="mt-4 ml-auto max-w-sm space-y-2 text-sm">
+          <div class="mt-4 space-y-2 border-t border-slate-200 pt-4 text-sm sm:ml-auto sm:max-w-sm">
             <div v-if="hasOrderDiscount" class="flex justify-between"><span>Original item price</span><span>{{ formatMoney(order.original_subtotal ?? order.subtotal) }}</span></div>
             <div v-else class="flex justify-between"><span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span></div>
             <div v-if="Number(order.product_discount_amount || 0) > 0" class="flex justify-between text-rose-600">
@@ -281,7 +282,7 @@
               <span>Discounted item price</span><span>{{ formatMoney(discountedItemSubtotal) }}</span>
             </div>
             <div class="flex justify-between"><span>VATable Sales</span><span>{{ formatMoney(vatableSales) }}</span></div>
-            <div class="flex justify-between"><span> (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
+            <div class="flex justify-between"><span>VAT (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
             <div class="flex justify-between"><span>{{ isPickupOrder ? 'Pickup fee' : 'Shipping' }}</span><span>{{ Number(order.shipping_fee || 0) <= 0 ? 'Free' : formatMoney(order.shipping_fee) }}</span></div>
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>{{ formatMoney(order.total_amount) }}</span></div>

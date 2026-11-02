@@ -1001,6 +1001,7 @@ class EcommerceController extends Controller
         $carts = EcommerceCart::query()
             ->with([
                 'store:id,name',
+                'store.logoBranch:id,store_id,logo_path',
                 'items.product.store:id,name',
                 'items.product.assets' => function ($query) {
                     $query->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
@@ -1023,6 +1024,7 @@ class EcommerceController extends Controller
             [
                 'store_id' => (int) $cart->store_id,
                 'store_name' => $cart->store?->name ?? 'Store',
+                'store_logo' => $this->toAssetUrl($cart->store?->logoBranch?->logo_path),
                 'updated_at' => $cart->updated_at,
             ]
         ))
