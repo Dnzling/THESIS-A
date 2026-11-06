@@ -1416,6 +1416,8 @@ class EcommerceController extends Controller
                     'message' => 'No storefront branch can fulfill this pickup order right now.',
                 ], 422);
             }
+            $this->applyCurrentCartPrices($itemsForCheckout, (int) $pickupBranch->id);
+            $branchSubtotal = (float) $itemsForCheckout->sum(fn ($item) => (float) $item->unit_price * (int) $item->quantity);
             $pickupBranch->loadMissing('store');
             return response()->json([
                 'success' => true,
@@ -1432,6 +1434,13 @@ class EcommerceController extends Controller
                         'province' => $pickupBranch->province ?: $pickupBranch->store?->province,
                         'contact_number' => $pickupBranch->contact_number ?: $pickupBranch->store?->phone,
                     ],
+                    'branch_id' => (int) $pickupBranch->id,
+                    'product_subtotal' => round($branchSubtotal, 2),
+                    'item_prices' => $itemsForCheckout->map(fn ($item) => [
+                        'id' => (int) $item->id,
+                        'unit_price' => round((float) $item->unit_price, 2),
+                        'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
+                    ])->values(),
                     'bulk_trip_allowed' => false,
                     'fallback_used' => false,
                     'fallback_reason' => null,
@@ -1465,6 +1474,8 @@ class EcommerceController extends Controller
                 'message' => 'No branch can fully fulfill this order right now.',
             ], 422);
         }
+
+        $this->applyCurrentCartPrices($itemsForCheckout, (int) $fulfillmentBranch->id);
 
         $totalWeight = 0.0;
         foreach ($itemsForCheckout as $item) {
@@ -1535,6 +1546,13 @@ class EcommerceController extends Controller
                 'pickup_only' => false,
                 'fulfillment_method' => 'delivery',
                 'distance_km' => round($distanceKm, 2),
+                'branch_id' => (int) $fulfillmentBranch->id,
+                'product_subtotal' => round($subtotal, 2),
+                'item_prices' => $itemsForCheckout->map(fn ($item) => [
+                    'id' => (int) $item->id,
+                    'unit_price' => round((float) $item->unit_price, 2),
+                    'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
+                ])->values(),
                 'bulk_trip_allowed' => true,
                 'fallback_used' => true,
                 'fallback_reason' => 'Using store delivery fee settings.',
@@ -1575,6 +1593,7 @@ class EcommerceController extends Controller
             $items = EcommerceCartItem::query()
                 ->whereIn('id', $validated['item_ids'])
                 ->whereHas('cart', fn ($query) => $query->where('user_id', $request->user()->id)->where('store_id', $store->id))
+                ->with(['product', 'variation'])
                 ->get();
             if ($items->count() !== count(array_unique($validated['item_ids']))) {
                 return response()->json(['success' => false, 'message' => 'Selected cart items are not available for this store.'], 422);
@@ -1583,6 +1602,7 @@ class EcommerceController extends Controller
             if (!$branch) {
                 return response()->json(['success' => false, 'message' => 'No storefront branch can fulfill pickup for these items.'], 422);
             }
+            $this->applyCurrentCartPrices($items, (int) $branch->id);
             $branch = Branch::query()->with('store')->findOrFail($branch->id);
             $data['pickup_branch'] = [
                 'id' => $branch->id,
@@ -1593,6 +1613,13 @@ class EcommerceController extends Controller
                 'province' => $branch->province ?: $store->province,
                 'contact_number' => $branch->contact_number ?: $store->phone,
             ];
+            $data['branch_id'] = (int) $branch->id;
+            $data['product_subtotal'] = round((float) $items->sum(fn ($item) => (float) $item->unit_price * (int) $item->quantity), 2);
+            $data['item_prices'] = $items->map(fn ($item) => [
+                'id' => (int) $item->id,
+                'unit_price' => round((float) $item->unit_price, 2),
+                'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
+            ])->values();
         }
 
         return response()->json(['success' => true, 'data' => $data]);
@@ -1739,6 +1766,9 @@ class EcommerceController extends Controller
                 'message' => 'No branch can fully fulfill this order right now.',
             ], 422);
         }
+
+        $this->applyCurrentCartPrices($itemsForCheckout, (int) $fulfillmentBranch->id);
+        $previewSubtotal = (float) $itemsForCheckout->sum(fn ($item) => (float) $item->unit_price * (int) $item->quantity);
 
         // Compute delivery pricing from server-side coordinates and current store settings.
         $totalWeight = 0.0;
@@ -3028,6 +3058,7 @@ class EcommerceController extends Controller
         $threads = EcommerceChatThread::query()
             ->with([
                 'store:id,name',
+                'store.logoBranch:id,store_id,logo_path',
                 'messages' => fn($q) => $q->select(['id', 'thread_id', 'message', 'created_at'])->latest('created_at')->limit(1),
             ])
             ->withCount([
@@ -3045,6 +3076,7 @@ class EcommerceController extends Controller
                 'id' => $thread->id,
                 'store_id' => $thread->store_id,
                 'store_name' => $thread->store?->name ?? 'Store',
+                'store_logo' => $this->toAssetUrl($thread->store?->logoBranch?->logo_path),
                 'last_message' => $lastMessage?->message,
                 'last_message_at' => $thread->last_message_at ?? $lastMessage?->created_at,
                 'unread_count' => (int) ($thread->unread_count ?? 0),
@@ -3057,7 +3089,10 @@ class EcommerceController extends Controller
     public function chatMessages(Request $request, int $storeId)
     {
         $user = Auth::user();
-        $store = Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+        $store = Store::query()
+            ->with('logoBranch:id,store_id,logo_path')
+            ->whereIn('status', ['active', 'verified'])
+            ->findOrFail($storeId);
 
         $thread = EcommerceChatThread::query()->firstOrCreate([
             'store_id' => $storeId,
@@ -3083,6 +3118,7 @@ class EcommerceController extends Controller
             'store' => [
                 'id' => $store->id,
                 'name' => $store->name,
+                'logo' => $this->toAssetUrl($store->logoBranch?->logo_path),
             ],
         ]);
     }
@@ -3446,7 +3482,7 @@ class EcommerceController extends Controller
         ];
     }
 
-    private function applyCurrentCartPrices($items): void
+    private function applyCurrentCartPrices($items, ?int $branchId = null): void
     {
         $regularSubtotal = $items->sum(function (EcommerceCartItem $item) {
             if (!$item->product) {
@@ -3459,7 +3495,7 @@ class EcommerceController extends Controller
         foreach ($items as $item) {
             if ($item->product) {
                 $item->unit_price = $this->promotionPricing
-                    ->price($item->product, $item->variation, (float) $regularSubtotal)['price'];
+                    ->price($item->product, $item->variation, (float) $regularSubtotal, $branchId)['price'];
             }
         }
     }
@@ -3818,7 +3854,8 @@ class EcommerceController extends Controller
             in_array($orderStatus, ['cancelled', 'canceled'], true) => 'cancelled',
             in_array($orderStatus, ['return_pending', 'return_approved', 'return_received', 'refund_pending', 'refunded', 'replaced'], true) => $orderStatus,
             in_array($orderStatus, ['delivered', 'completed'], true) => 'delivered',
-            in_array($orderStatus, ['packed', 'shipped', 'in_transit', 'out_for_delivery', 'on_delivery'], true) => 'in_transit',
+            in_array($orderStatus, ['out_for_delivery', 'on_delivery'], true) => 'out_for_delivery',
+            in_array($orderStatus, ['packed', 'shipped', 'in_transit'], true) => 'in_transit',
             in_array($orderStatus, ['processing', 'confirmed', 'ready_for_dispatch'], true) => 'packing',
             default => 'pending',
         };

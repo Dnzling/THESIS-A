@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Finance\FinanceCashflowTransaction;
 use App\Services\Finance\CashflowService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -103,19 +104,32 @@ class FinanceCashflowController extends Controller
 
         $transactions = $query->paginate($request->integer('per_page', 50));
 
+        $periodEnd = $request->filled('date_to')
+            ? Carbon::parse($request->input('date_to'))->endOfDay()
+            : now()->endOfDay();
+        $periodStart = $request->filled('date_from')
+            ? Carbon::parse($request->input('date_from'))->startOfDay()
+            : ($request->filled('date_to')
+                ? Carbon::parse($request->input('date_to'))->startOfDay()
+                : $periodEnd->copy()->subDays(27)->startOfDay());
+        if ($periodStart->greaterThan($periodEnd)) {
+            [$periodStart, $periodEnd] = [$periodEnd->copy()->startOfDay(), $periodStart->copy()->endOfDay()];
+        }
+        $periodDays = max(1, $periodStart->diffInDays($periodEnd) + 1);
+        $previousEnd = $periodStart->copy()->subDay()->endOfDay();
+        $previousStart = $previousEnd->copy()->subDays($periodDays - 1)->startOfDay();
+
         $summaryQuery = FinanceCashflowTransaction::where('store_id', $storeId);
         if ($request->filled('reference_type')) {
             $summaryQuery->where('reference_type', $request->reference_type);
         }
-        if ($request->filled('date_from')) {
-            $summaryQuery->whereDate('created_at', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $summaryQuery->whereDate('created_at', '<=', $request->date_to);
-        }
 
-        $totalIncoming = (float) (clone $summaryQuery)->where('direction', 'in')->sum('amount');
-        $totalOutgoing = (float) (clone $summaryQuery)->where('direction', 'out')->sum('amount');
+        $currentSummary = (clone $summaryQuery)->whereBetween('created_at', [$periodStart, $periodEnd]);
+        $previousSummary = (clone $summaryQuery)->whereBetween('created_at', [$previousStart, $previousEnd]);
+        $totalIncoming = (float) (clone $currentSummary)->where('direction', 'in')->sum('amount');
+        $totalOutgoing = (float) (clone $currentSummary)->where('direction', 'out')->sum('amount');
+        $previousIncoming = (float) (clone $previousSummary)->where('direction', 'in')->sum('amount');
+        $previousOutgoing = (float) (clone $previousSummary)->where('direction', 'out')->sum('amount');
 
         return response()->json([
             'success' => true,
@@ -125,6 +139,17 @@ class FinanceCashflowController extends Controller
                     'incoming' => $totalIncoming,
                     'outgoing' => $totalOutgoing,
                     'net' => $totalIncoming - $totalOutgoing,
+                    'previous' => [
+                        'incoming' => $previousIncoming,
+                        'outgoing' => $previousOutgoing,
+                        'net' => $previousIncoming - $previousOutgoing,
+                    ],
+                    'period' => [
+                        'start' => $periodStart->toDateString(),
+                        'end' => $periodEnd->toDateString(),
+                        'previous_start' => $previousStart->toDateString(),
+                        'previous_end' => $previousEnd->toDateString(),
+                    ],
                 ],
             ],
         ]);

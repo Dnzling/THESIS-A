@@ -231,18 +231,6 @@ const adminMenu = [
     label: "3D Model Requests",
     icon: "pi pi-box text-gray-500 w-5"
   },
-  {
-    to: "/admin/store-validation",
-    name: 'AdminStoreValidation',
-    label: "Store Verification",
-    icon: "pi pi-verified text-gray-500 w-5"
-  },
-  {
-    to: "/admin/verification/suppliers",
-    name: 'admin.supplier-verification',
-    label: "Supplier Verification",
-    icon: "pi pi-building-columns text-gray-500 w-5"
-  },
   // {
   //   to: "/admin/customer-validation",
   //   label: "Customer Verification",
@@ -252,6 +240,12 @@ const adminMenu = [
     to: "/admin/stores",
     label: "Stores",
     icon: "pi pi-building text-gray-500 w-5"
+  },
+  {
+    to: "/admin/suppliers",
+    name: 'admin.suppliers.index',
+    label: "Suppliers",
+    icon: "pi pi-truck text-gray-500 w-5"
   },
 
   {

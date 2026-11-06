@@ -342,7 +342,6 @@ class RoleController extends Controller
 
     public function updateRolePermissions(Request $request, int $roleId): JsonResponse
     {
-        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
 
         if (empty($storeId)) {
@@ -350,6 +349,12 @@ class RoleController extends Controller
                 'message' => 'You must be assigned to a store before updating role permissions.',
             ], 422);
         }
+
+        $user = $request->user();
+        $isOwner = $user?->hasRole('owner') ?? false;
+        $canManageHrPermissions = $user
+            && app(PermissionService::class)->userHasPermission($user, 'hr.role.permissions', $storeId);
+        abort_unless($isOwner || $canManageHrPermissions, 403, 'You are not authorized to update role permissions.');
 
         // Global roles are shared across stores and must not be rewritten by one tenant.
         $role = Role::query()->where('store_id', $storeId)->find($roleId);
@@ -374,17 +379,50 @@ class RoleController extends Controller
         $allowedPermissionIds = $this->allowedPermissionIds($storeId, $enabledModules);
         $invalidPermissionIds = array_values(array_diff(array_map('intval', $request->permissions), $allowedPermissionIds));
 
-        if (!empty($invalidPermissionIds)) {
+        if ($isOwner && !empty($invalidPermissionIds)) {
             return response()->json([
                 'message' => 'Some permissions belong to modules not enabled for your store.',
                 'invalid_permission_ids' => $invalidPermissionIds,
             ], 422);
         }
 
-        $permissionIds = collect($request->permissions)
+        $requestedPermissionIds = collect($request->permissions)
             ->map(fn ($permissionId) => (int) $permissionId)
             ->unique()
             ->values();
+
+        if ($isOwner) {
+            $permissionIds = $requestedPermissionIds;
+        } else {
+            $hrPermissionIds = DB::table('permissions')
+                ->whereIn('id', $requestedPermissionIds)
+                ->where('module', 'hr')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id);
+            $disallowedHrPermissionIds = $hrPermissionIds->diff($allowedPermissionIds)->values();
+
+            if ($disallowedHrPermissionIds->isNotEmpty()) {
+                return response()->json([
+                    'message' => 'Some HR permissions are not enabled for this store or the Owner role.',
+                    'invalid_permission_ids' => $disallowedHrPermissionIds,
+                ], 422);
+            }
+
+            $existingNonHrPermissionIds = DB::table('role_permissions')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('role_permissions.role_id', $role->id)
+                ->where(function ($query) {
+                    $query->where('permissions.module', '!=', 'hr')
+                        ->orWhereNull('permissions.module');
+                })
+                ->pluck('role_permissions.permission_id')
+                ->map(fn ($id) => (int) $id);
+
+            $permissionIds = $existingNonHrPermissionIds
+                ->concat($hrPermissionIds)
+                ->unique()
+                ->values();
+        }
 
         DB::transaction(function () use ($role, $permissionIds) {
             DB::table('role_permissions')->where('role_id', $role->id)->delete();

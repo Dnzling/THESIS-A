@@ -1,5 +1,6 @@
 <template>
   <div class="space-y-6 px-4 sm:px-6 lg:px-8">
+    <ConfirmDialog />
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" severity="secondary" text rounded
         @click="router.push({ name: 'inventory.suppliers' })" />
@@ -195,7 +196,12 @@
         </div>
       </div>
       <template #footer>
-        <Button label="Close" severity="secondary" outlined size="small" @click="contractDialogVisible = false" />
+        <div class="flex flex-wrap justify-end gap-2">
+          <Button label="Close" severity="secondary" outlined size="small" @click="contractDialogVisible = false" />
+          <Button v-if="selectedContract?.status === 'pending'" label="Activate Contract" icon="pi pi-check-circle"
+            severity="success" size="small" :loading="activatingContractId === Number(selectedContract.id)"
+            @click="confirmActivateContract(selectedContract)" />
+        </div>
       </template>
     </Dialog>
   </div>
@@ -206,6 +212,8 @@ import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import inventoryService from '../../../../services/inventory.service'
 
 const InfoRow = defineComponent({
@@ -224,6 +232,7 @@ const InfoRow = defineComponent({
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const supplierId = Number(route.params.id)
 const supplier = ref<any>(null)
 const products = ref<any[]>([])
@@ -236,6 +245,7 @@ const search = ref('')
 const loadingSupplier = ref(true)
 const loadingProducts = ref(false)
 const loadingContracts = ref(false)
+const activatingContractId = ref<number | null>(null)
 const currentPage = ref(1)
 const perPage = ref(10)
 const totalProducts = ref(0)
@@ -341,6 +351,29 @@ const viewContract = async (contract: any) => {
   } finally {
     loadingSelectedContract.value = false
   }
+}
+const confirmActivateContract = (contract: any) => {
+  if (!contract?.id || contract.status !== 'pending') return
+  confirm.require({
+    header: 'Activate Supplier Contract',
+    message: 'Confirm that the supplier has agreed to these terms. The contract will become active immediately.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Confirm & Activate',
+    rejectLabel: 'Keep Pending',
+    acceptProps: { severity: 'success' },
+    accept: async () => {
+      activatingContractId.value = Number(contract.id)
+      try {
+        await inventoryService.activateSupplierContract(contract.id)
+        toast.add({ severity: 'success', summary: 'Contract activated', detail: 'The supplier contract is now active.', life: 3000 })
+        await Promise.all([loadContracts(), viewContract(contract)])
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Activation failed', detail: error?.response?.data?.message || 'Could not activate the contract.', life: 4000 })
+      } finally {
+        activatingContractId.value = null
+      }
+    },
+  })
 }
 const humanize = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '-'
 const formatRating = (value: any) => Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} / 5` : '-'

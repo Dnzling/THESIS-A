@@ -35,6 +35,7 @@ Route::prefix('crm')->group(function () {
         Route::get('/threads', [ChatController::class, 'threads'])->middleware('can:crm.chats.view');
         Route::get('/threads/{id}/messages', [ChatController::class, 'messages'])->middleware('can:crm.chats.view');
         Route::post('/threads/{id}/messages', [ChatController::class, 'sendMessage'])->middleware('can:crm.chats.manage');
+        Route::get('/attachments/{messageId}', [ChatController::class, 'attachment'])->middleware('can:crm.chats.view')->name('crm.chat-attachments');
         Route::put('/threads/{id}/messages/{messageId}', [ChatController::class, 'updateMessage'])->middleware('can:crm.chats.manage');
         Route::delete('/threads/{id}/messages/{messageId}', [ChatController::class, 'unsendMessage'])->middleware('can:crm.chats.manage');
     });

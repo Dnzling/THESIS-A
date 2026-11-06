@@ -329,7 +329,8 @@ class SupplierContractController extends Controller
         $validated['contract_number'] = $contractNumber;
         $validated['tax_rate'] = 12;
         $validated['store_id'] = $storeId;
-        $validated['status'] = $validated['status'] ?? ($isSupplierPortal ? 'pending' : 'draft');
+        // A created agreement must be reviewed and explicitly activated; never activate on create.
+        $validated['status'] = 'pending';
         $validated['submitted_by_type'] = $isSupplierPortal ? 'supplier' : 'store';
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
@@ -446,8 +447,10 @@ class SupplierContractController extends Controller
     public function activate(Request $request, int $id): JsonResponse
     {
         $contract = SupplierContract::findOrFail($id);
+        $user = $request->user();
+        $userStoreId = (int) ($user?->store_id ?? $user?->employee?->store_id ?? 0);
 
-        if ((int) ($request->user()?->store_id ?? 0) !== (int) $contract->store_id) {
+        if ($userStoreId !== (int) $contract->store_id) {
             return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
         }
 
@@ -458,18 +461,19 @@ class SupplierContractController extends Controller
             ], 422);
         }
         if ($contract->submitted_by_type === 'store') {
-            return response()->json([
-                'success' => false,
-                'message' => 'This contract is awaiting supplier approval.',
-            ], 422);
+            $request->validate([
+                'supplier_confirmed' => ['required', 'accepted'],
+            ]);
         }
 
         $contract->update(['status' => 'active']);
 
         $this->notifySupplierUsers(
             $contract,
-            'Contract approved',
-            'Your submitted contract has been approved and is now active.',
+            $contract->submitted_by_type === 'store' ? 'Contract activated' : 'Contract approved',
+            $contract->submitted_by_type === 'store'
+                ? 'The store confirmed supplier agreement and activated the contract.'
+                : 'Your submitted contract has been approved and is now active.',
             'contract_approved',
             'success'
         );

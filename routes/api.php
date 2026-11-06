@@ -146,6 +146,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('/roles/export', [RolePermissionController::class, 'exportRoles']);
         // Admin dashboard data
         Route::get('/dashboard', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'index']);
+        Route::get('/supplier-directory', [\App\Http\Controllers\Api\Admin\SupplierDirectoryController::class, 'index']);
+        Route::get('/supplier-directory/{supplier}', [\App\Http\Controllers\Api\Admin\SupplierDirectoryController::class, 'show'])->whereNumber('supplier');
+        Route::get('/supplier-directory/{supplier}/performance', [\App\Http\Controllers\Api\Admin\SupplierDirectoryController::class, 'performance'])->whereNumber('supplier');
         Route::post('/roles/import', [RolePermissionController::class, 'importRoles']);
 
         // Permissions
@@ -249,6 +252,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     // Branch-scoped Store module
     Route::prefix('store-module')->controller(StoreModuleController::class)->group(function () {
         Route::get('/team', 'team');
+        Route::get('/team/employees/{employeeId}', 'teamEmployee')->whereNumber('employeeId');
         Route::get('/dashboard', 'dashboard');
         Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'branchSales']);
         Route::get('/settings', 'settings');
@@ -313,8 +317,16 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('attendances', [SimpleStaffController::class, 'attendances']);
         Route::get('payments', [SimpleStaffController::class, 'payments']);
         Route::post('payments', [SimpleStaffController::class, 'savePayment']);
+        Route::get('employees/{employeeId}/payslips', [SimplePayrollController::class, 'employeePayslips']);
+        Route::get('payroll/periods', [SimplePayrollController::class, 'periods']);
+        Route::get('payroll/periods/{periodId}', [SimplePayrollController::class, 'periodDetail']);
         Route::get('payroll/preview', [SimplePayrollController::class, 'preview']);
         Route::post('payroll/generate', [SimplePayrollController::class, 'generate']);
+        Route::post('payroll/bulk-complete', [SimplePayrollController::class, 'bulkComplete']);
+        Route::post('payroll/bulk-pay', [SimplePayrollController::class, 'bulkPay']);
+        Route::put('payroll/{payrollId}', [SimplePayrollController::class, 'updateDraft']);
+        Route::post('payroll/{payrollId}/complete', [SimplePayrollController::class, 'complete']);
+        Route::get('payroll/{payrollId}/payslip/print', [SimplePayrollController::class, 'printPaidPayslip']);
     });
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
@@ -360,6 +372,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('/pay-periods/{id}/payroll', [PayPeriodController::class, 'getPayrollPerPeriod']);
         Route::get('/pay-periods/{id}/export', [PayPeriodController::class, 'exportPayrollPeriod']);
         Route::get('/pay-periods/{id}', [PayPeriodController::class, 'show']);
+        Route::get('/basic/employee/{employeeId}/payslips', [SimplePayrollController::class, 'employeePayslips']);
+        Route::get('/basic/{payrollId}/payslip/print', [SimplePayrollController::class, 'printPaidPayslip']);
 
         Route::post('/generate', [PayrollController::class, 'generate']);
         Route::post('/bulk-submit', [PayrollController::class, 'bulkSubmitForApproval']);
@@ -468,6 +482,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
 
     require __DIR__ . '/attendance_routes.php';
     require __DIR__ . '/product_routes.php';
+    require __DIR__ . '/merchandising_routes.php';
     require __DIR__ . '/procurement_routes.php';
     require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/supplier_portal_routes.php';

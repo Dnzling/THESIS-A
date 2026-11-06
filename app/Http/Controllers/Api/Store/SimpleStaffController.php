@@ -33,7 +33,7 @@ class SimpleStaffController extends Controller
                 'role' => $employee->user?->role?->display_name ?? $employee->user?->role?->name,
                 'branch' => $employee->branch?->name,
                 'salary' => (float) ($employee->salary ?? 0),
-                'pay_type' => $employee->pay_type ?? 'monthly',
+                'pay_type' => 'daily',
                 'status' => $employee->status,
                 'hire_date' => $employee->hire_date,
             ]);
@@ -278,7 +278,7 @@ class SimpleStaffController extends Controller
             'fname' => ['required', 'string', 'max:100'],
             'lname' => ['required', 'string', 'max:100'],
             'phone_number' => ['nullable', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
-            'pay_type' => ['required', Rule::in(['monthly', 'daily'])],
+            'pay_type' => ['required', Rule::in(['daily'])],
             'salary' => ['required', 'numeric', 'gt:0'],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
                 $query->where(function ($scoped) use ($storeId) {
@@ -307,7 +307,7 @@ class SimpleStaffController extends Controller
                 'hire_date' => $validated['hire_date'],
                 'employment_type' => $validated['employment_type'],
                 'contract_end_date' => $validated['employment_type'] === 'contract' ? $validated['contract_end_date'] : null,
-                'pay_type' => $validated['pay_type'],
+                'pay_type' => 'daily',
                 'salary' => $validated['salary'],
                 'status' => $validated['status'],
             ])->save();
@@ -325,7 +325,7 @@ class SimpleStaffController extends Controller
         return [
             'id' => $employee->id,
             'employee_number' => $employee->employee_number,
-                'pay_type' => $employee->pay_type ?? 'monthly',
+                'pay_type' => 'daily',
                 'salary' => (float) ($employee->salary ?? 0),
             'fname' => $employee->user?->fname,
             'lname' => $employee->user?->lname,

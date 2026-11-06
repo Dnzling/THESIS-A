@@ -14,14 +14,16 @@ Route::prefix('sales')->group(function () {
     Route::get('/orders', [SalesPosController::class, 'unifiedOrders']);
 
     Route::prefix('wholesale-quotes')->group(function () {
-        Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.orders.view');
-        Route::get('/options', [WholesaleQuoteController::class, 'options'])->middleware('can:sales.orders.view');
-        Route::post('/', [WholesaleQuoteController::class, 'store'])->middleware('can:sales.orders.manage');
-        Route::get('/{id}', [WholesaleQuoteController::class, 'show'])->middleware('can:sales.orders.view');
-        Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.orders.manage');
-        Route::post('/{id}/convert', [WholesaleQuoteController::class, 'convert'])->middleware('can:sales.orders.manage');
-        Route::post('/{id}/record-payment', [WholesaleQuoteController::class, 'recordPayment'])->middleware('can:sales.orders.manage');
-        Route::post('/{id}/payment-link', [WholesaleQuoteController::class, 'createPaymentLink'])->middleware('can:sales.orders.manage');
+        Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.wholesale.view');
+        Route::get('/options', [WholesaleQuoteController::class, 'options'])->middleware('can:sales.wholesale.view');
+        Route::post('/delivery-estimate', [WholesaleQuoteController::class, 'deliveryEstimate'])->middleware('can:sales.wholesale.manage');
+        Route::post('/', [WholesaleQuoteController::class, 'store'])->middleware('can:sales.wholesale.manage');
+        Route::get('/{id}', [WholesaleQuoteController::class, 'show'])->middleware('can:sales.wholesale.view');
+        Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.wholesale.view');
+        Route::post('/{id}/convert', [WholesaleQuoteController::class, 'convert'])->middleware('can:sales.wholesale.manage');
+        Route::post('/{id}/record-payment', [WholesaleQuoteController::class, 'recordPayment'])->middleware('can:sales.wholesale.manage');
+        Route::post('/{id}/payment-link', [WholesaleQuoteController::class, 'createPaymentLink'])->middleware('can:sales.wholesale.manage');
+        Route::post('/{id}/sync-payment', [WholesaleQuoteController::class, 'syncPayment'])->middleware('can:sales.wholesale.manage');
     });
 
     Route::prefix('pos')->group(function () {

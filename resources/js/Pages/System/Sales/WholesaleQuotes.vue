@@ -43,6 +43,7 @@
             </template>
           </Column>
           <Column header="Items"><template #body="{ data }">{{ data.items?.length || 0 }}</template></Column>
+          <Column header="Created by" style="min-width:150px"><template #body="{ data }">{{ data.creator?.full_name || 'Not available' }}</template></Column>
           <Column field="subtotal" header="Quoted total" sortable><template #body="{ data }"><span
                 class="font-semibold">{{ money(data.subtotal) }}</span></template></Column>
           <Column field="valid_until" header="Valid until" sortable><template #body="{ data }">{{
@@ -76,7 +77,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 const toast = useToast(),
   auth = useAuthStore()
-const canManage = computed(() => auth.hasPermission('sales.orders.manage'))
+const canManage = computed(() => auth.hasPermission('sales.wholesale.manage'))
 const loading = ref(false),
   rows = ref<any[]>([])
 const filters = reactive({
@@ -87,9 +88,9 @@ const filters = reactive({
 let timer: any
 const statuses = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Sent', value: 'sent' },
-  { label: 'Accepted', value: 'accepted' },
-  { label: 'Declined', value: 'declined' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Rejected', value: 'rejected' },
   { label: 'Converted', value: 'converted' }
 ]
 const hasFilters = computed(
@@ -129,18 +130,19 @@ const money = (v: any) =>
     style: 'currency',
     currency: 'PHP'
   }).format(+v || 0)
+const normalizedStatus = (v: string) => ({ sent: 'pending', accepted: 'approved', declined: 'rejected' } as Record<string, string>)[v] || v
 const label = (v: string) =>
-  String(v || '')
+  String(normalizedStatus(v) || '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase())
 const severity = (v: string) =>
-  v === 'converted'
+  normalizedStatus(v) === 'converted'
     ? 'success'
-    : v === 'accepted'
-      ? 'info'
-      : v === 'declined'
+    : normalizedStatus(v) === 'approved'
+      ? 'success'
+      : normalizedStatus(v) === 'rejected'
         ? 'danger'
-        : v === 'sent'
+        : normalizedStatus(v) === 'pending'
           ? 'warn'
           : 'secondary'
 const dateOnly = (v: any) =>

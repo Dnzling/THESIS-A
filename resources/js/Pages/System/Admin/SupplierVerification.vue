@@ -1,13 +1,132 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 pb-10">
-    <section class="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-8 text-white shadow-xl sm:px-9"><div class="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-orange-400/20 blur-3xl"></div><div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"><div><p class="mb-3 text-xs font-bold uppercase tracking-[.22em] text-orange-300">Partner compliance</p><h1 class="text-3xl font-bold sm:text-4xl">Supplier verification</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Review supplier credentials and supporting documents before enabling procurement access.</p></div><div class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-300 text-slate-950"><i class="pi pi-briefcase"></i></span><div><p class="text-2xl font-bold">{{ pending }}</p><p class="text-xs uppercase tracking-wider text-slate-400">Awaiting review</p></div></div></div></section>
-    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><button v-for="card in cards" :key="card.value" class="rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" :class="status===card.value?card.active:'border-slate-200'" @click="status=card.value"><div class="flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-xl" :class="card.color"><i :class="card.icon"></i></span><strong class="text-2xl text-slate-900">{{ card.count }}</strong></div><p class="mt-4 font-semibold text-slate-800">{{ card.label }}</p><p class="mt-1 text-xs text-slate-500">{{ card.help }}</p></button></section>
-    <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div class="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between"><div><h2 class="text-lg font-bold text-slate-900">{{ title }}</h2><p class="mt-1 text-sm text-slate-500">{{ filtered.length }} application{{ filtered.length===1?'':'s' }}</p></div><div class="flex gap-3"><IconField class="w-full sm:w-72"><InputIcon class="pi pi-search"/><InputText v-model="search" class="w-full" placeholder="Search supplier or contact"/></IconField><Button icon="pi pi-refresh" severity="secondary" outlined :loading="loading" @click="load"/></div></div>
-      <div v-if="loading" class="space-y-4 p-6"><Skeleton v-for="i in 3" :key="i" height="8rem" border-radius="1rem"/></div><div v-else-if="filtered.length" class="divide-y divide-slate-100"><article v-for="supplier in filtered" :key="supplier.portalId" class="grid gap-5 p-5 transition hover:bg-slate-50 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,.8fr)_auto] md:items-center lg:p-6"><div class="flex min-w-0 items-start gap-4"><span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 font-bold text-white">{{ initials(supplier.name) }}</span><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h3 class="truncate font-bold text-slate-900">{{ supplier.name }}</h3><Tag :value="label(supplier.status)" :severity="severity(supplier.status)" rounded/></div><p class="mt-1 truncate text-sm text-slate-600">{{ supplier.contact }} · {{ supplier.email }}</p><p class="mt-2 text-xs text-slate-500">Submitted {{ date(supplier.createdAt) }}</p></div></div><div><div class="flex justify-between text-xs"><span class="font-semibold text-slate-600">Documents</span><span class="text-slate-500">{{ supplier.documents }} submitted</span></div><div class="mt-2 h-2 rounded-full bg-slate-100"><div class="h-full rounded-full bg-orange-500" :style="{width:supplier.documents?'100%':'0%'}"></div></div></div><Button :label="supplier.status==='pending'?'Review':'View details'" icon="pi pi-arrow-right" icon-pos="right" :severity="supplier.status==='pending'?undefined:'secondary'" :outlined="supplier.status!=='pending'" @click="open(supplier.supplierId)"/></article></div><div v-else class="px-6 py-16 text-center"><i class="pi pi-inbox text-2xl text-slate-400"></i><h3 class="mt-4 font-bold text-slate-800">No supplier applications found</h3></div>
+  <div class="mx-auto max-w-7xl space-y-5 pb-8">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold text-slate-900">Supplier Verification</h1>
+        <p class="mt-1 text-sm text-slate-500">Review supplier registration details and submitted documents.</p>
+      </div>
+      <Button label="Back to Suppliers" icon="pi pi-arrow-left" outlined rounded size="small" severity="secondary" @click="router.push({ name: 'admin.suppliers.index' })" />
+    </div>
+
+    <section class="flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-slate-200 px-1">
+      <button v-for="filter in statusTabs" :key="filter.value" type="button" class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors" :class="status === filter.value ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-600 hover:text-orange-600'" :aria-pressed="status === filter.value" @click="status = filter.value">
+        {{ filter.label }} <span class="ml-1 text-xs text-slate-400">{{ filter.count }}</span>
+      </button>
     </section>
+
+    <Card class="overflow-hidden border border-slate-200 shadow-none">
+      <template #content>
+        <div class="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="font-semibold text-slate-900">{{ activeTitle }}</h2>
+            <p class="mt-1 text-sm text-slate-500">{{ filtered.length }} supplier application{{ filtered.length === 1 ? '' : 's' }}</p>
+          </div>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <IconField class="w-full sm:w-72"><InputIcon class="pi pi-search" /><InputText v-model="search" placeholder="Search supplier or contact" class="w-full" size="small" /></IconField>
+            <Select v-model="documentFilter" :options="documentOptions" option-label="label" option-value="value" size="small" class="w-full sm:w-48" />
+            <Button icon="pi pi-refresh" severity="secondary" outlined rounded size="small" aria-label="Refresh applications" :loading="loading" @click="load" />
+          </div>
+        </div>
+
+        <div v-if="loading" class="space-y-4 py-5"><Skeleton v-for="item in 3" :key="item" height="7rem" border-radius=".75rem" /></div>
+        <div v-else-if="filtered.length" class="divide-y divide-slate-100">
+          <article v-for="supplier in filtered" :key="supplier.portalId" class="grid gap-4 py-5 transition hover:bg-slate-50/70 md:grid-cols-[minmax(0,1.4fr)_minmax(180px,.7fr)_auto] md:items-center">
+            <div class="flex min-w-0 items-start gap-3">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-700">{{ initials(supplier.name) }}</span>
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold text-slate-900">{{ supplier.name }}</h3><Badge :value="title(supplier.status)" :severity="statusSeverity(supplier.status)" /></div>
+                <p class="mt-1 break-all text-sm text-slate-600">{{ supplier.contact }} <span class="text-slate-400">·</span> {{ supplier.email }}</p>
+                <p class="mt-2 text-xs text-slate-500">Submitted {{ formatDate(supplier.createdAt) }}</p>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between gap-2 text-xs"><span class="font-medium text-slate-600">Documents received</span><span class="text-slate-500">{{ supplier.documents }}</span></div>
+              <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-emerald-500" :style="{ width: supplier.documents ? '100%' : '0%' }"></div></div>
+            </div>
+            <Button :label="supplier.status === 'pending' ? 'Review' : 'View details'" icon="pi pi-arrow-right" icon-pos="right" :severity="supplier.status === 'pending' ? undefined : 'secondary'" :outlined="supplier.status !== 'pending'" size="small" @click="open(supplier.portalId)" />
+          </article>
+        </div>
+        <div v-else class="py-14 text-center">
+          <i class="pi pi-inbox text-2xl text-slate-400"></i>
+          <h3 class="mt-3 font-semibold text-slate-800">No supplier applications found</h3>
+          <p class="mt-1 text-sm text-slate-500">Try another status, document filter, or search term.</p>
+        </div>
+      </template>
+    </Card>
   </div>
 </template>
+
 <script setup lang="ts">
-import { computed,onMounted,ref } from 'vue'; import { useRouter } from 'vue-router'; import Button from 'primevue/button'; import IconField from 'primevue/iconfield'; import InputIcon from 'primevue/inputicon'; import InputText from 'primevue/inputtext'; import Skeleton from 'primevue/skeleton'; import Tag from 'primevue/tag'; import axiosClient from '@/axios'
-const router=useRouter(),loading=ref(false),rows=ref<any[]>([]),search=ref(''),status=ref('pending'); const load=async()=>{loading.value=true;try{const r=await axiosClient.get('/api/supplier-verifications',{params:{per_page:200}});const data=r.data?.data?.data||r.data?.data||[];rows.value=data.map((p:any)=>({portalId:p.portal_id||p.id,supplierId:p.supplier_id||p.id,name:p.supplier_name||p.company_name||p.supplier?.supplier_name||'Unnamed supplier',contact:p.contact_person||p.supplier?.contact_person||'No contact',email:p.email||p.user?.email||p.supplier?.email||'No email',status:String(p.status||'pending').toLowerCase(),createdAt:p.created_at,documents:(p.verificationDocuments||p.verification_documents||[]).length}))}finally{loading.value=false}}; const count=(s:string)=>rows.value.filter(x=>x.status===s).length; const pending=computed(()=>count('pending'));const cards=computed(()=>[{value:'pending',label:'Pending review',help:'Applications needing a decision',count:count('pending'),icon:'pi pi-clock',color:'bg-amber-100 text-amber-700',active:'border-amber-400 ring-2 ring-amber-100'},{value:'approved',label:'Approved',help:'Verified supplier partners',count:count('approved'),icon:'pi pi-check-circle',color:'bg-emerald-100 text-emerald-700',active:'border-emerald-400 ring-2 ring-emerald-100'},{value:'rejected',label:'Rejected',help:'Applications needing correction',count:count('rejected'),icon:'pi pi-times-circle',color:'bg-rose-100 text-rose-700',active:'border-rose-400 ring-2 ring-rose-100'},{value:'all',label:'All applications',help:'Complete verification history',count:rows.value.length,icon:'pi pi-list',color:'bg-sky-100 text-sky-700',active:'border-sky-400 ring-2 ring-sky-100'}]); const filtered=computed(()=>{const q=search.value.toLowerCase().trim();return rows.value.filter(x=>(status.value==='all'||x.status===status.value)&&(!q||[x.name,x.contact,x.email].some((v:string)=>v.toLowerCase().includes(q))))});const title=computed(()=>cards.value.find(x=>x.value===status.value)?.label);const open=(id:number)=>router.push({name:'admin.supplier-verification.show',params:{id}});const label=(v:string)=>v.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());const severity=(v:string)=>v==='approved'?'success':v==='rejected'?'danger':'warn';const initials=(v:string)=>v.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();const date=(v:string)=>v?new Intl.DateTimeFormat('en-PH',{dateStyle:'medium'}).format(new Date(v)):'Not available';onMounted(load)
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import axiosClient from '@/axios'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+
+const router = useRouter()
+const rows = ref<any[]>([])
+const loading = ref(false)
+const search = ref('')
+const status = ref('pending')
+const documentFilter = ref('all')
+const documentOptions = [
+  { label: 'All submissions', value: 'all' },
+  { label: 'With documents', value: 'with' },
+  { label: 'No documents', value: 'without' },
+]
+const filtered = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return rows.value.filter((supplier) => {
+    const matchesStatus = status.value === 'all' || supplier.status === status.value
+    const matchesTerm = !term || [supplier.name, supplier.contact, supplier.email].some((value) => String(value || '').toLowerCase().includes(term))
+    const matchesDocuments = documentFilter.value === 'all' || (documentFilter.value === 'with' ? supplier.documents > 0 : supplier.documents === 0)
+    return matchesStatus && matchesTerm && matchesDocuments
+  })
+})
+const counts = computed(() => ({
+  pending: rows.value.filter((row) => row.status === 'pending').length,
+  approved: rows.value.filter((row) => row.status === 'approved').length,
+  rejected: rows.value.filter((row) => row.status === 'rejected').length,
+  all: rows.value.length,
+}))
+const statusTabs = computed(() => [
+  { value: 'pending', label: 'Pending review', count: counts.value.pending },
+  { value: 'approved', label: 'Approved', count: counts.value.approved },
+  { value: 'rejected', label: 'Rejected', count: counts.value.rejected },
+  { value: 'all', label: 'All applications', count: counts.value.all },
+])
+const activeTitle = computed(() => statusTabs.value.find((tab) => tab.value === status.value)?.label || 'Applications')
+
+async function load() {
+  loading.value = true
+  try {
+    const response = await axiosClient.get('/api/supplier-verifications', { params: { per_page: 200 } })
+    const result = response.data?.data?.data || response.data?.data || []
+    rows.value = result.map((item: any) => ({
+      portalId: Number(item.portal_id || item.id),
+      name: item.supplier_name || item.company_name || item.supplier?.supplier_name || 'Unnamed supplier',
+      contact: item.contact_person || item.supplier?.contact_person || 'No contact person',
+      email: item.email || item.user?.email || item.supplier?.email || 'No email',
+      status: String(item.status || 'pending').toLowerCase(),
+      createdAt: item.created_at || null,
+      documents: (item.verificationDocuments || item.verification_documents || []).length,
+    }))
+  } finally {
+    loading.value = false
+  }
+}
+
+function open(id: number) { router.push({ name: 'admin.supplier-verification.show', params: { id } }) }
+function title(value: string) { return String(value || 'unknown').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) }
+function statusSeverity(value: string) { return ({ pending: 'warn', approved: 'success', rejected: 'danger' } as Record<string, string>)[value] || 'secondary' }
+function initials(value: string) { return String(value || 'S').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() }
+function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Not available' }
+
+onMounted(load)
 </script>

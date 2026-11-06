@@ -355,7 +355,9 @@ class UnifiedDeliveryController extends Controller
             ])
             ->where('store_id', $storeId)
             ->whereIn('status', ['sender_approved', 'in_transit', 'out_for_delivery'])
-            ->whereNotNull('delivery_status')
+            ->where(function ($query) {
+                $query->whereNotNull('delivery_status')->orWhereIn('status', ['in_transit', 'out_for_delivery']);
+            })
             ->get()
             ->map(function (StockTransfer $transfer): array {
                 $hasDelivery = (bool) ($transfer->driver_user_id || $transfer->driver_name || $transfer->vehicle_type || $transfer->tracking_number);
@@ -394,7 +396,8 @@ class UnifiedDeliveryController extends Controller
                     'expected_pickup_date' => $transfer->expected_delivery_date,
                     'created_at' => $transfer->created_at,
                     'driver_user_id' => $transfer->driver_user_id,
-                    'vehicle_id' => null,
+                    'vehicle_id' => $transfer->vehicle_id,
+                    'trip_id' => $transfer->trip_id,
                     'vehicle' => $transfer->vehicle_type ? [
                         'id' => 'stock-transfer-' . $transfer->vehicle_type,
                         'vehicle_name' => $transfer->vehicle_type,
@@ -1082,7 +1085,7 @@ class UnifiedDeliveryController extends Controller
                 $locationAddress = $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']) ?: '';
             }
 
-            DB::transaction(function () use ($transfer, $validated, $locationAddress) {
+            DB::transaction(function () use ($transfer, $validated, $locationAddress, $request) {
                 $transfer->delivery_status = $validated['status'];
                 $transfer->current_latitude = $validated['latitude'] ?? $transfer->current_latitude;
                 $transfer->current_longitude = $validated['longitude'] ?? $transfer->current_longitude;
@@ -1097,6 +1100,11 @@ class UnifiedDeliveryController extends Controller
                 } elseif ($validated['status'] === 'delivered') {
                     $transfer->delivered_at = $transfer->delivered_at ?: now();
                 }
+
+                $actor = $request->user();
+                $actorName = trim((string) ($actor?->fname.' '.$actor?->lname)) ?: 'Driver';
+                $entry = 'LOG2|'.now()->toDateTimeString().'|'.$actorName.'|custom_note|Delivery status updated to '.str_replace('_', ' ', $validated['status']);
+                $transfer->notes = trim((string) $transfer->notes."\n".$entry);
 
                 $transfer->save();
             });
@@ -1230,9 +1238,21 @@ class UnifiedDeliveryController extends Controller
         }
 
         $from = (string) $delivery->status;
+        $locationAddress = trim((string) ($validated['location_address'] ?? ''));
+        $proofPath = null;
+        if ($photo = $request->file('photo')) {
+            $proofPath = $photo->store('logistics/sales/status-proofs', 'public');
+        }
+
         $delivery->status = $validated['status'];
         $delivery->failed_reason = $validated['failed_reason'] ?? $delivery->failed_reason;
         $delivery->notes = $validated['notes'] ?? $delivery->notes;
+        $delivery->current_latitude = $validated['latitude'] ?? $delivery->current_latitude;
+        $delivery->current_longitude = $validated['longitude'] ?? $delivery->current_longitude;
+        $delivery->current_address = $locationAddress ?: $delivery->current_address;
+        if ($validated['status'] === 'delivered' && $proofPath) {
+            $delivery->proof_of_delivery_path = $proofPath;
+        }
         $delivery->updated_by = $request->user()->id;
         if ($validated['status'] === 'in_transit' && !$delivery->dispatched_at) {
             $delivery->dispatched_at = now();
@@ -1252,7 +1272,13 @@ class UnifiedDeliveryController extends Controller
             'event_type' => 'status_updated',
             'status_from' => $from,
             'status_to' => $validated['status'],
-            'message' => "Delivery status updated from {$from} to {$validated['status']}",
+            'message' => $validated['notes'] ?? "Delivery status updated from {$from} to {$validated['status']}",
+            'meta' => array_filter([
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_address' => $locationAddress ?: null,
+                'proof_photo_url' => $proofPath ? $this->publicUrl($proofPath) : null,
+            ], fn ($value) => $value !== null && $value !== ''),
             'created_by' => $request->user()->id,
         ]);
 
@@ -1311,6 +1337,33 @@ class UnifiedDeliveryController extends Controller
                 'message' => 'Live location updated.',
                 'data' => $delivery->fresh(['vehicle']),
             ]);
+        }
+
+        if ($source === 'sales') {
+            $order = $this->resolveSalesOrder($request, $orderId, withDelivery: true);
+            $delivery = $order->delivery;
+            if (!$delivery) {
+                return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
+            }
+            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
+            }
+            $deliveryStatus = strtolower((string) $delivery->status);
+            if ($deliveryStatus === 'delivered') {
+                return response()->json(['success' => true, 'message' => 'Delivery already completed; location tracking is closed.', 'data' => $delivery->fresh(['vehicle'])]);
+            }
+            if (!in_array($deliveryStatus, ['in_transit', 'out_for_delivery'], true)) {
+                return response()->json(['success' => false, 'message' => 'Live tracking is only available while the order is in transit.'], 422);
+            }
+
+            $address = trim((string) ($validated['location_address'] ?? ''));
+            $delivery->update([
+                'current_latitude' => $validated['latitude'],
+                'current_longitude' => $validated['longitude'],
+                'current_address' => $address !== '' ? $address : $delivery->current_address,
+            ]);
+
+            return response()->json(['success' => true, 'message' => 'Live location updated.', 'data' => $delivery->fresh(['vehicle'])]);
         }
 
         if ($source === 'stock_transfer') {

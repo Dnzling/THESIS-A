@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers\Api\ProductCatalog;
 
-use App\Models\Core\NavigationItem;
-use App\Models\Core\Permission;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\Promotion;
+use App\Models\Store\Branch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +19,11 @@ class PromotionController extends BaseController
         $this->authorizeRead();
         $storeId = (int) $this->getStoreId();
         $now = now();
-        $query = Promotion::byStore($storeId)->with(['categories:id,category_name', 'products:id,product_name,sku']);
+        $query = Promotion::byStore($storeId)->with([
+            'categories:id,category_name',
+            'products:id,product_name,sku',
+            'branches:id,name',
+        ]);
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -72,6 +75,9 @@ class PromotionController extends BaseController
             'products' => Product::byStore($storeId)->where('is_active', true)
                 ->where('product_type', 'finished_good')->orderBy('product_name')
                 ->get(['id', 'product_name', 'sku', 'base_price', 'discounted_price', 'category_id', 'subcategory_id']),
+            'branches' => Branch::query()->where('store_id', $storeId)
+                ->where('status', 'active')->where('branch_type', 'storefront')
+                ->orderBy('name')->get(['id', 'name', 'city', 'province']),
         ], 'Promotion options retrieved successfully');
     }
 
@@ -108,6 +114,7 @@ class PromotionController extends BaseController
             $copy->save();
             $copy->categories()->sync($source->categories->modelKeys());
             $copy->products()->sync($source->products->modelKeys());
+            $copy->branches()->sync($source->branches->modelKeys());
             return $copy;
         });
 
@@ -135,6 +142,8 @@ class PromotionController extends BaseController
             'category_ids.*' => ['integer'],
             'product_ids' => ['array', Rule::requiredIf($request->input('target_type') === 'products'), 'min:1'],
             'product_ids.*' => ['integer'],
+            'branch_ids' => ['nullable', 'array'],
+            'branch_ids.*' => ['integer'],
             'minimum_order_amount' => ['nullable', 'numeric', 'min:0'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', Rule::when($request->filled('starts_at'), ['after:starts_at'])],
@@ -144,12 +153,16 @@ class PromotionController extends BaseController
 
         $categoryIds = Category::byStore($storeId)->whereIn('id', $data['category_ids'] ?? [])->pluck('id')->all();
         $productIds = Product::byStore($storeId)->whereIn('id', $data['product_ids'] ?? [])->pluck('id')->all();
+        $branchIds = Branch::query()->where('store_id', $storeId)
+            ->where('status', 'active')->where('branch_type', 'storefront')
+            ->whereIn('id', $data['branch_ids'] ?? [])->pluck('id')->all();
         if (($data['target_type'] === 'categories' && count($categoryIds) !== count($data['category_ids']))
-            || ($data['target_type'] === 'products' && count($productIds) !== count($data['product_ids']))) {
-            return $this->errorResponse('One or more selected targets do not belong to this store.', 422);
+            || ($data['target_type'] === 'products' && count($productIds) !== count($data['product_ids']))
+            || count($branchIds) !== count($data['branch_ids'] ?? [])) {
+            return $this->errorResponse('One or more selected products, categories, or active storefront branches are invalid for this store.', 422);
         }
 
-        DB::transaction(function () use ($promotion, $data, $storeId, $categoryIds, $productIds) {
+        DB::transaction(function () use ($promotion, $data, $storeId, $categoryIds, $productIds, $branchIds) {
             $promotion->fill([
                 ...$data,
                 'store_id' => $storeId,
@@ -158,6 +171,7 @@ class PromotionController extends BaseController
             ])->save();
             $promotion->categories()->sync($data['target_type'] === 'categories' ? $categoryIds : []);
             $promotion->products()->sync($data['target_type'] === 'products' ? $productIds : []);
+            $promotion->branches()->sync($branchIds);
         });
 
         return $this->successResponse(
@@ -181,6 +195,10 @@ class PromotionController extends BaseController
             ...$promotion->toArray(),
             'category_ids' => $promotion->categories->modelKeys(),
             'product_ids' => $promotion->products->modelKeys(),
+            'branch_ids' => $promotion->branches->modelKeys(),
+            'branch_label' => $promotion->branches->isEmpty()
+                ? 'All active storefront branches'
+                : $promotion->branches->pluck('name')->join(', '),
             'target_label' => match ($promotion->target_type) {
                 'categories' => $promotion->categories->pluck('category_name')->join(', '),
                 'products' => $promotion->products->pluck('product_name')->join(', '),
@@ -216,40 +234,23 @@ class PromotionController extends BaseController
 
     private function hasPromotionPermission(bool $write): bool
     {
-        $navigation = NavigationItem::query()
-            ->where('route_name', 'merchandising.pricing')
-            ->where('is_active', true)
-            ->with(['permissions' => fn ($query) => $query->where('permissions.is_active', true)])
-            ->first();
-
-        if (!$navigation) {
-            return false;
-        }
-
-        $permissionNames = $navigation->permissions->pluck('name');
-
-        if ($write) {
-            $managementSuffixes = ['manage', 'edit', 'create', 'update', 'delete'];
-            $permissionNames = Permission::query()
-                ->where('module', $navigation->module)
-                ->where('name', 'like', $navigation->name . '.%')
-                ->where('is_active', true)
-                ->get(['name'])
-                ->pluck('name')
-                ->filter(fn (string $name) => collect($managementSuffixes)
-                    ->contains(fn (string $suffix) => str_ends_with($name, '.' . $suffix)));
-        }
-
         $user = auth()->user();
-        if (!$user || $permissionNames->isEmpty()) {
+        if (!$user) {
             return false;
         }
 
-        $effectivePermissions = app(PermissionService::class)->getUserPermissions(
-            $user,
-            (int) $this->getStoreId()
-        );
+        $permissionService = app(PermissionService::class);
+        $storeId = (int) $this->getStoreId();
+        $requiredPermissions = $write
+            ? ['merchandising.pricing.manage', 'merchandising.pricing.edit', 'merchandising.pricing.create']
+            : ['merchandising.pricing.view', 'merchandising.pricing.manage'];
 
-        return $permissionNames->intersect($effectivePermissions)->isNotEmpty();
+        foreach ($requiredPermissions as $permission) {
+            if ($permissionService->userHasPermission($user, $permission, $storeId)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6">
-    <Button label="Back to Employees" icon="pi pi-arrow-left" severity="secondary" text @click="router.push('/store/employees')" />
+    <Button :label="readOnly ? 'Back to Team' : 'Back to Employees'" icon="pi pi-arrow-left" severity="secondary" text @click="router.push(readOnly ? '/store/team' : '/store/employees')" />
     <div v-if="loading" class="space-y-4"><Skeleton height="9rem" /><Skeleton height="16rem" /></div>
     <Message v-else-if="error" severity="error">{{ error }}</Message>
     <template v-else-if="employee">
@@ -9,7 +9,7 @@
           <div class="relative h-24 w-24 shrink-0">
             <img v-if="employee.avatar_url" :src="employee.avatar_url" :alt="`${fullName} photo`" class="h-24 w-24 rounded-full border border-slate-200 object-cover" />
             <div v-else class="flex h-24 w-24 items-center justify-center rounded-full bg-blue-100 text-2xl font-semibold text-blue-700">{{ initials }}</div>
-            <label class="absolute -bottom-1 -right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white shadow" title="Upload employee photo">
+            <label v-if="!readOnly" class="absolute -bottom-1 -right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white shadow" title="Upload employee photo">
               <i class="pi pi-camera" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploading" @change="uploadPhoto" />
             </label>
           </div>
@@ -19,16 +19,29 @@
             <p class="mt-1 text-sm text-slate-500">{{ employee.role || 'No position' }} · {{ employee.branch || 'No branch' }}</p>
           </div>
           <Tag :value="statusLabel" :severity="employee.status === 'active' ? 'success' : 'warn'" />
-          <Button label="Edit Employee" icon="pi pi-pencil" @click="openEdit" />
-          <Button v-if="!employee.resignation_date" label="Resign" severity="warn" outlined size="small" @click="showResign = true" />
+          <Button v-if="!readOnly" label="Edit Employee" icon="pi pi-pencil" @click="openEdit" />
+          <Button v-if="!readOnly && !employee.resignation_date" label="Resign" severity="warn" outlined size="small" @click="showResign = true" />
         </div>
-        <p class="mt-4 text-xs text-slate-500">Photo: JPG, PNG, or WebP, up to 2 MB. Displayed as a circle across employee views.</p>
+        <p v-if="!readOnly" class="mt-4 text-xs text-slate-500">Photo: JPG, PNG, or WebP, up to 2 MB. Displayed as a circle across employee views.</p>
       </template></Card>
 
       <div class="grid gap-4 md:grid-cols-2">
         <Card class="border border-slate-200 shadow-sm"><template #title>Contact Information</template><template #content><div class="space-y-4 text-sm"><Info label="Email" :value="employee.email" /><Info label="Phone" :value="employee.phone_number" /></div></template></Card>
-        <Card class="border border-slate-200 shadow-sm"><template #title>Employment Information</template><template #content><div class="grid grid-cols-2 gap-4 text-sm"><Info label="Position" :value="employee.role" /><Info label="Branch" :value="employee.branch" /><Info label="Employment Type" :value="employmentLabel" /><Info :label="employee.pay_type === 'daily' ? 'Daily Rate' : 'Monthly Salary'" :value="money(employee.salary)" /><Info label="Salary Type" :value="salaryTypeLabel" /><Info label="Hire Date" :value="displayDate(employee.hire_date)" /><Info v-if="employee.employment_type === 'contract'" label="End Contract" :value="displayDate(employee.contract_end_date)" /><Info v-if="employee.resignation_date" label="Resignation Date" :value="displayDate(employee.resignation_date)" /><Info v-if="employee.last_working_day" label="Last Working Day" :value="displayDate(employee.last_working_day)" /></div></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title>Employment Information</template><template #content><div class="grid grid-cols-2 gap-4 text-sm"><Info label="Position" :value="employee.role" /><Info label="Branch" :value="employee.branch" /><Info label="Employment Type" :value="employmentLabel" /><Info v-if="!readOnly" label="Daily Rate" :value="money(employee.salary)" /><Info v-if="!readOnly" label="Salary Type" :value="salaryTypeLabel" /><Info label="Hire Date" :value="displayDate(employee.hire_date)" /><Info v-if="employee.employment_type === 'contract'" label="End Contract" :value="displayDate(employee.contract_end_date)" /><Info v-if="!readOnly && employee.resignation_date" label="Resignation Date" :value="displayDate(employee.resignation_date)" /><Info v-if="!readOnly && employee.last_working_day" label="Last Working Day" :value="displayDate(employee.last_working_day)" /></div></template></Card>
       </div>
+      <Card class="border border-slate-200 shadow-sm">
+        <template #title>Paid Payslips</template>
+        <template #content>
+          <div v-if="loadingPayslips" class="py-5 text-center text-sm text-slate-500">Loading paid payslips…</div>
+          <div v-else-if="!paidPayslips.length" class="py-5 text-center text-sm text-slate-500">No paid payslips yet.</div>
+          <div v-else class="divide-y divide-slate-100">
+            <div v-for="slip in paidPayslips" :key="slip.id" class="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div><p class="text-sm font-medium text-slate-900">{{ slip.pay_period?.name || 'Pay Period' }}</p><p class="text-xs text-slate-500">Paid {{ displayDate(slip.payment_date) }} · {{ money(slip.net_salary) }}</p></div>
+              <Button label="View / Print" icon="pi pi-print" severity="secondary" outlined size="small" @click="printPayslip(slip)" />
+            </div>
+          </div>
+        </template>
+      </Card>
     </template>
 
     <Dialog v-model:visible="showEdit" modal header="Edit Employee" :style="{ width: 'min(36rem, 95vw)' }">
@@ -41,9 +54,8 @@
         <div><label class="field-label">Branch</label><Select v-model="form.branch_id" :options="branches" optionLabel="name" optionValue="id" fluid /></div>
         <div><label class="field-label">Hire date</label><DatePicker v-model="form.hire_date" dateFormat="MM d, yy" showIcon fluid /></div>
         <div><label class="field-label">Employment type</label><Select v-model="form.employment_type" :options="employmentTypes" optionLabel="label" optionValue="value" fluid /></div>
-        <div><label class="field-label">Salary type</label><Select v-model="form.pay_type" :options="salaryTypes" optionLabel="label" optionValue="value" fluid /></div>
-        <div><label class="field-label">{{ form.pay_type === 'daily' ? 'Daily rate' : 'Monthly salary' }}</label><InputNumber v-model="form.salary" mode="currency" currency="PHP" locale="en-PH" :min="0.01" fluid /></div>
-        <p v-if="form.pay_type === 'daily'" class="sm:col-span-2 -mt-2 text-xs text-slate-500">One daily rate covers a standard paid workday. The store's paid-hours setting (8 hours if unset) determines its hourly equivalent.</p>
+        <div><label class="field-label">Daily salary</label><InputNumber v-model="form.salary" mode="currency" currency="PHP" locale="en-PH" :min="0.01" fluid /></div>
+        <p class="sm:col-span-2 -mt-2 text-xs text-slate-500">This amount is paid per workday. The store's paid-hours setting (8 hours if unset) determines its hourly equivalent.</p>
         <div v-if="form.employment_type === 'contract'"><label class="field-label">End Contract *</label><DatePicker v-model="form.contract_end_date" :minDate="form.hire_date || undefined" dateFormat="MM d, yy" showIcon fluid /></div>
         <div class="sm:col-span-2"><label class="field-label">Status</label><Select v-model="form.status" :options="statuses" optionLabel="label" optionValue="value" fluid /></div>
       </div>
@@ -84,11 +96,15 @@ import Tag from 'primevue/tag'
 const Info = defineComponent({ props: { label: String, value: [String, Number] }, setup(props) { return () => h('div', [h('p', { class: 'text-xs font-medium uppercase tracking-wide text-slate-500' }, props.label), h('p', { class: 'mt-1 font-medium text-slate-900' }, String(props.value || '—'))]) } })
 const route = useRoute()
 const router = useRouter()
+const props = defineProps<{ readOnly?: boolean }>()
+const readOnly = computed(() => props.readOnly === true)
 const toast = useToast()
 const employee = ref<any>(null)
 const roles = ref<any[]>([])
 const branches = ref<any[]>([])
 const loading = ref(true)
+const loadingPayslips = ref(false)
+const paidPayslips = ref<any[]>([])
 const saving = ref(false)
 const uploading = ref(false)
 const showEdit = ref(false)
@@ -100,15 +116,14 @@ const resignationReasons = [{ label: 'Personal', value: 'personal' }, { label: '
 const handoverOptions = [{ label: 'Not Started', value: 'not_started' }, { label: 'In Progress', value: 'in_progress' }, { label: 'Complete', value: 'complete' }]
 const minimumLastDay = computed(() => { const day = new Date(resign.resignation_date); day.setDate(day.getDate() + 7); return day })
 const error = ref('')
-const form = reactive({ fname: '', lname: '', phone_number: '', role_id: null as number | null, branch_id: null as number | null, hire_date: null as Date | null, employment_type: 'full_time', contract_end_date: null as Date | null, pay_type: 'monthly', salary: 0, status: 'active' })
+const form = reactive({ fname: '', lname: '', phone_number: '', role_id: null as number | null, branch_id: null as number | null, hire_date: null as Date | null, employment_type: 'full_time', contract_end_date: null as Date | null, pay_type: 'daily', salary: 0, status: 'active' })
 const employmentTypes = [{ label: 'Full Time', value: 'full_time' }, { label: 'Part Time', value: 'part_time' }, { label: 'Contract', value: 'contract' }, { label: 'Intern', value: 'intern' }]
-const salaryTypes = [{ label: 'Monthly', value: 'monthly' }, { label: 'Daily', value: 'daily' }]
 const statuses = [{ label: 'Active', value: 'active' }, { label: 'On Leave', value: 'on_leave' }, { label: 'Suspended', value: 'suspended' }]
 const fullName = computed(() => `${employee.value?.fname || ''} ${employee.value?.lname || ''}`.trim())
 const initials = computed(() => `${employee.value?.fname?.[0] || ''}${employee.value?.lname?.[0] || ''}`.toUpperCase())
 const statusLabel = computed(() => statuses.find(item => item.value === employee.value?.status)?.label || employee.value?.status || 'Unknown')
 const employmentLabel = computed(() => employmentTypes.find(item => item.value === employee.value?.employment_type)?.label || '—')
-const salaryTypeLabel = computed(() => employee.value?.pay_type === 'daily' ? 'Daily' : 'Monthly')
+const salaryTypeLabel = computed(() => 'Daily')
 const money = (value?: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const displayDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'
 const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -116,12 +131,34 @@ const errorText = (err: any) => String(Object.values(err?.response?.data?.errors
 const isValidPhone = (value?: string | null) => !value || /^09\d{2}-\d{3}-\d{4}$/.test(value)
 
 async function loadEmployee() {
-  try { employee.value = (await axios.get(`/api/store/simple-staff/employees/${route.params.id}`)).data.data }
+  try {
+    const endpoint = readOnly.value
+      ? `/api/store-module/team/employees/${route.params.id}`
+      : `/api/store/simple-staff/employees/${route.params.id}`
+    employee.value = (await axios.get(endpoint)).data.data
+    await loadPaidPayslips()
+  }
   catch (err: any) { error.value = errorText(err) }
   finally { loading.value = false }
 }
+async function loadPaidPayslips() {
+  if (!employee.value?.id) return
+  loadingPayslips.value = true
+  try {
+    paidPayslips.value = (await axios.get(`/api/payroll/basic/employee/${employee.value.id}/payslips`)).data?.data || []
+  } catch { paidPayslips.value = [] }
+  finally { loadingPayslips.value = false }
+}
+async function printPayslip(slip: any) {
+  try {
+    const response = await axios.get(`/api/payroll/basic/${slip.id}/payslip/print`, { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    window.open(url, '_blank')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err: any) { toast.add({ severity: 'error', summary: 'Unable to open payslip', detail: errorText(err), life: 3500 }) }
+}
 function openEdit() {
-  Object.assign(form, { fname: employee.value.fname || '', lname: employee.value.lname || '', phone_number: employee.value.phone_number || '', role_id: employee.value.role_id, branch_id: employee.value.branch_id, hire_date: employee.value.hire_date ? new Date(`${employee.value.hire_date.slice(0, 10)}T00:00:00`) : new Date(), employment_type: employee.value.employment_type, contract_end_date: employee.value.contract_end_date ? new Date(`${employee.value.contract_end_date}T00:00:00`) : null, pay_type: employee.value.pay_type || 'monthly', salary: Number(employee.value.salary || 0), status: employee.value.status })
+  Object.assign(form, { fname: employee.value.fname || '', lname: employee.value.lname || '', phone_number: employee.value.phone_number || '', role_id: employee.value.role_id, branch_id: employee.value.branch_id, hire_date: employee.value.hire_date ? new Date(`${employee.value.hire_date.slice(0, 10)}T00:00:00`) : new Date(), employment_type: employee.value.employment_type, contract_end_date: employee.value.contract_end_date ? new Date(`${employee.value.contract_end_date}T00:00:00`) : null, pay_type: 'daily', salary: Number(employee.value.salary || 0), status: employee.value.status })
   showEdit.value = true
 }
 async function saveEmployee() {
@@ -129,7 +166,7 @@ async function saveEmployee() {
   if (!form.hire_date || Number(form.salary) <= 0 || (form.employment_type === 'contract' && (!form.contract_end_date || form.contract_end_date < form.hire_date))) return
   saving.value = true
   try {
-    employee.value = (await axios.put(`/api/store/simple-staff/employees/${route.params.id}`, { ...form, hire_date: dateString(form.hire_date), contract_end_date: form.employment_type === 'contract' && form.contract_end_date ? dateString(form.contract_end_date) : null })).data.data
+    employee.value = (await axios.put(`/api/store/simple-staff/employees/${route.params.id}`, { ...form, pay_type: 'daily', hire_date: dateString(form.hire_date), contract_end_date: form.employment_type === 'contract' && form.contract_end_date ? dateString(form.contract_end_date) : null })).data.data
     showEdit.value = false
     toast.add({ severity: 'success', summary: 'Employee updated', life: 2500 })
   } catch (err: any) { toast.add({ severity: 'error', summary: 'Unable to save', detail: errorText(err), life: 3500 }) }
@@ -168,6 +205,10 @@ async function uploadPhoto(event: Event) {
   finally { uploading.value = false; input.value = '' }
 }
 onMounted(async () => {
+  if (readOnly.value) {
+    await loadEmployee()
+    return
+  }
   const results = await Promise.allSettled([
     loadEmployee(),
     axios.get('/api/store/roles/scoped').then(r => { roles.value = r.data.data || r.data || [] }),

@@ -1062,6 +1062,37 @@ onMounted(async () => {
                 form.supplier_id = Number(availableSuppliers[0].id)
                 onSupplierChange()
             }
+        } else if (query.get('stock_view_prefill') === '1') {
+            const productId = Number(query.get('product_id') || 0)
+            const variationId = Number(query.get('variation_id') || 0) || null
+            const requestedQuantity = Math.max(1, Math.ceil(Number(query.get('requested_quantity') || 1)))
+            const product = products.value.find(item => Number(item.id) === productId)
+            const variation = variationId
+                ? product?.variations?.find((item: any) => Number(item.id) === variationId)
+                : null
+
+            if (!product || (variationId && !variation)) {
+                throw new Error('This inventory item or variant is not available in the purchase-order catalog.')
+            }
+
+            const linkedSupplierIds = (product.suppliers || []).map((supplier: any) => Number(supplier.id))
+            const preselectedSupplier = suppliers.value.find((supplier: any) => linkedSupplierIds.includes(Number(supplier.id)))
+            if (!preselectedSupplier) {
+                throw new Error('This product has no supplier available under an active store contract. Add or activate a supplier contract before creating a purchase order.')
+            }
+
+            form.supplier_id = Number(preselectedSupplier.id)
+            onSupplierChange()
+            const supplierProduct = product.suppliers.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+            form.items.splice(0, form.items.length, {
+                key: nextKey++,
+                product_id: productId,
+                variation_id: variationId,
+                selection_key: `${productId}:${variationId || 0}`,
+                quantity_ordered: Math.max(10, requestedQuantity),
+                unit_cost: Number(supplierProduct?.unit_cost || 0),
+            })
+            form.notes = query.get('notes') || 'Restock request from inventory item details.'
         }
     } catch (cause: any) {
         error.value =

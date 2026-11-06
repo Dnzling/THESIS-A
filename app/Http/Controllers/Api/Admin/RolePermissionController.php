@@ -278,15 +278,40 @@ class RolePermissionController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $permission = DB::table('permissions')->insertGetId([
-            'name' => $request->name,
-            'display_name' => $request->display_name,
-            'module' => $request->module,
-            'description' => $request->description,
-            'is_active' => $request->is_active ?? true,
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
+        $now = now();
+        [$permission, $ownerRoleIds] = DB::transaction(function () use ($request, $now): array {
+            $permissionId = DB::table('permissions')->insertGetId([
+                'name' => $request->name,
+                'display_name' => $request->display_name,
+                'module' => $request->module,
+                'description' => $request->description,
+                'is_active' => $request->is_active ?? true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            foreach (DB::table('subscription_plans')->pluck('id') as $planId) {
+                DB::table('plan_permissions')->updateOrInsert(
+                    ['plan_id' => $planId, 'permission_id' => $permissionId],
+                    ['included' => true, 'created_at' => $now, 'updated_at' => $now]
+                );
+            }
+
+            $ownerRoleIds = DB::table('roles')->where('name', 'owner')->pluck('id');
+            foreach ($ownerRoleIds as $roleId) {
+                DB::table('role_permissions')->updateOrInsert(
+                    ['role_id' => $roleId, 'permission_id' => $permissionId],
+                    ['created_at' => $now, 'updated_at' => $now]
+                );
+            }
+
+            return [$permissionId, $ownerRoleIds];
+        });
+
+        User::query()
+            ->whereIn('role_id', $ownerRoleIds)
+            ->get()
+            ->each(fn (User $user) => $this->permissionService->clearUserCache($user));
 
         return response()->json(['message' => 'Permission created successfully', 'id' => $permission], 201);
     }

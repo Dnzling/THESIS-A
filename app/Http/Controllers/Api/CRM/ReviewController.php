@@ -10,18 +10,38 @@ use Illuminate\Http\Request;
 
 class ReviewController extends Controller
 {
-    public function index(Request $request)
+    private function resolveStoreId(Request $request): int
     {
         $user = $request->user();
-        $storeId = $user?->store_id;
+        $storeId = (int) ($user?->store_id ?? $user?->employee?->store_id ?? 0);
 
-        if (!$storeId && $request->filled('store_id')) {
+        if ($storeId <= 0 && ($branchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0)) > 0) {
+            $storeId = (int) Branch::query()->whereKey($branchId)->value('store_id');
+        }
+
+        $isGlobalSuperAdmin = strtolower((string) ($user?->role?->name ?? '')) === 'super_admin'
+            && empty($user?->store_id);
+        if ($storeId <= 0 && $isGlobalSuperAdmin && $request->filled('store_id')) {
             $storeId = (int) $request->integer('store_id');
         }
 
-        if (!$storeId && $user?->branch_id) {
-            $storeId = Branch::query()->whereKey($user->branch_id)->value('store_id');
-        }
+        return $storeId;
+    }
+
+    private function ensureReviewAccess(Request $request, SalesReview $review): void
+    {
+        $user = $request->user();
+        $isGlobalSuperAdmin = strtolower((string) ($user?->role?->name ?? '')) === 'super_admin'
+            && empty($user?->store_id);
+        abort_unless($isGlobalSuperAdmin || $this->resolveStoreId($request) === (int) $review->store_id, 404);
+
+        $branchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
+        abort_if($branchId > 0 && $review->branch_id && $branchId !== (int) $review->branch_id, 404);
+    }
+
+    public function index(Request $request)
+    {
+        $storeId = $this->resolveStoreId($request);
 
         if (!$storeId) {
             return response()->json(['data' => []]);
@@ -130,23 +150,68 @@ class ReviewController extends Controller
         }
     }
 
-    public function show(SalesReview $review)
+    public function show(Request $request, SalesReview $review)
     {
+        $this->ensureReviewAccess($request, $review);
+        $review->load(['product:id,product_name,sku', 'replier:id,fname,lname']);
+
+        $ecommerceReview = null;
+        if (in_array((string) $review->order_type, ['ecommerce', 'ecommerce_order'], true)) {
+            $ecommerceReview = EcommerceProductReview::query()
+                ->with('order:id,order_number')
+                ->where('store_id', $review->store_id)
+                ->where('order_id', $review->order_id)
+                ->where('product_id', $review->product_id)
+                ->when($review->created_by, fn ($query) => $query->where('user_id', $review->created_by))
+                ->latest('id')
+                ->first();
+        }
+
         return response()->json([
-            'data' => $review,
+            'data' => [
+                'id' => $review->id,
+                'store_id' => $review->store_id,
+                'branch_id' => $review->branch_id,
+                'order_type' => $review->order_type,
+                'order_id' => $review->order_id,
+                'order_number' => $ecommerceReview?->order?->order_number,
+                'product' => $review->product,
+                'customer_name' => $review->customer_name,
+                'customer_contact' => $review->customer_contact,
+                'rating' => (int) ($ecommerceReview?->rating ?? $review->rating),
+                'message' => $ecommerceReview?->review_text ?? $review->message,
+                'appearance_rating' => $ecommerceReview?->appearance_rating,
+                'assembly_rating' => $ecommerceReview?->assembly_rating,
+                'quality_rating' => $ecommerceReview?->quality_rating,
+                'value_rating' => $ecommerceReview?->value_rating,
+                'expectations_rating' => $ecommerceReview?->expectations_rating,
+                'is_recommended' => $ecommerceReview?->is_recommended,
+                'attachment_url' => $ecommerceReview?->attachment_url,
+                'status' => $review->status,
+                'reply' => $review->reply,
+                'replied_at' => $review->replied_at,
+                'replier' => $review->replier,
+                'created_at' => $ecommerceReview?->created_at ?? $review->created_at,
+            ],
         ]);
     }
 
     public function reply(Request $request, SalesReview $review)
     {
+        $this->ensureReviewAccess($request, $review);
         $request->validate([
             'reply' => ['required', 'string', 'max:2000'],
         ]);
 
+        $reply = trim((string) $request->input('reply'));
+        if ($reply === '') {
+            return response()->json(['message' => 'Reply cannot be blank.'], 422);
+        }
+
         $user = $request->user();
 
         $review->update([
-            'reply' => $request->string('reply'),
+            'reply' => $reply,
             'replied_by' => $user?->id,
             'replied_at' => now(),
             'status' => 'replied',
@@ -175,12 +240,12 @@ class ReviewController extends Controller
                 'entity_id' => (int) $review->id,
                 'action' => 'store_replied',
                 'title' => 'Store replied to your review',
-                'message' => "The store replied to your review for {$productName}: \"" . (string) $review->reply . '"',
+                'message' => "The store replied to your review for {$productName}: \"{$reply}\"",
                 'severity' => 'info',
                 'link' => '/products/' . (int) $review->product_id . '?tab=reviews',
                 'data' => [
                     'product_id' => (int) $review->product_id,
-                    'reply' => (string) $review->reply,
+                    'reply' => $reply,
                 ],
             ]);
         }

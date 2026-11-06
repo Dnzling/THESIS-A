@@ -62,6 +62,15 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\Procurement\PurchaseOrder\PurchaseOrder::observe(\App\Observers\PurchaseOrderIncomingStockObserver::class);
         \App\Models\Procurement\PurchaseOrder\PurchaseOrderItem::observe(\App\Observers\PurchaseOrderItemIncomingStockObserver::class);
 
+        foreach ([
+            \App\Models\Ecommerce\EcommerceOrderDelivery::class,
+            \App\Models\Sales\SalesOrderDelivery::class,
+            \App\Models\Logistics\ReturnPickup::class,
+            \App\Models\Inventory\StockTransfer::class,
+        ] as $deliveryModel) {
+            $deliveryModel::updated(fn ($delivery) => app(\App\Services\Logistics\CompleteDeliveryTrip::class)->afterDeliveryUpdate($delivery));
+        }
+
         // Permission checks (RBAC)
         // Treat each Gate ability as a permission atom and defer to User::hasPermissionTo().
         // Set RBAC_BYPASS=true only for local/dev troubleshooting.

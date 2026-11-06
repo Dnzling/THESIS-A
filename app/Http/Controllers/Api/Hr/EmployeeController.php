@@ -357,7 +357,7 @@ class EmployeeController extends Controller
                 'contract_end_date' => 'nullable|required_if:employment_type,contract|date|after_or_equal:hire_date',
                 'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
-                'pay_type' => 'nullable|in:monthly,hourly,daily,hybrid',
+                'pay_type' => $simpleStaff ? ['required', Rule::in(['daily'])] : 'nullable|in:monthly,hourly,daily,hybrid',
                 'salary' => $simpleStaff ? 'required|numeric|min:0.01' : 'required|numeric|min:0',
                 'status' => 'required|in:active,on_leave,suspended,terminated'
             ]);
@@ -403,7 +403,7 @@ class EmployeeController extends Controller
                 'contract_end_date' => $validated['contract_end_date'] ?? null,
                 'department' => $validated['department'] ?? null,
                 'employment_type' => $validated['employment_type'],
-                'pay_type' => $validated['pay_type'] ?? 'monthly',
+                'pay_type' => $simpleStaff ? 'daily' : ($validated['pay_type'] ?? 'monthly'),
                 'hourly_rate' => !$simpleStaff && ($validated['pay_type'] ?? 'monthly') === 'hourly' ? $validated['salary'] : null,
                 'salary' => $validated['salary'] ?? null,
                 'status' => $validated['status']

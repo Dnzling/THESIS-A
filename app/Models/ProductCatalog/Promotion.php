@@ -38,4 +38,9 @@ class Promotion extends Model
     {
         return $this->belongsToMany(Product::class, 'promotion_products');
     }
+
+    public function branches()
+    {
+        return $this->belongsToMany(\App\Models\Store\Branch::class, 'promotion_branches');
+    }
 }

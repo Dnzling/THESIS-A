@@ -485,6 +485,56 @@ const prefillFromReorderSuggestion = async () => {
   }
 }
 
+const prefillFromStockView = async () => {
+  if (String(route.query.stock_view_prefill || '') !== '1') return
+
+  const productId = Number(route.query.product_id || 0)
+  const variationId = Number(route.query.variation_id || 0)
+  const requestedQuantity = Math.max(1, Math.ceil(Number(route.query.requested_quantity || 1)))
+  if (!productId) return
+
+  const warehouses = branches.value.filter((branch: any) =>
+    String(branch.branch_type || '').toLowerCase() === 'warehouse'
+    && String(branch.status || '').toLowerCase() === 'active'
+  )
+  if (!warehouses.length) {
+    reorderRequestNotice.value = 'There is no active warehouse for this store. Return to the item and create a supplier purchase order instead.'
+    return
+  }
+
+  let candidates: Array<any>
+  try {
+    candidates = await Promise.all(warehouses.map(async (branch: any) => {
+      const response = await inventoryService.getBranchInventory(Number(branch.id), { per_page: 1000 })
+      const payload = response?.data ?? response
+      const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.data?.data) ? payload.data.data : Array.isArray(payload) ? payload : []
+      const stock = rows.find((row: any) => Number(row.product_id) === productId
+        && Number(row.variation_id || 0) === variationId
+        && Number(row.quantity_available || 0) > 0)
+      return stock ? { branch, stock, available: Math.floor(Number(stock.quantity_available)) } : null
+    }))
+  } catch (error: any) {
+    reorderRequestNotice.value = error?.response?.data?.message || 'Warehouse stock could not be checked. Refresh the form and try again.'
+    return
+  }
+  const match = candidates.filter(Boolean).sort((a: any, b: any) => b.available - a.available)[0] as any
+  if (!match) {
+    form.from_branch_id = Number(warehouses[0].id)
+    reorderRequestNotice.value = 'An active warehouse exists, but none has available stock for this exact item or variant. Select another stocked item or ask the warehouse to receive it first.'
+    return
+  }
+
+  form.from_branch_id = Number(match.branch.id)
+  inventoryItems.value = [match.stock]
+  const quantity = Math.min(requestedQuantity, match.available)
+  form.items = [{ inventory_item_id: Number(match.stock.id), quantity }]
+  form.reason = 'Branch replenishment'
+  form.remarks = String(route.query.notes || 'Restock request from inventory item details.')
+  reorderRequestNotice.value = quantity < requestedQuantity
+    ? `Prefilled from ${match.branch.name}. The requested quantity was reduced to ${quantity}, the available stock at that warehouse.`
+    : `Prefilled the exact product/variant from ${match.branch.name}. Available stock: ${match.available}.`
+}
+
 const onFromBranchChange = async () => {
   form.items = [] // Clear items when source branch changes
   inventoryItems.value = []
@@ -561,7 +611,7 @@ const loadEstimate = async () => {
       to_branch_id: form.to_branch_id,
       reorder_suggestion_ids: reorderSuggestionIds.value.length ? reorderSuggestionIds.value : undefined,
       items: estimatePayloadItems(),
-    })
+    }, { headers: { 'X-Suppress-Success-Dialog': '1' } })
     Object.assign(estimate, response.data?.data || {})
   } catch (error: any) {
     Object.assign(estimate, { goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
@@ -788,6 +838,7 @@ onMounted(async () => {
       })
     }
     await prefillFromReorderSuggestion()
+    if (!reorderSuggestionIds.value.length) await prefillFromStockView()
   } finally {
     autoFillBranchLoading.value = false
   }

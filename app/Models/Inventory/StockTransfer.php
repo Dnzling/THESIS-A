@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
+use App\Models\Logistics\DeliveryTrip;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 
 class StockTransfer extends Model
 {
@@ -43,6 +45,8 @@ class StockTransfer extends Model
         'vehicle_type',
         'driver_name',
         'driver_user_id',
+        'trip_id',
+        'vehicle_id',
         'driver_contact',
         'tracking_number',
         'delivery_status',
@@ -127,6 +131,16 @@ class StockTransfer extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Core\User::class, 'driver_user_id');
+    }
+
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryTrip::class, 'trip_id');
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(EcommerceDeliveryVehicle::class, 'vehicle_id');
     }
 
     // Scopes

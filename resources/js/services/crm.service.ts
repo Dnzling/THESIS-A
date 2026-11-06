@@ -72,17 +72,23 @@ class CrmService {
   }
 
   async sendChatMessage(threadId: number | string, payload: any) {
-    const res = await axiosClient.post(`/api/crm/chats/threads/${threadId}/messages`, payload)
+    const res = await axiosClient.post(`/api/crm/chats/threads/${threadId}/messages`, payload, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     return res.data
   }
 
   async updateChatMessage(threadId: number | string, messageId: number | string, payload: { message: string }) {
-    const res = await axiosClient.put(`/api/crm/chats/threads/${threadId}/messages/${messageId}`, payload)
+    const res = await axiosClient.put(`/api/crm/chats/threads/${threadId}/messages/${messageId}`, payload, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     return res.data
   }
 
   async unsendChatMessage(threadId: number | string, messageId: number | string) {
-    const res = await axiosClient.delete(`/api/crm/chats/threads/${threadId}/messages/${messageId}`)
+    const res = await axiosClient.delete(`/api/crm/chats/threads/${threadId}/messages/${messageId}`, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     return res.data
   }
 

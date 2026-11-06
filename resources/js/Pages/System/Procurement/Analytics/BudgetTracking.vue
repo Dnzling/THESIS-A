@@ -1,14 +1,15 @@
 <template>
-  <div class="space-y-5">
-    <header class="flex flex-wrap items-end justify-between gap-3">
+  <div class="module-dashboard space-y-5 pb-6 text-sm">
+    <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Budget Tracking</h1>
+        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">Procurement</p>
+        <h1 class="mt-1 text-2xl font-semibold text-slate-950">Budget Tracking</h1>
         <p class="mt-1 text-sm text-slate-500">Compare store budget allocations with approved and active purchase orders.</p>
       </div>
       <div class="flex items-end gap-2">
         <div>
           <label class="mb-1 block text-xs font-medium text-slate-600">Year</label>
-          <Select v-model="selectedYear" :options="yearOptions" class="w-28" @change="loadBudgetData" />
+          <Select v-model="selectedYear" :options="yearOptions" class="w-32" size="small" @change="loadBudgetData" />
         </div>
         <Button icon="pi pi-refresh" label="Refresh" size="small" severity="secondary" outlined :loading="loading" @click="loadBudgetData" />
       </div>
@@ -18,7 +19,7 @@
     <div v-if="loading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Skeleton v-for="item in 4" :key="item" height="6rem" borderRadius="0.75rem" />
     </div>
-    <section v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section v-else-if="!loadError" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Card v-for="card in summaryCards" :key="card.label" class="border border-slate-200 shadow-none">
         <template #content>
           <p class="text-xs font-medium text-slate-500">{{ card.label }}</p>
@@ -28,7 +29,8 @@
       </Card>
     </section>
 
-    <Card class="border border-slate-200 shadow-none">
+    <Card v-if="loading" class="border border-slate-200 shadow-sm"><template #content><Skeleton height="7rem" class="rounded-lg" /></template></Card>
+    <Card v-else-if="!loadError" class="border border-slate-200 shadow-sm">
       <template #content>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -50,19 +52,20 @@
       </template>
     </Card>
 
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <Card class="border border-slate-200 shadow-none">
+    <div v-if="!loadError" class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <Card class="border border-slate-200 shadow-sm">
         <template #title><span class="text-base font-semibold">Monthly Budget vs PO Commitments</span></template>
         <template #content>
-          <Chart v-if="monthlyRows.length" type="bar" :data="monthlyChartData" :options="chartOptions" class="h-72 w-full" />
+          <Skeleton v-if="loading" height="18rem" class="rounded-lg" />
+          <Chart v-else-if="monthlyRows.some(row => row.budgeted > 0 || row.actual > 0)" type="bar" :data="monthlyChartData" :options="chartOptions" class="h-72 w-full" />
           <div v-else class="py-10 text-center text-sm text-slate-500">No monthly data available.</div>
         </template>
       </Card>
 
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="border border-slate-200 shadow-sm">
         <template #title><span class="text-base font-semibold">Budget by Category</span></template>
         <template #content>
-          <DataTable v-if="!loading" :value="categoryBudgets" rowHover responsiveLayout="scroll" class="text-sm">
+          <DataTable v-if="!loading" :value="categoryBudgets" rowHover responsiveLayout="scroll" size="small">
             <template #empty>
               <div class="py-8 text-center text-sm text-slate-500">No purchase-order spend or budget categories found for {{ selectedYear }}.</div>
             </template>

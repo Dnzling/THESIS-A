@@ -3,7 +3,7 @@
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Basic Payroll</h1>
-        <p class="mt-1 text-sm text-slate-500">Review payroll drafts, approvals, and employee payouts.</p>
+        <p class="mt-1 text-sm text-slate-500">Review each pay period, complete calculations, and record payouts.</p>
       </div>
       <div class="flex w-full flex-wrap gap-2 sm:w-auto">
         <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadPayrolls" />
@@ -33,7 +33,7 @@
       <Card class="border border-slate-200 shadow-sm">
         <template #content>
           <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Awaiting Completion</p><p class="mt-1 text-xl font-semibold tabular-nums text-orange-700">{{ formatCurrency(summary.totalPending) }}</p></div>
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Unpaid</p><p class="mt-1 text-xl font-semibold tabular-nums text-orange-700">{{ formatCurrency(summary.totalPending) }}</p></div>
             <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-orange-700"><i class="pi pi-clock" /></span>
           </div>
         </template>
@@ -44,12 +44,12 @@
       <template #content>
         <div class="space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 class="text-base font-semibold text-slate-900">Payroll Records</h2><p class="mt-0.5 text-xs text-slate-500">Review each employee’s payroll status and payout.</p></div>
+            <div><h2 class="text-base font-semibold text-slate-900">Payroll by Pay Period</h2><p class="mt-0.5 text-xs text-slate-500">Open a period to review, edit, complete, and pay payrolls.</p></div>
             <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <div class="w-full sm:w-72">
                 <IconField>
                   <InputIcon class="pi pi-search" />
-                  <InputText v-model="filters.search" fluid size="small" placeholder="Search employee or pay period" />
+                  <InputText v-model="filters.search" fluid size="small" placeholder="Search pay period" />
                 </IconField>
               </div>
               <Button v-if="filters.search" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" @click="filters.search = ''" />
@@ -67,68 +67,26 @@
             removableSort
             tableStyle="min-width: 62rem"
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-            currentPageReportTemplate="Showing {first} to {last} of {totalRecords} payroll records"
+            currentPageReportTemplate="Showing {first} to {last} of {totalRecords} pay periods"
           >
-            <Column field="created_at" header="Date" sortable style="width: 150px">
-              <template #body="{ data }">{{ formatDate(data.paid_at || data.pay_date || data.created_at) }}</template>
+            <Column field="start_date" header="Pay Period" sortable style="min-width: 240px">
+              <template #body="{ data }"><div><p class="font-medium text-slate-900">{{ data.name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ formatDate(data.start_date) }} – {{ formatDate(data.end_date) }}</p></div></template>
             </Column>
-
-            <Column header="Employee" style="min-width: 200px">
-              <template #body="{ data }">
-                <div>
-                  <p class="font-medium text-slate-900">{{ formatEmployeeName(data) }}</p>
-                  <p class="mt-0.5 text-xs text-slate-500">{{ data.employee?.employee_number || data.employee_number || 'No employee ID' }}</p>
-                </div>
-              </template>
+            <Column field="employee_count" header="Employees" sortable style="width: 140px"><template #body="{ data }">{{ data.employee_count }}</template></Column>
+            <Column field="total_net" header="Total Net Pay" sortable style="width: 180px"><template #body="{ data }"><span class="font-semibold tabular-nums text-slate-900">{{ formatCurrency(data.total_net) }}</span></template></Column>
+            <Column header="Progress" style="min-width: 190px">
+              <template #body="{ data }"><div class="flex flex-wrap gap-1"><Badge v-if="data.statuses?.draft || data.statuses?.calculated" :value="`${(data.statuses?.draft || 0) + (data.statuses?.calculated || 0)} Draft`" severity="secondary" /><Badge v-if="data.statuses?.approved" :value="`${data.statuses.approved} Completed`" severity="success" /><Badge v-if="data.statuses?.paid" :value="`${data.statuses.paid} Paid`" severity="info" /></div></template>
             </Column>
-
-            <Column header="Pay Period" style="min-width: 200px">
-              <template #body="{ data }">
-                <span class="text-slate-700">{{ data.pay_period?.name || data.payPeriod?.name || '—' }}</span>
-              </template>
-            </Column>
-
-            <Column header="Net Pay" style="width: 160px">
-              <template #body="{ data }">
-                <span class="font-semibold tabular-nums text-slate-900">{{ formatCurrency(data.net_salary || 0) }}</span>
-              </template>
-            </Column>
-
-            <Column header="Status" style="width: 140px">
-              <template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" /></template>
-            </Column>
-
-            <Column header="Actions" style="width: 140px" headerStyle="text-align:center">
+            <Column header="Actions" style="width: 130px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button
-                    v-if="isDraft(data)"
-                    icon="pi pi-send"
-                    label="Submit"
-                    size="small"
-                    severity="warn"
-                    outlined
-                    rounded
-                    :loading="submittingId === data.id"
-                    @click="submitForApproval(data)"
-                  />
-                  <Button
-                    v-else-if="isPayable(data)"
-                    icon="pi pi-wallet"
-                    label="Pay"
-                    size="small"
-                    severity="success"
-                    outlined
-                    rounded
-                    @click="openPayoutDialog(data)"
-                  />
-                  <Badge v-else-if="String(data.status || '').toLowerCase() === 'processing'" value="Awaiting approval" severity="warn" />
+                  <Button icon="pi pi-eye" label="View" size="small" severity="secondary" outlined @click="openPeriod(data)" />
                 </div>
               </template>
             </Column>
 
             <template #empty>
-              <div class="py-10 text-center"><i class="pi pi-inbox text-2xl text-slate-300" /><p class="mt-2 text-sm font-medium text-slate-700">No payroll records found</p><p class="mt-1 text-xs text-slate-500">Generate a payroll draft to begin.</p></div>
+              <div class="py-10 text-center"><i class="pi pi-inbox text-2xl text-slate-300" /><p class="mt-2 text-sm font-medium text-slate-700">No payroll periods found</p><p class="mt-1 text-xs text-slate-500">Generate a payroll draft to begin.</p></div>
             </template>
           </DataTable>
         </div>
@@ -185,7 +143,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import axios from '@/axios'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -203,6 +163,7 @@ import financeService from '../../../services/finance.service'
 import SimplePayrollRunDialog from './SimplePayrollRunDialog.vue'
 
 const loading = ref(false)
+const router = useRouter()
 const toast = useToast()
 const savingPayout = ref(false)
 const payrolls = ref<any[]>([])
@@ -243,41 +204,37 @@ const formatMoney = (value: number | string) => {
 const formatCurrency = (value: number | string) => `PHP ${formatMoney(value)}`
 
 const summary = computed(() => {
-  const totalEntries = payrolls.value.length
-  const totalPaid = payrolls.value.reduce((sum, row) => {
-    const status = String(row?.status || '').toLowerCase()
-    return sum + (status === 'paid' ? Number(row?.net_salary || 0) : 0)
-  }, 0)
-  const totalPending = payrolls.value.reduce((sum, row) => {
-    const status = String(row?.status || '').toLowerCase()
-    return sum + (status === 'paid' ? 0 : Number(row?.net_salary || 0))
-  }, 0)
-
-  return { totalEntries, totalPaid, totalPending }
+  return payrolls.value.reduce((totals, period) => {
+    totals.totalEntries += Number(period.employee_count || 0)
+    totals.totalPaid += Number(period.paid_total || 0)
+    totals.totalPending += Number(period.pending_total || 0)
+    return totals
+  }, { totalEntries: 0, totalPaid: 0, totalPending: 0 })
 })
 
 const filteredPayrolls = computed(() => {
   if (!filters.search) return payrolls.value
   const keyword = filters.search.toLowerCase()
-  return payrolls.value.filter((row) => {
-    const name = formatEmployeeName(row).toLowerCase()
-    const period = String(row?.pay_period?.name || row?.payPeriod?.name || '').toLowerCase()
-    return name.includes(keyword) || period.includes(keyword)
-  })
+  return payrolls.value.filter((row) => String(row?.name || '').toLowerCase().includes(keyword))
 })
+
+const openPeriod = (period: any) => router.push({ name: 'finance.payroll.basic.detail', params: { payPeriodId: String(period.id) } })
 
 const formatEmployeeName = (row: any) => {
   const employee = row?.employee || {}
-  const fname = employee.fname || row?.fname || ''
-  const lname = employee.lname || row?.lname || ''
+  const fname = employee.user?.fname || employee.fname || row?.fname || ''
+  const lname = employee.user?.lname || employee.lname || row?.lname || ''
   return `${fname} ${lname}`.trim() || row?.employee_name || 'N/A'
 }
 
-const formatStatus = (value: string) => (value ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Unknown')
+const formatStatus = (value: string) => {
+  if (['approved', 'released'].includes(String(value || '').toLowerCase())) return 'Completed'
+  return value ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Unknown'
+}
 const statusSeverity = (value: string) => {
   const status = String(value || '').toLowerCase()
   if (status === 'paid') return 'success'
-  if (status === 'approved') return 'info'
+  if (status === 'approved' || status === 'released') return 'success'
   if (status === 'processing' || status === 'pending') return 'warn'
   if (status === 'draft') return 'secondary'
   if (status === 'rejected' || status === 'failed') return 'danger'
@@ -303,15 +260,15 @@ const payoutPreview = computed(() => ({
 const isDraft = (row: any) => ['draft', 'calculated'].includes(String(row?.status || '').toLowerCase())
 const isPayable = (row: any) => ['approved', 'released'].includes(String(row?.status || '').toLowerCase())
 
-const submitForApproval = async (row: any) => {
+const completePayroll = async (row: any) => {
   submittingId.value = Number(row.id)
   try {
-    await financeService.submitPayroll(Number(row.id))
+    await financeService.completeBasicPayroll(Number(row.id))
     await loadPayrolls()
-    toast.add({ severity: 'success', summary: 'Payroll submitted', detail: 'The payroll is now in the approval workflow.', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Payroll completed', detail: 'The payroll calculation is finalized and ready for payout.', life: 3000 })
   } catch (error: any) {
-    const message = error?.response?.data?.message || 'Unable to submit payroll for approval.'
-    toast.add({ severity: 'error', summary: 'Submission failed', detail: message, life: 4000 })
+    const message = error?.response?.data?.message || 'Unable to complete this payroll.'
+    toast.add({ severity: 'error', summary: 'Completion failed', detail: message, life: 4000 })
   } finally {
     submittingId.value = null
   }
@@ -319,7 +276,7 @@ const submitForApproval = async (row: any) => {
 
 const onPayrollGenerated = async () => {
   await loadPayrolls()
-  toast.add({ severity: 'success', summary: 'Payroll drafts created', detail: 'Review the drafts and submit them for approval when ready.', life: 3500 })
+  toast.add({ severity: 'success', summary: 'Payroll drafts created', detail: 'Open the pay period to edit, complete, or pay its payrolls.', life: 3500 })
 }
 
 const resetErrors = () => {
@@ -383,8 +340,8 @@ const submitPayout = async () => {
 const loadPayrolls = async () => {
   loading.value = true
   try {
-    const res = await financeService.getPayroll({ per_page: 500 })
-    payrolls.value = res.data?.data || res.data || []
+    const res = await axios.get('/api/store/simple-staff/payroll/periods')
+    payrolls.value = res.data?.data || []
   } finally {
     loading.value = false
   }

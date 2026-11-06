@@ -239,6 +239,10 @@ class StockTransferController extends Controller
         $transfer = StockTransfer::with([
             'fromBranch',
             'toBranch',
+            'trip.vehicle',
+            'trip.driver',
+            'vehicle',
+            'driver',
             'items.product',
             'items.variation',
             'requestedBy.user:id,fname,lname',
@@ -630,6 +634,7 @@ class StockTransferController extends Controller
 
         $transfer->update([
             'status' => 'in_transit',
+            'delivery_status' => 'ready_for_dispatch',
             'shipped_by' => EmployeeContext::currentEmployeeId(),
             'shipped_date' => now(),
             'notes' => trim((string) ($transfer->notes ?? '') . "\nSent to logistics on " . now()->toDateTimeString()),

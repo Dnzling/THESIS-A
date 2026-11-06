@@ -333,6 +333,11 @@ const financeService = {
     return response.data
   },
 
+  async completeBasicPayroll(id: number) {
+    const response = await axiosClient.post(`/api/store/simple-staff/payroll/${id}/complete`)
+    return response.data
+  },
+
   async bulkSubmitPayroll(payrollIds: Array<number | string>) {
     const response = await axiosClient.post('/api/payroll/bulk-submit', { payroll_ids: payrollIds })
     return response.data

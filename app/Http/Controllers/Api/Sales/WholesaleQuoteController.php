@@ -11,6 +11,7 @@ use App\Models\Sales\SalesPayment;
 use App\Models\Sales\WholesaleQuote;
 use App\Models\Store\Branch;
 use App\Services\Sales\SalesOrderSettlementService;
+use App\Services\Sales\WholesaleDeliveryFeeService;
 use App\Services\Payment\PaymongoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,8 @@ class WholesaleQuoteController extends Controller
 {
     public function __construct(
         private readonly SalesOrderSettlementService $settlementService,
-        private readonly PaymongoService $paymongoService
+        private readonly PaymongoService $paymongoService,
+        private readonly WholesaleDeliveryFeeService $deliveryFeeService
     )
     {
     }
@@ -38,11 +40,21 @@ class WholesaleQuoteController extends Controller
                         ->orWhereHas('crmLead', fn ($lead) => $lead->where('full_name', 'like', "%{$search}%"));
                 });
             })
-            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->input('status')))
+            ->when($request->filled('status'), function ($query) use ($request) {
+                $statuses = [
+                    'pending' => ['pending', 'sent'],
+                    'approved' => ['approved', 'accepted'],
+                    'rejected' => ['rejected', 'declined'],
+                ];
+                $query->whereIn('status', $statuses[$request->input('status')] ?? [$request->input('status')]);
+            })
             ->when($request->filled('date'), fn ($query) => $query->whereDate('created_at', $request->input('date')))
-            ->with('crmLead:id,full_name,email,phone')
+            ->with(['crmLead:id,full_name,email,phone', 'creator:id,fname,lname'])
             ->latest()->paginate(min(50, max(1, (int) $request->input('per_page', 15))));
-        $rows->getCollection()->each(fn (WholesaleQuote $quote) => $this->attachCustomerDisplay($quote));
+        $rows->getCollection()->each(function (WholesaleQuote $quote) {
+            $this->attachCustomerDisplay($quote);
+            $quote->setAttribute('status', $this->normalizedStatus((string) $quote->status));
+        });
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
@@ -86,6 +98,19 @@ class WholesaleQuoteController extends Controller
         return response()->json(['success' => true, 'data' => ['branches' => $branches, 'products' => $products]]);
     }
 
+    public function deliveryEstimate(Request $request): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        $validated = $request->validate([
+            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
+            'subtotal' => ['required', 'numeric', 'min:0'],
+            'delivery_latitude' => ['required', 'numeric', 'between:-90,90'],
+            'delivery_longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+        $fee = $this->deliveryFeeService->estimate($storeId, (int) $validated['branch_id'], (float) $validated['subtotal'], (float) $validated['delivery_latitude'], (float) $validated['delivery_longitude']);
+        return response()->json(['success' => true, 'data' => ['shipping_fee' => $fee]]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
@@ -97,6 +122,15 @@ class WholesaleQuoteController extends Controller
             'valid_until' => ['nullable', 'date', 'after_or_equal:today'],
             'payment_terms' => ['required', Rule::in(['online_payment', 'bank_transfer'])],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'submit' => ['sometimes', 'boolean'],
+            'delivery_required' => ['sometimes', 'boolean'],
+            'delivery_province' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:150'],
+            'delivery_city' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:150'],
+            'delivery_barangay' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:150'],
+            'delivery_address_line' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:255'],
+            'delivery_notes' => ['nullable', 'string', 'max:1000'],
+            'delivery_latitude' => ['required_if:delivery_required,true', 'nullable', 'numeric', 'between:-90,90'],
+            'delivery_longitude' => ['required_if:delivery_required,true', 'nullable', 'numeric', 'between:-180,180'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.branch_inventory_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -140,14 +174,37 @@ class WholesaleQuoteController extends Controller
                 'discount_amount' => $discountAmount, 'line_total' => $lineTotal,
             ];
         }
+        $deliveryRequired = (bool) ($validated['delivery_required'] ?? false);
+        $deliveryAddress = $deliveryRequired ? implode(', ', array_map('trim', [
+            $validated['delivery_address_line'], $validated['delivery_barangay'],
+            $validated['delivery_city'], $validated['delivery_province'],
+        ])) : null;
+        $itemsTotal = round(array_sum(array_column($items, 'line_total')), 2);
+        $shippingFee = $deliveryRequired
+            ? $this->deliveryFeeService->estimate($storeId, (int) $validated['branch_id'], $itemsTotal, (float) $validated['delivery_latitude'], (float) $validated['delivery_longitude'])
+            : 0;
+        $submitted = (bool) ($validated['submit'] ?? false);
+        $status = $submitted
+            ? ($request->user()->hasPermissionTo('sales.wholesale.approve') ? 'approved' : 'pending')
+            : 'draft';
         $quote = WholesaleQuote::create([
             'store_id' => $storeId, 'branch_id' => $validated['branch_id'],
             'customer_name' => trim($validated['customer_name']),
             'customer_email' => strtolower(trim($validated['customer_email'])),
             'customer_phone' => preg_replace('/\s+/', ' ', trim($validated['customer_phone'])),
             'quote_number' => 'WQ-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
-            'status' => 'draft', 'items' => $items,
-            'subtotal' => round(array_sum(array_column($items, 'line_total')), 2),
+            'status' => $status, 'items' => $items,
+            'subtotal' => $itemsTotal,
+            'delivery_required' => $deliveryRequired,
+            'delivery_address' => $deliveryAddress,
+            'delivery_province' => $deliveryRequired ? $validated['delivery_province'] : null,
+            'delivery_city' => $deliveryRequired ? $validated['delivery_city'] : null,
+            'delivery_barangay' => $deliveryRequired ? $validated['delivery_barangay'] : null,
+            'delivery_address_line' => $deliveryRequired ? $validated['delivery_address_line'] : null,
+            'delivery_notes' => $deliveryRequired ? ($validated['delivery_notes'] ?? null) : null,
+            'delivery_latitude' => $deliveryRequired ? $validated['delivery_latitude'] : null,
+            'delivery_longitude' => $deliveryRequired ? $validated['delivery_longitude'] : null,
+            'shipping_fee' => $shippingFee,
             'valid_until' => $validated['valid_until'] ?? null,
             'payment_terms' => $validated['payment_terms'] ?? null,
             'notes' => $validated['notes'] ?? null, 'created_by' => $request->user()->id,
@@ -158,8 +215,9 @@ class WholesaleQuoteController extends Controller
     public function show(Request $request, int $id): JsonResponse
     {
         $quote = WholesaleQuote::query()->where('store_id', $request->user()->store_id)
-            ->with('crmLead:id,full_name,email,phone')->findOrFail($id);
+            ->with(['crmLead:id,full_name,email,phone', 'creator:id,fname,lname'])->findOrFail($id);
         $this->attachCustomerDisplay($quote);
+        $quote->setAttribute('status', $this->normalizedStatus((string) $quote->status));
         if ($quote->sales_order_id) {
             $quote->setAttribute('order_payment_status', SalesOrder::query()
                 ->where('store_id', $quote->store_id)->whereKey($quote->sales_order_id)
@@ -184,11 +242,66 @@ class WholesaleQuoteController extends Controller
         }
     }
 
+    public function syncPayment(Request $request, int $id): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        $quote = WholesaleQuote::query()->where('store_id', $storeId)
+            ->where('status', 'converted')->findOrFail($id);
+        $order = SalesOrder::query()->where('store_id', $storeId)->findOrFail($quote->sales_order_id);
+        $payment = SalesPayment::query()->where('store_id', $storeId)
+            ->where('sales_order_id', $order->id)->where('payment_provider', 'paymongo')
+            ->latest('id')->first();
+
+        if (!$payment || !str_starts_with((string) $payment->provider_reference, 'cs_')) {
+            return response()->json(['success' => false, 'message' => 'No PayMongo checkout is linked to this quotation.'], 422);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['success' => true, 'data' => ['payment_status' => 'paid']]);
+        }
+
+        $session = $this->paymongoService->retrieveCheckoutSession((string) $payment->provider_reference);
+        if (!data_get($session, 'data.id')) {
+            return response()->json(['success' => false, 'message' => 'Could not check the payment provider. Please try again.'], 502);
+        }
+
+        $paid = collect((array) data_get($session, 'data.attributes.payments', []))
+            ->contains(fn ($row) => strtolower((string) data_get($row, 'attributes.status', '')) === 'paid');
+        if ($paid) {
+            $payment->update(['status' => 'paid', 'paid_at' => $payment->paid_at ?? now()]);
+            try {
+                $this->settlementService->settlePaid($order, (string) $payment->payment_method, (string) $payment->provider_reference, $payment);
+            } catch (\Throwable $e) {
+                report($e);
+                return response()->json(['success' => false, 'message' => 'Payment was captured, but the order could not be settled. Please contact support; do not request another payment.'], 422);
+            }
+        } else {
+            $sessionStatus = strtolower((string) data_get($session, 'data.attributes.status', ''));
+            if (in_array($sessionStatus, ['expired', 'cancelled', 'canceled', 'failed'], true)) {
+                $payment->update(['status' => $sessionStatus === 'expired' ? 'expired' : $sessionStatus, 'checkout_url' => null]);
+                $this->settlementService->markPaymentFailed($order, $payment);
+            }
+        }
+
+        return response()->json(['success' => true, 'data' => ['payment_status' => $order->fresh()->payment_status]]);
+    }
+
     public function updateStatus(Request $request, int $id): JsonResponse
     {
-        $validated = $request->validate(['status' => ['required', Rule::in(['sent', 'accepted', 'declined'])]]);
+        $validated = $request->validate(['status' => ['required', Rule::in(['pending', 'approved', 'rejected'])]]);
+        if ($validated['status'] === 'pending' && !$request->user()->hasPermissionTo('sales.wholesale.manage')) {
+            abort(403, 'Wholesale management permission is required.');
+        }
+        if (in_array($validated['status'], ['approved', 'rejected'], true)
+            && !$request->user()->hasPermissionTo('sales.wholesale.approve')) {
+            abort(403, 'Wholesale approval permission is required.');
+        }
         $quote = WholesaleQuote::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
-        $allowed = ['draft' => ['sent'], 'sent' => ['accepted', 'declined']];
+        $allowed = [
+            'draft' => ['pending'],
+            'pending' => ['approved', 'rejected'],
+            'sent' => ['approved', 'rejected'],
+        ];
         if (!in_array($validated['status'], $allowed[$quote->status] ?? [], true)) {
             return response()->json(['success' => false, 'message' => 'This quotation cannot move to that status.'], 422);
         }
@@ -201,8 +314,8 @@ class WholesaleQuoteController extends Controller
         $result = DB::transaction(function () use ($request, $id) {
             $quote = WholesaleQuote::query()->where('store_id', $request->user()->store_id)
                 ->lockForUpdate()->findOrFail($id);
-            if ($quote->status !== 'accepted' || $quote->sales_order_id) {
-                return ['error' => 'Only an accepted quotation can be converted once.'];
+            if (!in_array((string) $quote->status, ['approved', 'accepted'], true) || $quote->sales_order_id) {
+                return ['error' => 'Only an approved quotation can be converted once.'];
             }
             if ($quote->valid_until && $quote->valid_until->startOfDay()->lt(today())) {
                 return ['error' => 'This quotation has expired.'];
@@ -226,7 +339,18 @@ class WholesaleQuoteController extends Controller
                 'customer_name' => $quote->customer_name ?: $legacyLead?->full_name,
                 'customer_phone' => $quote->customer_phone ?: $legacyLead?->phone,
                 'delivery_email' => $quote->customer_email ?: $legacyLead?->email,
-                'subtotal' => $grossSubtotal, 'discount_amount' => $discountTotal, 'total_amount' => $quote->subtotal,
+                'subtotal' => $grossSubtotal, 'discount_amount' => $discountTotal,
+                'shipping_fee' => $quote->shipping_fee,
+                'total_amount' => round((float) $quote->subtotal + (float) $quote->shipping_fee, 2),
+                'delivery_required' => (bool) $quote->delivery_required,
+                'delivery_address' => $quote->delivery_address,
+                'delivery_province' => $quote->delivery_province,
+                'delivery_city' => $quote->delivery_city,
+                'delivery_barangay' => $quote->delivery_barangay,
+                'delivery_address_line' => $quote->delivery_address_line,
+                'delivery_notes' => $quote->delivery_notes,
+                'delivery_latitude' => $quote->delivery_latitude,
+                'delivery_longitude' => $quote->delivery_longitude,
                 'notes' => 'Wholesale quote ' . $quote->quote_number . ($quote->payment_terms ? ' | Terms: ' . $quote->payment_terms : '') . ($quote->notes ? ' | ' . $quote->notes : ''),
                 'created_by' => $request->user()->id,
             ]);
@@ -249,6 +373,16 @@ class WholesaleQuoteController extends Controller
             return response()->json(['success' => false, 'message' => $result['error']], 422);
         }
         return response()->json(['success' => true, 'data' => $result]);
+    }
+
+    private function normalizedStatus(string $status): string
+    {
+        return match ($status) {
+            'sent' => 'pending',
+            'accepted' => 'approved',
+            'declined' => 'rejected',
+            default => $status,
+        };
     }
 
     public function recordPayment(Request $request, int $id): JsonResponse

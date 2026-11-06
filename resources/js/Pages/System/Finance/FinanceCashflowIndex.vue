@@ -36,7 +36,10 @@
           <div class="flex min-h-24 flex-col justify-between">
             <p class="text-xs font-medium text-slate-500">Incoming</p>
             <p class="text-xl font-semibold text-emerald-600">₱{{ formatMoney(transactionSummary.incoming) }}</p>
-            <p class="text-[11px] text-slate-400">For current filters</p>
+            <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('incoming')">
+              <i :class="comparisonIcon('incoming')" />
+              {{ comparisonLabel('incoming') }} vs previous period
+            </p>
           </div>
         </template>
       </Card>
@@ -47,7 +50,10 @@
           <div class="flex min-h-24 flex-col justify-between">
             <p class="text-xs font-medium text-slate-500">Outgoing</p>
             <p class="text-xl font-semibold text-rose-600">₱{{ formatMoney(transactionSummary.outgoing) }}</p>
-            <p class="text-[11px] text-slate-400">For current filters</p>
+            <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('outgoing')">
+              <i :class="comparisonIcon('outgoing')" />
+              {{ comparisonLabel('outgoing') }} vs previous period
+            </p>
           </div>
         </template>
       </Card>
@@ -60,7 +66,10 @@
             <p class="text-xl font-semibold" :class="transactionSummary.net >= 0 ? 'text-emerald-600' : 'text-rose-600'">
               {{ transactionSummary.net >= 0 ? '+' : '-' }}₱{{ formatMoney(Math.abs(transactionSummary.net)) }}
             </p>
-            <p class="text-[11px] text-slate-400">Incoming minus outgoing</p>
+            <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('net')">
+              <i :class="comparisonIcon('net')" />
+              {{ comparisonLabel('net') }} vs previous period
+            </p>
           </div>
         </template>
       </Card>
@@ -344,7 +353,13 @@ const showAdjustDialog = ref(false)
 const account = ref<any>(null)
 const availableBalance = ref(0)
 const transactions = ref<any[]>([])
-const transactionSummary = ref({ incoming: 0, outgoing: 0, net: 0 })
+const transactionSummary = ref({
+  incoming: 0,
+  outgoing: 0,
+  net: 0,
+  previous: { incoming: 0, outgoing: 0, net: 0 },
+  period: { start: '', end: '', previous_start: '', previous_end: '' },
+})
 const showTransactionDetail = ref(false)
 const loadingTransactionDetail = ref(false)
 const selectedTransaction = ref<any>(null)
@@ -409,6 +424,29 @@ const formatMoney = (value: number | string) => {
   )
 }
 
+const comparisonLabel = (key: 'incoming' | 'outgoing' | 'net') => {
+  const current = Number(transactionSummary.value[key] || 0)
+  const previous = Number(transactionSummary.value.previous?.[key] || 0)
+  if (previous === 0) return current === 0 ? '0.0%' : 'New'
+  const percent = ((current - previous) / Math.abs(previous)) * 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`
+}
+
+const comparisonIcon = (key: 'incoming' | 'outgoing' | 'net') => {
+  const current = Number(transactionSummary.value[key] || 0)
+  const previous = Number(transactionSummary.value.previous?.[key] || 0)
+  if (current === previous) return 'pi pi-minus'
+  return current > previous ? 'pi pi-arrow-up' : 'pi pi-arrow-down'
+}
+
+const comparisonClass = (key: 'incoming' | 'outgoing' | 'net') => {
+  const current = Number(transactionSummary.value[key] || 0)
+  const previous = Number(transactionSummary.value.previous?.[key] || 0)
+  if (current === previous) return 'text-slate-500'
+  const favorable = key === 'outgoing' ? current < previous : current > previous
+  return favorable ? 'text-emerald-700' : 'text-rose-700'
+}
+
 const formatDateTime = (value: string) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-PH', {
@@ -444,7 +482,13 @@ const loadTransactions = async () => {
     const payload = res?.data || {}
     const paginated = payload?.transactions || payload
     transactions.value = paginated?.data || []
-    transactionSummary.value = payload?.summary || { incoming: 0, outgoing: 0, net: 0 }
+    transactionSummary.value = payload?.summary || {
+      incoming: 0,
+      outgoing: 0,
+      net: 0,
+      previous: { incoming: 0, outgoing: 0, net: 0 },
+      period: { start: '', end: '', previous_start: '', previous_end: '' },
+    }
   } finally {
     loadingTransactions.value = false
   }

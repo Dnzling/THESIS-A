@@ -1,14 +1,15 @@
 <template>
-  <div class="space-y-5">
-    <header class="flex flex-wrap items-end justify-between gap-3">
+  <div class="module-dashboard space-y-5 pb-6 text-sm">
+    <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Procurement Reports</h1>
+        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">Procurement</p>
+        <h1 class="mt-1 text-2xl font-semibold text-slate-950">Reports</h1>
         <p class="mt-1 text-sm text-slate-500">Review purchasing spend, supplier performance, lead times, and receiving accuracy.</p>
       </div>
       <Button label="Export CSV" icon="pi pi-download" size="small" severity="secondary" outlined :disabled="!rows.length" @click="exportCsv" />
     </header>
 
-    <Card class="border border-slate-200 shadow-none">
+    <Card class="border border-slate-200 shadow-sm">
       <template #content>
         <div class="grid grid-cols-1 items-end gap-3 md:grid-cols-12">
           <div class="md:col-span-4">
@@ -40,7 +41,7 @@
     <div v-if="loading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Skeleton v-for="item in 4" :key="item" height="5.5rem" borderRadius="0.75rem" />
     </div>
-    <section v-else-if="summaryCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section v-else-if="!loadError && summaryCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Card v-for="card in summaryCards" :key="card.label" class="border border-slate-200 shadow-none">
         <template #content>
           <p class="text-xs font-medium text-slate-500">{{ card.label }}</p>
@@ -50,7 +51,7 @@
       </Card>
     </section>
 
-    <Card class="border border-slate-200 shadow-none">
+    <Card class="border border-slate-200 shadow-sm">
       <template #title>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-base font-semibold text-slate-900">{{ activeReportTitle }}</span>
@@ -58,7 +59,7 @@
         </div>
       </template>
       <template #content>
-        <DataTable v-if="!loading" :value="rows" paginator :rows="10" rowHover responsiveLayout="scroll" class="text-sm">
+        <DataTable v-if="!loading && !loadError" :value="rows" paginator :rows="10" :rows-per-page-options="[10, 20, 50]" size="small" rowHover responsiveLayout="scroll">
           <template #empty>
             <div class="py-10 text-center">
               <i class="pi pi-chart-bar text-2xl text-slate-300" />
@@ -67,7 +68,9 @@
             </div>
           </template>
 
-          <Column v-if="reportType === 'spend'" field="month" header="Month" sortable />
+          <Column v-if="reportType === 'spend'" field="month" header="Month" sortable>
+            <template #body="{ data }">{{ formatMonth(data.month) }}</template>
+          </Column>
           <Column v-if="reportType === 'spend'" field="po_count" header="Purchase Orders" sortable />
           <Column v-if="reportType === 'spend'" field="amount" header="Committed Spend" sortable>
             <template #body="{ data }">{{ currency(data.amount) }}</template>
@@ -84,7 +87,7 @@
             <template #body="{ data }">{{ currency(data.total_spent) }}</template>
           </Column>
           <Column v-if="reportType === 'supplier'" field="status" header="Performance">
-            <template #body="{ data }"><Tag :value="data.status || 'No rating'" :severity="supplierSeverity(data.status)" /></template>
+            <template #body="{ data }"><Badge :value="data.status || 'No rating'" :severity="supplierSeverity(data.status)" /></template>
           </Column>
           <Column v-if="reportType === 'lead_time'" field="supplier_name" header="Supplier" sortable />
           <Column v-if="reportType === 'lead_time'" field="purchase_order_count" header="Received POs" sortable />
@@ -92,9 +95,14 @@
             <template #body="{ data }">{{ number(data.avg_lead_time, 1) }} days</template>
           </Column>
           <Column v-if="reportType === 'receiving'" field="metric" header="Metric" />
-          <Column v-if="reportType === 'receiving'" field="value" header="Result" />
+          <Column v-if="reportType === 'receiving'" field="value" header="Result">
+            <template #body="{ data }">
+              <Badge v-if="data.metric === 'Assessment'" :value="data.value" :severity="receivingSeverity(data.value)" />
+              <span v-else>{{ data.value }}</span>
+            </template>
+          </Column>
         </DataTable>
-        <div v-else class="space-y-2">
+        <div v-else-if="loading" class="space-y-2">
           <Skeleton v-for="row in 5" :key="row" height="2.75rem" borderRadius="0.5rem" />
         </div>
       </template>
@@ -112,7 +120,6 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Skeleton from 'primevue/skeleton'
 import Badge from 'primevue/badge'
-import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import procurementService from '../../../../services/procurement.service'
 
@@ -190,10 +197,11 @@ async function loadReport() {
       const months = Array.isArray(data.monthly) ? data.monthly : []
       rows.value = months.map((row: any) => ({ ...row, amount: Number(row.amount || 0) }))
       const totalSpend = Number(data.total_spend || 0)
+      const activeSpendMonths = months.filter((row: any) => Number(row.amount) > 0).length
       summary.value = {
         total_spend: totalSpend,
         po_count: Number(data.po_count || 0),
-        avg_monthly_spend: months.length ? totalSpend / months.length : 0,
+        avg_monthly_spend: activeSpendMonths ? totalSpend / activeSpendMonths : 0,
         supplier_count: Number(data.supplier_count || 0),
       }
     } else if (reportType.value === 'supplier') {
@@ -264,6 +272,10 @@ function number(value: unknown, digits = 0) {
 function formatDate(value: Date) {
   return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
 }
+function formatMonth(value: string) {
+  const [year, month] = String(value || '').split('-').map(Number)
+  return year && month ? new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1)) : value
+}
 function localDate(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, '0')
   const day = String(value.getDate()).padStart(2, '0')
@@ -273,6 +285,12 @@ function supplierSeverity(status: string) {
   if (status === 'Top Performer') return 'success'
   if (status === 'Good') return 'info'
   if (status === 'Needs Review') return 'warn'
+  return 'secondary'
+}
+function receivingSeverity(status: string) {
+  if (status === 'Excellent') return 'success'
+  if (status === 'Good') return 'info'
+  if (status === 'Needs Improvement') return 'warn'
   return 'secondary'
 }
 

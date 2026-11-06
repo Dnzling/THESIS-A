@@ -7,6 +7,8 @@ use App\Models\CRM\EcommerceChatMessage;
 use App\Models\CRM\EcommerceChatThread;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatController extends Controller
 {
@@ -100,14 +102,16 @@ class ChatController extends Controller
     public function sendMessage(Request $request, int $threadId): JsonResponse
     {
         $validated = $request->validate([
-            'message' => ['required', 'string', 'max:2000'],
+            'message' => ['nullable', 'string', 'max:2000'],
             'order_id' => ['nullable', 'integer', 'exists:ecommerce_orders,id'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,csv,txt,zip'],
         ]);
 
         $thread = $this->resolveThread($request, $threadId);
         $user = $request->user();
 
-        $messageBody = trim((string) $validated['message']);
+        $messageBody = trim((string) ($validated['message'] ?? ''));
+        abort_if($messageBody === '' && !$request->hasFile('attachment'), 422, 'Enter a message or attach a file.');
         if ($this->containsProfanity($messageBody)) {
             return response()->json([
                 'success' => false,
@@ -115,17 +119,25 @@ class ChatController extends Controller
             ], 422);
         }
 
+        $file = $request->file('attachment');
+        $path = $file?->store('customer-chat/' . $thread->store_id, 'private');
         $message = EcommerceChatMessage::query()->create([
             'thread_id' => $thread->id,
             'sender_user_id' => $user->id,
             'sender_role' => 'store',
-            'message' => $messageBody,
+            'message' => $messageBody ?: null,
             'order_id' => $validated['order_id'] ?? null,
+            'attachment_path' => $path,
+            'attachment_name' => $file?->getClientOriginalName(),
+            'attachment_mime' => $file?->getMimeType(),
+            'attachment_size' => $file?->getSize(),
         ]);
 
         $thread->update(['last_message_at' => $message->created_at]);
 
-        $preview = mb_strlen($messageBody) > 120 ? mb_substr($messageBody, 0, 117) . '...' : $messageBody;
+        $preview = $messageBody !== ''
+            ? (mb_strlen($messageBody) > 120 ? mb_substr($messageBody, 0, 117) . '...' : $messageBody)
+            : 'Attachment: ' . $file?->getClientOriginalName();
         $this->notify((int) $thread->customer_user_id, [
             'store_id' => (int) $thread->store_id,
             'module' => 'ecommerce',
@@ -142,6 +154,15 @@ class ChatController extends Controller
             'success' => true,
             'data' => $message,
         ], 201);
+    }
+
+    public function attachment(Request $request, int $messageId): StreamedResponse
+    {
+        $message = EcommerceChatMessage::query()->with('thread')->findOrFail($messageId);
+        $this->resolveThread($request, (int) $message->thread_id);
+        abort_unless($message->attachment_path && Storage::disk('private')->exists($message->attachment_path), 404);
+
+        return Storage::disk('private')->response($message->attachment_path, $message->attachment_name, [], 'inline');
     }
 
     public function updateMessage(Request $request, int $threadId, int $messageId): JsonResponse

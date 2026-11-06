@@ -810,7 +810,7 @@ class ProcurementService {
   }
 
   async activateSupplierContract(id: string | number) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`)
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`, { supplier_confirmed: true })
     return response.data
   }
 

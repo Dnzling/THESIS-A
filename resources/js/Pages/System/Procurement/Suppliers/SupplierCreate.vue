@@ -100,6 +100,18 @@
         </form>
       </template>
     </Card>
+
+    <Dialog v-model:visible="showInviteConfirmation" modal header="Invite this supplier?" :style="{ width: 'min(28rem, 94vw)' }">
+      <p class="text-sm leading-6 text-slate-600">
+        This will add the supplier contact to your store's supplier directory. Confirm that the supplier name, contact person, and email are correct.
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Review Details" severity="secondary" outlined size="small" @click="showInviteConfirmation = false" />
+          <Button label="Invite Supplier" severity="warn" icon="pi pi-send" size="small" :loading="saving" @click="confirmInviteSupplier" />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -115,6 +127,7 @@ import procurementService from '../../../../services/procurement.service'
 const router = useRouter()
 const toast = useToast()
 const saving = ref(false)
+const showInviteConfirmation = ref(false)
 const mode = ref<'existing' | 'invite'>('existing')
 
 const form = reactive({
@@ -203,6 +216,10 @@ const submitForm = async () => {
     return
   }
 
+  showInviteConfirmation.value = true
+}
+
+const confirmInviteSupplier = async () => {
   saving.value = true
   try {
     form.contact_person = [form.contact_person_first, form.contact_person_last].filter(Boolean).join(' ').trim()
@@ -213,6 +230,7 @@ const submitForm = async () => {
     }
 
     await procurementService.createSupplier(payload)
+    showInviteConfirmation.value = false
 
     toast.add({
       severity: 'success',
@@ -225,6 +243,7 @@ const submitForm = async () => {
       router.push({ name: 'procurement.suppliers' })
     }, 1000)
   } catch (error: any) {
+    showInviteConfirmation.value = false
     const errorMessage = error.response?.data?.message || 'Failed to save supplier'
     const errorDetails = error.response?.data?.errors
 

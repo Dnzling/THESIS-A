@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PSGCController extends Controller
 {
@@ -25,6 +27,12 @@ class PSGCController extends Controller
     public function provinces(Request $request): JsonResponse
     {
         try {
+            if (Schema::hasTable('provinces') && DB::table('provinces')->exists()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => DB::table('provinces')->orderBy('name')->get(['province_id', 'name']),
+                ]);
+            }
             $provinces = $this->fetchJson('https://psgc.rootscratch.com/province');
 
             return response()->json([
@@ -51,6 +59,13 @@ class PSGCController extends Controller
         }
 
         try {
+            if (Schema::hasTable('cities') && DB::table('cities')->exists()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => DB::table('cities')->where('province_id', $provinceId)
+                        ->orderBy('name')->get(['city_id', 'name']),
+                ]);
+            }
             $cities = $this->fetchJson('https://psgc.rootscratch.com/municipal-city');
             $provinceData = $this->fetchJson('https://psgc.rootscratch.com/province', [
                 'id' => $provinceId,
@@ -88,6 +103,13 @@ class PSGCController extends Controller
         }
 
         try {
+            if (Schema::hasTable('barangays') && DB::table('barangays')->exists()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => DB::table('barangays')->where('city_id', $cityId)
+                        ->orderBy('name')->get(['code', 'name']),
+                ]);
+            }
             $barangays = $this->fetchJson('https://psgc.rootscratch.com/barangay');
             $cityData = $this->fetchJson('https://psgc.rootscratch.com/municipal-city', [
                 'id' => $cityId,

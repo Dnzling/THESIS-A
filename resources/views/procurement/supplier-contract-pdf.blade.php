@@ -51,17 +51,6 @@
             border-collapse: collapse;
         }
 
-        .brand-mark-cell {
-            padding-right: 8px;
-            vertical-align: middle;
-        }
-
-        .brand-mark {
-            display: block;
-            width: 30px;
-            height: 30px;
-        }
-        
         .document-title {
             font-size: 16pt;
             font-weight: 700;
@@ -233,14 +222,7 @@
 </head>
 <body>
     <div class="contract-header">
-        <table class="brand-lockup" role="presentation">
-            <tr>
-                <td class="brand-mark-cell">
-                    <img class="brand-mark" src="{{ public_path('F.png') }}" alt="">
-                </td>
-                <td class="platform-name">FURNISYNC</td>
-            </tr>
-        </table>
+        <div class="platform-name">FURNISYNC</div>
         <div class="document-title">STORE-SUPPLIER AGREEMENT</div>
         <div class="document-subtitle">Facilitated by FurniSync IMS Platform</div>
     </div>
@@ -320,6 +302,16 @@
         <div class="clause-title">Commercial Terms</div>
         <div class="clause-content">
             <table class="commercial-table">
+                <tr>
+                    <th>Minimum Order Value</th>
+                    <td>
+                        @if(isset($minimumOrderValue) && $minimumOrderValue !== null && (float) $minimumOrderValue > 0)
+                            A minimum purchase of <strong>₱{{ number_format((float) $minimumOrderValue, 2) }}</strong> is required per order under this Agreement.
+                        @else
+                            No minimum order value is required.
+                        @endif
+                    </td>
+                </tr>
                 <tr>
                     <th>Discount</th>
                     <td>The Supplier agrees to grant the Store a <strong>{{ $discountPercentage ?? 0 }}% discount</strong> on all products purchased under this Agreement.<br>

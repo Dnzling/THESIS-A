@@ -678,9 +678,10 @@ class PaymongoController extends Controller
             $payments = (array) data_get($payload, 'data.attributes.payments', []);
             $paid = collect($payments)->contains(fn ($payment) => strtolower((string) data_get($payment, 'attributes.status', '')) === 'paid');
             if ($paid) {
-                if ($intent->status !== 'succeeded') {
-                    $intent->update(['status' => 'succeeded']);
-                }
+                $intent->update([
+                    'status' => 'succeeded',
+                    'webhook_payload' => $payload,
+                ]);
                 $this->syncHostedCheckoutPayment($intent->fresh());
             } else {
                 $status = strtolower((string) data_get($payload, 'data.attributes.status', ''));
@@ -1315,18 +1316,34 @@ class PaymongoController extends Controller
             return;
         }
 
-        // Prevent duplicate accounting updates when invoice was already settled manually.
+        $paymentMethod = $this->resolveInvoicePaymentMethod($intent);
+
+        // Allow later checkout refreshes to replace the generic provider label with the actual method.
         if (strtolower((string) $invoice->payment_status) === 'paid') {
+            if ($paymentMethod && $invoice->payment_method !== $paymentMethod) {
+                $invoice->update(['payment_method' => $paymentMethod]);
+                DB::table('finance_expenses')
+                    ->where('store_id', (int) $invoice->store_id)
+                    ->where('reference_type', 'invoice')
+                    ->where('reference_id', (int) $invoice->id)
+                    ->update(['payment_method' => $paymentMethod]);
+                DB::table('finance_cashflow_transactions')
+                    ->where('store_id', (int) $invoice->store_id)
+                    ->where('reference_type', 'invoice')
+                    ->where('reference_id', (int) $invoice->id)
+                    ->update(['payment_method' => $paymentMethod]);
+            }
             return;
         }
 
         $paymentAmount = (float) ($invoice->net_amount ?: $invoice->invoice_amount ?: 0);
+        $paymentMethod ??= 'paymongo';
 
-        DB::transaction(function () use ($invoice, $intent, $paymentAmount) {
+        DB::transaction(function () use ($invoice, $intent, $paymentAmount, $paymentMethod) {
             // Keep invoice state in sync with successful Online Payment payment.
             $invoice->update([
                 'payment_status' => 'paid',
-                'payment_method' => 'paymongo',
+                'payment_method' => $paymentMethod,
                 'payment_amount' => $paymentAmount,
                 'payment_date' => now()->toDateString(),
                 'status' => 'paid',
@@ -1369,7 +1386,7 @@ class PaymongoController extends Controller
             if ($expense->status !== 'paid') {
                 $expense->update([
                     'status' => 'paid',
-                    'payment_method' => 'paymongo',
+                    'payment_method' => $paymentMethod,
                     'payment_date' => now()->toDateString(),
                     'paid_by' => auth()->id(),
                     'paid_at' => now(),
@@ -1393,7 +1410,7 @@ class PaymongoController extends Controller
                     (int) $invoice->id,
                     auth()->id(),
                     'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)) . ' via Online Payment',
-                    'paymongo',
+                    $paymentMethod,
                     [
                         'payment_intent_id' => $intent->payment_intent_id,
                     ]
@@ -1435,6 +1452,65 @@ class PaymongoController extends Controller
                 ]);
             }
         }
+    }
+
+    private function resolveInvoicePaymentMethod(PaymongoIntent $intent): ?string
+    {
+        $payload = (array) ($intent->webhook_payload ?? []);
+        $method = $this->extractInvoicePaymentMethod($payload);
+
+        if (!$method && str_starts_with((string) $intent->payment_intent_id, 'cs_')) {
+            $session = $this->service->retrieveCheckoutSession((string) $intent->payment_intent_id);
+            $method = $this->extractInvoicePaymentMethod((array) $session);
+        }
+
+        return $method;
+    }
+
+    private function extractInvoicePaymentMethod(array $payload): ?string
+    {
+        $resources = [];
+        $eventResource = data_get($payload, 'data.attributes.data');
+        if (is_array($eventResource)) {
+            $resources[] = $eventResource;
+        }
+
+        foreach ((array) data_get($payload, 'data.attributes.payments', []) as $payment) {
+            if (is_array($payment)) {
+                $resources[] = $payment;
+            }
+        }
+
+        foreach ($resources as $resource) {
+            $attributes = (array) data_get($resource, 'attributes', []);
+            $rawMethod = strtolower((string) (
+                data_get($attributes, 'source.type')
+                ?? data_get($attributes, 'payment_method_details.type')
+                ?? data_get($attributes, 'payment_method.type')
+                ?? data_get($attributes, 'payment_method_type')
+                ?? ''
+            ));
+
+            if (in_array($rawMethod, ['gcash'], true)) {
+                return 'gcash';
+            }
+            if (in_array($rawMethod, ['maya', 'paymaya'], true)) {
+                return 'maya';
+            }
+            if ($rawMethod === 'card') {
+                $funding = strtolower((string) (
+                    data_get($attributes, 'source.attributes.card_type')
+                    ?? data_get($attributes, 'source.attributes.funding')
+                    ?? data_get($attributes, 'payment_method_details.card.funding')
+                    ?? data_get($attributes, 'payment_method_details.card.type')
+                    ?? ''
+                ));
+
+                return in_array($funding, ['credit', 'debit'], true) ? $funding . '_card' : 'card';
+            }
+        }
+
+        return null;
     }
 
     private function syncCashflowTopUpFromIntent(PaymongoIntent $intent, string $paymongoStatus): void

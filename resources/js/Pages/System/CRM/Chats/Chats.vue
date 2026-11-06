@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="mx-auto flex h-[calc(100dvh-150px)] min-h-[420px] max-w-7xl flex-col space-y-4 px-4 py-4 sm:px-6 lg:px-8">
     <Card class="border border-gray-100 shadow-sm rounded-2xl">
       <template #content>
         <div class="flex items-center justify-between">
@@ -12,11 +12,12 @@
       </template>
     </Card>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <Card class="border border-gray-100 shadow-sm rounded-2xl lg:col-span-4">
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
+      <Card class="min-h-0 border border-gray-100 shadow-sm rounded-2xl lg:col-span-4">
         <template #content>
-          <InputText v-model="search" fluid placeholder="Search customer..." class="mb-3" />
-          <div class="space-y-2 max-h-[65vh] overflow-auto">
+          <div class="flex h-full min-h-0 flex-col">
+          <InputText v-model="search" fluid placeholder="Search customer..." class="mb-3 shrink-0" />
+          <div class="min-h-0 flex-1 space-y-2 overflow-auto">
             <button
               v-for="thread in threads"
               :key="thread.id"
@@ -35,14 +36,15 @@
             </button>
             <p v-if="!threads.length" class="text-sm text-gray-500">No chat threads yet.</p>
           </div>
+          </div>
         </template>
       </Card>
 
-      <Card class="border border-gray-100 shadow-sm rounded-2xl lg:col-span-8">
+      <Card class="min-h-0 border border-gray-100 shadow-sm rounded-2xl lg:col-span-8">
         <template #content>
           <div v-if="!selectedThreadId" class="text-sm text-gray-500">Select a thread to start replying.</div>
-          <div v-else class="space-y-3">
-            <div class="max-h-[52vh] overflow-auto space-y-2 rounded-lg bg-gray-50 p-3">
+          <div v-else class="flex h-full min-h-0 flex-col gap-3">
+            <div class="min-h-0 flex-1 space-y-2 overflow-auto rounded-lg bg-gray-50 p-3">
               <div
                 v-for="message in messages"
                 :key="message.id"
@@ -56,7 +58,20 @@
                     <Button label="Save" size="small" severity="info" :loading="editingMessageLoading" @click="saveEditMessage(message)" />
                   </div>
                 </template>
-                <p v-else>{{ message.message }}</p>
+                <p v-if="editingMessageId !== message.id && message.message" class="whitespace-pre-wrap break-words">{{ message.message }}</p>
+                <img
+                  v-if="message.attachment_url && String(message.attachment_mime || '').startsWith('image/')"
+                  :src="message.attachment_url"
+                  :alt="message.attachment_name || 'Chat attachment'"
+                  class="mt-2 max-h-72 max-w-full rounded-lg object-contain"
+                />
+                <a
+                  v-else-if="message.attachment_url"
+                  :href="message.attachment_url"
+                  class="mt-2 flex items-center gap-2 rounded-lg bg-black/10 p-2 underline"
+                  target="_blank"
+                  rel="noopener"
+                ><i class="pi pi-paperclip"></i><span class="truncate">{{ message.attachment_name || 'Download attachment' }}</span></a>
                 <div v-if="message._send_state === 'failed'" class="mt-1 flex items-center gap-2">
                   <span class="text-[11px] font-semibold text-amber-200">Unsent message</span>
                   <button
@@ -80,15 +95,25 @@
               <p v-if="!messages.length" class="text-sm text-gray-500">No messages yet.</p>
             </div>
 
-            <Textarea v-model="draft" rows="3" fluid  placeholder="Type your reply..." />
-            <Button
-              severity="info"
-              icon="pi pi-send"
-              :loading="sending"
-              :disabled="sending || !draft.trim() || !canManageChats"
-              label="Send Reply"
-              @click="sendMessage"
-            />
+            <div v-if="attachment" class="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">
+              <span class="truncate"><i class="pi pi-paperclip mr-2"></i>{{ attachment.name }}</span>
+              <button type="button" class="ml-2" aria-label="Remove attachment" @click="clearAttachment"><i class="pi pi-times"></i></button>
+            </div>
+            <div class="flex items-end gap-2">
+              <Textarea v-model="draft" rows="2" fluid class="flex-1" placeholder="Type your reply..." @keydown.enter.exact.prevent="sendMessage" />
+              <label class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50" title="Attach file">
+                <i class="pi pi-paperclip"></i>
+                <input type="file" class="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" @change="chooseAttachment" />
+              </label>
+              <Button
+                severity="info"
+                icon="pi pi-send"
+                :loading="sending"
+                :disabled="sending || (!draft.trim() && !attachment) || !canManageChats"
+                label="Send Reply"
+                @click="sendMessage"
+              />
+            </div>
           </div>
         </template>
       </Card>
@@ -97,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -120,11 +145,14 @@ const selectedThreadId = ref<number | null>(null)
 const selectedOrderId = ref<number | null>(Number(route.query.order_id || 0) || null)
 const messages = ref<any[]>([])
 const draft = ref('')
+const attachment = ref<File | null>(null)
 const sending = ref(false)
 const editingMessageId = ref<number | string | null>(null)
 const editDraft = ref('')
 const editingMessageLoading = ref(false)
 let tempMessageSeed = 0
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+let refreshingChats = false
 
 const extractRows = (payload: any) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
 
@@ -176,13 +204,21 @@ const selectThread = (threadId: number) => {
   loadMessages()
 }
 
+const chooseAttachment = (event: Event) => {
+  attachment.value = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+const clearAttachment = () => {
+  attachment.value = null
+}
+
 const sendMessage = async () => {
   if (!selectedThreadId.value) {
     toast.add({ severity: 'warn', summary: 'Chat', detail: 'Select a thread before replying.', life: 2400 })
     return
   }
-  if (!draft.value.trim()) {
-    toast.add({ severity: 'warn', summary: 'Chat', detail: 'Type a reply before sending.', life: 2400 })
+  if (!draft.value.trim() && !attachment.value) {
+    toast.add({ severity: 'warn', summary: 'Chat', detail: 'Type a reply or attach a file before sending.', life: 2400 })
     return
   }
   if (!canManageChats.value) {
@@ -191,11 +227,15 @@ const sendMessage = async () => {
   }
   sending.value = true
   const outgoingText = draft.value.trim()
+  const outgoingAttachment = attachment.value
   const tempId = `tmp-${Date.now()}-${tempMessageSeed++}`
   const tempMessage = {
     id: tempId,
     sender_role: 'store',
     message: outgoingText,
+    attachment_name: outgoingAttachment?.name,
+    attachment_mime: outgoingAttachment?.type,
+    attachment_url: outgoingAttachment?.type.startsWith('image/') ? URL.createObjectURL(outgoingAttachment) : null,
     created_at: new Date().toISOString(),
     _send_state: 'sending',
     _thread_id: selectedThreadId.value,
@@ -203,11 +243,13 @@ const sendMessage = async () => {
   }
   messages.value.push(tempMessage)
   draft.value = ''
+  attachment.value = null
   try {
-    const response = await crmService.sendChatMessage(selectedThreadId.value, {
-      message: outgoingText,
-      order_id: selectedOrderId.value || undefined,
-    })
+    const payload = new FormData()
+    if (outgoingText) payload.append('message', outgoingText)
+    if (selectedOrderId.value) payload.append('order_id', String(selectedOrderId.value))
+    if (outgoingAttachment) payload.append('attachment', outgoingAttachment)
+    const response = await crmService.sendChatMessage(selectedThreadId.value, payload)
     const saved = response?.data?.data || response?.data || null
     if (saved?.id) {
       const idx = messages.value.findIndex((m: any) => m.id === tempId)
@@ -218,12 +260,15 @@ const sendMessage = async () => {
     await loadMessages()
     await loadThreads()
   } catch (error: any) {
+    draft.value = outgoingText
+    attachment.value = outgoingAttachment
     const idx = messages.value.findIndex((m: any) => m.id === tempId)
     if (idx >= 0) {
       messages.value[idx] = { ...messages.value[idx], _send_state: 'failed' }
     }
     toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to send message', life: 2800 })
   } finally {
+    if (tempMessage.attachment_url) URL.revokeObjectURL(tempMessage.attachment_url)
     sending.value = false
   }
 }
@@ -323,5 +368,34 @@ const unsendMessage = async (message: any) => {
 }
 
 watch(search, () => loadThreads())
-onMounted(loadThreads)
+
+const refreshChats = async () => {
+  if (refreshingChats || document.visibilityState !== 'visible') return
+  refreshingChats = true
+  try {
+    await loadThreads()
+    if (selectedThreadId.value) await loadMessages()
+  } finally {
+    refreshingChats = false
+  }
+}
+
+onMounted(async () => {
+  await loadThreads()
+  refreshTimer = setInterval(refreshChats, 3000)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 </script>
+
+<style scoped>
+:deep(.p-card-body),
+:deep(.p-card-content) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+</style>

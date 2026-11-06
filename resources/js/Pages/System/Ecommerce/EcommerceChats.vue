@@ -1,94 +1,108 @@
 <template>
-  <div class="space-y-4">
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <h1 class="text-2xl font-bold text-slate-900">Store Chats</h1>
-      <Button label="Refresh" icon="pi pi-refresh" outlined class="w-full sm:w-auto" @click="loadThreads" />
-    </div>
-
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-      <Card v-if="!lockedStoreContext" class="border border-slate-200 shadow-none lg:col-span-4">
-        <template #content>
-          <div class="space-y-2">
-            <div v-if="threadsLoading" class="space-y-2">
-              <Skeleton v-for="i in 5" :key="i" height="3.5rem" />
+  <div class="h-[calc(100dvh-190px)] min-h-[520px] overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-sm">
+    <div class="grid h-full grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]" :class="lockedStoreContext ? 'grid-rows-1 lg:grid-cols-1' : 'grid-rows-[minmax(130px,0.4fr)_minmax(300px,1fr)] lg:grid-rows-1'">
+      <aside v-if="!lockedStoreContext" class="flex min-h-0 flex-col border-b border-orange-100 bg-white lg:border-b-0 lg:border-r">
+        <div class="border-b border-orange-100 p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <h1 class="font-semibold text-slate-900">Store Chats</h1>
+              <p class="text-xs text-slate-500">Message your stores</p>
             </div>
-            <button
-              v-for="thread in threads"
-              :key="thread.id"
-              type="button"
-              class="w-full rounded-lg border p-3 text-left transition"
-              :class="activeStoreId === thread.store_id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
-              @click="openThread(thread.store_id)"
-            >
+            <Button icon="pi pi-refresh" text rounded aria-label="Refresh chats" class="!text-orange-600" @click="loadThreads" />
+          </div>
+          <InputText v-model="threadSearch" fluid placeholder="Search stores" />
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <button
+            v-for="thread in filteredThreads"
+            :key="thread.id"
+            type="button"
+            class="mb-2 flex w-full items-center gap-3 rounded-2xl p-3 text-left transition"
+            :class="activeStoreId === Number(thread.store_id) ? 'bg-orange-100' : 'hover:bg-orange-50'"
+            @click="openThread(Number(thread.store_id))"
+          >
+            <Avatar :image="thread.store_logo" :label="storeInitials(thread.store_name)" shape="circle" class="shrink-0 bg-orange-100 text-orange-700" />
+            <div class="min-w-0 flex-1">
               <div class="flex items-center justify-between gap-2">
-                <p class="text-sm font-semibold text-slate-900">{{ thread.store_name }}</p>
-                <Tag v-if="thread.unread_count" :value="thread.unread_count" severity="info" />
+                <p class="truncate text-sm font-semibold text-slate-900">{{ thread.store_name }}</p>
+                <span class="shrink-0 text-[11px] text-slate-400">{{ shortTime(thread.last_message_at) }}</span>
               </div>
-              <p class="mt-1 line-clamp-1 text-xs text-slate-500">{{ thread.last_message || 'No messages yet.' }}</p>
-            </button>
-            <p v-if="!threadsLoading && !threads.length" class="text-sm text-slate-500">No chats yet.</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="border border-slate-200 shadow-none" :class="lockedStoreContext ? 'lg:col-span-12' : 'lg:col-span-8'">
-        <template #content>
-          <div v-if="!activeStoreId" class="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500">
-            Select a store chat to start.
-          </div>
-
-          <div v-else class="space-y-3">
-            <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-              <span class="text-xs uppercase tracking-wide text-slate-500">Chatting with</span>
-              <p class="font-semibold text-slate-900">{{ activeStoreName || 'Store' }}</p>
+              <div class="flex items-center gap-2">
+                <p class="flex-1 truncate text-xs text-slate-500">{{ thread.last_message || 'No messages yet' }}</p>
+                <Badge v-if="thread.unread_count" :value="thread.unread_count" severity="warn" />
+              </div>
             </div>
-            <div class="max-h-[58vh] space-y-2 overflow-auto rounded-lg bg-slate-50 p-3">
-              <div v-if="messagesLoading" class="space-y-2">
-                <Skeleton v-for="i in 5" :key="`msg-${i}`" height="3rem" />
-              </div>
-              <div
-                v-for="msg in messages"
-                :key="msg.id"
-                class="max-w-[80%] rounded-lg px-3 py-2 text-sm"
-                :class="msg.sender_role === 'customer' ? 'ml-auto bg-blue-600 text-white' : 'bg-white text-slate-800'"
-              >
+          </button>
+          <p v-if="!threadsLoading && !filteredThreads.length" class="p-4 text-center text-sm text-slate-400">No store chats found.</p>
+        </div>
+      </aside>
+
+      <section class="flex min-h-0 min-w-0 flex-col">
+        <header class="flex h-20 shrink-0 items-center justify-between border-b border-orange-100 px-4 sm:px-6">
+          <div v-if="activeStoreId" class="flex min-w-0 items-center gap-3">
+            <Avatar :image="activeStoreLogo" :label="storeInitials(activeStoreName)" shape="circle" class="shrink-0 bg-orange-100 text-orange-700" />
+            <div class="min-w-0">
+              <h2 class="truncate font-semibold text-slate-900">{{ activeStoreName || 'Store' }}</h2>
+              <p class="text-xs text-slate-500">Store conversation</p>
+            </div>
+          </div>
+          <div v-else>
+            <h1 class="font-semibold text-slate-900">Store Chats</h1>
+            <p class="text-sm text-slate-500">Select a store conversation</p>
+          </div>
+          <i class="pi pi-comments text-xl text-orange-500"></i>
+        </header>
+
+        <div class="min-h-0 flex-1 space-y-4 overflow-y-auto bg-orange-50/30 p-4 sm:p-6">
+          <div v-if="!activeStoreId" class="flex h-full flex-col items-center justify-center text-center text-slate-400">
+            <i class="pi pi-comments mb-3 text-5xl text-orange-200"></i>
+            <p>Choose a store conversation from the left.</p>
+          </div>
+          <div v-else-if="!messages.length && !messagesLoading" class="flex h-full items-center justify-center text-sm text-slate-400">No messages yet. Say hello!</div>
+          <div v-for="msg in messages" :key="msg.id" class="flex gap-2" :class="msg.sender_role === 'customer' ? 'justify-end' : 'justify-start'">
+            <Avatar v-if="msg.sender_role !== 'customer'" :image="activeStoreLogo" :label="storeInitials(activeStoreName)" shape="circle" size="small" class="mt-1 shrink-0 bg-orange-100 text-orange-700" />
+            <div class="max-w-[78%] min-w-0">
+              <div class="rounded-2xl px-4 py-3 text-sm shadow-sm" :class="msg.sender_role === 'customer' ? 'rounded-br-md bg-orange-500 text-white' : 'rounded-bl-md border border-slate-100 bg-white text-slate-800'">
                 <template v-if="editingMessageId === msg.id">
-                  <Textarea v-model="editDraftMessage" rows="2" autoResize class="w-full mb-2" />
+                  <Textarea v-model="editDraftMessage" rows="2" autoResize class="mb-2 w-full" />
                   <div class="flex items-center justify-end gap-2">
                     <Button label="Cancel" size="small" severity="secondary" text @click="cancelEditMessage" />
                     <Button label="Save" size="small" severity="info" :loading="editingLoading" @click="saveEditMessage(msg)" />
                   </div>
                 </template>
-                <p v-else>{{ msg.message }}</p>
-                <div
-                  v-if="msg.sender_role === 'customer' && Number(msg.id) > 0 && msg.message !== '[Message unsent]' && editingMessageId !== msg.id"
-                  class="mt-1 flex items-center justify-end gap-2"
-                >
-                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="startEditMessage(msg)">Edit</button>
-                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="unsendMessage(msg)">Unsend</button>
+                <p v-else class="whitespace-pre-wrap break-words">{{ msg.message }}</p>
+                <div v-if="msg.sender_role === 'customer' && Number(msg.id) > 0 && msg.message !== '[Message unsent]' && editingMessageId !== msg.id" class="mt-1 flex items-center justify-end gap-2">
+                  <button type="button" class="text-[11px] underline text-white/80 hover:text-white" @click="startEditMessage(msg)">Edit</button>
+                  <button type="button" class="text-[11px] underline text-white/80 hover:text-white" @click="unsendMessage(msg)">Unsend</button>
                 </div>
-                <p class="mt-1 text-[11px]" :class="msg.sender_role === 'customer' ? 'text-blue-100' : 'text-slate-400'">
-                  {{ formatDateTime(msg.created_at) }}
-                </p>
               </div>
-            </div>
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <Textarea v-model="draftMessage" rows="2" autoResize class="w-full" placeholder="Type your message..." />
-              <Button label="Send" icon="pi pi-send" severity="info" class="w-full sm:w-auto" :loading="sending" @click="sendMessage" />
+              <p class="mt-1 px-1 text-[11px] text-slate-400" :class="msg.sender_role === 'customer' ? 'text-right' : ''">{{ formatDateTime(msg.created_at) }}</p>
             </div>
           </div>
-        </template>
-      </Card>
+        </div>
+
+        <form v-if="activeStoreId" class="shrink-0 border-t border-orange-100 bg-white p-4" @submit.prevent="sendMessage">
+          <div class="flex items-end gap-2">
+            <Textarea v-model="draftMessage" autoResize rows="1" fluid class="flex-1" placeholder="Write a message" @keydown.enter.exact.prevent="sendMessage" />
+            <Button type="submit" icon="pi pi-send" label="Send" :loading="sending" :disabled="!draftMessage.trim() || sending" class="!border-orange-500 !bg-orange-500" />
+          </div>
+        </form>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import { confirmAlert, showAlert } from '@/utils/swal'
+import Avatar from 'primevue/avatar'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import Textarea from 'primevue/textarea'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -96,6 +110,7 @@ defineOptions({
 
 const route = useRoute()
 const threads = ref<any[]>([])
+const threadSearch = ref('')
 const messages = ref<any[]>([])
 const threadsLoading = ref(false)
 const messagesLoading = ref(false)
@@ -106,12 +121,24 @@ const editDraftMessage = ref('')
 const editingLoading = ref(false)
 const activeStoreId = ref<number | null>(null)
 const activeStoreName = ref('')
+const activeStoreLogo = ref('')
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+let refreshingChats = false
+const filteredThreads = computed(() => threads.value.filter((thread) => String(thread.store_name || '').toLowerCase().includes(threadSearch.value.trim().toLowerCase())))
 const lockedStoreId = computed(() => Number(route.query.store_id || 0))
 const lockedStoreContext = computed(() => lockedStoreId.value > 0)
 const lockedProductName = computed(() => String(route.query.product_name || '').trim())
 
 function formatDateTime(value: string) {
   return value ? new Date(value).toLocaleString('en-PH') : '-'
+}
+
+function storeInitials(name: string) {
+  return String(name || 'Store').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+}
+
+function shortTime(value: string) {
+  return value ? new Date(value).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : ''
 }
 
 function extractRows(payload: any): any[] {
@@ -141,14 +168,18 @@ async function loadThreads() {
 
 async function openThread(storeId: number) {
   if (!storeId) return
+  const switchingThread = activeStoreId.value !== storeId
   activeStoreId.value = storeId
+  if (switchingThread) messages.value = []
   activeStoreName.value = threads.value.find((t) => Number(t.store_id) === storeId)?.store_name || ''
+  activeStoreLogo.value = threads.value.find((t) => Number(t.store_id) === storeId)?.store_logo || ''
   messagesLoading.value = true
   try {
     const res = await ecommerceService.getStoreChatMessages(storeId, { per_page: 100 })
     const rows = extractRows(res.data?.data)
     messages.value = [...rows].reverse()
     activeStoreName.value = String(res.data?.store?.name || activeStoreName.value || '')
+    activeStoreLogo.value = String(res.data?.store?.logo || activeStoreLogo.value || '')
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load messages' })
   } finally {
@@ -228,7 +259,25 @@ async function unsendMessage(msg: any) {
   }
 }
 
-onMounted(loadThreads)
+async function refreshChats() {
+  if (refreshingChats || document.visibilityState !== 'visible') return
+  refreshingChats = true
+  try {
+    await loadThreads()
+    if (activeStoreId.value && !lockedStoreId.value) await openThread(activeStoreId.value)
+  } finally {
+    refreshingChats = false
+  }
+}
+
+onMounted(async () => {
+  await loadThreads()
+  refreshTimer = setInterval(refreshChats, 3000)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 
 watch(lockedStoreId, async (storeId) => {
   if (!storeId) return
@@ -238,3 +287,13 @@ watch(lockedStoreId, async (storeId) => {
   }
 })
 </script>
+
+<style scoped>
+:deep(.p-card-body),
+:deep(.p-card-content) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+</style>

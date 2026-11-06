@@ -9,7 +9,7 @@
         <div><label class="mb-1 block text-sm font-medium">Materials and finish</label><InputText v-model="form.materials" fluid placeholder="e.g. oak frame, beige fabric" /></div>
       </div></template></Card>
       <Card class="mt-5 border border-slate-200 shadow-sm"><template #title>Dimensions and references</template><template #content><div class="space-y-5">
-        <div class="grid gap-4 sm:grid-cols-3"><div v-for="dimension in dimensions" :key="dimension.key"><label class="mb-1 block text-sm font-medium">{{ dimension.label }} (cm) *</label><InputNumber v-model="form[dimension.key]" :min="0.01" :maxFractionDigits="2" fluid /><small v-if="errors[dimension.key]" class="text-red-600">{{ errors[dimension.key] }}</small></div></div>
+        <div><p class="mb-2 text-sm text-slate-500">Measurements are optional. Add any dimensions you know.</p><div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><div v-for="dimension in dimensions" :key="dimension.key"><label class="mb-1 block text-sm font-medium">{{ dimension.label }} (cm)</label><InputNumber v-model="form[dimension.key]" :min="0.01" :maxFractionDigits="2" fluid /><small v-if="errors[dimension.key]" class="text-red-600">{{ errors[dimension.key] }}</small></div></div></div>
         <div>
           <div class="mb-1 flex items-center gap-1">
             <label class="block text-sm font-medium">Reference photos * (up to 12)</label>
@@ -66,8 +66,8 @@ const saving = ref(false)
 const submitError = ref('')
 const tutorialVisible = ref(false)
 const errors = reactive<Record<string, string>>({})
-const form = reactive({ product_id: route.query.product_id ? Number(route.query.product_id) : null as number | null, length_cm: null as number | null, width_cm: null as number | null, height_cm: null as number | null, materials: '', notes: '' })
-const dimensions = [{ key: 'length_cm', label: 'Length' }, { key: 'width_cm', label: 'Width' }, { key: 'height_cm', label: 'Height' }] as const
+const form = reactive({ product_id: route.query.product_id ? Number(route.query.product_id) : null as number | null, length_cm: null as number | null, width_cm: null as number | null, height_cm: null as number | null, depth_cm: null as number | null, materials: '', notes: '' })
+const dimensions = [{ key: 'length_cm', label: 'Length' }, { key: 'width_cm', label: 'Width' }, { key: 'height_cm', label: 'Height' }, { key: 'depth_cm', label: 'Depth' }] as const
 const tutorialSteps = [
   { image: '/images/3d-request-tutorial/01-prepare-area.png', alt: 'Sofa in a bright and uncluttered area', title: 'Prepare the area', description: 'Use bright, even lighting and keep the space around the furniture clear.' },
   { image: '/images/3d-request-tutorial/02-capture-front.png', alt: 'Taking a complete front photo of a sofa', title: 'Capture the full furniture', description: 'Keep the entire piece visible, sharp, and centered in every photo.' },
@@ -80,14 +80,14 @@ const loadProducts = async () => { loadingProducts.value = true; loadError.value
 const submit = async () => {
   Object.keys(errors).forEach(key => delete errors[key]); submitError.value = ''
   if (!form.product_id) errors.product_id = 'Select a product.'
-  for (const dimension of dimensions) if (!form[dimension.key] || form[dimension.key]! <= 0) errors[dimension.key] = 'Enter a positive measurement.'
+  for (const dimension of dimensions) if (form[dimension.key] !== null && form[dimension.key]! <= 0) errors[dimension.key] = 'Enter a positive measurement.'
   if (!photos.value.length) errors.photos = 'Add at least one reference photo.'
   if (Object.keys(errors).length) return
   saving.value = true
   try {
     const payload = new FormData()
     payload.append('product_id', String(form.product_id))
-    for (const dimension of dimensions) payload.append(dimension.key, String(form[dimension.key]))
+    for (const dimension of dimensions) if (form[dimension.key] !== null) payload.append(dimension.key, String(form[dimension.key]))
     payload.append('materials', form.materials)
     payload.append('notes', form.notes)
     photos.value.forEach(file => payload.append('photos[]', file))

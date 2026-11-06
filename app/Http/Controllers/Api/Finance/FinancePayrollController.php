@@ -11,7 +11,10 @@ class FinancePayrollController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Payroll::with(['employee', 'payPeriod'])
+        $query = Payroll::with([
+            'employee.user:id,fname,lname',
+            'payPeriod',
+        ])
             ->byUserStore();
 
         if ($request->filled('status')) {

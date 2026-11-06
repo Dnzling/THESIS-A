@@ -22,7 +22,8 @@
             size="small"
           />
           <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
-          <Button v-if="!isSupplierRoute && canApproveSupplierContracts && ['draft', 'pending'].includes(contract?.status)" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
+          <Button v-if="!isSupplierRoute && canApproveSupplierContracts && (contract?.status === 'draft' || (contract?.status === 'pending' && contract?.submitted_by_type === 'supplier'))" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
+          <Button v-if="!isSupplierRoute && canActivateStoreContract" label="Activate Contract" icon="pi pi-check-circle" severity="success" size="small" :loading="activating" @click="activateContract" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
             :loading="activating" @click="activateContract" size="small" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
@@ -40,8 +41,8 @@
 
     <div v-else-if="contract">
       <div v-if="contract.status === 'pending'" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <p class="font-semibold text-amber-900">Waiting for contract decision</p>
-        <p class="mt-1 text-xs text-amber-800">Submitted by {{ (contract.submitted_by_type || 'store').replace(/_/g, ' ') }}. Review the terms and document before approving or rejecting.</p>
+        <p class="font-semibold text-amber-900">{{ contract.submitted_by_type === 'store' ? 'Pending activation' : 'Waiting for contract decision' }}</p>
+        <p class="mt-1 text-xs text-amber-800">{{ contract.submitted_by_type === 'store' ? 'Activate only after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and document before approving or rejecting.` }}</p>
       </div>
 
       <div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -557,6 +558,9 @@ const creatorName = computed(() => {
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
+const canActivateStoreContract = computed(() => contract.value?.status === 'pending'
+  && contract.value?.submitted_by_type === 'store'
+  && (canManageSupplierContracts.value || canApproveSupplierContracts.value))
 const isSupplierRoute = computed(() => String(route.path || '').startsWith('/supplier-portal/'))
 const mySideType = computed(() => (isSupplierRoute.value ? 'supplier' : 'store_user'))
 const canRespondTerminationRequest = computed(() => {
@@ -815,8 +819,10 @@ const editContract = () => {
 
 const activateContract = async () => {
   confirm.require({
-    message: 'Approve this contract and set it to active?',
-    header: 'Approve Contract',
+    message: contract.value?.submitted_by_type === 'store'
+      ? 'Confirm that the supplier has agreed to these terms. The contract will become active immediately.'
+      : 'Approve this contract and set it to active?',
+    header: contract.value?.submitted_by_type === 'store' ? 'Activate Supplier Contract' : 'Approve Contract',
     icon: 'pi pi-check-circle',
     accept: async () => {
       activating.value = true

@@ -47,7 +47,8 @@
         <p class="text-xs text-slate-500">Estimates only. Review attendance and adjustments before generating drafts.</p>
 
         <div class="overflow-x-auto rounded-lg border border-slate-200">
-          <DataTable :value="previewRows" dataKey="employee_id" rowHover size="small" class="text-xs" scrollable scrollDirection="horizontal" :tableStyle="{ minWidth: '1120px' }">
+          <DataTable v-model:expandedRows="expandedRows" :value="previewRows" dataKey="employee_id" rowHover size="small" class="text-xs" scrollable scrollDirection="horizontal" :tableStyle="{ minWidth: '1120px' }">
+            <Column expander style="width: 3rem" />
             <Column header="Employee" frozen style="min-width: 14rem">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
@@ -63,12 +64,12 @@
                 <p v-if="data.missing_clock_outs" class="mt-1 text-xs font-medium text-amber-700">{{ data.missing_clock_outs }} missing clock-out(s)</p>
               </template>
             </Column>
-            <Column header="Base Pay" style="min-width: 8rem"><template #body="{ data }">{{ money(data.base_salary) }}</template></Column>
+            <Column header="Prorated Base Pay" style="min-width: 9rem"><template #body="{ data }">{{ money(data.base_salary) }}</template></Column>
             <Column header="Unpaid Absence / Leave" style="min-width: 9rem">
-              <template #body="{ data }"><InputNumber v-model="data.unpaid_absence_days" :min="0" :maxFractionDigits="2" size="small" fluid :disabled="data.pay_type === 'daily'" /></template>
+              <template #body="{ data }"><InputNumber v-model="data.unpaid_absence_days" :min="0" :max="data.period_days" :maxFractionDigits="2" size="small" fluid :disabled="data.pay_type !== 'monthly'" /></template>
             </Column>
             <Column header="Paid Leave" style="min-width: 8rem">
-              <template #body="{ data }"><InputNumber v-model="data.paid_leave_days" :min="0" :maxFractionDigits="2" size="small" fluid :disabled="data.pay_type !== 'daily'" /></template>
+              <template #body="{ data }"><InputNumber v-model="data.paid_leave_days" :min="0" :max="data.period_days" :maxFractionDigits="2" size="small" fluid :disabled="data.pay_type !== 'daily'" /></template>
             </Column>
             <Column header="Allowance" style="min-width: 8rem"><template #body="{ data }"><InputNumber v-model="data.allowances" :min="0" mode="currency" currency="PHP" locale="en-PH" size="small" fluid /></template></Column>
             <Column header="Incentive" style="min-width: 8rem"><template #body="{ data }"><InputNumber v-model="data.incentives" :min="0" mode="currency" currency="PHP" locale="en-PH" size="small" fluid /></template></Column>
@@ -76,6 +77,17 @@
             <Column header="Est. Net Pay" style="min-width: 9rem">
               <template #body="{ data }"><span class="font-semibold text-slate-900">{{ money(estimatedNet(data)) }}</span></template>
             </Column>
+            <template #expansion="{ data }">
+              <div class="m-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="mb-2 text-xs font-semibold text-slate-700">Daily attendance · {{ dateRange?.[0] ? dateString(dateRange[0]) : '' }} to {{ dateRange?.[1] ? dateString(dateRange[1]) : '' }}</p>
+                <DataTable :value="data.attendance_by_day || []" size="small" class="text-xs">
+                  <Column field="date" header="Day"><template #body="{ data: day }">{{ formatAttendanceDate(day.date) }}</template></Column>
+                  <Column header="Attendance Status"><template #body="{ data: day }"><Badge :value="attendanceStatusLabel(day)" :severity="attendanceStatusSeverity(day.status)" /></template></Column>
+                  <Column header="Work Hours"><template #body="{ data: day }">{{ Number(day.worked_hours || 0).toFixed(2) }} hrs</template></Column>
+                  <Column header="Note"><template #body="{ data: day }"><span class="text-slate-500">{{ day.note || '—' }}</span></template></Column>
+                </DataTable>
+              </div>
+            </template>
             <template #empty><div class="py-8 text-center text-sm text-slate-500">No active employees found for this selection.</div></template>
           </DataTable>
         </div>
@@ -131,6 +143,7 @@ const previewLoading = ref(false)
 const generating = ref(false)
 const previewed = ref(false)
 const previewRows = ref<any[]>([])
+const expandedRows = ref<Record<string, boolean>>({})
 const errorMessage = ref('')
 const canPreview = computed(() => Boolean(dateRange.value?.length === 2 && dateRange.value[0] && dateRange.value[1] && !previewLoading.value && !generating.value))
 
@@ -138,6 +151,9 @@ const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth
 const money = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const initials = (name: string) => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'E'
 const capitalize = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Monthly'
+const formatAttendanceDate = (value: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }) : '—'
+const attendanceStatusLabel = (day: any) => day?.missing_clock_out ? 'Missing clock-out' : ({ present: 'Present', absent: 'Absent', day_off: 'Day Off', on_leave: 'On Leave', holiday: 'Holiday', no_record: 'No Record' }[String(day?.status || '').toLowerCase()] || capitalize(day?.status || 'No Record'))
+const attendanceStatusSeverity = (status: string) => ({ present: 'success', absent: 'danger', day_off: 'secondary', on_leave: 'info', holiday: 'info', no_record: 'warn' }[String(status || '').toLowerCase()] || 'secondary')
 const estimatedNet = (row: any) => {
   const absenceDeduction = row.pay_type === 'monthly' ? Number(row.unpaid_absence_days || 0) * Number(row.day_rate || 0) : 0
   const paidLeavePay = row.pay_type === 'daily' ? Number(row.paid_leave_days || 0) * Number(row.day_rate || 0) : 0

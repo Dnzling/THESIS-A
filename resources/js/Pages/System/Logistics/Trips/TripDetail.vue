@@ -168,7 +168,6 @@
     <div class="flex justify-end gap-3">
               <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-times" label="Cancel Trip" severity="secondary" outlined :loading="savingStatus" @click="confirmCancelTrip" />
        <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-send" label="Dispatch Trip" severity="info" :loading="savingStatus" :disabled="!assignedOrders.length" @click="dispatchTrip" />
-        <Button v-if="(canManage || canViewDriverTrips) && ['in_transit', 'out_for_delivery'].includes(trip?.status)" icon="pi pi-check" label="Complete Trip" severity="success" :loading="savingStatus" @click="changeStatus('completed')" />
 
     </div>
   
@@ -203,15 +202,17 @@
         <div>
           <h4 class="text-sm font-semibold text-slate-700">Order Items</h4>
           <DataTable :value="detailOrder.items || []" dataKey="id" stripedRows class="mt-2">
-            <Column field="product_name" header="Product" />
-            <Column field="sku" header="SKU" style="width: 8rem" />
-            <Column field="quantity" header="Qty" style="width: 5rem" />
+            <Column header="Product">
+              <template #body="{ data }">{{ data.product_name || data.product?.product_name || data.product?.name || '-' }}</template>
+            </Column>
+            <Column header="SKU" style="width: 8rem"><template #body="{ data }">{{ data.sku || data.product?.sku || '-' }}</template></Column>
+            <Column header="Qty" style="width: 5rem"><template #body="{ data }">{{ data.quantity ?? data.shipped_quantity ?? data.approved_quantity ?? data.requested_quantity ?? '-' }}</template></Column>
             <Column header="Unit Price" style="width: 8rem">
               <template #body="{ data }">
                 <span class="text-xs text-slate-600">{{ formatCurrency(data.unit_price) }}</span>
               </template>
             </Column>
-            <Column header="Line Total" style="width: 8rem">
+          <Column v-if="detailSource !== 'stock_transfer'" header="Line Total" style="width: 8rem">
               <template #body="{ data }">
                 <span class="text-xs text-slate-600">{{ formatCurrency(data.line_total) }}</span>
               </template>
@@ -259,14 +260,14 @@ const loadingAvailable = ref(false)
 const loadingSuggestion = ref(false)
 const suggestedArea = ref('')
 const selectedOrders = ref<any[]>([])
-const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup'>('ecommerce')
+const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer'>('ecommerce')
 const availablePage = ref(1)
 const availablePerPage = ref(10)
 const availableTotal = ref(0)
 const detailDialog = ref(false)
 const detailLoading = ref(false)
 const detailOrder = ref<any>(null)
-const detailSource = ref<'ecommerce' | 'sales' | 'pickup'>('ecommerce')
+const detailSource = ref<'ecommerce' | 'sales' | 'pickup' | 'stock_transfer'>('ecommerce')
 const detailMapElement = ref<HTMLElement | null>(null)
 const detailMapError = ref(false)
 let detailMap: any = null
@@ -276,6 +277,7 @@ const sourceOptions = [
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'Sales', value: 'sales' },
   { label: 'Return Pickup', value: 'return_pickup' },
+  { label: 'Stock Transfer', value: 'stock_transfer' },
 ]
 
 const assignedOrders = computed(() => {
@@ -313,7 +315,18 @@ const assignedOrders = computed(() => {
     order_id: p.id,
     is_return: true,
   }))
-  return [...ecommerce, ...sales, ...returns]
+  const transfers = (trip.value.stock_transfers || []).map((transfer: any) => ({
+    id: `t-${transfer.id}`,
+    source: 'Stock Transfer',
+    order_number: transfer.transfer_number,
+    customer_name: `${transfer.from_branch?.name || 'Source branch'} to ${transfer.to_branch?.name || 'Destination branch'}`,
+    address: [transfer.to_branch?.address, transfer.to_branch?.city, transfer.to_branch?.province].filter(Boolean).join(', '),
+    status: transfer.delivery_status || 'assigned',
+    weight_kg: (transfer.items || []).reduce((total: number, item: any) => total + Number(item.product?.weight_kg || 0) * Number(item.shipped_quantity ?? item.approved_quantity ?? item.requested_quantity ?? 0), 0),
+    order_id: transfer.id,
+    is_return: false,
+  }))
+  return [...ecommerce, ...sales, ...returns, ...transfers]
 })
 
 const selectedOrderIds = computed(() => selectedOrders.value.map(o => o.order_id))
@@ -472,7 +485,7 @@ const removeOrder = async (row: any) => {
     accept: async () => {
       try {
         await logisticsService.removeOrdersFromTrip(trip.value.id, {
-          source_type: row.source === 'Sales' ? 'sales' : (row.source === 'Return Pickup' ? 'return_pickup' : 'ecommerce'),
+          source_type: row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : row.source === 'Stock Transfer' ? 'stock_transfer' : 'ecommerce',
           order_ids: [row.order_id],
         })
         toast.add({ severity: 'success', summary: 'Removed', detail: 'Order removed from trip.', life: 2000 })
@@ -521,7 +534,11 @@ const openOrderDetail = async (row: any) => {
 
 const openAssignedOrderDetail = async (row: any) => {
   if (!row?.order_id) return
-  const source = row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : 'ecommerce'
+  if (row.source === 'Stock Transfer' && canManage) {
+    router.push({ name: 'logistics.stock-transfers.detail', params: { id: row.order_id } })
+    return
+  }
+  const source = row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : row.source === 'Stock Transfer' ? 'stock_transfer' : 'ecommerce'
   router.push({ name: 'driver.deliveries.view', params: { source, orderId: row.order_id } })
 }
 
@@ -631,21 +648,24 @@ const formatCurrency = (value?: number) => {
   return amount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
 }
 
-const detailSourceLabel = computed(() => detailSource.value === 'sales' ? 'Sales' : 'Ecommerce')
+const detailSourceLabel = computed(() => ({ sales: 'Sales', pickup: 'Return Pickup', stock_transfer: 'Stock Transfer' }[detailSource.value] || 'Ecommerce'))
 const detailCustomerName = computed(() => {
   if (!detailOrder.value) return '-'
+  if (detailSource.value === 'stock_transfer') return `${detailOrder.value.from_branch?.name || 'Source branch'} to ${detailOrder.value.to_branch?.name || 'Destination branch'}`
   return detailSource.value === 'sales'
     ? detailOrder.value.customer_name
     : detailOrder.value.shipping_name
 })
 const detailCustomerContact = computed(() => {
   if (!detailOrder.value) return '-'
+  if (detailSource.value === 'stock_transfer') return detailOrder.value.to_branch?.contact_number || '-'
   return detailSource.value === 'sales'
     ? detailOrder.value.customer_phone
     : detailOrder.value.shipping_phone
 })
 const detailAddress = computed(() => {
   if (!detailOrder.value) return '-'
+  if (detailSource.value === 'stock_transfer') return [detailOrder.value.to_branch?.address, detailOrder.value.to_branch?.city, detailOrder.value.to_branch?.province].filter(Boolean).join(', ')
   return detailSource.value === 'sales'
     ? detailOrder.value.delivery_address
     : detailOrder.value.shipping_address
@@ -654,10 +674,14 @@ const detailAddress = computed(() => {
 const detailCoordinates = computed(() => {
   if (!detailOrder.value) return null
   const order = detailOrder.value
-  const latitude = Number(detailSource.value === 'sales'
+  const latitude = Number(detailSource.value === 'stock_transfer'
+    ? order.to_branch?.latitude
+    : detailSource.value === 'sales'
     ? order.delivery_latitude ?? order.customer_latitude ?? order.latitude
     : order.customer_latitude ?? order.delivery_latitude ?? order.latitude)
-  const longitude = Number(detailSource.value === 'sales'
+  const longitude = Number(detailSource.value === 'stock_transfer'
+    ? order.to_branch?.longitude
+    : detailSource.value === 'sales'
     ? order.delivery_longitude ?? order.customer_longitude ?? order.longitude
     : order.customer_longitude ?? order.delivery_longitude ?? order.longitude)
   return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0

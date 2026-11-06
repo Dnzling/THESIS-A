@@ -184,6 +184,13 @@
                                 </p>
                             </div>
                             <div class="flex gap-2">
+                                <i class="pi pi-map-marker mt-0.5 text-slate-400" />
+                                <p>
+                                    <b>Branches:</b>
+                                    <span class="text-slate-500">{{ promotion.branch_label }}</span>
+                                </p>
+                            </div>
+                            <div class="flex gap-2">
                                 <i
                                     class="pi pi-calendar mt-0.5 text-slate-400"
                                 />
@@ -249,6 +256,34 @@
                             fluid
                             placeholder="Internal campaign note"
                         />
+                    </div>
+                </section>
+                <section class="section">
+                    <div>
+                        <h3 class="font-semibold">Branch availability</h3>
+                        <p class="hint">Choose which storefront branches can apply this promotion. Leave empty to include all active storefront branches.</p>
+                    </div>
+                    <div class="field">
+                        <label>Branches</label>
+                        <MultiSelect
+                            v-model="form.branch_ids"
+                            :options="branches"
+                            optionLabel="name"
+                            optionValue="id"
+                            filter
+                            display="chip"
+                            :maxSelectedLabels="4"
+                            placeholder="All active storefront branches"
+                            fluid
+                        >
+                            <template #option="{ option }">
+                                <div>
+                                    <p class="font-medium">{{ option.name }}</p>
+                                    <p class="hint">{{ [option.city, option.province].filter(Boolean).join(', ') }}</p>
+                                </div>
+                            </template>
+                        </MultiSelect>
+                        <small v-if="errors.branch_ids" class="error">{{ errors.branch_ids }}</small>
                     </div>
                 </section>
                 <section class="section">
@@ -495,11 +530,14 @@ const toast = useToast(),
     confirm = useConfirm(),
     authStore = useAuthStore();
 const canManage = computed(() =>
-    authStore.hasPermission("merchandising.pricing.manage"),
+    authStore.hasPermission("merchandising.pricing.manage")
+    || authStore.hasPermission("merchandising.pricing.edit")
+    || authStore.hasPermission("merchandising.pricing.create"),
 );
 const promotions = ref<any[]>([]),
     categories = ref<any[]>([]),
-    products = ref<any[]>([]);
+    products = ref<any[]>([]),
+    branches = ref<any[]>([]);
 const loading = ref(false),
     saving = ref(false),
     reviewVisible = ref(false),
@@ -521,6 +559,7 @@ const blank = () => ({
     target_type: "all",
     category_ids: [] as number[],
     product_ids: [] as number[],
+    branch_ids: [] as number[],
     minimum_order_amount: 0,
     starts_at: null as Date | null,
     ends_at: null as Date | null,
@@ -619,6 +658,7 @@ const loadOptions = async () => {
         const r = await merchandisingService.getPromotionOptions();
         categories.value = r.data?.categories || [];
         products.value = r.data?.products || [];
+        branches.value = r.data?.branches || [];
     } catch {
         toast.add({
             severity: "warn",
@@ -647,6 +687,7 @@ const openEdit = (p: any) => {
         target_type: p.target_type,
         category_ids: [...(p.category_ids || [])],
         product_ids: [...(p.product_ids || [])],
+        branch_ids: [...(p.branch_ids || [])],
         minimum_order_amount: +p.minimum_order_amount || 0,
         starts_at: p.starts_at ? new Date(p.starts_at) : null,
         ends_at: p.ends_at ? new Date(p.ends_at) : null,

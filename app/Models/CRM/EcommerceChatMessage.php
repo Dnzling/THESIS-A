@@ -16,6 +16,10 @@ class EcommerceChatMessage extends Model
         'sender_user_id',
         'sender_role',
         'message',
+        'attachment_path',
+        'attachment_name',
+        'attachment_mime',
+        'attachment_size',
         'order_id',
         'read_at',
     ];
@@ -23,6 +27,13 @@ class EcommerceChatMessage extends Model
     protected $casts = [
         'read_at' => 'datetime',
     ];
+
+    protected $appends = ['attachment_url'];
+
+    public function getAttachmentUrlAttribute(): ?string
+    {
+        return $this->attachment_path ? route('crm.chat-attachments', $this->id) : null;
+    }
 
     public function thread(): BelongsTo
     {

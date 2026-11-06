@@ -34,6 +34,14 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
     $inertia('/store/team', 'System/Store/Team', 'store.team', 'Branch Team');
+    Route::get('/store/team/employees/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'store.team.view'), 403);
+
+        return Inertia::render('System/StoreAdmin/SimpleEmployeeView', [
+            'title' => 'Employee Details',
+            'readOnly' => true,
+        ]);
+    })->whereNumber('id')->name('store.team.employee');
     $inertia('/store/branch-settings', 'System/Store/Settings', 'store.branch-settings', 'Store Settings');
     $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
 
@@ -82,7 +90,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/admin/ecommerce-feedback', 'System/Admin/EcommerceFeedback', 'admin.ecommerce-feedback', 'Ecommerce Feedback');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
-        $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
+        $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Verification');
         $inertia('/admin/store-validation/{id}', 'System/Admin/StoreVerificationShow', 'admin.store-validation.show', 'Store Verification Details');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
         $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
@@ -94,10 +102,8 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');
         $inertia('/admin/violation-reports', 'System/Admin/ViolationReportsIndex', 'admin.violation-reports', 'Violation Reports');
         $inertia('/admin/violation-reports/{id}', 'System/Admin/ViolationReportShow', 'admin.violation-reports.show', 'Violation Report');
-        Route::redirect('/admin/suppliers', '/admin/suppliers/list')->name('admin.suppliers');
-        $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
-        $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
-        $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
+        $inertia('/admin/suppliers', 'System/Admin/SuppliersIndex', 'admin.suppliers.index', 'Suppliers');
+        $inertia('/admin/suppliers/{id}', 'System/Admin/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details')->whereNumber('id');
     });
 
     // System (Store Owner)
@@ -335,6 +341,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/finance/expenses/{id}', 'System/Finance/FinanceExpenseDetail', 'finance.expenses.detail', 'Expense Detail');
     $inertia('/finance/payroll', 'System/Finance/FinancePayrollIndex', 'finance.payroll', 'Payroll');
     $inertia('/finance/payroll/basic', 'System/Finance/FinancePayrollBasicIndex', 'finance.payroll.basic', 'Basic Payroll');
+    $inertia('/finance/payroll/basic/{payPeriodId}', 'System/Finance/BasicPayrollPeriodDetail', 'finance.payroll.basic.detail', 'Basic Payroll Period Detail')->whereNumber('payPeriodId');
     $inertia('/finance/payroll/{payPeriodId}', 'System/Finance/FinancePayrollDetail', 'finance.payroll.detail', 'Payroll Period Detail');
     $inertia('/finance/cashflow', 'System/Finance/FinanceCashflowIndex', 'finance.cashflow', 'Cashflow');
     $inertia('/finance/tax-vat', 'System/Finance/FinanceTaxVatIndex', 'finance.tax-vat', 'Tax / VAT Report', 'Store-wide tax monitoring');
@@ -427,7 +434,16 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Collections', 'Manage product tags and collections');
     $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Promotions & Discounts', 'Create store promotions for products and categories');
     $inertia('/merchandising/pricing/bulk-update', 'System/Merchandising/pricing/BulkPricing', 'merchandising.pricing.bulk', 'Bulk Price Update', 'Update multiple product prices at once');
-    $inertia('/merchandising/reports', 'System/Merchandising/reports/SalesReports', 'merchandising.reports', 'Sales Reports', 'Analyze product performance');
+    Route::get('/merchandising/reports', function (\App\Services\Core\PermissionService $permissions) {
+        $user = request()->user();
+        $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
+        abort_unless($permissions->userHasPermission($user, 'merchandising.reports.view', $storeId ? (int) $storeId : null), 403);
+
+        return Inertia::render('System/Merchandising/reports/SalesReports', [
+            'title' => 'Product Catalog Reports',
+            'subtitle' => 'Understand product sales, category performance, and branch contribution.',
+        ]);
+    })->name('merchandising.reports');
     $inertia('/merchandising/pricing-history', 'System/Merchandising/reports/PricingHistory', 'merchandising.pricing-history', 'Pricing History', 'Track price changes over time');
 
     // Supplier Portal

@@ -106,6 +106,10 @@ class MerchandisingService {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/overview`, { params: { days } })
         return response.data
     }
+    async getReports(params: { days?: number; branch_id?: number | null; category_id?: number | null; search?: string; page?: number; per_page?: number }) {
+        const response = await axiosClient.get('/api/merchandising/reports', { params })
+        return response.data
+    }
 
     // ==================== PROMOTIONS ====================
     async getPromotions(params?: any) {

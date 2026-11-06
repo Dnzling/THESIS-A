@@ -120,6 +120,18 @@
         </form>
       </template>
     </Card>
+
+    <Dialog v-model:visible="showCreateConfirmation" modal header="Add this supplier?" :style="{ width: 'min(28rem, 94vw)' }">
+      <p class="text-sm leading-6 text-slate-600">
+        This supplier will be added to your store's inventory supplier directory. Continue with the submitted contact and address details?
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Review Details" severity="secondary" outlined size="small" @click="showCreateConfirmation = false" />
+          <Button label="Add Supplier" severity="warn" icon="pi pi-check" size="small" :loading="saving" @click="confirmCreateSupplier" />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -136,6 +148,7 @@ const toast = useToast()
 const supplierId = Number(route.params.id || 0)
 const isEditing = computed(() => supplierId > 0)
 const saving = ref(false)
+const showCreateConfirmation = ref(false)
 const errors = ref<Record<string, string>>({})
 const fileInput = ref<HTMLInputElement | null>(null)
 const logoFile = ref<File | null>(null)
@@ -312,6 +325,19 @@ const validate = () => {
 
 const submitForm = async () => {
   if (!validate()) return
+  if (!isEditing.value) {
+    showCreateConfirmation.value = true
+    return
+  }
+
+  await saveSupplier()
+}
+
+const confirmCreateSupplier = async () => {
+  await saveSupplier()
+}
+
+const saveSupplier = async () => {
   saving.value = true
 
   try {
@@ -334,10 +360,12 @@ const submitForm = async () => {
       router.push({ name: 'inventory.suppliers.detail', params: { id: supplierId } })
     } else {
       await inventoryService.createSupplier(payload)
+      showCreateConfirmation.value = false
       toast.add({ severity: 'success', summary: 'Supplier Added', detail: 'Supplier added successfully.', life: 3000 })
       router.push({ name: 'inventory.suppliers' })
     }
   } catch (error: any) {
+    showCreateConfirmation.value = false
     const apiErrors = error.response?.data?.errors || {}
     errors.value = Object.fromEntries(Object.entries(apiErrors).map(([key, value]) => [
       key,

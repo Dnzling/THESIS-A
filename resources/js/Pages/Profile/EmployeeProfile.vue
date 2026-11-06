@@ -289,14 +289,12 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-semibold text-slate-800">Payslips</p>
-                <p class="text-xs text-slate-500">Latest payroll entries.</p>
+                <p class="text-xs text-slate-500">Paid payrolls only.</p>
               </div>
               <div class="flex items-center gap-2">
-                <div class="text-xs text-slate-500" v-if="payslipSummary.total_amount">
-                  Total Net: {{ formatCurrency(payslipSummary.total_amount) }}
+                <div class="text-xs text-slate-500" v-if="paidPayslipTotal">
+                  Total Paid: {{ formatCurrency(paidPayslipTotal) }}
                 </div>
-                <Button label="Print Rundown" icon="pi pi-print" severity="warning" outlined class="small-pill"
-                  :disabled="!employee?.id" @click="printPayrollRundown" />
               </div>
             </div>
             <div v-if="loadingPayslips" class="mt-4 flex justify-center">
@@ -762,6 +760,7 @@ const swapRecords = ref<any[]>([])
 const payslips = ref<any[]>([])
 const overtimeRecords = ref<any[]>([])
 const payslipSummary = ref<any>({})
+const paidPayslipTotal = computed(() => payslips.value.reduce((total, row) => total + Number(row.net_salary || row.net_pay || 0), 0))
 const selectedPayslip = ref<any | null>(null)
 
 const initials = computed(() => {
@@ -1194,12 +1193,10 @@ const loadPayslips = async () => {
   if (!employee.value?.id) return
   loadingPayslips.value = true
   try {
-    const response = await hrService.api.get(`/api/payroll/payslip/${employee.value.id}`, {
-      params: { per_page: 5 },
-    })
+    const response = await hrService.api.get(`/api/payroll/basic/employee/${employee.value.id}/payslips`)
     const payload = response?.data || {}
     const list = payload?.data?.data || payload?.data || []
-    payslips.value = Array.isArray(list) ? list : []
+    payslips.value = Array.isArray(list) ? list.filter((row: any) => row.status === 'paid') : []
     payslipSummary.value = payload?.summary || {}
   } catch (err) {
     payslips.value = []
@@ -1244,7 +1241,7 @@ const openPayslipDetails = async (payslip: any) => {
 const downloadPayslipPdf = async (payslip: any) => {
   if (!payslip?.id) return
   try {
-    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/pdf`, { responseType: 'blob' })
+    const response = await hrService.api.get(`/api/payroll/basic/${payslip.id}/payslip/print`, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = url
@@ -1267,7 +1264,7 @@ const downloadPayslipPdf = async (payslip: any) => {
 const printPayslipPdf = async (payslip: any) => {
   if (!payslip?.id) return
   try {
-    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/print`, { responseType: 'blob' })
+    const response = await hrService.api.get(`/api/payroll/basic/${payslip.id}/payslip/print`, { responseType: 'blob' })
     const file = new Blob([response.data], { type: 'application/pdf' })
     const fileURL = window.URL.createObjectURL(file)
     window.open(fileURL, '_blank')

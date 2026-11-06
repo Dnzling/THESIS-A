@@ -5,18 +5,18 @@
         <div class="flex items-center gap-2">
           <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
           <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Stock Transfer Detail</h1>
-            <p class="mt-1 text-sm text-slate-500">{{ detail?.transfer_number || '-' }}</p>
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900">{{ detail?.transfer_number || 'Stock Transfer' }}</h1>
+            <p class="mt-1 text-sm text-slate-500">Internal branch transfer</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Tag :value="statusLabel" :severity="statusSeverity(detail?.status)" />
+          <Tag :value="statusLabel" :severity="statusSeverity(detail?.delivery_status || detail?.status)" />
           <Button
-            v-if="canCreateDelivery"
-            icon="pi pi-truck"
-            label="Assign Delivery"
-            severity="success"
-            @click="router.push({ name: 'logistics.stock-transfers.assign', params: { id: transferId } })"
+            v-if="canAddToTrip"
+            icon="pi pi-send"
+            label="Add to Trip"
+            severity="warn"
+            @click="openTripDialog"
           />
           <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadDetail" />
         </div>
@@ -33,9 +33,10 @@
           <div><span class="text-slate-500">To Branch:</span> <strong>{{ detail?.to_branch?.name || detail?.toBranch?.name || '-' }}</strong></div>
           <div><span class="text-slate-500">Requested Date:</span> <strong>{{ formatDate(detail?.requested_date || detail?.created_at) }}</strong></div>
           <div><span class="text-slate-500">Expected Delivery:</span> <strong>{{ formatDate(detail?.expected_delivery_date) }}</strong></div>
+          <div><span class="text-slate-500">Driver:</span> <strong>{{ assignedDriverName }}</strong></div>
+          <div><span class="text-slate-500">Trip:</span> <strong>{{ detail?.trip?.id ? tripReference(detail.trip) : 'Not assigned' }}</strong></div>
+          <div><span class="text-slate-500">Vehicle:</span> <strong>{{ detail?.trip?.vehicle?.vehicle_name || detail?.vehicle_type || '-' }}</strong></div>
           <div><span class="text-slate-500">Tracking Number:</span> <strong>{{ detail?.tracking_number || '-' }}</strong></div>
-          <div><span class="text-slate-500">Driver:</span> <strong>{{ detail?.driver_name || '-' }}</strong></div>
-          <div><span class="text-slate-500">Additional Delivery Charge:</span> <strong>{{ formatCurrency(0) }} (none)</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Reason:</span> <strong>{{ detail?.reason || '-' }}</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Notes:</span> <strong>{{ displayNotes || '-' }}</strong></div>
         </div>
@@ -269,6 +270,54 @@
       </template>
     </Dialog>
 
+    <Dialog v-model:visible="tripChoiceVisible" modal header="Add Stock Transfer to a Trip" class="w-full max-w-2xl">
+      <div v-if="loadingCompatibleTrips" class="space-y-2">
+        <Skeleton v-for="row in 3" :key="row" height="4.5rem" borderRadius="10px" />
+      </div>
+      <div v-else-if="compatibleTrips.length" class="space-y-3">
+        <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+          <div>
+            <p class="font-semibold text-slate-900">{{ tripReference(trip) }}</p>
+            <p class="mt-1 text-xs text-slate-600">{{ trip.driver?.fname || trip.driver_name || 'Driver not set' }} · {{ trip.vehicle?.vehicle_name || trip.vehicle_name || 'Vehicle not set' }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ trip.scheduled_departure_at ? formatDate(trip.scheduled_departure_at) : 'No departure time set' }} · {{ trip.assigned_stops || 0 }} current stops</p>
+          </div>
+          <Button label="Add to Trip" size="small" severity="warn" :loading="assigningTripId === Number(trip.id)" :disabled="Boolean(assigningTripId)" @click="addTransferToTrip(trip.id)" />
+        </article>
+      </div>
+      <Message v-else severity="info" :closable="false">No compatible planned trips are available. Create a trip for this transfer.</Message>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="tripChoiceVisible = false" />
+        <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId)" @click="openCreateTrip" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="createTripVisible" modal header="Create Trip" class="w-full max-w-2xl">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Driver</label>
+          <Select v-model="tripForm.driver_user_id" :options="tripDrivers" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" :loading="loadingTripOptions" />
+          <p v-if="!loadingTripOptions && !tripDrivers.length" class="mt-1 text-xs text-amber-700">No active driver is available for this store.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
+          <Select v-model="tripForm.vehicle_id" :options="tripVehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" :loading="loadingTripOptions" />
+          <p v-if="!loadingTripOptions && !tripVehicles.length" class="mt-1 text-xs text-amber-700">No active vehicle is available for this store.</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
+          <DatePicker v-model="tripForm.scheduled_departure_at" :minDate="new Date()" fluid />
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Notes</label>
+          <Textarea v-model="tripForm.notes" rows="3" fluid placeholder="Optional notes" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Back to Trips" severity="secondary" outlined @click="createTripVisible = false" />
+        <Button label="Create and Add Transfer" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id" @click="createTripAndAddTransfer" />
+      </template>
+    </Dialog>
+
     <Dialog v-model:visible="markDeliveredDialogVisible" modal header="Proof of Delivery" class="w-full max-w-2xl">
       <div class="space-y-3">
         <p class="text-sm text-slate-600">
@@ -343,15 +392,33 @@ import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import Skeleton from 'primevue/skeleton'
+import Message from 'primevue/message'
 import inventoryService from '../../../../services/inventory.service'
+import logisticsService from '../../../../services/logistics.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManageTrips = authStore.hasPermission('logistics.deliveries.manage')
 
 const loading = ref(false)
 const detail = ref<any>(null)
 const transferId = computed(() => Number(route.params.id || 0))
+const tripChoiceVisible = ref(false)
+const compatibleTrips = ref<any[]>([])
+const loadingCompatibleTrips = ref(false)
+const assigningTripId = ref<number | null>(null)
+const createTripVisible = ref(false)
+const loadingTripOptions = ref(false)
+const creatingTrip = ref(false)
+const tripDrivers = ref<any[]>([])
+const tripVehicles = ref<any[]>([])
+const tripForm = ref<any>({ driver_user_id: null, vehicle_id: null, scheduled_departure_at: null, notes: '' })
 const recordLogDialogVisible = ref(false)
 const recordLogEvent = ref<string | null>(null)
 const recordLogNotes = ref('')
@@ -391,39 +458,48 @@ const loadDetail = async () => {
 }
 
 const statusLabel = computed(() => {
+  const deliveryStatus = String(detail.value?.delivery_status || '').toLowerCase()
   const status = String(detail.value?.status || '').toLowerCase()
   const notes = String(detail.value?.notes || '').toLowerCase()
   const hasDelivery = !!detail.value?.driver_name || !!detail.value?.vehicle_type || !!detail.value?.tracking_number
+  if (deliveryStatus === 'assigned') return 'Assigned to Trip'
+  if (deliveryStatus === 'ready_for_dispatch') return 'For Dispatch'
+  if (deliveryStatus) return label(deliveryStatus)
   if (status === 'in_transit' && notes.includes('sent to logistics') && !hasDelivery) return 'Logistics Processing'
   if (!status) return '-'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 })
 
-const canCreateDelivery = computed(() => {
-  const status = String(detail.value?.status || '').toLowerCase()
-  const notes = String(detail.value?.notes || '').toLowerCase()
-  const logisticsProcessing = status === 'in_transit' && notes.includes('sent to logistics')
-  return (detail.value?.delivery_status === 'ready_for_dispatch' || logisticsProcessing) && !detail.value?.driver_name && !detail.value?.driver_user_id
+const canAddToTrip = computed(() => canManageTrips
+  && String(detail.value?.status || '').toLowerCase() === 'in_transit'
+  && ['ready_for_dispatch', null, undefined].includes(detail.value?.delivery_status)
+  && !detail.value?.trip_id)
+const assignedDriverName = computed(() => {
+  const driver = detail.value?.trip?.driver || detail.value?.driver
+  const linkedName = [driver?.fname, driver?.lname].filter(Boolean).join(' ').trim()
+  return linkedName || detail.value?.driver_name || '-'
 })
+const tripReference = (trip: any) => trip?.id
+  ? `TRIP-${new Date(trip.created_at || Date.now()).getFullYear()}-${String(trip.id).padStart(6, '0')}`
+  : 'Trip'
 
 const showShipmentOverview = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
-  return ['in_transit', 'out_for_delivery', 'received'].includes(status)
-    || (status === 'sender_approved' && !!detail.value?.driver_name)
+  return !!detail.value?.delivery_status || ['out_for_delivery', 'received'].includes(status)
 })
 const canRecordShipmentLog = computed(() => {
-  const status = String(detail.value?.status || '').toLowerCase()
-  return ['in_transit', 'out_for_delivery', 'received'].includes(status)
+  const status = String(detail.value?.delivery_status || detail.value?.status || '').toLowerCase()
+  return ['assigned', 'in_transit', 'out_for_delivery', 'delivered', 'received'].includes(status)
 })
 const isReceived = computed(() => String(detail.value?.status || '').toLowerCase() === 'received')
 
 const shipmentSteps = computed(() => {
-  const status = String(detail.value?.status || '').toLowerCase()
-  const created = !!detail.value?.driver_name || !!detail.value?.vehicle_type
-  const inTransit = ['in_transit', 'out_for_delivery', 'received'].includes(status)
-  const outForDelivery = status === 'out_for_delivery' || detail.value?.delivery_status === 'out_for_delivery' || detail.value?.delivery_status === 'delivered'
+  const status = String(detail.value?.delivery_status || '').toLowerCase()
+  const created = ['assigned', 'in_transit', 'out_for_delivery', 'delivered'].includes(status)
+  const inTransit = ['in_transit', 'out_for_delivery', 'delivered'].includes(status)
+  const outForDelivery = ['out_for_delivery', 'delivered'].includes(status)
   const delivered = detail.value?.delivery_status === 'delivered'
-  const received = status === 'received'
+  const received = String(detail.value?.status || '').toLowerCase() === 'received' || status === 'received'
 
   return [
     { key: 'created', label: 'Delivery Created', index: 1, active: created },
@@ -438,13 +514,14 @@ const transferSteps = computed(() => {
   const transfer = detail.value
   if (!transfer) return []
   const status = String(transfer.status || '').toLowerCase()
+  const deliveryStatus = String(transfer.delivery_status || '').toLowerCase()
   const senderApproved = !!transfer.sender_approved_date || !!transfer.sender_approved_by || !!transfer.senderApprovedBy
     || ['sender_approved', 'receiver_acknowledged', 'receiver_acknowledge', 'pending_finance_approval', 'finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
   const receiverAcknowledged = !!transfer.receiver_acknowledged_date || !!transfer.receiver_acknowledged_by || !!transfer.receiverAcknowledgedBy
     || ['receiver_acknowledged', 'receiver_acknowledge', 'pending_finance_approval', 'finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
   const financeApproved = !!transfer.finance_approved_date || !!transfer.finance_approved_by || !!transfer.financeApprovedBy
     || ['finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
-  const shipped = !!transfer.shipped_date || ['in_transit', 'out_for_delivery', 'received'].includes(status)
+  const shipped = !!transfer.shipped_date || ['in_transit', 'out_for_delivery', 'received'].includes(status) || ['in_transit', 'out_for_delivery', 'delivered'].includes(deliveryStatus)
   const received = !!transfer.received_date || status === 'received'
 
   return [
@@ -453,8 +530,8 @@ const transferSteps = computed(() => {
     { key: 'receiver-acknowledged', label: 'Receiver Acknowledged', index: 3, active: receiverAcknowledged, date: formatDate(transfer.receiver_acknowledged_date) },
     { key: 'finance-approved', label: 'Finance Approved', index: 4, active: financeApproved, date: formatDate(transfer.finance_approved_date) },
     { key: 'shipped', label: 'In Transit', index: 5, active: shipped, date: formatDate(transfer.shipped_date) },
-    { key: 'out-for-delivery', label: 'Out for Delivery', index: 6, active: status === 'out_for_delivery' || transfer.delivery_status === 'out_for_delivery' || transfer.delivery_status === 'delivered', date: formatDate(transfer.out_for_delivery_at) },
-    { key: 'received', label: 'Received', index: 7, active: received, date: formatDate(transfer.received_date) },
+    { key: 'out-for-delivery', label: 'Out for Delivery', index: 6, active: status === 'out_for_delivery' || ['out_for_delivery', 'delivered'].includes(deliveryStatus), date: formatDate(transfer.out_for_delivery_at) },
+    { key: 'received', label: 'Received', index: 7, active: received || deliveryStatus === 'delivered', date: formatDate(transfer.received_date || transfer.delivered_at) },
   ]
 })
 
@@ -586,6 +663,82 @@ const proofImages = computed(() => {
     })
     .filter((entry) => !!entry.url)
 })
+
+const openTripDialog = async () => {
+  tripChoiceVisible.value = true
+  loadingCompatibleTrips.value = true
+  try {
+    const response = await logisticsService.getCompatibleTripsForOrder('stock_transfer', transferId.value)
+    compatibleTrips.value = response?.data || []
+  } catch (error: any) {
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'error', summary: 'Could Not Load Trips', detail: error?.response?.data?.message || 'Unable to load compatible trips.', life: 3500 })
+  } finally {
+    loadingCompatibleTrips.value = false
+  }
+}
+
+const addTransferToTrip = async (tripId: number | string) => {
+  if (assigningTripId.value) return
+  assigningTripId.value = Number(tripId)
+  try {
+    const response = await logisticsService.addOrdersToTrip(tripId, {
+      source_type: 'stock_transfer',
+      order_ids: [transferId.value],
+    })
+    if (Number(response?.data?.added || 0) !== 1) throw new Error(response?.message || 'The transfer could not be added to this trip.')
+    tripChoiceVisible.value = false
+    toast.add({ severity: 'success', summary: 'Added to Trip', detail: 'The stock transfer was added to the selected trip.', life: 3000 })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add this transfer to the trip.', life: 4000 })
+  } finally {
+    assigningTripId.value = null
+  }
+}
+
+const openCreateTrip = async () => {
+  tripForm.value = { driver_user_id: null, vehicle_id: null, scheduled_departure_at: null, notes: '' }
+  createTripVisible.value = true
+  if (tripDrivers.value.length && tripVehicles.value.length) return
+  loadingTripOptions.value = true
+  try {
+    const [employeeResponse, vehicleResponse] = await Promise.all([
+      logisticsService.getLogisticsEmployees(),
+      logisticsService.getVehicles({ per_page: 100, status: 'active' }),
+    ])
+    tripDrivers.value = employeeResponse?.data?.drivers || []
+    tripVehicles.value = (vehicleResponse?.data?.data || []).map((vehicle: any) => ({
+      ...vehicle,
+      label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
+    }))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Options Failed', detail: error?.response?.data?.message || 'Failed to load drivers and vehicles.', life: 3500 })
+  } finally {
+    loadingTripOptions.value = false
+  }
+}
+
+const createTripAndAddTransfer = async () => {
+  if (!tripForm.value.driver_user_id || !tripForm.value.vehicle_id || creatingTrip.value) return
+  creatingTrip.value = true
+  try {
+    const response = await logisticsService.createTrip({
+      driver_user_id: tripForm.value.driver_user_id,
+      vehicle_id: tripForm.value.vehicle_id,
+      scheduled_departure_at: tripForm.value.scheduled_departure_at ? new Date(tripForm.value.scheduled_departure_at).toISOString() : null,
+      notes: tripForm.value.notes || null,
+    })
+    const tripId = Number(response?.data?.id)
+    if (!tripId) throw new Error('Trip was created but no trip ID was returned.')
+    createTripVisible.value = false
+    await addTransferToTrip(tripId)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Create Failed', detail: error?.response?.data?.message || error?.message || 'Failed to create trip.', life: 4000 })
+  } finally {
+    creatingTrip.value = false
+  }
+}
 
 const saveShipmentLog = async () => {
   if (!recordLogEvent.value) return
@@ -720,9 +873,9 @@ const markAsDelivered = async () => {
 
 const statusSeverity = (status?: string) => {
   const s = String(status || '').toLowerCase()
-  if (s === 'received') return 'success'
-  if (s === 'in_transit') return 'info'
-  if (s === 'out_for_delivery') return 'warn'
+  if (['received', 'delivered'].includes(s)) return 'success'
+  if (['assigned', 'in_transit'].includes(s)) return 'info'
+  if (['ready_for_dispatch', 'out_for_delivery'].includes(s)) return 'warn'
   if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge') return 'warning'
   if (s === 'cancelled') return 'danger'
   return 'secondary'

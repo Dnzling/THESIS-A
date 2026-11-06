@@ -87,7 +87,7 @@ class LogisticsService {
     return response.data
   }
 
-  async updateUnifiedDeliveryLocation(source: 'ecommerce' | 'pickup' | 'stock_transfer', orderId: string | number, payload: {
+  async updateUnifiedDeliveryLocation(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer', orderId: string | number, payload: {
     latitude: number
     longitude: number
     location_address?: string
@@ -217,7 +217,7 @@ class LogisticsService {
     return response.data
   }
 
-  async getCompatibleTripsForOrder(sourceType: 'ecommerce' | 'sales' | 'return_pickup', orderId: string | number) {
+  async getCompatibleTripsForOrder(sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer', orderId: string | number) {
     const response = await axiosClient.get(`${this.baseUrl}/trips/compatible`, {
       params: { source_type: sourceType, order_id: orderId },
     })
@@ -229,7 +229,7 @@ class LogisticsService {
     return response.data
   }
 
-  async getTripSuggestions(id: string | number, sourceType: 'ecommerce' | 'sales' | 'return_pickup') {
+  async getTripSuggestions(id: string | number, sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer') {
     const response = await axiosClient.get(`${this.baseUrl}/trips/${id}/suggestions`, {
       params: { source_type: sourceType },
     })

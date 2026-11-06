@@ -512,7 +512,7 @@ async function syncPaymongoPaymentStatus() {
 const showTransitDetails = computed(() => {
   if (!String(order.value?.delivery?.tracking_number || '').trim()) return false
   const primary = String(order.value?.primary_status || '').toLowerCase()
-  if (primary === 'in_transit') return true
+  if (['in_transit', 'out_for_delivery'].includes(primary)) return true
   const deliveryStatus = String(order.value?.delivery?.status || '').toLowerCase()
   return ['in_transit', 'out_for_delivery', 'on_delivery'].includes(deliveryStatus)
 })
@@ -639,6 +639,7 @@ function statusLabel(status: string) {
   if (value === 'pending') return 'Pending'
   if (value === 'packing') return 'Packing'
   if (value === 'in_transit') return 'In Transit'
+  if (value === 'out_for_delivery') return 'Out for Delivery'
   if (value === 'delivered') return 'Delivered'
   if (value === 'cancel_pending') return 'Cancel Pending'
   if (value === 'cancelled') return 'Cancelled'

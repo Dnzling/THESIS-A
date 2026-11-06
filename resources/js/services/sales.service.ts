@@ -11,6 +11,11 @@ class SalesService {
     return res.data
   }
 
+  async estimateWholesaleDelivery(payload: { branch_id: number; subtotal: number; delivery_latitude: number; delivery_longitude: number }) {
+    const res = await axiosClient.post('/api/sales/wholesale-quotes/delivery-estimate', payload, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
   async createWholesaleQuote(payload: any) {
     const res = await axiosClient.post('/api/sales/wholesale-quotes', payload, { headers: { 'X-Suppress-Dialog': '1' } })
     return res.data
@@ -38,6 +43,11 @@ class SalesService {
 
   async createWholesalePaymentLink(id: number) {
     const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/payment-link`, {}, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
+  async syncWholesaleQuotePayment(id: number) {
+    const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/sync-payment`, {}, { headers: { 'X-Suppress-Dialog': '1' } })
     return res.data
   }
 

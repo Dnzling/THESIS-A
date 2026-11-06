@@ -449,7 +449,7 @@
                   Paid on <span class="font-medium">{{ formatDate(invoice?.payment_date) }}</span>
                 </p>
                 <p v-if="invoice?.payment_method" class="text-xs text-green-600 mt-1">
-                  Method: {{ invoice.payment_method }}
+                  Method: {{ formatPaymentMethod(invoice.payment_method) }}
                 </p>
               </div>
 
@@ -460,7 +460,6 @@
                     I confirm this is the correct supplier bank account destination.
                   </label>
                 </div>
-                <p class="text-xs text-blue-700">Online Payment Status: <span class="font-medium">{{ paymongoInvoiceStatus }}</span></p>
                 <button
                   :disabled="paymongoInvoiceLoading || !hasPaymentDestination || !confirmPaymentDestination"
                   class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
@@ -546,9 +545,28 @@ const effectivePaymentStatus = computed(() => {
   return String(invoice.value?.payment_status || 'pending')
 })
 
+const formatPaymentMethod = (method: string | null | undefined) => {
+  const normalized = String(method || '').trim().toLowerCase()
+  const labels: Record<string, string> = {
+    maya: 'Maya',
+    paymaya: 'Maya',
+    gcash: 'GCash',
+    credit_card: 'Credit Card',
+    debit_card: 'Debit Card',
+    card: 'Credit/Debit Card',
+    paymongo: 'Online Payment',
+    paymongo_gcash: 'GCash',
+    cash: 'Cash',
+    check: 'Check',
+    bank_transfer: 'Bank Transfer',
+  }
+
+  return labels[normalized] || String(method || 'Online Payment')
+}
+
 const paymongoInvoiceActionLabel = computed(() => {
   if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
-  return 'Pay securely with PayMongo'
+  return 'Pay Securely via PayMongo'
 })
 
 const paymentDestination = computed(() => {

@@ -28,6 +28,19 @@
               </template>
             </Column>
             <Column field="customer_name" header="Customer" style="min-width: 170px" />
+            <Column field="status" header="Reply Status" style="width: 150px">
+              <template #body="{ data }">
+                <div class="space-y-1">
+                  <Badge
+                    :value="data.status === 'replied' || data.reply ? 'Replied' : 'Pending reply'"
+                    :severity="data.status === 'replied' || data.reply ? 'success' : 'warn'"
+                  />
+                  <p v-if="data.reply" class="max-w-56 truncate text-[11px] text-slate-500" :title="data.reply">
+                    {{ data.reply }}
+                  </p>
+                </div>
+              </template>
+            </Column>
             <Column field="rating" header="Rating" style="width: 130px">
               <template #body="{ data }">
                 <div class="flex items-center gap-1 text-amber-500">
@@ -53,11 +66,11 @@
     <Dialog v-model:visible="showReply" header="Reply to Review" :style="{ width: '540px' }">
       <div class="space-y-3">
         <p class="text-sm text-gray-700">{{ activeReview?.message || '-' }}</p>
-        <Textarea v-model="replyText" rows="4" class="w-full" placeholder="Write your response..." />
+        <Textarea v-model="replyText" rows="4" class="w-full" :disabled="replySaving" :maxlength="2000" placeholder="Write your response..." />
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" @click="showReply = false" />
-        <Button label="Send Reply" icon="pi pi-send" :disabled="!replyText.trim()" @click="submitReply" />
+        <Button label="Send Reply" icon="pi pi-send" :loading="replySaving" :disabled="!replyText.trim()" @click="submitReply" />
       </template>
     </Dialog>
   </div>
@@ -65,11 +78,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { router as inertiaRouter } from '@inertiajs/vue3'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
 import crmService from '@/services/crm.service'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import Card from 'primevue/card'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
@@ -82,10 +97,9 @@ import InputIcon from 'primevue/inputicon'
 import Skeleton from 'primevue/skeleton'
 
 const authStore = useAuthStore()
-const canManageReviews = authStore.hasPermission('sales.reviews.manage')
+const canManageReviews = computed(() => authStore.hasPermission('crm.reviews.manage'))
 const toast = useToast()
 const route = useRoute()
-const router = useRouter()
 
 const loading = ref(true)
 const reviews = ref<any[]>([])
@@ -117,6 +131,7 @@ const ratingOptions = [
 
 const showReply = ref(false)
 const replyText = ref('')
+const replySaving = ref(false)
 const activeReview = ref<any>(null)
 
 const openReply = (review: any) => {
@@ -126,7 +141,7 @@ const openReply = (review: any) => {
 }
 
 const openDetail = (review: any) => {
-  router.visit(`/crm/reviews/${review.id}`)
+  inertiaRouter.visit(`/crm/reviews/${review.id}`)
 }
 
 const loadReviews = async () => {
@@ -149,14 +164,17 @@ const loadReviews = async () => {
 }
 
 const submitReply = async () => {
-  if (!activeReview.value) return
+  if (!canManageReviews.value || !activeReview.value || !replyText.value.trim() || replySaving.value) return
+  replySaving.value = true
   try {
-    await crmService.replyReview(activeReview.value.id, { reply: replyText.value })
+    await crmService.replyReview(activeReview.value.id, { reply: replyText.value.trim() })
     toast.add({ severity: 'success', summary: 'Replied', detail: 'Reply saved.', life: 2200 })
     showReply.value = false
     await loadReviews()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to save reply', life: 3000 })
+  } finally {
+    replySaving.value = false
   }
 }
 

@@ -10,7 +10,12 @@ class PromotionPricingService
 {
     private array $promotionsByStore = [];
 
-    public function price(Product $product, ?ProductVariation $variation = null, float $orderSubtotal = 0): array
+    public function price(
+        Product $product,
+        ?ProductVariation $variation = null,
+        float $orderSubtotal = 0,
+        ?int $branchId = null
+    ): array
     {
         $productRegular = (float) ($product->base_price ?? 0);
         $regular = $variation
@@ -26,7 +31,9 @@ class PromotionPricingService
         $promotionId = null;
 
         foreach ($this->activePromotions((int) $product->store_id) as $promotion) {
-            if ((float) $promotion->minimum_order_amount > $orderSubtotal || !$this->targetsProduct($promotion, $product)) {
+            if ((float) $promotion->minimum_order_amount > $orderSubtotal
+                || !$this->targetsBranch($promotion, $branchId)
+                || !$this->targetsProduct($promotion, $product)) {
                 continue;
             }
             $candidate = $promotion->discount_type === 'percentage'
@@ -57,7 +64,7 @@ class PromotionPricingService
                 ->where('is_active', true)
                 ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
                 ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', $now))
-                ->with(['categories', 'products'])
+                ->with(['categories', 'products', 'branches'])
                 ->orderByDesc('priority')
                 ->get();
         }
@@ -74,5 +81,14 @@ class PromotionPricingService
                 || $promotion->categories->contains('id', $product->subcategory_id),
             default => false,
         };
+    }
+
+    private function targetsBranch(Promotion $promotion, ?int $branchId): bool
+    {
+        if ($promotion->branches->isEmpty()) {
+            return true;
+        }
+
+        return $branchId !== null && $promotion->branches->contains('id', $branchId);
     }
 }

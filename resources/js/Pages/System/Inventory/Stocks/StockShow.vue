@@ -14,7 +14,7 @@
       </div>
       <div v-if="item" class="flex flex-wrap gap-2 sm:justify-end">
         <Button label="Reorder rule" icon="pi pi-sliders-h" severity="secondary" outlined size="small" @click="goToReorderRule" />
-        <Button v-if="['low_stock', 'out_of_stock'].includes(item.stock_status)" label="Create PR" icon="pi pi-plus" severity="warn" outlined size="small" @click="createPurchaseRequisition" />
+        <Button v-if="['low_stock', 'out_of_stock'].includes(item.stock_status)" label="Create Stock Request" icon="pi pi-plus" severity="warn" outlined size="small" :loading="creatingStockRequest" :disabled="creatingStockRequest" @click="createPurchaseRequisition" />
         <Button v-if="canUpdateItems" label="Edit item" icon="pi pi-pencil" severity="warn" size="small" @click="router.push({ name: 'inventory.items.edit', params: { id: itemId } })" />
       </div>
     </header>
@@ -144,6 +144,7 @@ const authStore = useAuthStore()
 const itemId = Number(route.params.id)
 const item = ref<any>(null)
 const loading = ref(false)
+const creatingStockRequest = ref(false)
 const performance = ref<any>(null)
 const performanceLoading = ref(false)
 const performanceError = ref('')
@@ -306,25 +307,47 @@ const goToReorderRule = () => {
   })
 }
 
-const createPurchaseRequisition = () => {
+const createPurchaseRequisition = async () => {
   if (!item.value) return
 
   const reorderQty = Number(item.value?.reorder_quantity || 0)
   const reorderPoint = Number(item.value?.reorder_point || 0)
   const available = Number(item.value?.quantity_available || 0)
-  const suggestedQty = reorderQty > 0 ? reorderQty : Math.max(1, reorderPoint - available)
-
-  router.push({
-    name: 'inventory.requisites.create',
-    query: {
-      branch_inventory_id: item.value.id,
-      branch_id: item.value.branch_id,
-      product_id: item.value.product_id,
-      variation_id: item.value.variation_id || undefined,
+  const suggestedQty = Math.max(1, Math.ceil(reorderQty > 0 ? reorderQty : reorderPoint - available))
+  creatingStockRequest.value = true
+  try {
+    const response = await inventoryService.getBranches()
+    const payload = response?.data ?? response
+    const branches = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+    const hasActiveWarehouse = branches.some((branch: any) =>
+      String(branch.branch_type || '').toLowerCase() === 'warehouse'
+      && String(branch.status || '').toLowerCase() === 'active'
+    )
+    const query = {
+      stock_view_prefill: '1',
+      branch_inventory_id: String(item.value.id),
+      branch_id: String(item.value.branch_id),
+      product_id: String(item.value.product_id),
+      variation_id: item.value.variation_id ? String(item.value.variation_id) : undefined,
       requested_quantity: String(suggestedQty),
-      notes: 'Auto-generated from Branch Inventory low stock.',
+      notes: 'Restock request from inventory item details.',
     }
-  })
+
+    if (hasActiveWarehouse) {
+      router.push({ name: 'inventory.stock-requests.create', query: { ...query, type: 'transfer' } })
+    } else {
+      router.push({ name: 'inventory.purchase-orders.create', query })
+    }
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to start stock request',
+      detail: error?.response?.data?.message || 'Could not check this store’s active warehouses. Please try again.',
+      life: 3500,
+    })
+  } finally {
+    creatingStockRequest.value = false
+  }
 }
 
 onMounted(() => {

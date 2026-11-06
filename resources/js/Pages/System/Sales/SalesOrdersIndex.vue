@@ -6,7 +6,6 @@
         <p class="text-sm text-gray-500">Unified view of in-store and online orders.</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button label="Wholesale quotations" icon="pi pi-file-edit" outlined @click="router.push({ name: 'sales.wholesale-quotes' })" />
         <Button outlined icon="pi pi-refresh" text @click="loadOrders" />
       </div>
     </div>

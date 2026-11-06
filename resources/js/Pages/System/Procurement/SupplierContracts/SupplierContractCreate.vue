@@ -34,19 +34,25 @@
               <small class="text-gray-600 mt-2" v-if="contractTypeDescription">{{ contractTypeDescription }}</small>
             </div>
 
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 md:col-span-2">
               <label class="text-sm font-semibold text-gray-700">Contract Duration <span class="text-red-500">*</span></label>
-              <DatePicker
-                v-model="contractRange"
-                selectionMode="range"
-                date-format="yy-mm-dd" fluid
-                placeholder="Select start and end date"
-                :min-date="new Date()"
-                class="w-full"
-              />
-              <small v-if="errors.start_date || errors.end_date" class="text-red-600">{{ errors.start_date || errors.end_date }}</small>
-              <small v-else-if="form.start_date && form.end_date" class="text-green-600">
-                Duration: {{ contractDurationDays }} days
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-medium text-slate-600">Start Date</label>
+                  <DatePicker v-model="form.start_date" date-format="M d, yy" fluid placeholder="Select start date"
+                    :min-date="new Date()" @update:model-value="onStartDateChange" />
+                  <small v-if="errors.start_date" class="text-red-600">{{ errors.start_date }}</small>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-medium text-slate-600">End Date</label>
+                  <DatePicker v-model="form.end_date" date-format="M d, yy" fluid placeholder="Select end date"
+                    :min-date="form.start_date || new Date()" :disabled="!form.start_date" />
+                  <small class="text-xs text-slate-500">Defaults to one year after the start date; you can adjust it.</small>
+                  <small v-if="errors.end_date" class="text-red-600">{{ errors.end_date }}</small>
+                </div>
+              </div>
+              <small v-if="form.start_date && form.end_date && !errors.end_date" class="text-green-600">
+                Contract term: {{ contractDurationDays }} days
               </small>
             </div>
           </div>
@@ -63,6 +69,14 @@
 
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-gray-700">Minimum Order Value</label>
+              <InputNumber v-model="form.minimum_order_value" mode="currency" currency="PHP" locale="en-PH"
+                :min="0" :minFractionDigits="2" :maxFractionDigits="2" placeholder="No minimum" fluid />
+              <small class="text-gray-500">Leave blank or enter ₱0.00 if there is no minimum purchase requirement.</small>
+              <small v-if="errors.minimum_order_value" class="text-red-600">{{ errors.minimum_order_value }}</small>
+            </div>
+
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Discount Percentage <span class="text-red-500">*</span></label>
               <InputNumber v-model="form.discount_percentage" :min="0" :max="100" placeholder="0" 
@@ -83,7 +97,8 @@
           <div class="p-4 bg-blue-50 border border-blue-200 rounded">
             <p class="text-sm text-blue-900">
               <i class="pi pi-info-circle mr-2"></i>
-              <strong>Summary:</strong> {{ form.discount_percentage }}% discount, tax {{ form.tax_rate }}%
+              <strong>Summary:</strong> {{ form.discount_percentage }}% discount, minimum order
+              {{ form.minimum_order_value == null ? 'none' : '₱' + formatCurrency(form.minimum_order_value) }}, tax {{ form.tax_rate }}%
             </p>
           </div>
         </template>
@@ -146,8 +161,8 @@
           :label="route.query.supplier_id ? 'Skip for Now' : 'Cancel'" 
           severity="secondary" 
           @click="skipOrCancel()" />
-        <Button label="Save as Draft" severity="warning" icon="pi pi-save" @click="saveDraft" :loading="submitting" />
-        <Button label="Review & Submit" severity="success" icon="pi pi-eye" @click="openReviewDialog" :loading="submitting" />
+        <Button label="Save as Pending" severity="warning" icon="pi pi-save" @click="saveDraft" :loading="submitting" />
+        <Button label="Review & Create" severity="success" icon="pi pi-eye" @click="openReviewDialog" :loading="submitting" />
       </div>
     </form>
 
@@ -184,9 +199,32 @@
       </div>
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
-          <p class="text-xs text-slate-500">Submitting sends this contract for supplier review.</p>
-          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Submit contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
+          <p class="text-xs text-slate-500">This creates a pending contract. Activate it after confirming the supplier agreed to the terms.</p>
+          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Create Pending Contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showDraftConfirmation" modal header="Save contract as pending?" :style="{ width: 'min(28rem, 94vw)' }">
+      <p class="text-sm leading-6 text-slate-600">
+        This will submit the contract for review with <strong>Pending</strong> status. It will not become active until it is confirmed and activated.
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Keep Editing" severity="secondary" outlined size="small" @click="showDraftConfirmation = false" />
+          <Button label="Save as Pending" severity="warn" icon="pi pi-save" size="small" :loading="submitting" @click="confirmSaveDraft" />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showResponseDialog" modal :closable="responseType === 'error'" :header="responseTitle" :style="{ width: 'min(28rem, 94vw)' }">
+      <div class="flex items-start gap-3">
+        <i :class="responseType === 'success' ? 'pi pi-check-circle text-2xl text-green-600' : 'pi pi-times-circle text-2xl text-red-600'" />
+        <p class="text-sm leading-6 text-slate-600">{{ responseMessage }}</p>
+      </div>
+      <template #footer>
+        <Button v-if="responseType === 'success'" :label="responseActionLabel" severity="warn" size="small" @click="continueAfterSuccess" />
+        <Button v-else label="Review and try again" severity="secondary" outlined size="small" @click="showResponseDialog = false" />
       </template>
     </Dialog>
   </div>
@@ -211,6 +249,13 @@ const contractFile = ref<File | null>(null)
 const selectedSupplierName = ref<string>('Not Selected')
 const selectedStoreName = ref<string>('Not Selected')
 const showReviewDialog = ref(false)
+const showDraftConfirmation = ref(false)
+const showResponseDialog = ref(false)
+const responseType = ref<'success' | 'error'>('success')
+const responseTitle = ref('')
+const responseMessage = ref('')
+const responseActionLabel = ref('Continue')
+const responseDestination = ref<(() => void) | null>(null)
 const titleManuallyEdited = ref(false)
 
 const form = reactive({
@@ -218,8 +263,9 @@ const form = reactive({
   supplier_id: null,
   contract_title: '',
   contract_type: 'supply',
-  start_date: null,
-  end_date: null,
+  start_date: null as Date | null,
+  end_date: null as Date | null,
+  minimum_order_value: null as number | null,
   discount_percentage: 0,
   payment_terms_days: 30,
   tax_rate: 12,
@@ -270,36 +316,20 @@ const paymentDueDate = computed(() => {
   return dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
-const contractRange = computed({
-  get: () => {
-    if (!form.start_date && !form.end_date) return null
-    return [form.start_date, form.end_date].filter(Boolean)
-  },
-  set: (value: any) => {
-    if (!Array.isArray(value) || value.length === 0) {
-      form.start_date = null
-      form.end_date = null
-      return
-    }
-    const a = value[0] || null
-    const b = value[1] || null
-    // PrimeVue range can return the dates in the order the user clicked; normalize so start <= end.
-    if (a && b) {
-      const da = new Date(a)
-      const db = new Date(b)
-      if (da.getTime() <= db.getTime()) {
-        form.start_date = a
-        form.end_date = b
-      } else {
-        form.start_date = b
-        form.end_date = a
-      }
-      return
-    }
-    form.start_date = a
-    form.end_date = b
-  },
-})
+const oneYearAfter = (startDate: Date): Date => {
+  const endDate = new Date(startDate)
+  const month = endDate.getMonth()
+  endDate.setFullYear(endDate.getFullYear() + 1)
+  if (endDate.getMonth() !== month) endDate.setDate(0)
+  return endDate
+}
+
+const onStartDateChange = (value: Date | null) => {
+  form.start_date = value
+  form.end_date = value ? oneYearAfter(value) : null
+  delete errors.start_date
+  delete errors.end_date
+}
 
 const reviewHtml = computed(() => {
   const start = form.start_date ? form.start_date.toISOString().split('T')[0] : '-'
@@ -315,7 +345,7 @@ const reviewHtml = computed(() => {
           /* BARABARA font for FurniSync platform name only */
           @font-face {
               font-family: 'Barabara';
-              src: url('/resources/fonts/BARABARA-final.otf') format('opentype');
+              src: url('/fonts/BARABARA-final.otf') format('opentype');
               font-weight: normal;
               font-style: normal;
           }
@@ -780,74 +810,16 @@ const validateForm = (): boolean => {
 
 const saveDraft = async () => {
   if (!form.store_id) {
-    toast.add({ severity: 'warn', summary: 'Store unavailable', detail: 'Your account has no assigned store.', life: 3000 })
+    showResponse('error', 'Store unavailable', 'Your account has no assigned store.')
     return
   }
   if (!form.supplier_id) {
-    toast.add({ severity: 'warn', summary: 'Incomplete', detail: 'Please select supplier first', life: 3000 })
+    showResponse('error', 'Supplier required', 'Please select a supplier before saving the contract.')
     return
   }
   if (!form.contract_title) form.contract_title = generateContractTitle()
 
-  submitting.value = true
-  try {
-    const formData = new FormData()
-    Object.entries(form).forEach(([key, value]) => {
-      if (value !== null && value !== '') {
-        if (value instanceof Date) {
-          formData.append(key, value.toISOString().split('T')[0])
-        } else {
-          formData.append(key, String(value))
-        }
-      }
-    })
-    formData.append('status', 'pending')
-    if (contractFile.value) {
-      formData.append('contract_file', contractFile.value)
-    }
-
-    if (route.query.from_inventory) {
-      await inventoryService.createSupplierContract(formData)
-    } else {
-      await procurementService.createSupplierContract(formData)
-    }
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Contract saved as draft',
-      life: 3000,
-    })
-    
-    if (route.query.from_supplier_portal) {
-      const storeId = route.query.store_id
-      setTimeout(() => {
-        if (storeId) {
-          router.push({ name: 'supplier.stores.show', params: { storeId } })
-        } else {
-          router.push({ name: 'supplier.stores' })
-        }
-      }, 1500)
-    } else if (route.query.from_inventory && route.query.supplier_id) {
-      setTimeout(() => router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } }), 1500)
-    } else {
-      // If coming from supplier creation flow, redirect to suppliers list
-      const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
-      setTimeout(() => router.push({ name: redirectName }), 1500)
-    }
-  } catch (error: any) {
-    const serverErrors = error?.response?.data?.errors || {}
-    Object.keys(serverErrors).forEach((k) => {
-      errors[k] = Array.isArray(serverErrors[k]) ? serverErrors[k][0] : String(serverErrors[k])
-    })
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to save contract',
-      life: 3000,
-    })
-  } finally {
-    submitting.value = false
-  }
+  showDraftConfirmation.value = true
 }
 
 const submitForm = async () => {
@@ -856,6 +828,14 @@ const submitForm = async () => {
     return
   }
 
+  await createPendingContract('review')
+}
+
+const confirmSaveDraft = async () => {
+  await createPendingContract('draft')
+}
+
+const createPendingContract = async (mode: 'draft' | 'review') => {
   submitting.value = true
   try {
     const formData = new FormData()
@@ -879,43 +859,44 @@ const submitForm = async () => {
       await procurementService.createSupplierContract(formData)
     }
     showReviewDialog.value = false
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Contract created successfully',
-      life: 3000,
-    })
-    
-    if (route.query.from_supplier_portal) {
-      const storeId = route.query.store_id
-      setTimeout(() => {
-        if (storeId) {
-          router.push({ name: 'supplier.stores.show', params: { storeId } })
-        } else {
-          router.push({ name: 'supplier.stores' })
-        }
-      }, 1500)
-    } else if (route.query.from_inventory && route.query.supplier_id) {
-      setTimeout(() => router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } }), 1500)
-    } else {
-      // If coming from supplier creation flow, redirect to suppliers list
-      const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
-      setTimeout(() => router.push({ name: redirectName }), 1500)
-    }
+    showDraftConfirmation.value = false
+    responseDestination.value = getContractDestination
+    responseActionLabel.value = 'View Contracts'
+    showResponse('success', mode === 'draft' ? 'Contract saved as pending' : 'Contract submitted', 'The contract was created with Pending status. Activate it only after the supplier has agreed to the terms.')
   } catch (error: any) {
     const serverErrors = error?.response?.data?.errors || {}
     Object.keys(serverErrors).forEach((k) => {
       errors[k] = Array.isArray(serverErrors[k]) ? serverErrors[k][0] : String(serverErrors[k])
     })
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to create contract',
-      life: 3000,
-    })
+    const firstFieldError = Object.values(serverErrors).flat()[0]
+    const message = error?.response?.data?.message || (typeof firstFieldError === 'string' ? firstFieldError : null) || 'The contract could not be submitted. Check the form and try again.'
+    showResponse('error', 'Contract not submitted', message)
   } finally {
     submitting.value = false
   }
+}
+
+const showResponse = (type: 'success' | 'error', title: string, message: string) => {
+  responseType.value = type
+  responseTitle.value = title
+  responseMessage.value = message
+  showResponseDialog.value = true
+}
+
+const getContractDestination = () => {
+  if (route.query.from_supplier_portal) {
+    const storeId = route.query.store_id
+    router.push(storeId ? { name: 'supplier.stores.show', params: { storeId } } : { name: 'supplier.stores' })
+  } else if (route.query.from_inventory && route.query.supplier_id) {
+    router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } })
+  } else {
+    router.push({ name: route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index' })
+  }
+}
+
+const continueAfterSuccess = () => {
+  showResponseDialog.value = false
+  responseDestination.value?.()
 }
 
 const openReviewDialog = () => {

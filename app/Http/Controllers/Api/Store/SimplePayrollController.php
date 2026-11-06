@@ -9,13 +9,242 @@ use App\Models\Hr\Payroll;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Services\Finance\CashflowService;
 
 class SimplePayrollController extends Controller
 {
+    public function periods(Request $request): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        $periods = PayPeriod::query()->where('store_id', $storeId)
+            ->whereHas('payrolls', fn ($query) => $query
+                ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+                ->whereHas('employee', fn ($employee) => $employee->where('store_id', $storeId)))
+            ->with(['payrolls' => fn ($query) => $query
+                ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+                ->whereHas('employee', fn ($employee) => $employee->where('store_id', $storeId))])
+            ->orderByDesc('start_date')->get()
+            ->map(fn (PayPeriod $period) => [
+                'id' => $period->id,
+                'name' => $period->name,
+                'start_date' => $period->start_date?->toDateString(),
+                'end_date' => $period->end_date?->toDateString(),
+                'employee_count' => $period->payrolls->count(),
+                'total_net' => round((float) $period->payrolls->sum('net_salary'), 2),
+                'statuses' => $period->payrolls->pluck('status')->countBy(),
+                'paid_total' => round((float) $period->payrolls->where('status', 'paid')->sum('net_salary'), 2),
+                'pending_total' => round((float) $period->payrolls->whereIn('status', ['draft', 'calculated', 'approved', 'released'])->sum('net_salary'), 2),
+            ])->values();
+
+        return response()->json(['success' => true, 'data' => $periods]);
+    }
+
+    public function periodDetail(Request $request, int $periodId): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        $period = PayPeriod::query()->where('store_id', $storeId)->findOrFail($periodId);
+        $attendanceByEmployee = DB::table('simple_employee_attendances')
+            ->where('store_id', $storeId)
+            ->whereBetween('attendance_date', [$period->start_date->toDateString(), $period->end_date->toDateString()])
+            ->orderBy('attendance_date')->get()->groupBy('employee_id');
+        $payrolls = Payroll::query()->where('pay_period_id', $period->id)
+            ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+            ->whereHas('employee', fn ($query) => $query->where('store_id', $storeId))
+            ->with(['employee.user:id,fname,lname', 'items'])
+            ->orderBy('employee_id')->get()
+            ->map(function (Payroll $payroll) use ($attendanceByEmployee, $period) {
+                $savedDays = $payroll->payslip_snapshot['attendance']['days'] ?? null;
+                $employeeAttendance = $attendanceByEmployee->get($payroll->employee_id, collect())->keyBy(
+                    fn ($record) => Carbon::parse($record->attendance_date)->toDateString()
+                );
+                $days = is_array($savedDays) ? $savedDays : collect(CarbonPeriod::create($period->start_date, $period->end_date))
+                    ->map(function (Carbon $date) use ($employeeAttendance) {
+                        $dateString = $date->toDateString();
+                        $record = $employeeAttendance->get($dateString);
+                        return [
+                            'date' => $dateString,
+                            'status' => $record?->status ?? 'no_record',
+                            'worked_hours' => round((float) ($record?->worked_minutes ?? 0) / 60, 2),
+                            'note' => $record?->note,
+                            'missing_clock_out' => $record?->status === 'present' && $record?->clock_in_at && !$record?->clock_out_at,
+                        ];
+                    })->all();
+
+                return [
+                'id' => $payroll->id,
+                'employee_id' => $payroll->employee_id,
+                'employee_name' => trim(($payroll->employee?->user?->fname ?? '') . ' ' . ($payroll->employee?->user?->lname ?? '')),
+                'employee_number' => $payroll->employee?->employee_number,
+                'attendance' => $payroll->payslip_snapshot['attendance'] ?? [],
+                'attendance_by_day' => $days,
+                'base_salary' => (float) $payroll->base_salary,
+                'overtime_amount' => (float) $payroll->overtime_amount,
+                'allowances_total' => (float) $payroll->allowances_total,
+                'bonuses_total' => (float) $payroll->bonuses_total,
+                'deductions_total' => (float) $payroll->deductions_total,
+                'tax_amount' => (float) $payroll->tax_amount,
+                'net_salary' => (float) $payroll->net_salary,
+                'status' => $payroll->status,
+                'items' => $payroll->items,
+                ];
+            });
+
+        return response()->json(['success' => true, 'data' => [
+            'period' => ['id' => $period->id, 'name' => $period->name, 'start_date' => $period->start_date?->toDateString(), 'end_date' => $period->end_date?->toDateString()],
+            'payrolls' => $payrolls,
+        ]]);
+    }
+
+    public function updateDraft(Request $request, int $payrollId): JsonResponse
+    {
+        $validated = $request->validate([
+            'base_salary' => ['required', 'numeric', 'min:0'],
+            'overtime_amount' => ['required', 'numeric', 'min:0'],
+            'allowances_total' => ['required', 'numeric', 'min:0'],
+            'bonuses_total' => ['required', 'numeric', 'min:0'],
+            'deductions_total' => ['required', 'numeric', 'min:0'],
+            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+        $payroll = $this->simplePayrollForStore($request, $payrollId);
+        abort_unless(in_array($payroll->status, ['draft', 'calculated'], true), 409, 'Only draft payrolls can be edited.');
+        $tax = (float) ($validated['tax_amount'] ?? 0);
+        $net = round((float) $validated['base_salary'] + (float) $validated['overtime_amount']
+            + (float) $validated['allowances_total'] + (float) $validated['bonuses_total']
+            - (float) $validated['deductions_total'] - $tax, 2);
+        abort_if($net < 0, 422, 'Deductions cannot exceed gross earnings.');
+        $payroll->forceFill([...$validated, 'tax_amount' => $tax, 'net_salary' => $net])->save();
+
+        return response()->json(['success' => true, 'data' => $payroll->fresh()]);
+    }
+
+    public function bulkComplete(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['payroll_ids' => ['required', 'array', 'min:1'], 'payroll_ids.*' => ['required', 'integer', 'distinct']]);
+        $storeId = (int) $request->user()->store_id;
+        $updated = DB::transaction(function () use ($validated, $storeId, $request) {
+            $payrolls = Payroll::query()->whereIn('id', $validated['payroll_ids'])
+                ->whereIn('status', ['draft', 'calculated'])
+                ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+                ->whereHas('employee', fn ($query) => $query->where('store_id', $storeId))
+                ->lockForUpdate()->get();
+            if ($payrolls->count() !== count($validated['payroll_ids'])) {
+                throw ValidationException::withMessages(['payroll_ids' => 'Every selected payroll must be an editable Basic Payroll draft in your store.']);
+            }
+            foreach ($payrolls as $payroll) {
+                $payroll->forceFill(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now()])->save();
+            }
+            return $payrolls->count();
+        });
+
+        return response()->json(['success' => true, 'completed_count' => $updated]);
+    }
+
+    public function bulkPay(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'payroll_ids' => ['required', 'array', 'min:1'], 'payroll_ids.*' => ['required', 'integer', 'distinct'],
+            'payment_date' => ['required', 'date'], 'payment_method' => ['required', 'string', 'max:50'],
+            'reference_number' => ['nullable', 'string', 'max:100'],
+        ]);
+        $storeId = (int) $request->user()->store_id;
+        DB::transaction(function () use ($validated, $storeId, $request) {
+            $payrolls = Payroll::query()->whereIn('id', $validated['payroll_ids'])->whereIn('status', ['approved', 'released'])
+                ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+                ->whereHas('employee', fn ($query) => $query->where('store_id', $storeId))
+                ->lockForUpdate()->get();
+            if ($payrolls->count() !== count($validated['payroll_ids'])) {
+                throw ValidationException::withMessages(['payroll_ids' => 'Every selected payroll must be completed and unpaid in your store.']);
+            }
+            $cashflow = new CashflowService();
+            foreach ($payrolls as $payroll) {
+                $cashflow->debit($storeId, (float) $payroll->net_salary, 'payroll', (int) $payroll->id,
+                    $request->user()->id, 'Payroll settlement #' . $payroll->id, $validated['payment_method'],
+                    ['pay_period_id' => (int) $payroll->pay_period_id, 'employee_id' => (int) $payroll->employee_id], allowOverdraft: true);
+                $payroll->forceFill([
+                    'status' => 'paid', 'payment_date' => $validated['payment_date'],
+                    'payment_method' => $validated['payment_method'], 'reference_number' => $validated['reference_number'] ?? null,
+                    'paid_by' => $request->user()->id, 'paid_at' => now(),
+                ])->save();
+            }
+        });
+
+        return response()->json(['success' => true, 'paid_count' => count($validated['payroll_ids'])]);
+    }
+
+    public function employeePayslips(Request $request, int $employeeId): JsonResponse
+    {
+        $employee = Employee::query()->where('store_id', $request->user()->store_id)->findOrFail($employeeId);
+        $rows = Payroll::query()->where('employee_id', $employee->id)->where('status', 'paid')
+            ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')->with('payPeriod')
+            ->orderByDesc('payment_date')->get();
+        return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    public function printPaidPayslip(Request $request, int $payrollId)
+    {
+        abort_unless(class_exists(\Dompdf\Dompdf::class), 503, 'PDF generation dependency is not installed.');
+        $payroll = $this->simplePayrollForStore($request, $payrollId);
+        abort_unless($payroll->status === 'paid', 404);
+        $payroll->load(['employee.user', 'employee.store', 'employee.branch', 'payPeriod', 'items']);
+        $printedAt = now();
+        $options = new \Dompdf\Options();
+        $options->set('isHtml5ParserEnabled', true);
+        $pdf = new \Dompdf\Dompdf($options);
+        $pdf->loadHtml(view('hr.simple-payslip-pdf', [
+            'payroll' => $payroll, 'employee' => $payroll->employee,
+            'user' => $payroll->employee?->user, 'payPeriod' => $payroll->payPeriod, 'printedAt' => $printedAt,
+        ])->render());
+        $pdf->setPaper('A4', 'portrait');
+        $pdf->render();
+        return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="payslip_' . $payroll->id . '.pdf"']);
+    }
+
+    private function simplePayrollForStore(Request $request, int $payrollId): Payroll
+    {
+        return Payroll::query()->whereKey($payrollId)
+            ->whereJsonContains('payslip_snapshot->source', 'simple_attendance')
+            ->whereHas('employee', fn ($query) => $query->where('store_id', $request->user()->store_id))
+            ->firstOrFail();
+    }
+
+    public function complete(Request $request, int $payrollId): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        $payroll = DB::transaction(function () use ($payrollId, $storeId, $request) {
+            $payroll = Payroll::query()
+                ->whereKey($payrollId)
+                ->whereHas('employee', fn ($query) => $query->where('store_id', $storeId))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (!in_array($payroll->status, ['draft', 'calculated'], true)) {
+                throw ValidationException::withMessages(['status' => 'Only draft payrolls can be completed.']);
+            }
+            if (($payroll->payslip_snapshot['source'] ?? null) !== 'simple_attendance') {
+                throw ValidationException::withMessages(['payroll' => 'This payroll belongs to another workflow.']);
+            }
+
+            $payroll->forceFill([
+                'status' => 'approved',
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+            ])->save();
+
+            return $payroll->fresh();
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payroll completed and ready for payout.',
+            'data' => $payroll,
+        ]);
+    }
+
     public function preview(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -98,7 +327,14 @@ class SimplePayrollController extends Controller
                 $incentives = round((float) ($adjustment['incentives'] ?? 0), 2);
                 $otherDeductions = round((float) ($adjustment['other_deductions'] ?? 0), 2);
                 $dayRate = (float) $row['day_rate'];
+                if ($absenceDays > (float) $row['period_days'] || $paidLeaveDays > (float) $row['period_days']) {
+                    throw ValidationException::withMessages([
+                        'rows' => "Leave or absence days cannot exceed the {$row['period_days']}-day payroll period.",
+                    ]);
+                }
                 $absenceDeduction = $row['pay_type'] === 'monthly' ? round($absenceDays * $dayRate, 2) : 0.0;
+                // Monthly base pay already covers paid leave. Only attendance-paid
+                // daily staff need approved paid leave added to their earnings.
                 $paidLeavePay = $row['pay_type'] === 'daily' ? round($paidLeaveDays * $dayRate, 2) : 0.0;
                 $baseSalary = round((float) $row['base_salary'] + $paidLeavePay, 2);
                 $deductions = round((float) $row['late_deduction'] + $absenceDeduction + $otherDeductions, 2);
@@ -124,6 +360,7 @@ class SimplePayrollController extends Controller
                     'attendance' => [
                         'completed_workdays' => $row['completed_workdays'],
                         'worked_hours' => $row['worked_hours'],
+                        'days' => $row['attendance_by_day'],
                         'late_minutes' => $row['late_minutes'],
                         'overtime_hours' => $row['overtime_hours'],
                         'missing_clock_outs' => $row['missing_clock_outs'],
@@ -196,10 +433,15 @@ class SimplePayrollController extends Controller
                     ->get();
                 $present = $records->filter(fn ($record) => $record->status === 'present' && $record->clock_in_at && $record->clock_out_at);
                 $missingClockOuts = $records->filter(fn ($record) => $record->status === 'present' && $record->clock_in_at && !$record->clock_out_at)->count();
-                $workedMinutes = (int) $records->sum('worked_minutes');
-                $lateMinutes = (int) $records->sum('late_minutes');
-                $overtimeMinutes = (int) $records->sum('overtime_minutes');
-                $payType = in_array($employee->pay_type, ['daily', 'hourly'], true) ? $employee->pay_type : 'monthly';
+                // Only closed, present shifts are payable. Open or non-present rows
+                // must not inflate either worked hours or overtime.
+                $workedMinutes = (int) $present->sum(fn ($record) => (int) ($record->worked_minutes ?? 0));
+                $lateMinutes = (int) $present->sum(fn ($record) => (int) ($record->late_minutes ?? 0));
+                $overtimeMinutes = (int) $present->sum(fn ($record) => min(
+                    (int) ($record->overtime_minutes ?? 0),
+                    (int) ($record->worked_minutes ?? 0)
+                ));
+                $payType = 'daily';
                 $salary = (float) ($employee->salary ?? 0);
                 $hourlyRate = match ($payType) {
                     'daily' => $salary / $standardHours,
@@ -212,12 +454,21 @@ class SimplePayrollController extends Controller
                     default => $salary / 30,
                 };
                 $workedHours = round($workedMinutes / 60, 2);
+                $attendanceByDay = collect(CarbonPeriod::create($start, $end))
+                    ->map(function (Carbon $date) use ($records) {
+                        $dateString = $date->toDateString();
+                        $record = $records->first(fn ($item) => Carbon::parse($item->attendance_date)->toDateString() === $dateString);
+                        return [
+                            'date' => $dateString,
+                            'status' => $record?->status ?? 'no_record',
+                            'worked_hours' => round((float) ($record?->worked_minutes ?? 0) / 60, 2),
+                            'note' => $record?->note,
+                            'missing_clock_out' => $record?->status === 'present' && $record?->clock_in_at && !$record?->clock_out_at,
+                        ];
+                    })->values()->all();
+                $regularWorkedHours = round(max(0, $workedMinutes - $overtimeMinutes) / 60, 2);
                 $overtimeHours = round($overtimeMinutes / 60, 2);
-                $baseSalary = match ($payType) {
-                    'daily' => $present->count() * $dayRate,
-                    'hourly' => $workedHours * $hourlyRate,
-                    default => $salary / 30 * $periodDays,
-                };
+                $baseSalary = $regularWorkedHours * $hourlyRate;
                 $overtimeAmount = round($overtimeHours * $hourlyRate * $overtimeMultiplier, 2);
                 $lateDeduction = $lateEnabled ? round(($lateMinutes / 60) * $hourlyRate * ($lateRate / 100), 2) : 0;
 
@@ -229,11 +480,14 @@ class SimplePayrollController extends Controller
                     'branch_name' => $employee->branch?->name,
                     'pay_type' => $payType,
                     'salary_rate' => $salary,
+                    'period_days' => $periodDays,
                     'standard_paid_hours' => $standardHours,
                     'completed_workdays' => $present->count(),
                     'worked_hours' => $workedHours,
+                    'attendance_by_day' => $attendanceByDay,
+                    'regular_worked_hours' => $regularWorkedHours,
                     'late_minutes' => $lateMinutes,
-                    'late_occurrences' => $records->filter(fn ($record) => (int) $record->late_minutes > 0)->count(),
+                    'late_occurrences' => $present->filter(fn ($record) => (int) $record->late_minutes > 0)->count(),
                     'overtime_hours' => $overtimeHours,
                     'missing_clock_outs' => $missingClockOuts,
                     'day_rate' => round($dayRate, 4),

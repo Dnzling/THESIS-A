@@ -22,7 +22,7 @@
     </template></Card>
     <Dialog v-model:visible="visible" modal :header="selected?.reference_number || '3D Model Request'" class="w-full max-w-3xl">
       <div v-if="selected" class="space-y-5 text-sm">
-        <div class="grid gap-3 sm:grid-cols-2"><p><span class="text-slate-500">Store:</span> {{ selected.store?.name }}</p><p><span class="text-slate-500">Product:</span> {{ selected.product?.product_name }}</p><p><span class="text-slate-500">Materials:</span> {{ selected.materials || '—' }}</p><p><span class="text-slate-500">Status:</span> {{ label(selected.status) }}</p><p class="sm:col-span-2"><span class="text-slate-500">Dimensions:</span> {{ selected.length_cm }} × {{ selected.width_cm }} × {{ selected.height_cm }} cm</p><p class="sm:col-span-2"><span class="text-slate-500">Notes:</span> {{ selected.notes || '—' }}</p></div>
+        <div class="grid gap-3 sm:grid-cols-2"><p><span class="text-slate-500">Store:</span> {{ selected.store?.name }}</p><p><span class="text-slate-500">Product:</span> {{ selected.product?.product_name }}</p><p><span class="text-slate-500">Materials:</span> {{ selected.materials || '—' }}</p><p><span class="text-slate-500">Status:</span> {{ label(selected.status) }}</p><p class="sm:col-span-2"><span class="text-slate-500">Dimensions:</span> {{ formatDimensions(selected) }}</p><p class="sm:col-span-2"><span class="text-slate-500">Notes:</span> {{ selected.notes || '—' }}</p></div>
         <div v-if="selected.revision_reason" class="rounded-xl border border-amber-200 bg-amber-50 p-4"><p class="font-semibold text-amber-900">Revision requested by store</p><p class="mt-1 whitespace-pre-wrap text-amber-800">{{ selected.revision_reason }}</p></div>
         <div><p class="mb-2 font-semibold">Reference photos</p><div class="flex flex-wrap gap-2"><a v-for="path in selected.reference_photos || []" :key="path" :href="fileUrl(path)" target="_blank" rel="noopener"><img :src="fileUrl(path)" alt="Product reference" class="h-24 w-24 rounded-xl border object-cover" /></a></div></div>
         <div v-if="['in_production', 'changes_requested'].includes(selected.status)"><label class="mb-1 block">Finished GLB model</label><FileUpload mode="basic" accept=".glb,model/gltf-binary,application/octet-stream" :maxFileSize="52428800" :customUpload="true" :auto="false" chooseLabel="Select GLB" @select="modelFile = $event.files?.[0] || null" /><p v-if="modelFile" class="mt-2 text-xs text-slate-600">Selected: {{ modelFile.name }}</p><p v-if="uploadError" class="mt-2 text-xs text-red-600">{{ uploadError }}</p></div>
@@ -81,6 +81,12 @@ const filteredRequests = computed(() => {
 const hasFilters = computed(() => Boolean(search.value.trim() || statusFilter.value))
 const clearFilters = () => { search.value = ''; statusFilter.value = null }
 const label = (value: string) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase())
+const formatDimensions = (request: any) => {
+  const values = [['length_cm', 'Length'], ['width_cm', 'Width'], ['height_cm', 'Height'], ['depth_cm', 'Depth']]
+    .filter(([key]) => request?.[key] != null)
+    .map(([key, name]) => `${name}: ${Number(request[key]).toLocaleString('en-PH')} cm`)
+  return values.join(', ') || 'Not provided'
+}
 const severity = (value: string) => {
   if (value === 'published' || value === 'accepted') return 'success'
   if (value === 'in_production' || value === 'ready_for_review') return 'info'

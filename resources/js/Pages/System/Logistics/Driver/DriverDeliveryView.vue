@@ -728,14 +728,14 @@ const destinationPoint = computed<[number, number] | null>(() => {
     : detail.value?.order?.branch || {}
 
   const latitude = Number(
-    source.value === 'ecommerce' || returnPickupToCustomer.value
-      ? detail.value?.order?.customer_latitude
+    source.value === 'ecommerce' || source.value === 'sales' || returnPickupToCustomer.value
+      ? source.value === 'sales' ? detail.value?.order?.delivery_latitude : detail.value?.order?.customer_latitude
       : branch.latitude ?? detail.value?.delivery?.destination_latitude,
   )
 
   const longitude = Number(
-    source.value === 'ecommerce' || returnPickupToCustomer.value
-      ? detail.value?.order?.customer_longitude
+    source.value === 'ecommerce' || source.value === 'sales' || returnPickupToCustomer.value
+      ? source.value === 'sales' ? detail.value?.order?.delivery_longitude : detail.value?.order?.customer_longitude
       : branch.longitude ?? detail.value?.delivery?.destination_longitude,
   )
 
@@ -1014,7 +1014,7 @@ const beginAdvance = async () => {
   if (!nextStatus.value) return
 
   const needsProof =
-    ['pickup', 'ecommerce', 'return_pickup'].includes(source.value) &&
+    ['pickup', 'ecommerce', 'sales', 'return_pickup'].includes(source.value) &&
     (source.value === 'return_pickup'
       ? ['picked_up', 'delivered'].includes(nextStatus.value)
       : source.value === 'pickup'
@@ -1220,7 +1220,7 @@ const sendLiveLocation = async (
   refresh = false,
 ) => {
   if (
-    !['pickup', 'ecommerce', 'stock_transfer', 'return_pickup'].includes(
+    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
       source.value,
     ) ||
     isDelivered.value
@@ -1243,7 +1243,7 @@ const sendLiveLocation = async (
       ...point,
   }
   if (source.value === 'return_pickup') await logisticsService.updateReturnPickupLocation(orderId.value, locationPayload)
-  else await logisticsService.updateUnifiedDeliveryLocation(source.value as 'pickup' | 'ecommerce' | 'stock_transfer', orderId.value, locationPayload)
+  else await logisticsService.updateUnifiedDeliveryLocation(source.value as 'pickup' | 'ecommerce' | 'sales' | 'stock_transfer', orderId.value, locationPayload)
 
   if (detail.value?.delivery) {
     detail.value.delivery.current_latitude = point.latitude
@@ -1262,7 +1262,7 @@ const updateTrackingState = () => {
   ).toLowerCase()
 
   const shouldTrack =
-    ['pickup', 'ecommerce', 'stock_transfer', 'return_pickup'].includes(
+    ['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
       source.value,
     ) &&
     (source.value === 'return_pickup' ? ['assigned', 'picked_up', 'out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
@@ -1326,7 +1326,7 @@ const fetchRoadRoute = fetchMapboxRoadRoute
 const renderTrackingMap = async () => {
   if (
     !mapElement.value ||
-    !['pickup', 'ecommerce', 'stock_transfer', 'return_pickup'].includes(
+    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
       source.value,
     )
   ) {
@@ -1401,7 +1401,7 @@ const renderTrackingMap = async () => {
   if (destinationPoint.value) {
     const destinationElement = document.createElement('div')
     destinationElement.style.cssText = 'width:18px;height:18px;border:3px solid white;border-radius:50%;background:#2563eb;box-shadow:0 1px 5px #0008;'
-    const destinationLabel = returnPickupToCustomer.value ? 'Customer pickup location' : source.value === 'return_pickup' ? 'Drop-off branch' : source.value === 'ecommerce' ? 'Delivery destination' : 'Store destination'
+    const destinationLabel = returnPickupToCustomer.value ? 'Customer pickup location' : source.value === 'return_pickup' ? 'Drop-off branch' : ['ecommerce', 'sales'].includes(source.value) ? 'Delivery destination' : 'Store destination'
     destinationMarker = new mapboxgl.Marker({ element: destinationElement, anchor: 'center' }).setLngLat([destinationPoint.value[1], destinationPoint.value[0]]).setPopup(new mapboxgl.Popup({ offset: 15 }).setText(destinationLabel)).addTo(trackingMap)
 
     let linePoints: [number, number][] = lastPoint

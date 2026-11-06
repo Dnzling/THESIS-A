@@ -112,7 +112,7 @@ const tabs = [
   { label: 'Completed', value: 'completed' as const },
 ]
 
-const ongoingStatuses = new Set(['pending', 'processing', 'packed', 'shipped', 'in_transit', 'on_delivery'])
+const ongoingStatuses = new Set(['pending', 'processing', 'packed', 'shipped', 'in_transit', 'out_for_delivery', 'on_delivery'])
 const completedStatuses = new Set(['completed', 'delivered'])
 const returnStatuses = new Set(['return_pending', 'return_approved', 'return_received', 'refunded'])
 const cancellationStatuses = new Set(['cancel_pending', 'cancelled'])
@@ -209,6 +209,7 @@ async function loadOrders() {
 
 function statusLabel(status: string) {
   const value = String(status || '').toLowerCase()
+  if (value === 'out_for_delivery') return 'Out for Delivery'
   if (ongoingStatuses.has(value) || value === 'pending') return 'Pending'
   if (value === 'packing') return 'Packing'
   if (value === 'in_transit') return 'In Transit'

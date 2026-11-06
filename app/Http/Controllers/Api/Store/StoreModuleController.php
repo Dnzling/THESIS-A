@@ -69,6 +69,35 @@ class StoreModuleController extends Controller
         ]]);
     }
 
+    public function teamEmployee(Request $request, int $employeeId): JsonResponse
+    {
+        abort_unless(app(PermissionService::class)->userHasPermission($request->user(), 'store.team.view'), 403);
+
+        $branch = $this->branchFor($request);
+        $employee = Employee::query()
+            ->with(['role:id,name,display_name', 'user:id,fname,lname,email,phone_number,avatar_path', 'branch:id,name'])
+            ->where('store_id', $branch->store_id)
+            ->where('branch_id', $branch->id)
+            ->findOrFail($employeeId);
+
+        return response()->json(['success' => true, 'data' => [
+            'id' => $employee->id,
+            'employee_number' => $employee->employee_number,
+            'fname' => $employee->user?->fname ?? $employee->fname,
+            'lname' => $employee->user?->lname ?? $employee->lname,
+            'email' => $employee->user?->email,
+            'phone_number' => $employee->user?->phone_number,
+            'avatar_url' => $employee->user?->avatar_url,
+            'role' => $employee->role?->display_name ?? $employee->role?->name,
+            'branch_id' => $employee->branch_id,
+            'branch' => $employee->branch?->name,
+            'hire_date' => $employee->hire_date,
+            'employment_type' => $employee->employment_type,
+            'contract_end_date' => $employee->contract_end_date?->toDateString(),
+            'status' => $employee->status,
+        ]]);
+    }
+
     public function dashboard(Request $request): JsonResponse
     {
         $branch = $this->branchFor($request);

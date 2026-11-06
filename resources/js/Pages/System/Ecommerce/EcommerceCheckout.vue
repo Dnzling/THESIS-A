@@ -255,7 +255,7 @@
               <div v-for="item in checkoutItems" :key="`summary-${item.id}`" class="flex gap-2 py-2 text-xs">
                 <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-11 w-11 rounded-lg border border-slate-200 object-cover" @error="onImageError" />
                 <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-slate-900">{{ item.product_name }}</span><span class="text-slate-500">Qty {{ item.quantity }}</span></span>
-                <span class="font-semibold text-slate-900">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
+                <span class="font-semibold text-slate-900">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span>
               </div>
             </div>
             <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
@@ -317,7 +317,7 @@
         <div v-for="item in checkoutItems" :key="`mobile-summary-${item.id}`" class="flex gap-3 border-b border-slate-100 pb-3">
           <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-14 w-14 rounded-lg object-cover" @error="onImageError" />
           <div class="min-w-0 flex-1"><p class="truncate font-semibold">{{ item.product_name }}</p><p class="text-xs text-slate-500">Qty {{ item.quantity }}</p></div>
-          <span class="font-semibold">₱ {{ formatNumber(item.line_subtotal, 2) }}</span>
+          <span class="font-semibold">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span>
         </div>
         <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
         <div class="flex justify-between"><span>{{ serviceMethod === 'pickup' ? 'Pickup' : 'Delivery' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
@@ -553,6 +553,8 @@ const checkoutSteps = ['Address', 'Service', 'Payment']
 const checkoutStep = ref(1)
 const mobileSummaryVisible = ref(false)
 const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
+const branchItemPrices = ref<Record<number, { unit_price: number; line_subtotal: number }>>({})
+const branchPricedSubtotal = ref<number | null>(null)
 const fulfillmentDates = ref<string[]>([])
 const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
 const fulfillmentDate = ref<Date | null>(null)
@@ -604,7 +606,10 @@ async function loadFulfillmentAvailability() {
       const [year, month, day] = fulfillmentDates.value[0].split('-').map(Number)
       fulfillmentDate.value = new Date(year, month - 1, day)
     }
-    if (serviceMethod.value === 'pickup') pickupBranch.value = response.data?.data?.pickup_branch || null
+    if (serviceMethod.value === 'pickup') {
+      pickupBranch.value = response.data?.data?.pickup_branch || null
+      setBranchPricing(response.data?.data)
+    }
   } catch (error: any) {
     if (requestId !== availabilityRequest) return
     availabilityError.value = error?.response?.data?.message || 'Available dates could not be loaded. Please try again.'
@@ -613,7 +618,12 @@ async function loadFulfillmentAvailability() {
   }
 }
 
-watch([serviceMethod, () => checkoutItems.value[0]?.store_id], loadFulfillmentAvailability)
+watch([serviceMethod, () => checkoutItems.value[0]?.store_id], () => {
+  branchPricedSubtotal.value = null
+  branchItemPrices.value = {}
+  void loadFulfillmentAvailability()
+  if (!checkoutInitializing.value) void estimateShippingFee()
+})
 const customizationRequests = reactive<Record<number, string>>({})
 const customizationEnabled = reactive<Record<number, boolean>>({})
 const selectedItemIds = ref<number[]>([])
@@ -881,7 +891,24 @@ const billingCityOptions = computed(() => billingCities.value.map((c: any) => ({
 const billingBarangayOptions = computed(() => billingBarangays.value.map((b: any) => ({ label: b.name, value: b.code })))
 
 const itemsCount = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
-const subtotal = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.line_subtotal || 0), 0))
+const subtotal = computed(() => branchPricedSubtotal.value ?? checkoutItems.value.reduce((sum, item) => sum + Number(item.line_subtotal || 0), 0))
+function displayLineSubtotal(item: any): number {
+  return branchItemPrices.value[Number(item.id)]?.line_subtotal ?? Number(item.line_subtotal || 0)
+}
+function setBranchPricing(data: any) {
+  const prices = Array.isArray(data?.item_prices) ? data.item_prices : []
+  if (!Number.isFinite(Number(data?.product_subtotal)) || prices.length === 0) {
+    branchPricedSubtotal.value = null
+    branchItemPrices.value = {}
+    return
+  }
+
+  branchPricedSubtotal.value = Number(data.product_subtotal)
+  branchItemPrices.value = Object.fromEntries(prices.map((price: any) => [
+    Number(price.id),
+    { unit_price: Number(price.unit_price), line_subtotal: Number(price.line_subtotal) },
+  ]))
+}
 const shippingFeePerItem = computed(() => {
   if (!checkoutItems.value.length) return 0
   return shippingFeeTotal.value / checkoutItems.value.length
@@ -1128,10 +1155,12 @@ async function estimateShippingFee() {
       item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
       bulk_trip: bulkTripEnabled.value,
     })
+    const quote = response?.data?.data
     const fee = Number(response?.data?.data?.shipping_fee || 0)
-    pickupOnly.value = Boolean(response?.data?.data?.pickup_only)
+    pickupOnly.value = Boolean(quote?.pickup_only)
     if (pickupOnly.value) serviceMethod.value = 'pickup'
     if (pickupOnly.value) pickupBranch.value = response?.data?.data?.pickup_branch || null
+    if (serviceMethod.value === 'delivery' || pickupOnly.value) setBranchPricing(quote)
     const fallbackUsed = Boolean(response?.data?.data?.fallback_used)
     const fallbackReason = String(response?.data?.data?.fallback_reason || '')
     const distance = Number(response?.data?.data?.distance_km ?? NaN)
@@ -1148,6 +1177,10 @@ async function estimateShippingFee() {
       ? (fallbackReason || 'Using default delivery fee settings for this address.')
       : null
   } catch (error: any) {
+    if (serviceMethod.value === 'delivery') {
+      branchPricedSubtotal.value = null
+      branchItemPrices.value = {}
+    }
     if (serviceMethod.value !== 'pickup') pickupBranch.value = null
     estimatedShippingFee.value = 0
     shippingDistanceKm.value = null

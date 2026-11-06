@@ -1054,13 +1054,19 @@ const loadNavigationItems = async () => {
   loadingNavigation.value = true
   try {
     const response = await axios.get('/api/admin/navigation-items')
-    navigationItems.value = response.data.data || response.data
+    const items = response.data.data || response.data
+    navigationItems.value = (Array.isArray(items) ? items : []).map((item: any) => ({
+      ...item,
+      is_active: isNavigationActive(item.is_active),
+    }))
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load navigation', life: 3000 })
   } finally {
     loadingNavigation.value = false
   }
 }
+
+const isNavigationActive = (value: unknown) => value === true || value === 1 || value === '1' || value === 'true'
 
 const exportRolesCsv = async () => {
   try {
@@ -1429,6 +1435,7 @@ const editNavigation = (navigation: any) => {
   editingNavigation.value = navigation
   navigationForm.value = {
     ...navigation,
+    is_active: isNavigationActive(navigation.is_active),
     permissions: navigation.permissions?.map((p: any) => p.id) || []
   }
   navigationErrors.value = {}
@@ -1444,6 +1451,7 @@ const saveNavigation = async () => {
       ...navigationForm.value,
       module: (navigationForm.value.module as any)?.value ?? navigationForm.value.module,
       permissions: Array.isArray(navigationForm.value.permissions) ? navigationForm.value.permissions : [],
+      is_active: isNavigationActive(navigationForm.value.is_active),
       display_name: buildDisplayNameFromNavigationName(navigationForm.value.name),
       route_path: buildRoutePathFromName(navigationForm.value.route_name),
       icon: normalizeIconClass(navigationForm.value.icon)
