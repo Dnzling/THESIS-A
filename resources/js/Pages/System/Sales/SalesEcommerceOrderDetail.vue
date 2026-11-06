@@ -11,7 +11,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <Button severity="secondary" outlined size="small" icon="pi pi-history" label="Timeline" :disabled="!order"
           @click="timelineDialogVisible = true" />
-        <Button severity="secondary" size="small" text icon="pi pi-print" label="Print Receipt" @click="printReceipt" />
+        <Button v-if="isPaid" severity="secondary" size="small" text icon="pi pi-print" label="Print Receipt" @click="printReceipt" />
       </div>
     </div>
 
@@ -164,7 +164,7 @@
                   <p class="mt-1 whitespace-pre-line">{{ data.customization_request }}</p>
                   <p v-if="data.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span
                       class="font-semibold">Response:</span> {{ data.customization_response }}</p>
-                  <div v-if="canManageCustomization(data)" class="mt-3 flex flex-wrap gap-2">
+                  <div v-if="isPaid && canManageCustomization(data)" class="mt-3 flex flex-wrap gap-2">
                     <Button label="Approve" size="small" severity="success"
                       @click="openCustomizationDialog(data, 'approved')" />
                     <Button label="Not Available" size="small" severity="danger" outlined
@@ -227,9 +227,9 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <Button v-if="canSendToLogistics" size="small" icon="pi pi-send" label="Mark Ready for Dispatch"
+        <Button v-if="isPaid && canSendToLogistics" size="small" icon="pi pi-send" label="Mark Ready for Dispatch"
           :loading="sendingToLogistics" @click="confirmReadyForDispatch" />
-        <Button v-if="order && !isCancelledOrder && Number(order.shipping_fee || 0) <= 0" size="small"
+        <Button v-if="isPaid && order && !isCancelledOrder && Number(order.shipping_fee || 0) <= 0" size="small"
           icon="pi pi-calendar" :label="order.pickup_date ? 'Change Pickup Date' : 'Select Pickup Date'"
           @click="openPickupDateDialog" />
       </div>
@@ -341,6 +341,9 @@ const loading = ref(false)
 const order = ref<any>(null)
 const isCancelledOrder = computed(() => ['cancelled', 'canceled'].includes(
   String(order.value?.primary_status || order.value?.status || '').toLowerCase(),
+))
+const isPaid = computed(() => ['paid', 'succeeded', 'completed'].includes(
+  String(order.value?.payment_status || '').toLowerCase(),
 ))
 const sendingToLogistics = ref(false)
 const reviewingCustomization = ref(false)

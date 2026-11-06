@@ -113,7 +113,7 @@ class WarehousePurchaseRequisitionController extends Controller
         $validated = $request->validate([
             'branch_id' => ['required', 'integer'],
             'requisition_type' => ['sometimes', 'in:regular,urgent,new_product,seasonal,emergency'],
-            'reason' => ['required', 'string', 'max:2000'],
+            'reason' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.branch_inventory_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity_requested' => ['required', 'integer', 'min:1'],
@@ -160,7 +160,7 @@ class WarehousePurchaseRequisitionController extends Controller
                 'store_id' => $storeId, 'branch_id' => $branch->id, 'requisition_type' => $validated['requisition_type'] ?? 'regular',
                 'status' => 'pending', 'estimated_amount' => $amount,
                 'procurement_route' => $procurementRoute,
-                'required_approvals' => ['warehouse_manager'], 'reason' => $validated['reason'],
+                'required_approvals' => ['warehouse_manager'], 'reason' => $validated['reason'] ?? null,
                 'priority' => 3, 'requested_by' => $request->user()?->employee?->id, 'submitted_at' => now(),
             ]);
             foreach ($validated['items'] as $item) {

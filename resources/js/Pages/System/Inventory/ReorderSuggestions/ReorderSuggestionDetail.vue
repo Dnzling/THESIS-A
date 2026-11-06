@@ -116,6 +116,8 @@
         <Button v-if="suggestion.status === 'pending'" label="Reject" icon="pi pi-times" size="small" severity="danger" outlined @click="openAction('reject')" />
         <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'pr' && canManagePr" label="Approve & Create PR" icon="pi pi-check" size="small" severity="warn" @click="openAction('approve')" />
         <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'po' && canManagePo" label="Approve & Create PO" icon="pi pi-shopping-cart" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/purchase-orders/create?reorder_suggestion_id=${suggestion.id}`)" />
+        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'warehouse' && canCreateTransfer" label="Request from Warehouse" icon="pi pi-warehouse" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/stock-requests/create?type=transfer&reorder_suggestion_id=${suggestion.id}`)" />
+        <Button v-if="suggestion.metadata?.stock_transfer_id" label="View Warehouse Request" icon="pi pi-arrow-right-arrow-left" size="small" severity="secondary" outlined @click="router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id: suggestion.metadata.stock_transfer_id } })" />
         <Button v-if="suggestion.metadata?.purchase_requisition_id" label="View Inventory PR" icon="pi pi-file" size="small" severity="warn" @click="router.push({ name: 'inventory.requisites.detail', params: { id: suggestion.metadata.purchase_requisition_id } })" />
         <Button v-if="suggestion.metadata?.purchase_order_id" label="View Purchase Order" icon="pi pi-file" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/purchase-orders/${suggestion.metadata.purchase_order_id}`)" />
       </div>
@@ -148,6 +150,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 const canManagePr = computed(() => authStore.hasPermission('inventory.requisites.manage'))
 const canManagePo = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canCreateTransfer = computed(() => authStore.hasPermission('inventory.transfers.create') || authStore.hasPermission('inventory.transfers.manage'))
 
 const loading = ref(false)
 const submitting = ref(false)

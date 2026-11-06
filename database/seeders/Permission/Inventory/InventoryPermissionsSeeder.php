@@ -76,6 +76,7 @@ class InventoryPermissionsSeeder extends Seeder
 
             // Transfers
             ['name' => 'inventory.transfers.view', 'display_name' => 'View Stock Transfers', 'module' => 'inventory'],
+            ['name' => 'inventory.stock-requests.view', 'display_name' => 'View Stock Requests', 'module' => 'inventory'],
             ['name' => 'inventory.transfers.create', 'display_name' => 'Create Stock Transfers', 'module' => 'inventory'],
             ['name' => 'inventory.transfers.approve', 'display_name' => 'Approve Stock Transfers', 'module' => 'inventory'],
             ['name' => 'inventory.transfers.ship', 'display_name' => 'Ship Stock Transfers', 'module' => 'inventory'],

@@ -39,6 +39,8 @@ use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Procurement\Supplier\SupplierController as InventorySupplierController;
 use App\Http\Controllers\Api\Inventory\QuickSupplierController;
 use App\Http\Controllers\Api\Inventory\PurchaseOrderController as InventoryPurchaseOrderController;
+use App\Http\Controllers\Api\Inventory\InventoryDocumentPrintController;
+use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController as InventorySupplierContractController;
 
 // ============================================
 // INVENTORY MANAGEMENT ROUTES
@@ -50,6 +52,7 @@ Route::prefix('inventory')->group(function () {
         Route::get('/', [InventoryPurchaseOrderController::class, 'index']);
         Route::get('/options', [InventoryPurchaseOrderController::class, 'options']);
         Route::post('/', [InventoryPurchaseOrderController::class, 'store']);
+        Route::get('/{id}/print', [InventoryDocumentPrintController::class, 'purchaseOrder'])->whereNumber('id');
         Route::get('/{id}', [InventoryPurchaseOrderController::class, 'show'])->whereNumber('id');
         Route::post('/{id}/send', [InventoryPurchaseOrderController::class, 'send'])->whereNumber('id');
     });
@@ -61,6 +64,14 @@ Route::prefix('inventory')->group(function () {
     Route::put('/suppliers/{id}', [QuickSupplierController::class, 'store'])->whereNumber('id');
     Route::get('/suppliers/{id}/edit', [QuickSupplierController::class, 'edit'])->whereNumber('id');
     Route::get('/suppliers/{id}', [QuickSupplierController::class, 'show'])->whereNumber('id');
+
+    // Supplier contract workflow exposed through Inventory endpoints.
+    Route::prefix('supplier-contracts')->group(function () {
+        Route::get('/', [InventorySupplierContractController::class, 'index']);
+        Route::post('/', [InventorySupplierContractController::class, 'store']);
+        Route::get('/{id}', [InventorySupplierContractController::class, 'show'])->whereNumber('id');
+        Route::post('/{id}/activate', [InventorySupplierContractController::class, 'activate'])->whereNumber('id');
+    });
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/stats', [DashboardController::class, 'getStats']);
@@ -120,6 +131,7 @@ Route::prefix('inventory')->group(function () {
 
     Route::prefix('items')->group(function () {
         Route::get('/', [BranchInventoryController::class, 'index']);
+        Route::get('/{id}/performance', [BranchInventoryController::class, 'performance']);
         Route::get('/{id}', [BranchInventoryController::class, 'show']);
         Route::post('/', [BranchInventoryController::class, 'store']);
         Route::put('/{id}', [BranchInventoryController::class, 'update']);
@@ -183,6 +195,7 @@ Route::prefix('inventory')->group(function () {
     Route::prefix('transfers')->group(function () {
         Route::get('/', [StockTransferController::class, 'index']);
         Route::post('/estimate', [StockTransferController::class, 'estimate']);
+        Route::get('/{id}/print', [InventoryDocumentPrintController::class, 'stockTransfer'])->whereNumber('id');
         Route::get('/{id}', [StockTransferController::class, 'show']);
         Route::post('/', [StockTransferController::class, 'store']);
         Route::post('/{id}/approve', [StockTransferController::class, 'approve']);
@@ -199,6 +212,7 @@ Route::prefix('inventory')->group(function () {
         Route::get('/customer/destinations', [\App\Http\Controllers\Api\Logistics\ReturnPickupController::class, 'inventoryReturns']);
         Route::post('/customer/{return}/inspect', [\App\Http\Controllers\Api\CRM\ReturnController::class, 'receive']);
         Route::get('/', [StockReturnController::class, 'index']);
+        Route::get('/{id}/print', [InventoryDocumentPrintController::class, 'stockReturn'])->whereNumber('id');
         Route::post('/', [StockReturnController::class, 'store']);
         Route::get('/{return}', [StockReturnController::class, 'show']);
         Route::put('/{return}', [StockReturnController::class, 'update']);
@@ -285,6 +299,7 @@ Route::prefix('inventory')->group(function () {
     // Stock Issues
     Route::prefix('issues')->group(function () {
         Route::get('/', [StockIssueController::class, 'index']);
+        Route::get('/{id}/print', [InventoryDocumentPrintController::class, 'stockIssue'])->whereNumber('id');
         Route::get('/{id}', [StockIssueController::class, 'show']);
         Route::post('/', [StockIssueController::class, 'store']);
         Route::put('/{id}', [StockIssueController::class, 'update']);

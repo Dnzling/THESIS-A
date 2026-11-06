@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mx-auto x-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Inventory Transactions</h1>
@@ -7,52 +7,17 @@
       </div>
     </div>
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Transactions</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ formatQuantity(summary.total_transactions) }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Moved Value</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ formatCurrency(summary.total_value_moved) }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Today</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ formatQuantity(summary.today_transactions) }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Products Affected</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{{ formatQuantity(summary.unique_products_affected) }}</p>
-          </div>
-        </template>
-      </Card>
-    </div>
-
     <Card>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-          <div class="md:col-span-2">
+        <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+          <div class="w-full lg:max-w-xs">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Search</label>
             <IconField>
               <InputIcon class="pi pi-search" />
               <InputText v-model="filters.search" placeholder="Reference, notes, product" class="w-full p-inputtext-sm" />
             </IconField>
           </div>
-          <div>
+          <div class="w-full lg:w-44">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Type</label>
             <Select
               v-model="filters.transaction_type"
@@ -64,7 +29,7 @@
               class="w-full"
             />
           </div>
-          <div>
+          <div class="w-full lg:w-52">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Product</label>
             <Select
               v-model="filters.product_id"
@@ -77,35 +42,19 @@
               class="w-full"
             />
           </div>
-            <div class="md:col-span-2">
+            <div class="w-full lg:w-64">
               <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
               <DatePicker v-model="dateRange" selectionMode="range" dateFormat="M d, yy" :manualInput="false" class="w-full" showIcon :showButtonBar="false" placeholder="Select dates" />
             </div>
+          <Button v-if="hasActiveFilters()" size="small" icon="pi pi-filter-slash" label="Clear Filter" severity="danger" outlined @click="resetFilters" />
         </div>
-        <div class="mt-3 flex justify-end">
-          <Button size="small" icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined @click="resetFilters" />
-        </div>
-      </template>
-    </Card>
-
-    <Card>
-      <template #content>
+        <hr class="my-4 border-slate-200" />
         <div v-if="loading" class="space-y-3">
-          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
+          <div class="grid grid-cols-9 gap-3 text-xs text-gray-400">
+            <Skeleton v-for="column in 9" :key="`header-${column}`" height="24px" />
           </div>
-          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
+          <div v-for="i in 8" :key="i" class="grid grid-cols-9 gap-3">
+            <Skeleton v-for="column in 9" :key="column" height="20px" />
           </div>
         </div>
 
@@ -123,8 +72,6 @@
           @sort="onSort"
           :sortField="filters.sort_field"
           :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
-          @row-click="onRowClick"
-          :rowClass="rowClass"
         >
           <Column field="transaction_date" header="Date" sortable style="min-width: 145px">
             <template #body="{ data }">
@@ -174,12 +121,15 @@
             </template>
           </Column>
 
+          <Column header="Created By" style="min-width: 150px">
+            <template #body="{ data }">
+              <span class="text-slate-700">{{ employeeName(data.created_by) }}</span>
+            </template>
+          </Column>
 
           <Column style="width: 100px">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-eye" size="small" label="View" outlined rounded aria-label="Quick view transaction" @click.stop="openDetailPage(data.id)" />
-              </div>
+              <Button icon="pi pi-eye" size="small" label="View" outlined rounded aria-label="View transaction" @click="openDetailPage(data.id)" />
             </template>
           </Column>
 
@@ -283,12 +233,6 @@ const loading = ref(false)
 const transactions = ref<any[]>([])
 const products = ref<any[]>([])
 const totalRecords = ref(0)
-const summary = ref({
-  total_transactions: 0,
-  total_value_moved: 0,
-  today_transactions: 0,
-  unique_products_affected: 0,
-})
 
 const quickDetailVisible = ref(false)
 const quickDetailLoading = ref(false)
@@ -319,14 +263,13 @@ const transactionTypes = [
 ]
 
 const formatDateParam = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const hasActiveFilters = () => Boolean(filters.search || filters.transaction_type || filters.product_id || filters.from_date || filters.to_date)
 const formatQuantity = (value: string | number | null | undefined) => Number(value || 0).toLocaleString('en-PH')
 const signedQuantity = (value: string | number | null | undefined) => `${Number(value || 0) > 0 ? '+' : ''}${formatQuantity(value)}`
-const employeeName = (employee: any) => employee ? [employee.fname || employee.user?.fname, employee.lname || employee.user?.lname].filter(Boolean).join(' ') || `Employee #${employee.id}` : '—'
-
-const rowClass = (data: any) => {
-  return {
-    'cursor-pointer hover:bg-gray-50': true,
-  }
+const employeeName = (employee: any) => {
+  if (!employee) return '—'
+  const name = [employee.fname || employee.user?.fname, employee.lname || employee.user?.lname].filter(Boolean).join(' ')
+  return name || `Employee #${employee.id ?? employee}`
 }
 
 const loadTransactions = async () => {
@@ -369,18 +312,6 @@ const loadTransactions = async () => {
   }
 }
 
-const loadSummary = async () => {
-  try {
-    const params: any = {}
-    if (filters.from_date) params.from_date = formatDateParam(filters.from_date)
-    if (filters.to_date) params.to_date = formatDateParam(filters.to_date)
-    const response = await inventoryService.getTransactionSummary(params)
-    if (response.success && response.data) summary.value = response.data
-  } catch {
-    // no-op
-  }
-}
-
 const loadProducts = async () => {
   try {
     const response = await inventoryService.getProducts({ per_page: 1000 })
@@ -404,20 +335,15 @@ const onSort = (event: any) => {
   loadTransactions()
 }
 
-const onRowClick = (event: any) => {
-  const row = event.data
-  if (row?.id) openDetailPage(row.id)
-}
-
 const resetFilters = () => {
   filters.search = ''
   filters.transaction_type = null
   filters.product_id = null
   filters.from_date = null
   filters.to_date = null
+  dateRange.value = null
   filters.page = 1
   loadTransactions()
-  loadSummary()
 }
 
 const openQuickDetail = async (row: any) => {
@@ -495,7 +421,6 @@ watch(
     if (filterTimer) clearTimeout(filterTimer)
     filterTimer = setTimeout(() => {
       loadTransactions()
-      loadSummary()
     }, 250)
   },
 )
@@ -513,7 +438,6 @@ watch(dateRange, (val) => {
 
 onMounted(() => {
   loadTransactions()
-  loadSummary()
   loadProducts()
 })
 </script>

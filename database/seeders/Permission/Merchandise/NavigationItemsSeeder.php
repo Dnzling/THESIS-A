@@ -15,7 +15,6 @@ class NavigationItemsSeeder extends Seeder
             ['name' => 'merchandising.tags', 'display_name' => 'Collections', 'route_name' => 'merchandising.tags', 'route_path' => '/merchandising/tags', 'icon' => 'pi pi-th-large', 'display_order' => 3, 'permission' => 'merchandising.tags.view'],
             ['name' => 'merchandising.pricing', 'display_name' => 'Promotions & Discounts', 'route_name' => 'merchandising.pricing', 'route_path' => '/merchandising/pricing', 'icon' => 'pi pi-percentage', 'display_order' => 4, 'permission' => 'merchandising.pricing.view'],
             ['name' => 'merchandising.assets', 'display_name' => '3D Product Models', 'route_name' => 'merchandising.3d-gallery', 'route_path' => '/merchandising/3d-gallery', 'icon' => 'pi pi-box', 'display_order' => 5, 'permission' => 'merchandising.assets.view'],
-            ['name' => 'merchandising.storefront', 'display_name' => 'Storefront Settings', 'route_name' => 'store.settings', 'route_path' => '/store/settings', 'icon' => 'pi pi-cog', 'display_order' => 6, 'permission' => 'merchandising.storefront.view'],
         ];
 
         $activeNames = array_column($items, 'name');
@@ -44,6 +43,39 @@ class NavigationItemsSeeder extends Seeder
                 DB::table('navigation_permissions')->updateOrInsert(
                     ['navigation_item_id' => $navigationId, 'permission_id' => $permissionId],
                     ['created_at' => now(), 'updated_at' => now()]
+                );
+            }
+        }
+
+        $navigationPermissionIds = DB::table('permissions')
+            ->whereIn('name', array_column($items, 'permission'))
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->pluck('id');
+        $moduleId = DB::table('modules')->where('key', 'merchandising')->value('id');
+
+        foreach (DB::table('subscription_plans')->pluck('id') as $planId) {
+            if ($moduleId) {
+                DB::table('plan_modules')->updateOrInsert(
+                    ['plan_id' => $planId, 'module_id' => $moduleId],
+                    ['included' => true, 'updated_at' => now()]
+                );
+            }
+
+            foreach ($navigationPermissionIds as $permissionId) {
+                DB::table('plan_permissions')->updateOrInsert(
+                    ['plan_id' => $planId, 'permission_id' => $permissionId],
+                    ['included' => true, 'updated_at' => now()]
+                );
+            }
+        }
+
+        $ownerRoleIds = DB::table('roles')->where('name', 'owner')->whereNull('store_id')->pluck('id');
+        foreach ($ownerRoleIds as $roleId) {
+            foreach ($navigationPermissionIds as $permissionId) {
+                DB::table('role_permissions')->updateOrInsert(
+                    ['role_id' => $roleId, 'permission_id' => $permissionId],
+                    ['updated_at' => now()]
                 );
             }
         }

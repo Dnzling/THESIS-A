@@ -245,7 +245,7 @@
         <div class="p-6">
           <div v-if="detail?.items && detail.items.length > 0" class="space-y-3">
             <div v-for="(item, index) in detail.items" :key="index" class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-              <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+              <div class="grid grid-cols-2 md:grid-cols-8 gap-4">
                 <div class="col-span-2">
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
                   <p class="font-semibold text-gray-900">
@@ -254,12 +254,22 @@
                       : (item?.product?.product_name || 'Unknown') }}
                   </p>
                   <p class="text-xs text-gray-500 mt-1">SKU: {{ item?.variation?.variation_sku || item?.product?.sku || 'N/A' }}</p>
-                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mt-3 mb-1">Linked Supplier</p>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mt-3 mb-1">Supplier Options</p>
                   <p class="text-sm text-gray-700">{{ getItemSupplierNames(item) }}</p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Quantity</p>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Requested</p>
                   <p class="text-2xl font-semibold text-gray-900">{{ item?.quantity_requested || 0 }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Already Ordered</p>
+                  <p class="text-lg font-semibold text-slate-700">{{ item?.ordered_quantity || 0 }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Remaining</p>
+                  <p :class="['text-lg font-semibold', Number(item?.remaining_quantity ?? item?.quantity_requested ?? 0) > 0 ? 'text-emerald-700' : 'text-red-600']">
+                    {{ item?.remaining_quantity ?? item?.quantity_requested ?? 0 }}
+                  </p>
                 </div>
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Unit Cost</p>
@@ -285,6 +295,74 @@
             <i class="pi pi-inbox text-3xl text-gray-300 mb-2"></i>
             <p class="text-gray-500">No line items</p>
           </div>
+        </div>
+      </div>
+
+      <div v-if="canCreateSourceActions" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="border-b border-slate-100 px-6 py-4">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-800">Source PR Items</h3>
+          <p class="mt-1 text-sm text-slate-500">Create a separate order or RFQ for only the items in each group. Items linked to multiple suppliers appear in each eligible group.</p>
+        </div>
+        <div class="space-y-4 p-5">
+          <div v-if="sourcingPreviewLoading" class="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            Checking supplier links and active contracts...
+          </div>
+          <div v-else-if="sourcingPreviewError" class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {{ sourcingPreviewError }} Refresh the page or try again before creating a PO or RFQ.
+          </div>
+          <template v-else>
+            <div v-for="group in sourcingGroups" :key="group.supplier_id" class="rounded-xl border border-slate-200 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="font-semibold text-slate-900">{{ group.supplier_name }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ group.items.length }} item(s) · Active supplier contract</p>
+                </div>
+                <Button
+                  v-if="canManagePurchaseOrders"
+                  label="Create PO"
+                  icon="pi pi-shopping-cart"
+                  size="small"
+                  severity="warn"
+                  :disabled="processing"
+                  @click="openSupplierPurchaseOrder(group)"
+                />
+              </div>
+              <div class="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-100">
+                <div v-for="item in group.items" :key="item.requisition_item_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span class="text-slate-800">{{ item.product_name }}<span v-if="item.variant" class="text-slate-500"> · {{ item.variant }}</span><span v-if="item.sku" class="ml-1 text-xs text-slate-500">({{ item.sku }})</span></span>
+                  <span class="text-slate-600">Qty {{ item.quantity }} · ₱{{ formatNumber(Number(item.supplier_price || 0)) }} / unit</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="unlinkedSourcingItems.length" class="rounded-xl border border-amber-300 bg-amber-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="font-semibold text-amber-950">Needs Supplier Link / RFQ</p>
+                  <p class="mt-1 text-xs text-amber-800">These remaining PR items do not have an eligible supplier-product link and active contract. Create an RFQ to source them.</p>
+                </div>
+                <Button
+                  v-if="canManageRfq"
+                  label="Create RFQ"
+                  icon="pi pi-file-plus"
+                  size="small"
+                  outlined
+                  severity="warn"
+                  :disabled="processing"
+                  @click="openUnlinkedRfq"
+                />
+              </div>
+              <div class="mt-3 divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white/70">
+                <div v-for="item in unlinkedSourcingItems" :key="item.id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span class="text-slate-800">{{ item.product_name }}<span v-if="item.variant" class="text-slate-500"> · {{ item.variant }}</span><span v-if="item.sku" class="ml-1 text-xs text-slate-500">({{ item.sku }})</span></span>
+                  <span class="text-slate-600">Qty {{ item.quantity }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="!sourcingGroups.length && !unlinkedSourcingItems.length" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              All requested quantities have already been allocated to purchase orders.
+            </div>
+          </template>
         </div>
       </div>
 
@@ -339,17 +417,6 @@
         />
 
         <Button
-          v-if="canCreateRequest"
-          size="medium"
-          severity="info"
-          icon="pi pi-file-plus"
-          :loading="processing"
-          :disabled="processing"
-          @click="createRequest"
-          label="Create Request"
-        />
-
-        <Button
           v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
           size="medium"
           severity="secondary"
@@ -357,21 +424,6 @@
           @click="createGoodsReceipt(deliveredPO)"
         />
 
-        <Button
-          v-if="canManageRfq && canCreateRfqFromDetail"
-          size="medium"
-          severity="success"
-          icon="pi pi-send"
-          @click="createRfqFromRequisition"
-        />
-
-        <Button
-          v-if="canManagePurchaseOrders && canCreatePoFromDetail"
-          size="medium"
-          severity="info"
-          icon="pi pi-shopping-cart"
-          @click="createPoFromRequisition"
-        />
       </div>
 
       <!-- Related Purchase Orders -->
@@ -484,6 +536,9 @@ const requisitionId = Number(route.params.id)
 const loading = ref(false)
 const processing = ref(false)
 const detail = ref<any>(null)
+const sourcingPreviewLoading = ref(false)
+const sourcingPreview = ref<any>(null)
+const sourcingPreviewError = ref('')
 const authStore = useAuthStore()
 const userRole = computed(() => authStore.userRole || '')
 const showRejectDialog = ref(false)
@@ -531,94 +586,75 @@ const hasApprovalPermission = computed(() => {
 })
 const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
 const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
-const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 const canManageReceiving = computed(() => authStore.hasPermission('procurement.receiving.manage'))
-const processingReadyStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
-const canCreateRfqFromDetail = computed(() => {
-  if (!detail.value) return false
-  return detail.value.status !== 'procurement_processing'
-    && processingReadyStatuses.includes(detail.value.status)
-    && Boolean(detail.value.any_item_missing_supplier)
+const canCreateSourceActions = computed(() => {
+  return Boolean(
+    detail.value &&
+    ['pending', 'warehouse_approved', 'branch_manager_approved', 'procurement_processing'].includes(normalize(detail.value.status)) &&
+    (canManageRfq.value || canManagePurchaseOrders.value),
+  )
 })
-const canCreatePoFromDetail = computed(() => {
-  if (!detail.value) return false
-  return detail.value.status !== 'procurement_processing'
-    && processingReadyStatuses.includes(detail.value.status)
-    && Boolean(detail.value.all_items_have_suppliers)
-})
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
+const sourcingGroups = computed(() => sourcingPreview.value?.supplier_groups || [])
+const unlinkedSourcingItems = computed(() => sourcingPreview.value?.unassigned_items || [])
 
-// Derive supplier binding from items when backend flags are missing
-const supplierGrouping = computed(() => {
-  const items = Array.isArray(detail.value?.items) ? detail.value.items : []
-  const grouped: Record<string, any[]> = {}
-  let boundCount = 0
-  for (const it of items) {
-    const supId = it?.selected_supplier_id ?? (Array.isArray(it?.product?.suppliers) && it.product.suppliers[0]?.id) ?? null
-    const key = supId ? String(supId) : 'NO_SUPPLIER'
-    if (!grouped[key]) grouped[key] = []
-    grouped[key].push(it)
-    if (supId) boundCount++
-  }
-  return {
-    groups: grouped,
-    total: items.length,
-    boundCount,
-    unboundCount: items.length - boundCount,
-  }
-})
-
-const canCreateRequest = computed(() => {
-  if (!detail.value || !['pending', 'procurement_processing'].includes(normalize(detail.value.status))) return false
-
-  const { boundCount, unboundCount } = supplierGrouping.value
-  if (boundCount > 0 && unboundCount > 0) {
-    return canManagePurchaseOrders.value && canManageRfq.value
-  }
-  if (boundCount > 0) return canManagePurchaseOrders.value
-  return canManageRfq.value
-})
-
-const requestCreateRoute = () => {
-  if (!detail.value) return
-
-  const { boundCount, unboundCount } = supplierGrouping.value
-  if (boundCount > 0 && unboundCount > 0) {
-    router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId, split: '1' } })
-    return
-  }
-  if (unboundCount === 0 && boundCount > 0) {
-    router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
-    return
-  }
-  router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
-}
-
-const createRequest = async () => {
+const startSourcingAndNavigate = async (name: string, query: Record<string, string>) => {
   if (!detail.value || processing.value) return
-
-  if (normalize(detail.value.status) === 'procurement_processing') {
-    requestCreateRoute()
-    return
-  }
 
   processing.value = true
   try {
-    const response = await procurementService.startPurchaseRequisitionProcessing(requisitionId)
-    if (!response?.success) {
-      throw new Error(response?.message || 'Unable to process this requisition.')
+    if (normalize(detail.value.status) !== 'procurement_processing') {
+      const response = await procurementService.startPurchaseRequisitionProcessing(requisitionId)
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to process this requisition.')
+      }
+      detail.value.status = 'procurement_processing'
     }
 
-    detail.value.status = 'procurement_processing'
-    requestCreateRoute()
+    router.push({ name, query })
   } catch (error: any) {
     toast.add({
       severity: 'error',
-      summary: 'Unable to Create Request',
+      summary: 'Unable to Start Sourcing',
       detail: error?.response?.data?.message || error?.message || 'Failed to start procurement processing.',
       life: 4000,
     })
   } finally {
     processing.value = false
+  }
+}
+
+const openSupplierPurchaseOrder = (group: any) => {
+  const itemIds = (group?.items || []).map((item: any) => Number(item.requisition_item_id)).filter((id: number) => id > 0)
+  if (!itemIds.length || !group?.supplier_id) return
+  void startSourcingAndNavigate('procurement.purchase-orders.create', {
+    requisition_id: String(requisitionId),
+    requisition_item_ids: itemIds.join(','),
+    supplier_id: String(group.supplier_id),
+  })
+}
+
+const openUnlinkedRfq = () => {
+  const itemIds = unlinkedSourcingItems.value.map((item: any) => Number(item.id)).filter((id: number) => id > 0)
+  if (!itemIds.length) return
+  void startSourcingAndNavigate('procurement.rfqs.create', {
+    requisition_id: String(requisitionId),
+    requisition_item_ids: itemIds.join(','),
+    source_unlinked: '1',
+  })
+}
+
+const loadSourcingPreview = async () => {
+  sourcingPreviewLoading.value = true
+  sourcingPreviewError.value = ''
+  try {
+    const response = await procurementService.getPurchaseRequisitionSplitPreview(requisitionId)
+    sourcingPreview.value = response?.data || response
+  } catch (error: any) {
+    sourcingPreview.value = null
+    sourcingPreviewError.value = error?.response?.data?.message || 'Could not load supplier-linked PR groups.'
+  } finally {
+    sourcingPreviewLoading.value = false
   }
 }
 
@@ -806,6 +842,7 @@ const loadDetail = async () => {
     detail.value = response.data || null
 
     // Run non-critical enrichment in background so main details never get stuck in loading state.
+    if (canManageRfq.value || canManagePurchaseOrders.value) void loadSourcingPreview()
     void enrichSuppliersForItems()
     void loadDeliveryLogs()
   } catch (error) {
@@ -917,20 +954,6 @@ const deletePR = () => {
   confirmVisible.value = true
 }
 
-const createRfqFromRequisition = () => {
-  confirmTitle.value = 'Create RFQ'
-  confirmMessage.value = 'Create an RFQ from this requisition?'
-  confirmAction.value = 'create_rfq'
-  confirmVisible.value = true
-}
-
-const createPoFromRequisition = () => {
-  confirmTitle.value = 'Create Purchase Order'
-  confirmMessage.value = 'Create a Purchase Order from this requisition?'
-  confirmAction.value = 'create_po'
-  confirmVisible.value = true
-}
-
 onMounted(() => {
   loadDetail()
   loadDeliveryLogs()
@@ -973,12 +996,6 @@ const performConfirmedAction = async () => {
     } else if (action === 'delete') {
       res = await procurementService.deletePurchaseRequisition(requisitionId)
       if (res) router.push({ name: 'procurement.purchase-requisitions' })
-    } else if (action === 'create_rfq') {
-      router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
-      return
-    } else if (action === 'create_po') {
-      router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
-      return
     } else if (action && action.startsWith('create_gr:')) {
       const poId = Number(action.split(':')[1])
       router.push({ name: 'inventory.goods-receipts.create', query: { po_id: poId } })

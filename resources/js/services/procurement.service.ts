@@ -593,6 +593,11 @@ class ProcurementService {
     return response.data
   }
 
+  async recordOfflineQuotation(rfqId: number, data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/rfqs/${rfqId}/offline-quotation`, data)
+    return response.data
+  }
+
   async negotiatePortalFeedback(rfqId: number, feedbackId: number, data: { counter_price: number; notes?: string }) {
     const response = await axiosClient.post(`${this.baseUrl}/rfqs/${rfqId}/portal-feedbacks/${feedbackId}/negotiate`, data)
     return response.data
@@ -651,6 +656,21 @@ class ProcurementService {
     return response.data
   }
 
+  async markPurchaseOrderSentOffline(id: number, data: { response_channel: string; sent_at: string; notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/mark-sent`, data)
+    return response.data
+  }
+
+  async recordPurchaseOrderSupplierResponse(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/supplier-response`, data)
+    return response.data
+  }
+
+  async updateSupplierDeliveryStatus(id: number, data: { status: 'out_for_delivery' | 'delivered'; notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/supplier-delivery-status`, data)
+    return response.data
+  }
+
   async cancelPurchaseOrder(id: number, reason?: string) {
     const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/cancel`, { reason })
     return response.data
@@ -664,6 +684,11 @@ class ProcurementService {
   // ==================== GOODS RECEIPTS ====================
   async getGoodsReceipts(params?: any, scope: 'inventory' | 'procurement' = 'inventory') {
     const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts`, { params })
+    return response.data
+  }
+
+  async getGoodsReceiptSummary(params?: any, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/summary`, { params })
     return response.data
   }
 

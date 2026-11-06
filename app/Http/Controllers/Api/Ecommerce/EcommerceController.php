@@ -3123,17 +3123,18 @@ class EcommerceController extends Controller
         try {
             $this->notifyUsersByPermissions(
                 (int) $storeId,
-                ['sales.chats.view', 'sales.chats.manage'],
+                ['crm.chats.view'],
                 [
                     'store_id' => (int) $storeId,
-                    'module' => 'sales',
+                    'module' => 'crm',
                     'entity_type' => 'ecommerce_chat_thread',
                     'entity_id' => (int) $thread->id,
                     'action' => 'new_message',
                     'title' => 'New Customer Chat Message',
                     'message' => 'A customer sent a new message in chat.',
                     'severity' => 'info',
-                    'link' => '/CRM/chats',
+                    'link' => '/crm/chats?thread_id=' . (int) $thread->id,
+                    'data' => ['required_permission' => 'crm.chats.view'],
                 ],
                 [(int) $user->id]
             );

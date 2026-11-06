@@ -141,7 +141,7 @@
           <!-- Status -->
           <Column header="Status" style="width: 15%">
             <template #body="{ data }">
-              <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+              <Badge :value="formatStatus(data)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
 
@@ -303,8 +303,10 @@ function formatFinanceStatus(status: string): string {
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
-function formatStatus(status: string): string {
+function formatStatus(order: any): string {
+  const status = String(order?.status || '')
   if (!status) return '-'
+  if (status === 'supplier_accepted' && order.fulfillment_method === 'store_pickup') return 'Supplier Pickup'
   const map: Record<string, string> = {
     draft: 'Draft',
     sent_to_supplier: 'Sent to Supplier',

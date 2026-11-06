@@ -104,14 +104,29 @@
         class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between sticky top-0 z-20 shadow-sm">
         <div class="flex items-center gap-3">
           <Button
-            :icon="sidebarOpen ? 'pi pi-angle-left' : 'pi pi-bars'"
             size="small"
             text
             rounded
             severity="secondary"
             :aria-label="sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            :title="sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'"
             @click="toggleSidebar"
-          />
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-5 w-5"
+              aria-hidden="true"
+            >
+              <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+              <path d="M9 5v14" />
+              <path :d="sidebarOpen ? 'm15 9-3 3 3 3' : 'm13 9 3 3-3 3'" />
+            </svg>
+          </Button>
           <div class="hidden text-sm font-semibold text-gray-700 sm:block">{{ pageTitle || 'Workspace' }}</div>
         </div>
   
@@ -698,7 +713,7 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['admin', 'store', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','sales','logistics', 'crm']
+  const moduleOrder = ['admin', 'store', 'inventory', 'sales', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance', 'logistics', 'crm']
 
   const catalogModules = authStore.systemModules
     .map((module: any) => String(module?.key || '').trim().toLowerCase())
@@ -759,7 +774,7 @@ const formatModuleName = (module: string): string => {
   if (catalogName) return catalogName
   if (module === 'warehouse') return 'Warehouse'
   if (module == 'hr') return 'Human Resources'
-  if (module === 'merchandising') return 'E-Commerce'
+  if (module === 'merchandising') return 'Product Catalog'
 
   return module
     .replace(/_/g, ' ')

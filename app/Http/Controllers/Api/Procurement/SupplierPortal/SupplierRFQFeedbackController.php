@@ -345,10 +345,15 @@ class SupplierRFQFeedbackController extends Controller
 
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
-                    'supplier_portal_id' => $portal->id,
+                    'supplier_id' => $portal->supplier_id,
                     'rfq_item_id' => $request->rfq_item_id,
                 ],
                 [
+                    'supplier_portal_id' => $portal->id,
+                    'response_source' => 'portal',
+                    'response_channel' => 'portal',
+                    'response_received_at' => now(),
+                    'recorded_by' => null,
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
                     'available_quantity' => $request->available_quantity,

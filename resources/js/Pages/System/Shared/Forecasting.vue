@@ -144,27 +144,21 @@
                         }}</template></Column
                     >
                     <Column field="recommended" header="Suggested qty" />
-                    <Column header="Status" style="width: 110px"
+                    <Column header="Status" style="min-width: 145px"
                         ><template #body="{ data }"
                             ><Badge
                                 :value="data.status"
-                                :severity="severity(data.status)" /></template
+                                :severity="severity(data.status)"
+                                class="whitespace-nowrap" /></template
                     ></Column>
-                    <Column header="Action"
+                    <Column header="Action" style="min-width: 170px"
                         ><template #body="{ data }"
-                            ><Button
-                                label="View"
+                            ><div class="flex w-max flex-nowrap items-center gap-2"><Button label="View" size="small" outlined rounded severity="secondary" @click="viewItem(data)" /><Button v-if="data.action_key === 'create_restock'"
+                                label="Restock"
                                 size="small"
                                 outlined
-                                icon="pi pi-eye"
                                 severity="warn"
-                                @click="
-                                    router.visit(
-                                        warehouse
-                                            ? `/warehouse/stock/${data.id}`
-                                            : `/inventory/items/${data.id}`,
-                                    )
-                                " /></template
+                                @click="performAction(data)" /></div></template
                     ></Column>
                 </DataTable>
                 <Paginator
@@ -254,7 +248,7 @@ const periods = [
     { label: "Last 60 days", value: 60 },
     { label: "Last 90 days", value: 90 },
 ];
-const statuses = ["Out of stock", "Reorder now", "Watch", "Healthy"].map(
+const statuses = ["Out of stock", "Reorder now", "Watch", "Projected excess", "Healthy"].map(
     (value) => ({ label: value, value }),
 );
 const days = ref(30);
@@ -299,7 +293,32 @@ const severity = (value: string) =>
           ? "warn"
           : value === "Watch"
             ? "info"
-            : "success";
+            : value === "Projected excess" ? "warn" : "success";
+const viewItem = (data: any) => router.visit(warehouse ? `/warehouse/stock/${data.id}` : `/inventory/items/${data.id}`);
+const performAction = (data: any) => {
+    if (data.action_key !== "create_restock") {
+        viewItem(data);
+        return;
+    }
+    const path = warehouse ? "/warehouse/purchase-requisitions/create" : "/inventory/purchase-orders/create";
+    const params = warehouse
+        ? new URLSearchParams({
+              branch_inventory_id: String(data.id),
+              branch_id: String(data.branch_id),
+              product_id: String(data.product_id),
+              requested_quantity: String(Math.max(1, Number(data.recommended || 0))),
+              notes: `Restock requested from the ${days.value}-day forecast.`,
+          })
+        : new URLSearchParams({
+              forecast_prefill: "1",
+              product_id: String(data.product_id),
+              variation_id: String(data.variation_id || 0),
+              quantity_ordered: String(Math.max(1, Number(data.recommended || 0))),
+              branch_id: String(data.branch_id),
+              forecast_days: String(days.value),
+          });
+    router.visit(`${path}?${params.toString()}`);
+};
 const chartData = computed(() => ({
     labels: trend.value.map((row) => row.day),
     datasets: [

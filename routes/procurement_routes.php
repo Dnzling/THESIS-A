@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\Procurement\BudgetController;
 // ============================================
 Route::prefix('procurement')->group(function () {
     Route::get('/goods-receipts', [GoodsReceiptController::class, 'index']);
+    Route::get('/goods-receipts/summary', [GoodsReceiptController::class, 'summary']);
     Route::get('/goods-receipts/{id}', [GoodsReceiptController::class, 'show']);
     Route::put('/goods-receipts/{id}/quality-check', [GoodsReceiptController::class, 'saveQualityCheck']);
     Route::get('/goods-receipts/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);
@@ -95,6 +96,7 @@ Route::prefix('procurement')->group(function () {
     Route::get('/requisitions/branch/{branchId}/inventory', [BranchInventoryController::class, 'index']);
     Route::prefix('requisitions')->group(function () {
         Route::get('/', [PurchaseRequisitionController::class, 'index']);
+        Route::get('/{id}/split-preview', [PurchaseRequisitionController::class, 'splitPreview']);
         Route::get('/{id}', [PurchaseRequisitionController::class, 'show']);
         Route::post('/', [PurchaseRequisitionController::class, 'store']);
         Route::put('/{id}', [PurchaseRequisitionController::class, 'update']);
@@ -137,6 +139,7 @@ Route::prefix('procurement')->group(function () {
         Route::post('/{id}/portal-feedbacks/{feedbackId}/review', [RequestForQuotationController::class, 'reviewPortalFeedback']);
         Route::post('/{id}/portal-feedbacks/{feedbackId}/negotiate', [RequestForQuotationController::class, 'negotiatePortalFeedback']);
         Route::post('/{id}/portal-feedbacks/bulk-approve', [RequestForQuotationController::class, 'bulkApprovePortalFeedbacks']);
+        Route::post('/{id}/offline-quotation', [RequestForQuotationController::class, 'recordOfflineQuotation']);
 
         // Compare quotations
         Route::get('/{rfqId}/quotations/compare', [SupplierQuotationController::class, 'compare']);
@@ -164,6 +167,9 @@ Route::prefix('procurement')->group(function () {
         Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve']);
         Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject']);
         Route::post('/{id}/send', [PurchaseOrderController::class, 'send']);
+        Route::post('/{id}/mark-sent', [PurchaseOrderController::class, 'markSentOffline']);
+        Route::post('/{id}/supplier-response', [PurchaseOrderController::class, 'recordSupplierResponse']);
+        Route::post('/{id}/supplier-delivery-status', [PurchaseOrderController::class, 'updateSupplierDeliveryStatus']);
         Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
         Route::get('/{id}/print', [PurchaseOrderPrintEmailController::class, 'generatePdf']);
         Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo']);

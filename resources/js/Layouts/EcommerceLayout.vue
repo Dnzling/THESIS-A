@@ -175,22 +175,14 @@
           </div>
         </div>
         <template v-else>
+          <p class="mb-3 text-xs text-slate-500">Choose a room to browse products curated for that space.</p>
           <div class="grid max-h-80 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             <button v-for="room in browseRooms" :key="room.id" type="button"
-              class="overflow-hidden rounded-xl border text-left text-xs"
-              :class="selectedRoom?.id === room.id ? 'border-orange-500' : 'border-slate-200'"
-              @click="selectedRoom = room">
+              class="overflow-hidden rounded-xl border border-slate-200 text-left text-xs transition hover:border-orange-400 hover:shadow-sm"
+              @click="openBrowseRoom(room)">
               <img :src="room.image_url || '/F.svg'" :alt="room.name" class="h-24 w-full object-cover" />
               <span class="block truncate p-2 font-medium">{{ room.name }}</span>
             </button>
-          </div>
-          <div v-if="selectedRoom" class="mt-3">
-            <p class="mb-2 text-xs text-slate-500">Choose a category for {{ selectedRoom.name }}</p>
-            <div class="flex flex-wrap gap-2">
-              <button v-for="category in browseCategories" :key="category.id" type="button"
-                class="rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:border-orange-400"
-                @click="openBrowseCategory(category.id, selectedRoom.slug)">{{ category.category_name }}</button>
-            </div>
           </div>
         </template>
       </div>
@@ -327,11 +319,10 @@ function openSearchProduct(id: number) {
 const browsePanel = ref('')
 const browseCategories = ref<any[]>([])
 const browseRooms = ref<any[]>([])
-const selectedRoom = ref<any>(null)
 async function toggleBrowse(panel: string) {
   browsePanel.value = browsePanel.value === panel ? '' : panel
   if (!browsePanel.value) return
-  if (!browseCategories.value.length) {
+  if (panel === 'products' && !browseCategories.value.length) {
     try {
       const response = await ecommerceService.getActiveStockCategories()
       browseCategories.value = response.data?.data || []
@@ -348,9 +339,13 @@ function openBrowseRoute(name: string) {
   browsePanel.value = ''
   router.push({ name })
 }
-function openBrowseCategory(categoryId: number, room?: string) {
+function openBrowseRoom(room: any) {
   browsePanel.value = ''
-  router.push({ name: 'ecommerce.products', query: { category_id: categoryId, ...(room ? { room } : {}) } })
+  router.push({ name: 'ecommerce.products', query: { room: room.slug } })
+}
+function openBrowseCategory(categoryId: number) {
+  browsePanel.value = ''
+  router.push({ name: 'ecommerce.products', query: { category_id: categoryId } })
 }
 
 const cartCount = ref(0)

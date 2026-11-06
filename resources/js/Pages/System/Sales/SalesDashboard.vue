@@ -114,11 +114,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import Button from 'primevue/button'
-import Chart from 'primevue/chart'
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Badge from 'primevue/badge'

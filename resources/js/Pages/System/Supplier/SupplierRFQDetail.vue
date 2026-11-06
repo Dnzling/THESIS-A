@@ -26,7 +26,6 @@
                 <div class="text-sm text-gray-500">RFQ</div>
                 <div class="text-lg font-semibold text-gray-900">{{ rfq.rfq_number }}</div>
               </div>
-              <div class="text-sm text-gray-700">{{ rfq.description || 'No description' }}</div>
               <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div class="text-gray-500">Created</div>
@@ -53,23 +52,23 @@
       </Card>
 
       <Card
-        v-if="rfq?.instructions || rfq?.qualification_requirements"
+        v-if="requestDetails || rfq?.qualification_requirements"
         class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm"
       >
         <template #title>
           <div class="flex items-center gap-2 text-base font-semibold text-slate-900">
             <i class="pi pi-file-edit text-orange-600"></i>
-            Supplier Requirements
+            Request Details &amp; Requirements
           </div>
         </template>
         <template #content>
           <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div v-if="rfq?.instructions" class="rounded-xl border border-blue-100 bg-blue-50 p-4">
-              <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-900">
-                <i class="pi pi-info-circle"></i>
-                Special Instructions
+            <div v-if="requestDetails" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <i class="pi pi-info-circle text-orange-600"></i>
+                Request Details &amp; Instructions
               </div>
-              <p class="whitespace-pre-line text-sm leading-6 text-blue-800">{{ rfq.instructions }}</p>
+              <p class="whitespace-pre-line text-sm leading-6 text-slate-700">{{ requestDetails }}</p>
             </div>
             <div v-if="rfq?.qualification_requirements" class="rounded-xl border border-amber-100 bg-amber-50 p-4">
               <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -339,7 +338,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -364,6 +363,10 @@ const confirm = useConfirm()
 const loading = ref(false)
 const submitting = ref(false)
 const rfq = ref(null)
+const requestDetails = computed(() => [rfq.value?.description, rfq.value?.instructions]
+  .map((value: string | null | undefined) => value?.trim())
+  .filter(Boolean)
+  .join('\n\n'))
 const feedbackByItemId = ref({})
 const quoteData = ref({})
 const quoteErrors = ref<Record<number, Record<string, string>>>({})

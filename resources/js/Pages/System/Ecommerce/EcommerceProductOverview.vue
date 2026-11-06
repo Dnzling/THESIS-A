@@ -44,7 +44,7 @@
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
                 :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" allow-bottom-view />
-            </div>c
+            </div>
   
             <div v-if="!show3DViewer && primaryImage" class="group relative w-full aspect-square cursor-zoom-in"
               @mouseenter="startHoverZoom" @mousemove="updateHoverZoom"

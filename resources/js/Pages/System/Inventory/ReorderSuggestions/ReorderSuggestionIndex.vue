@@ -4,10 +4,30 @@
       <div>
         <h1 class="text-xl font-bold text-gray-800">Reorder Suggestions</h1>
         <p class="text-xs text-gray-500 mt-0.5">
-          Suggestions are created when stock reaches its reorder threshold. Review them here before creating a purchase document.
+          {{ reorderDestination === 'warehouse'
+            ? 'Select pending items for one receiving branch to create a grouped warehouse request.'
+            : 'Group pending items by supplier and receiving branch to create one purchase order per group.' }}
         </p>
       </div>
       <div class="flex items-center gap-2">
+        <Button
+          v-if="reorderDestination === 'warehouse' && canCreateTransfer"
+          :label="`Request Selected (${selectedSuggestions.length})`"
+          icon="pi pi-warehouse"
+          size="small"
+          severity="warn"
+          :disabled="!canCreateGroupedWarehouseRequest"
+          @click="createWarehouseRequest(selectedSuggestions.map(item => item.id))"
+        />
+        <Button
+          v-else-if="reorderDestination === 'pr' && canManagePr"
+          :label="`Create Grouped PRs (${selectedSuggestions.length})`"
+          icon="pi pi-file-plus"
+          size="small"
+          severity="warn"
+          :disabled="!selectedSuggestions.length || selectedSuggestions.some(item => item.status !== 'pending')"
+          @click="createGroupedPrs"
+        />
         <Button v-if="reorderDestination === 'po' && canCreatePo" label="Create PO by Supplier" icon="pi pi-shopping-cart" size="small" severity="warn" outlined @click="openSimplePoDialog" />
         <Button
           label="Reorder Rules"
@@ -122,7 +142,10 @@
 
         <DataTable
           v-else
+          v-model:selection="selectedSuggestions"
           :value="suggestions"
+          dataKey="id"
+          :rowSelectable="isPendingSuggestionSelectable"
           rowHover
           class="p-datatable-sm text-sm"
           paginator
@@ -131,6 +154,7 @@
           :first="(pagination.current_page - 1) * filters.per_page"
           @page="onPage"
         >
+          <Column v-if="(reorderDestination === 'warehouse' && canCreateTransfer) || (reorderDestination === 'pr' && canManagePr)" selectionMode="multiple" headerStyle="width: 3rem" />
           <Column field="suggested_at" header="Date" style="width: 140px">
             <template #body="{ data }">{{ formatDate(data.suggested_at || data.created_at) }}</template>
           </Column>
@@ -160,20 +184,34 @@
               <Tag :value="capitalize(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-          <Column header="Actions" style="width: 100px">
+          <Column header="Actions" style="width: 210px">
             <template #body="{ data }">
-              <Button label="View" icon="pi pi-eye" size="small" rounded outlined @click="openDetail(data.id)" />
+              <div class="flex items-center gap-2">
+                <Button label="View" icon="pi pi-eye" size="small" rounded outlined @click="openDetail(data.id)" />
+                <Button
+                  v-if="data.metadata?.stock_transfer_id"
+                  label="View Transfer"
+                  icon="pi pi-arrow-right-arrow-left"
+                  size="small"
+                  rounded
+                  outlined
+                  @click="viewWarehouseRequest(data.metadata.stock_transfer_id)"
+                />
+              </div>
             </template>
           </Column>
           <template #empty>
             <div class="text-center py-8 text-gray-500">No reorder suggestions found.</div>
           </template>
         </DataTable>
+        <small v-if="reorderDestination === 'warehouse' && selectedSuggestions.length && !canCreateGroupedWarehouseRequest" class="mt-3 block text-amber-700">
+          Select pending suggestions for one receiving branch, with only one suggestion per product or variant.
+        </small>
       </template>
     </Card>
 
     <Dialog v-model:visible="simplePoDialogVisible" modal header="Create PO from Reorder Suggestions" :style="{ width: 'min(96vw, 900px)' }">
-      <p class="mb-4 text-sm text-slate-600">Choose a supplier and branch, then select its pending suggestions. Selected items will be placed on one draft PO.</p>
+      <p class="mb-4 text-sm text-slate-600">Choose a supplier and receiving branch, then select its linked pending suggestions. Each supplier-and-branch group becomes one draft PO.</p>
       <div class="mb-4 grid gap-3 md:grid-cols-2">
         <Select v-if="canSelectAllBranches" v-model="poBranchId" :options="poBranches" optionLabel="name" optionValue="id" placeholder="Select receiving branch" class="w-full" />
         <div v-else class="flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">Receiving branch: {{ assignedBranchName || 'No assigned branch' }}</div>
@@ -212,6 +250,16 @@ const toast = useToast()
 const authStore = useAuthStore()
 const reorderDestination = ref('pr')
 const canCreatePo = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canManagePr = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canCreateTransfer = computed(() => authStore.hasPermission('inventory.transfers.create') || authStore.hasPermission('inventory.transfers.manage'))
+const selectedSuggestions = ref<any[]>([])
+const canCreateGroupedWarehouseRequest = computed(() => {
+  if (!selectedSuggestions.value.length) return false
+  if (selectedSuggestions.value.some(item => item.status !== 'pending')) return false
+  const branches = new Set(selectedSuggestions.value.map(item => Number(item.branch_id)))
+  const products = selectedSuggestions.value.map(item => `${Number(item.product_id)}:${Number(item.variation_id || 0)}`)
+  return branches.size === 1 && new Set(products).size === products.length
+})
 const simplePoDialogVisible = ref(false)
 const simplePoLoading = ref(false)
 const poBranches = ref<any[]>([])
@@ -338,6 +386,8 @@ const loadSuggestions = async () => {
     reorderDestination.value = response?.reorder_destination || 'pr'
     const rows = extractRows(response?.data).map(normalizeSuggestion)
     suggestions.value = rows
+    const loadedIds = new Set(rows.map(row => Number(row.id)))
+    selectedSuggestions.value = selectedSuggestions.value.filter(row => loadedIds.has(Number(row.id)))
     pagination.total = Number(response?.data?.total || rows.length || 0)
     pagination.current_page = Number(response?.data?.current_page || filters.page || 1)
   } catch (error: any) {
@@ -382,6 +432,39 @@ const continueToSimplePo = () => {
   const ids = selectedPoSuggestions.value.map(item => item.id).join(',')
   simplePoDialogVisible.value = false
   inertiaRouter.visit(`/inventory/purchase-orders/create?reorder_suggestion_ids=${ids}&supplier_id=${poSupplierId.value}`)
+}
+
+const isPendingSuggestionSelectable = (row: any) => row?.status === 'pending'
+
+const createGroupedPrs = async () => {
+  if (!selectedSuggestions.value.length || selectedSuggestions.value.some(item => item.status !== 'pending')) return
+  try {
+    const response = await inventoryService.createGroupedReorderPrs(selectedSuggestions.value.map(item => Number(item.id)))
+    const createdCount = Array.isArray(response?.data) ? response.data.length : 0
+    selectedSuggestions.value = []
+    toast.add({
+      severity: 'success',
+      summary: 'Draft PRs Created',
+      detail: response?.message || `${createdCount} grouped draft purchase requisition(s) created.`,
+      life: 3500,
+    })
+    await refreshData()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Could Not Create PRs', detail: error?.response?.data?.message || 'Refresh suggestions and try again.', life: 4000 })
+  }
+}
+
+const createWarehouseRequest = (ids: number[]) => {
+  if (!ids.length || !canCreateGroupedWarehouseRequest.value) return
+  const query = new URLSearchParams({
+    type: 'transfer',
+    reorder_suggestion_ids: ids.join(','),
+  })
+  inertiaRouter.visit(`/inventory/stock-requests/create?${query.toString()}`)
+}
+
+const viewWarehouseRequest = (id: number) => {
+  router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id } })
 }
 
 const loadStats = async () => {

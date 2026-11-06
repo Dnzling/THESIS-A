@@ -172,6 +172,11 @@ class InventoryService {
     return response.data
   }
 
+  async getInventoryItemPerformance(id: number, params?: Record<string, any>) {
+    const response = await axiosClient.get(`${this.baseUrl}/items/${id}/performance`, { params })
+    return response.data
+  }
+
   // POST /inventory/items
   async createInventoryItem(data: Partial<BranchInventoryItem>) {
     const response = await axiosClient.post(`${this.baseUrl}/items`, data)
@@ -441,6 +446,28 @@ class InventoryService {
 
   async getSupplier(id: number, params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}`, { params })
+    return response.data
+  }
+
+  async getSupplierContracts(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/supplier-contracts`, { params })
+    return response.data
+  }
+
+  async getSupplierContract(id: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/supplier-contracts/${id}`)
+    return response.data
+  }
+
+  async createSupplierContract(data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async activateSupplierContract(id: string | number) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`)
     return response.data
   }
 

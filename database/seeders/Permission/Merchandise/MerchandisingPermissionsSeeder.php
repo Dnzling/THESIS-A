@@ -51,7 +51,6 @@ class MerchandisingPermissionsSeeder extends Seeder
 
             // Reports
             ['name' => 'merchandising.reports.view', 'display_name' => 'View Sales Reports', 'module' => 'merchandising'],
-            ['name' => 'merchandising.storefront.view', 'display_name' => 'View Storefront Settings', 'module' => 'merchandising'],
         ];
 
         foreach ($permissions as $permission) {

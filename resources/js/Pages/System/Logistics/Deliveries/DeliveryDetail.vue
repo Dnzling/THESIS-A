@@ -26,9 +26,18 @@
 
       <div class="flex items-center gap-2">
         <Tag
-          :value="formatDeliveryStatus(delivery?.status || 'pending')"
+          :value="formatDeliveryStatus(delivery?.status || (source === 'pickup' ? 'ready_for_dispatch' : 'pending'))"
           :severity="deliverySeverity(delivery?.status)"
           class="text-xs"
+        />
+
+        <Button
+          v-if="canAssignSupplierPickup"
+          icon="pi pi-truck"
+          label="Assign Pickup"
+          severity="warn"
+          size="small"
+          @click="router.push({ name: 'logistics.supplier-pickups.assign', params: { id: orderId } })"
         />
 
         <Button
@@ -804,6 +813,12 @@ const canAssignDelivery = computed(() => {
 const canAddToTrip = computed(() => canAssignDelivery.value
   && (!delivery.value || ['pending', 'ready_for_dispatch'].includes(String(delivery.value.status || '').toLowerCase())))
 const canManageLalamove = computed(() => authStore.hasPermission('logistics.deliveries.manage'))
+const canAssignSupplierPickup = computed(() =>
+  source.value === 'pickup'
+  && authStore.hasPermission('logistics.deliveries.manage')
+  && String(order.value?.status || '') === 'supplier_accepted'
+  && !delivery.value,
+)
 const lalamoveCityOptions = computed(() => lalamoveCities.value.map((city: any) => ({
   ...city,
   label: formatLalamoveServiceArea(city.name),

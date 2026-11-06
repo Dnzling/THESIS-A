@@ -183,19 +183,19 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
 
     // Inventory
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
-    // Redirect legacy/mistyped requisitions paths to the correct 'requisites' routes
-    Route::redirect('/inventory/requisitions', '/inventory/requisites')->name('inventory.requisitions');
-    Route::redirect('/inventory/requisitions/create', '/inventory/requisites/create')->name('inventory.requisitions.create');
-    Route::redirect('/inventory/requisitions/view', '/inventory/requisites');
-    Route::redirect('/inventory/requisitions/view/{id}', '/inventory/requisites/{id}');
-    Route::get('/inventory/requisitions/{id}', fn($id) => redirect("/inventory/requisites/{$id}"));
+    // Legacy request URLs now open the unified Inventory Stock Requests pages.
+    Route::redirect('/inventory/requisitions', '/inventory/stock-requests')->name('inventory.requisitions');
+    Route::get('/inventory/requisitions/create', fn(\Illuminate\Http\Request $request) => redirect()->route('inventory.purchase-orders.create', $request->query()))->name('inventory.requisitions.create');
+    Route::redirect('/inventory/requisitions/view', '/inventory/stock-requests');
+    Route::get('/inventory/requisitions/view/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]));
+    Route::get('/inventory/requisitions/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]));
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
     Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
     Route::redirect('/inventory/ecommerce-deliveries', '/logistics/deliveries')->name('inventory.ecommerce-deliveries');
     Route::get('/inventory/ecommerce-deliveries/{id}', fn($id) => redirect("/logistics/deliveries/{$id}"))->name('inventory.ecommerce-deliveries.detail');
     Route::redirect('/inventory/delivery-vehicles', '/logistics/vehicles')->name('inventory.delivery-vehicles');
-    $inertia('/inventory/items', 'System/Inventory/Stocks/StocksIndex', 'inventory.items', 'Branch Inventory');
+    $inertia('/inventory/items', 'System/Inventory/Stocks/StocksIndex', 'inventory.items', 'Inventory');
     $inertia('/inventory/items/create', 'System/Inventory/Stocks/ItemsCreate', 'inventory.items.create', 'Add Inventory Item');
     $inertia('/inventory/items/{id}', 'System/Inventory/Stocks/StockShow', 'inventory.items.show', 'Stock Details');
     $inertia('/inventory/items/{id}/edit', 'System/Inventory/Stocks/ItemsEdit', 'inventory.items.edit', 'Edit Inventory Item');
@@ -227,10 +227,14 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/inventory/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.create', 'Create Stock Issuance');
     $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issuance Detail');
     $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.edit', 'Edit Stock Issuance');
-    $inertia('/inventory/requisites', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisites.index', 'Purchase Requisitions');
-    $inertia('/inventory/requisites/create', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.create', 'Create Purchase Requisition');
-    $inertia('/inventory/requisites/{id}/edit', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.edit', 'Edit Purchase Requisition');
-    $inertia('/inventory/requisites/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisites.detail', 'Purchase Requisition Details');
+    $inertia('/inventory/stock-requests', 'System/Inventory/StockRequests/StockRequestIndex', 'inventory.stock-requests', 'Stock Requests');
+    $inertia('/inventory/stock-requests/create', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.create', 'Create Stock Request');
+    $inertia('/inventory/stock-requests/purchase/{id}/edit', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.edit', 'Edit Stock Request');
+    $inertia('/inventory/stock-requests/{type}/{id}', 'System/Inventory/StockRequests/StockRequestDetail', 'inventory.stock-requests.detail', 'Stock Request Details');
+    Route::get('/inventory/requisites', fn() => redirect()->route('inventory.stock-requests'))->name('inventory.requisites.index');
+    Route::get('/inventory/requisites/create', fn(\Illuminate\Http\Request $request) => redirect()->route('inventory.purchase-orders.create', $request->query()))->name('inventory.requisites.create');
+    Route::get('/inventory/requisites/{id}/edit', fn($id) => redirect()->route('inventory.stock-requests.edit', ['type' => 'purchase', 'id' => $id]))->name('inventory.requisites.edit');
+    Route::get('/inventory/requisites/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]))->name('inventory.requisites.detail');
     $inertia('/inventory/stock-returns', 'System/Inventory/StockReturns/StockReturnIndex', 'inventory.stock-returns', 'Stock Returns');
     $inertia('/inventory/stock-returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'inventory.replacements.detail', 'Replacement Case');
     $inertia('/inventory/stock-returns/create', 'System/Inventory/StockReturns/StockReturnCreate', 'inventory.stock-returns.create', 'Create Stock Return');
@@ -258,9 +262,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/inventory/adjustments/create', 'System/Inventory/Adjustments/AdjustmentCreate', 'inventory.adjustments.create', 'Create Adjustment');
     $inertia('/inventory/adjustments/{id}', 'System/Inventory/Adjustments/AdjustmentDetail', 'inventory.adjustments.detail', 'Adjustment Detail');
     $inertia('/inventory/adjustments/{id}/edit', 'System/Inventory/Adjustments/AdjustmentDetail', 'inventory.adjustments.edit', 'Edit Adjustment');
-    $inertia('/inventory/transfers', 'System/Inventory/Transfers/TransferIndex', 'inventory.transfers', 'Transfers');
-    $inertia('/inventory/transfers/create', 'System/Inventory/Transfers/TransferCreate', 'inventory.transfers.create', 'Create Transfer');
-    $inertia('/inventory/transfers/{id}', 'System/Inventory/Transfers/TransferDetail', 'inventory.transfers.detail', 'Transfer Detail');
+    Route::get('/inventory/transfers', fn() => redirect()->route('inventory.stock-requests', ['type' => 'transfer']))->name('inventory.transfers');
+    Route::get('/inventory/transfers/create', fn(\Illuminate\Http\Request $request) => redirect()->route('inventory.stock-requests.create', array_merge(['type' => 'transfer'], $request->query())))->name('inventory.transfers.create');
+    Route::get('/inventory/transfers/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'transfer', 'id' => $id]))->name('inventory.transfers.detail');
     $inertia('/inventory/stock-movements', 'System/Inventory/StockMovements/StockMovementIndex', 'inventory.stock-movements', 'Stock Movements');
     $inertia('/inventory/alerts', 'System/Inventory/Alerts/AlertsIndex', 'inventory.alerts', 'Alerts');
     $inertia('/inventory/transactions', 'System/Inventory/Transactions/TransactionIndex', 'inventory.transactions', 'Transactions');

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Core\User;
 
 class SupplierRFQFeedback extends Model
 {
@@ -14,6 +16,11 @@ class SupplierRFQFeedback extends Model
 
     protected $fillable = [
         'supplier_portal_id',
+        'supplier_id',
+        'response_source',
+        'response_channel',
+        'response_received_at',
+        'recorded_by',
         'rfq_id',
         'rfq_item_id',
         'quoted_price',
@@ -64,12 +71,23 @@ class SupplierRFQFeedback extends Model
         'tax_rate' => 'decimal:2',
         'submitted_at' => 'datetime',
         'reviewed_at' => 'datetime',
+        'response_received_at' => 'datetime',
     ];
 
     // Relationships
     public function supplierPortal(): BelongsTo
     {
         return $this->belongsTo(SupplierPortal::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function recordedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
     }
 
     public function rfq(): BelongsTo

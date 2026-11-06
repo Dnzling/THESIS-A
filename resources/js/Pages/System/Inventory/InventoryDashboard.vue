@@ -1,8 +1,8 @@
 <template>
   <div class="module-dashboard dashboard--inventory space-y-6 text-sm">
     <div v-if="loading" class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-lg" />
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <Skeleton v-for="i in 5" :key="i" height="120px" class="rounded-lg" />
       </div>
       <Skeleton height="300px" class="rounded-lg" />
     </div>
@@ -19,7 +19,7 @@
             @keyup.enter="searchInventory" />
         </IconField>
       </div>
-      <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
+      <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md" @click="router.push({ name: 'inventory.items' })">
           <div class="flex items-start gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 ring-4 ring-blue-50/50"><i class="pi pi-box text-xl"></i></div>
@@ -64,6 +64,16 @@
             </div>
           </div>
         </section>
+        <section class="dashboard-panel rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-4 ring-emerald-50/50"><i class="pi pi-wallet text-xl"></i></div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-slate-500">Inventory Value</p>
+              <p class="mt-1 text-xl font-bold leading-tight text-slate-900">{{ formatPhpCurrency(dashboardData.inventory.total_value) }}</p>
+              <p class="mt-2 text-[11px] text-slate-400">Based on stock on hand and unit cost</p>
+            </div>
+          </div>
+        </section>
 
       </div>
 
@@ -103,14 +113,6 @@
         </Card>
 
         <Card>
-          <template #title><span class="text-sm font-semibold">Inventory Value</span></template>
-          <template #content>
-            <p class="text-2xl font-semibold text-gray-900">{{ formatPhpCurrency(dashboardData.inventory.total_value) }}</p>
-            <p class="mt-1 text-xs text-gray-500">Based on quantity on hand and cost per unit.</p>
-          </template>
-        </Card>
-
-        <Card>
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Reorder priorities</span><p class="mt-1 text-xs font-normal text-slate-500">Lowest stock first</p></div>
@@ -118,7 +120,7 @@
             </div>
           </template>
           <template #content>
-            <DataTable :value="lowStockItems" size="small" rowHover class="text-xs" @row-click="onInventoryRowClick">
+              <DataTable :value="lowStockItems" :loading="supportingDataLoading" size="small" rowHover class="text-xs" @row-click="onInventoryRowClick">
               <Column header="Item"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.variation?.variation_name || data.product?.product_name || 'Item' }}</span><span class="mt-0.5 block text-[10px] text-slate-500">{{ data.variation?.variation_sku || data.product?.sku || 'No SKU' }}</span></template></Column>
               <Column field="quantity_available" header="Available" />
               <Column field="reorder_point" header="Reorder at" />
@@ -138,7 +140,7 @@
             </div>
           </template>
           <template #content>
-            <DataTable :value="pendingAdjustments" size="small" rowHover class="text-xs" @row-click="openAdjustment">
+            <DataTable :value="pendingAdjustments" :loading="supportingDataLoading" size="small" rowHover class="text-xs" @row-click="openAdjustment">
               <Column field="adjustment_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.adjustment_number || `ADJ-${data.id}` }}</span></template></Column>
               <Column header="Branch"><template #body="{ data }">{{ data.branch?.name || 'Current branch' }}</template></Column>
               <Column field="created_at" header="Submitted"><template #body="{ data }">{{ formatDate(data.created_at) }}</template></Column>
@@ -156,7 +158,7 @@
             </div>
           </template>
           <template #content>
-            <DataTable :value="pendingTransfers" size="small" rowHover class="text-xs" @row-click="openTransfer">
+            <DataTable :value="pendingTransfers" :loading="supportingDataLoading" size="small" rowHover class="text-xs" @row-click="openTransfer">
               <Column field="transfer_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.transfer_number || data.transfer_no || `TR-${data.id}` }}</span></template></Column>
               <Column header="Route"><template #body="{ data }">{{ data.from_branch?.name || 'Branch' }} <span class="text-slate-400">to</span> {{ data.to_branch?.name || 'Branch' }}</template></Column>
               <Column field="status" header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="data.status === 'in_transit' ? 'info' : 'warn'" /></template></Column>
@@ -344,6 +346,7 @@ const lowStockItems = ref<any[]>([])
 const pendingAdjustments = ref<any[]>([])
 const pendingTransfers = ref<any[]>([])
 const inventoryItemsLoading = ref(false)
+const supportingDataLoading = ref(true)
 const stockSearchQuery = ref('')
 const trendPeriod = ref('daily')
 const trendPeriods = [
@@ -469,15 +472,11 @@ const dashboardData = ref({
 const loadDashboard = async () => {
   loading.value = true
   inventoryItemsLoading.value = true
+  supportingDataLoading.value = true
   try {
-    const [statsResponse, inventoryResponse, lowStockResponse, outOfStockResponse, adjustmentsResponse, requestedTransfersResponse, transitTransfersResponse] = await Promise.all([
+    const [statsResponse, inventoryResponse] = await Promise.all([
       axios.get('/api/inventory/dashboard/stats'),
-      inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' }),
-      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'low_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
-      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'out_of_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
-      inventoryService.getAdjustments({ page: 1, per_page: 5, status: 'pending_approval' }).catch(() => null),
-      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'requested' }).catch(() => null),
-      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'in_transit' }).catch(() => null)
+      inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' })
     ])
 
     if (statsResponse.data?.data) {
@@ -487,8 +486,18 @@ const loadDashboard = async () => {
       }
     }
 
-    const inventoryRows = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : []
-    inventoryItems.value = inventoryRows
+    inventoryItems.value = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : []
+    loading.value = false
+    inventoryItemsLoading.value = false
+
+    const [lowStockResponse, outOfStockResponse, adjustmentsResponse, requestedTransfersResponse, transitTransfersResponse] = await Promise.all([
+      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'low_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
+      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'out_of_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
+      inventoryService.getAdjustments({ page: 1, per_page: 5, status: 'pending_approval' }).catch(() => null),
+      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'requested' }).catch(() => null),
+      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'in_transit' }).catch(() => null)
+    ])
+
     lowStockItems.value = [
       ...(Array.isArray(outOfStockResponse?.data) ? outOfStockResponse.data : []),
       ...(Array.isArray(lowStockResponse?.data) ? lowStockResponse.data : [])
@@ -513,6 +522,7 @@ const loadDashboard = async () => {
   } finally {
     loading.value = false
     inventoryItemsLoading.value = false
+    supportingDataLoading.value = false
   }
 }
 

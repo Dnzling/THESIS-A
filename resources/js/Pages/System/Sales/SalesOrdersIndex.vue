@@ -101,7 +101,7 @@
             <template #body="{ data }">
               <div class="flex items-center gap-1">
                 <Button  text icon="pi pi-eye" @click="openDetail(data)" />
-                <Button severity="secondary" text icon="pi pi-print" @click="printReceipt(data)" />
+                <Button v-if="paymentStatusKey(data.payment_status) === 'paid'" severity="secondary" text icon="pi pi-print" aria-label="Print receipt" @click="printReceipt(data)" />
               
               </div>
             </template>

@@ -4,7 +4,7 @@ import './axios';
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
-import { createApp, defineComponent, h } from 'vue';
+import { createApp, defineAsyncComponent, defineComponent, h } from 'vue';
 import { createPinia } from 'pinia';
 import SystemLayout from '@/Layouts/SystemLayout.vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
@@ -21,7 +21,6 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useAuthStore } from '@/stores/auth';
 import axios from 'axios';
 import { captureDevConsole } from './utils/devConsoleCapture';
-import UnsavedCreateChangesGuard from '@/Components/UnsavedCreateChangesGuard.vue';
 
 captureDevConsole();
 
@@ -68,7 +67,6 @@ import Divider from 'primevue/divider';
 import Steps from 'primevue/steps';
 import ProgressBar from 'primevue/progressbar';
 import ConfirmDialog from 'primevue/confirmdialog';
-import PrimeChart from 'primevue/chart';
 import MeterGroup from 'primevue/metergroup';
 import InputOtp from 'primevue/inputotp';
 import Menu from 'primevue/menu';
@@ -87,6 +85,7 @@ import Editor from 'primevue/editor';
 import { Link, router as inertiaRouter } from '@inertiajs/vue3';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Furnisync';
+const PrimeChart = defineAsyncComponent(() => import('primevue/chart'));
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
@@ -116,7 +115,7 @@ createInertiaApp({
         }),
     setup({ el, App, props, plugin }) {
         const app = createApp(defineComponent({
-            setup: () => () => [h(App, props), h(UnsavedCreateChangesGuard)],
+            setup: () => () => h(App, props),
         }));
         const pinia = createPinia();
         let currentPageUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;

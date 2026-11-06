@@ -14,6 +14,8 @@ use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Core\ActivityLog;
 use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Hr\Employee;
@@ -225,14 +227,24 @@ class GoodsReceiptController extends Controller
      */
     public function print(int $id)
     {
+        $user = request()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        abort_unless($storeId > 0, 403);
+
         $receipt = GoodsReceipt::with([
+            'purchaseOrder.store',
             'purchaseOrder.supplier',
             'branch',
             'items.product',
+            'items.variation',
             'items.purchaseOrderItem',
             'receivedBy',
             'verifiedBy'
-        ])->findOrFail($id);
+        ])->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->findOrFail($id);
+
+        $assignedBranchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
+        abort_if($assignedBranchId > 0 && (int) $receipt->branch_id !== $assignedBranchId, 404);
 
         $data = [
             'grn_number' => $receipt->grn_number,
@@ -250,6 +262,9 @@ class GoodsReceiptController extends Controller
             'received_by' => $receipt->receivedBy,
             'verified_by' => $receipt->verifiedBy,
             'items' => $receipt->items,
+            'store' => $receipt->purchaseOrder?->store,
+            'printed_by' => trim(implode(' ', array_filter([$user?->fname, $user?->mname, $user?->lname]))) ?: ($user?->email ?? 'Authenticated user'),
+            'printed_at' => now(),
         ];
 
         $pdf = \PDF::loadView('procurement.goods-receipt-pdf', $data)
@@ -921,6 +936,13 @@ class GoodsReceiptController extends Controller
             }
 
             $newCost = $poItem->unit_cost ?? 0;
+            $this->updateInventoryCostFromReceipt(
+                (int) $po->store_id,
+                (int) $itemData['product_id'],
+                isset($itemData['variation_id']) ? (int) $itemData['variation_id'] : null,
+                (int) $itemData['quantity_received'],
+                (float) $newCost
+            );
             $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
@@ -985,6 +1007,42 @@ class GoodsReceiptController extends Controller
                 $po->markInTransit();
             }
         }
+    }
+
+    private function updateInventoryCostFromReceipt(
+        int $storeId,
+        int $productId,
+        ?int $variationId,
+        int $receivedQuantity,
+        float $receivedUnitCost
+    ): void {
+        if ($receivedQuantity <= 0) {
+            return;
+        }
+
+        $stockQuery = BranchInventory::query()
+            ->where('store_id', $storeId)
+            ->where('product_id', $productId);
+        $variationId === null
+            ? $stockQuery->whereNull('variation_id')
+            : $stockQuery->where('variation_id', $variationId);
+        $existingQuantity = (int) $stockQuery->sum('quantity_on_hand');
+
+        $costRecord = $variationId === null
+            ? Product::query()->where('store_id', $storeId)->find($productId)
+            : ProductVariation::query()->where('product_id', $productId)->find($variationId);
+
+        if (!$costRecord) {
+            return;
+        }
+
+        $currentCost = $costRecord->getRawOriginal('cost_price');
+        $weightedCost = $existingQuantity > 0 && $currentCost !== null
+            ? (($existingQuantity * (float) $currentCost) + ($receivedQuantity * $receivedUnitCost)) / ($existingQuantity + $receivedQuantity)
+            : $receivedUnitCost;
+
+        $costRecord->cost_price = round($weightedCost, 2);
+        $costRecord->save();
     }
 
     /**

@@ -17,6 +17,7 @@
               severity="info"
               @click="printStockIssue"
               :disabled="loading"
+              :loading="printing"
               size="small"
             />
             <Button
@@ -452,6 +453,7 @@ import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../../../stores/auth'
 import inventoryService from '../../../../services/inventory.service'
+import axiosClient from '@/axios'
 
 const loading = ref(true)
 const cancelLoading = ref(false)
@@ -466,6 +468,7 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const actionLoading = ref(false)
+const printing = ref(false)
 const canApprove = computed(() => authStore.hasPermission('inventory.stock_issues.approve'))
 
 const totalQuantity = computed(() => {
@@ -543,7 +546,7 @@ const loadSerialNumbers = async () => {
   }
 }
 
-const printStockIssue = () => {
+const printStockIssueLegacy = () => {
   // Create a new window for printing
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
@@ -701,6 +704,22 @@ const printStockIssue = () => {
   // Wait for content to load then print
   printWindow.onload = () => {
     printWindow.print()
+  }
+}
+
+const printStockIssue = async () => {
+  if (printing.value || !stockIssue.value?.id) return
+  printing.value = true
+  try {
+    const response = await axiosClient.get(`/api/inventory/issues/${stockIssue.value.id}/print`, { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const printWindow = window.open(url, '_blank')
+    if (printWindow) printWindow.opener = null
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Print Failed', detail: error?.response?.data?.message || 'Unable to create the issuance slip.', life: 3500 })
+  } finally {
+    printing.value = false
   }
 }
 

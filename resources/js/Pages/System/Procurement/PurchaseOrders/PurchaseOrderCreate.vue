@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-7xl space-y-6 px-4 pb-8 sm:px-6 lg:px-8">
     <!-- Header -->
     <div class="flex items-center gap-3 px-5 py-4 shadow-sm">
-      <Button icon="pi pi-arrow-left" text rounded severity="secondary" aria-label="Back to purchase orders" @click="router.push({ name: 'procurement.purchase-orders' })" />
+      <Button icon="pi pi-arrow-left" text rounded severity="secondary" aria-label="Back to purchase orders" @click="router.back()" />
       <div class="min-w-0">
         <h2 class="text-2xl font-bold text-slate-900">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
         <p class="mt-1 text-sm text-slate-500">Review the assigned supplier, destination branch, items, and totals before submission.</p>
@@ -17,61 +17,6 @@
     <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <template #content>
         <form class="space-y-8" @submit.prevent="openSplitPoPreview('submit')">
-          <!-- Supplier selection comes first so products can be scoped to the supplier. -->
-          <section class="border-b border-slate-200 pb-7">
-            <div class="mb-4">
-              <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
-              <p class="mt-1 text-sm text-slate-500">Select the supplier for this purchase order.</p>
-            </div>
-
-            <div v-if="!splitPoMode" class="mb-4 max-w-xl">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Supplier</label>
-              <Select
-                v-model="form.supplier_id"
-                :options="eligibleSuppliers"
-                option-label="display_name"
-                option-value="id"
-                placeholder="Select an eligible supplier"
-                :loading="eligibleSuppliersLoading"
-                :disabled="eligibleSuppliersLoading || listedProductIds.length === 0"
-                filter
-                show-clear
-                fluid
-                @change="onSupplierChange"
-              />
-              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add a product to find its suppliers.</small>
-              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
-              <small v-else class="mt-1 block text-slate-500">Suppliers linked to all listed products with an active contract.</small>
-            </div>
-            <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              Suppliers are assigned separately to each product group in this split purchase order.
-            </div>
-
-            <div v-if="selectedSupplier" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contact Person</p>
-                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.contact_person || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
-                  <p class="mt-1 break-all font-medium text-slate-900">{{ selectedSupplier.email || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
-                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.phone || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Discount</p>
-                  <p class="mt-1 font-medium text-slate-900">{{ contractDiscountDisplay }}</p>
-                </div>
-              </div>
-            </div>
-            <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-              {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Select a supplier to load its details.' }}
-            </div>
-          </section>
-
           <!-- Order context is determined by the source PR/RFQ. -->
           <section class="border-b border-slate-200 pb-7">
             <div class="mb-4 flex items-center justify-between gap-3">
@@ -82,11 +27,31 @@
               <Tag v-if="form.purchase_requisition_id" value="From Purchase Requisition" severity="info" />
             </div>
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Supplier</p>
-                <p class="mt-1 font-semibold text-slate-900">{{ selectedSupplierName }}</p>
-                <p v-if="splitPoMode" class="mt-1 text-xs text-blue-600">Separate PO will be created for each supplier.</p>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div v-if="!splitPoMode">
+                <label class="mb-1.5 block text-xs font-semibold text-slate-600">
+                  Supplier <span class="text-red-500">*</span>
+                </label>
+                <Select
+                  v-model="form.supplier_id"
+                  :options="eligibleSuppliers"
+                  option-label="display_name"
+                  option-value="id"
+                  placeholder="Select an eligible supplier"
+                  :loading="eligibleSuppliersLoading"
+                  :disabled="eligibleSuppliersLoading || listedProductIds.length === 0"
+                  filter
+                  show-clear
+                  size="small"
+                  fluid
+                  @change="onSupplierChange"
+                />
+                <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add a product to find its suppliers.</small>
+                <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
+                <small v-else class="mt-1 block text-slate-500">Suppliers linked to all listed products with an active contract.</small>
+              </div>
+              <div v-else class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                Suppliers are assigned separately to each product group in this split purchase order.
               </div>
               <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Destination Branch</p>
@@ -96,6 +61,52 @@
                 <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Currency</p>
                 <p class="mt-1 font-semibold text-slate-900">{{ storeCurrency }}</p>
               </div>
+            </div>
+
+            <div v-if="selectedSupplier" class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="mb-3 flex items-center gap-2">
+                <i class="pi pi-building text-slate-500" />
+                <div class="min-w-0">
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Selected supplier</p>
+                  <p class="truncate text-sm font-semibold text-slate-900">{{ selectedSupplier.supplier_name || selectedSupplier.company_name }}</p>
+                </div>
+              </div>
+              <div class="grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="flex min-w-0 items-start gap-2">
+                  <i class="pi pi-user mt-0.5 text-xs text-slate-400" />
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Contact person</p>
+                    <p class="mt-1 truncate text-sm text-slate-800">{{ selectedSupplier.contact_person || '-' }}</p>
+                  </div>
+                </div>
+                <div class="flex min-w-0 items-start gap-2">
+                  <i class="pi pi-phone mt-0.5 text-xs text-slate-400" />
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Contact number</p>
+                    <p class="mt-1 truncate text-sm text-slate-800">{{ selectedSupplier.phone || '-' }}</p>
+                  </div>
+                </div>
+                <div class="flex min-w-0 items-start gap-2">
+                  <i class="pi pi-envelope mt-0.5 text-xs text-slate-400" />
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Email</p>
+                    <p class="mt-1 break-all text-sm text-slate-800">{{ selectedSupplier.email || '-' }}</p>
+                  </div>
+                </div>
+                <div class="flex min-w-0 items-start gap-2">
+                  <i class="pi pi-percentage mt-0.5 text-xs text-slate-400" />
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Contract discount</p>
+                    <p class="mt-1 text-sm text-slate-800">{{ contractDiscountDisplay }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="splitPoMode" class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              Supplier details will be applied separately to each generated purchase order.
+            </div>
+            <div v-else class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              Select a supplier to view its contact and contract details.
             </div>
           </section>
 
@@ -162,12 +173,20 @@
                         <InputNumber
                           v-model="item.quantity_ordered"
                           :min="1"
+                          :max="item.available_quantity ?? undefined"
+                          :invalid="item.available_quantity !== undefined && Number(item.quantity_ordered) > Number(item.available_quantity)"
                           @input="calculateItemTotal(index)"
                           class="w-full text-center"
                           fluid
                         />
                         <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
                           Warning: {{ budgetWarnings[index] }}
+                        </p>
+                        <p v-if="item.available_quantity !== undefined" class="mt-1 text-xs text-slate-500">
+                          Supplier quoted quantity: {{ item.available_quantity }}
+                        </p>
+                        <p v-if="item.available_quantity !== undefined && Number(item.quantity_ordered) > Number(item.available_quantity)" class="mt-1 text-xs text-red-600">
+                          Reduce the quantity to the supplier's available quote quantity.
                         </p>
                       </div>
                       <div class="lg:col-span-1">
@@ -614,29 +633,56 @@ const prefillFromRequisition = async (requisitionId: number) => {
       await loadProductsByBranch(form.branch_id)
     }
 
-    if (Array.isArray(requisition.items)) {
-      form.items = requisition.items.map((item: any) => ({
-        id: `req-${item.id}`,
-        product_id: item.product_id,
-        variation_id: item.variation_id || item.variation?.id || null,
-        variation: item.variation || null,
-        product_name: item.product?.product_name || item.product_name || '',
-        unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
-        selected_supplier_id: item.selected_supplier_id || null,
-        selected_supplier_name: item.selected_supplier_id
-          ? (Array.isArray(item.product?.suppliers)
-            ? item.product.suppliers.find((s: any) => Number(s.id) === Number(item.selected_supplier_id))?.supplier_name
-            : null)
-          : null,
-        quantity_ordered: item.quantity_requested || 1,
-        unit_cost: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0,
-        line_total: 0
-      }))
+    const requestedItemIds = String(route.query.requisition_item_ids || '')
+      .split(',')
+      .map((id) => Number(id))
+      .filter((id) => id > 0)
+    const requisitionItems = Array.isArray(requisition.items)
+      ? requisition.items.filter((item: any) => requestedItemIds.length === 0 || requestedItemIds.includes(Number(item.id)))
+      : []
+    const supplierIdFromRoute = Number(route.query.supplier_id || 0)
+    const supplierGroupLines = new Map<number, any>()
+
+    if (supplierIdFromRoute && requestedItemIds.length > 0) {
+      const splitRes = await procurementService.getPurchaseRequisitionSplitPreview(requisitionId)
+      const preview = splitRes?.data || splitRes
+      const supplierGroup = (preview?.supplier_groups || []).find((group: any) => Number(group.supplier_id) === supplierIdFromRoute)
+      for (const item of supplierGroup?.items || []) {
+        supplierGroupLines.set(Number(item.requisition_item_id), item)
+      }
+    }
+
+    if (requisitionItems.length > 0) {
+      form.items = requisitionItems.map((item: any) => {
+        const supplierGroupLine = supplierGroupLines.get(Number(item.id))
+        return {
+          id: `req-${item.id}`,
+          purchase_requisition_item_id: Number(item.id),
+          product_id: item.product_id,
+          variation_id: item.variation_id || item.variation?.id || null,
+          variation: item.variation || null,
+          product_name: item.product?.product_name || item.product_name || '',
+          unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
+          selected_supplier_id: supplierIdFromRoute || item.selected_supplier_id || null,
+          selected_supplier_name: supplierIdFromRoute
+            ? (suppliers.value.find((supplier: any) => Number(supplier.id) === supplierIdFromRoute)?.supplier_name || null)
+            : (item.selected_supplier_id
+              ? (Array.isArray(item.product?.suppliers)
+                ? item.product.suppliers.find((s: any) => Number(s.id) === Number(item.selected_supplier_id))?.supplier_name
+                : null)
+              : null),
+          quantity_ordered: Number(supplierGroupLine?.quantity || item.quantity_requested || 1),
+          unit_cost: supplierGroupLine
+            ? Number(supplierGroupLine.supplier_price || 0)
+            : (parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0),
+          line_total: 0
+        }
+      })
 
       form.items.forEach((_, index) => calculateItemTotal(index))
     }
 
-    const resolvedSupplierIds = (Array.isArray(requisition.items) ? requisition.items : [])
+    const resolvedSupplierIds = requisitionItems
       .map((item: any) => {
         if (item?.selected_supplier_id) return Number(item.selected_supplier_id)
         const productSuppliers = Array.isArray(item?.product?.suppliers) ? item.product.suppliers : []
@@ -664,7 +710,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
     syncItemUnitCostsFromProducts()
 
     const requisitionSuppliers = Array.isArray(requisition.suppliers) ? requisition.suppliers : []
-    const firstSupplierId = uniqueSupplierIds[0] || requisition.supplier_id
+    const firstSupplierId = supplierIdFromRoute || uniqueSupplierIds[0] || requisition.supplier_id
       || (requisitionSuppliers.length === 1 ? requisitionSuppliers[0].id : null)
     if (!splitPoMode.value && firstSupplierId) {
       form.supplier_id = Number(firstSupplierId)
@@ -723,6 +769,7 @@ const prefillFromRFQ = async (rfqId: number) => {
             quantity: feedback.rfq_item?.quantity,
             selected_supplier_id: feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
             approved_unit_price: feedback.quoted_price,
+            available_quantity: feedback.available_quantity ?? feedback.rfq_item?.quantity,
             length_cm: feedback.length_cm,
             width_cm: feedback.width_cm,
             height_cm: feedback.height_cm,
@@ -742,7 +789,11 @@ const prefillFromRFQ = async (rfqId: number) => {
             variation: item.variation || null,
             product_name: product.product_name || item.product_name || '',
             unit_of_measurement: product.unit_of_measurement || item.unit_of_measurement || item.unit || '',
-            quantity_ordered: item.quantity || 1,
+            quantity_ordered: Math.min(
+              Number(item.quantity || 1),
+              Number(item.available_quantity ?? item.quantity ?? 1),
+            ),
+            available_quantity: Number(item.available_quantity ?? item.quantity ?? 1),
             unit_cost: Number(item.approved_unit_price || 0),
             selected_supplier_id: item.selected_supplier_id || null,
             line_total: 0,
@@ -1280,6 +1331,16 @@ const confirmPurchaseOrderSubmission = () => {
 }
 
 const submitForm = async (confirmedSplitMode = false) => {
+  if (form.items.some((item) => item.available_quantity !== undefined && Number(item.quantity_ordered) > Number(item.available_quantity))) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Quote Quantity Exceeded',
+      detail: 'Reduce each item to the quantity offered by its supplier.',
+      life: 3500,
+    })
+    return
+  }
+
   const shouldUseSplitPoMode = !isEditing.value && splitPoMode.value && Number(form.purchase_requisition_id || 0) > 0
 
   if (shouldUseSplitPoMode && !confirmedSplitMode) {
@@ -1329,6 +1390,7 @@ const submitForm = async (confirmedSplitMode = false) => {
         items: form.items.map((item) => ({
         product_id: item.product_id,
         variation_id: item.variation_id || item.variation?.id || null,
+          purchase_requisition_item_id: item.purchase_requisition_item_id || null,
           feedback_id: item.feedback_id || null,
           rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,

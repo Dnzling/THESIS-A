@@ -2,18 +2,22 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
+          <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="goBack" />
         <div>
           <h2 class="text-2xl font-bold text-gray-800">Transfer Details</h2>
           <p class="text-sm text-gray-500 mt-1">Review and process stock transfer</p>
         </div>
       </div>
+      <div class="flex items-center gap-2">
+      <Button label="Print" icon="pi pi-print" severity="secondary" outlined rounded size="small"
+        :loading="printing" :disabled="loading || !detail" @click="printTransfer" />
       <span
         class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold"
         :class="statusBadgeClass(detail?.status || 'draft')"
       >
         {{ detail?.delivery_status === 'delivered' && detail?.status !== 'received' ? 'Delivered - Awaiting Receipt' : formatStatusLabel(detail?.status || 'draft') }}
       </span>
+      </div>
     </div>
 
     <div v-if="loading" class="space-y-4">
@@ -177,6 +181,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import axiosClient from '@/axios'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -186,6 +191,7 @@ const toast = useToast()
 
 const loading = ref(false)
 const processing = ref(false)
+const printing = ref(false)
 const receiptVisible = ref(false)
 const receiptError = ref('')
 const receiptItems = ref<Array<{ id: number; name: string; approved: number; received_quantity: number; damaged_quantity: number }>>([])
@@ -193,6 +199,10 @@ const detail = ref<any>(null)
 const authStore = useAuthStore()
 
 const transferId = computed(() => Number(route.params.id))
+const goBack = () => {
+  if (window.history.state?.back) router.back()
+  else router.push({ name: 'inventory.stock-requests' })
+}
 const isLogisticsProcessing = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   const notes = String(detail.value?.notes || '').toLowerCase()
@@ -300,6 +310,22 @@ const receiveTransfer = async () => {
     receiptError.value = error?.response?.data?.message || 'Unable to receive the transfer.'
   } finally {
     processing.value = false
+  }
+}
+
+const printTransfer = async () => {
+  if (printing.value || !detail.value) return
+  printing.value = true
+  try {
+    const response = await axiosClient.get(`/api/inventory/transfers/${transferId.value}/print`, { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const printWindow = window.open(url, '_blank')
+    if (printWindow) printWindow.opener = null
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Print Failed', detail: error?.response?.data?.message || 'Unable to create the transfer slip.', life: 3500 })
+  } finally {
+    printing.value = false
   }
 }
 

@@ -15,10 +15,10 @@
       <template #content>
         <Tabs v-model:value="selectedReport">
           <TabList>
+                    <Tab value="fast_movers">Fast Movers</Tab>
             <Tab value="slow_movers">Slow Movers</Tab>
-            <Tab value="fast_movers">Fast Movers</Tab>
-            <Tab value="aging">Stock Aging</Tab>
-            <Tab value="transactions">Transactions</Tab>
+
+            <Tab value="aging">Sales Inactivity</Tab>
           </TabList>
         </Tabs>
 
@@ -54,7 +54,7 @@
           </div>
           <p v-if="limited" class="mb-3 text-xs text-amber-700">Showing the 200 most recent transactions. Narrow the date range for a focused review.</p>
           <DataTable :value="visibleRows" size="small" class="text-xs" rowHover paginator :rows="15"
-            :rowsPerPageOptions="[15, 30, 50]" @row-click="openRow">
+            :rowsPerPageOptions="[15, 30, 50]">
             <template #empty>
               <div class="py-10 text-center text-xs text-slate-500">{{ errorMessage || currentCopy.empty }}</div>
             </template>
@@ -88,9 +88,13 @@
               <Column field="quantity_change" header="Change" sortable><template #body="{ data }"><span :class="data.quantity_change < 0 ? 'text-rose-600' : 'text-emerald-700'">{{ data.quantity_change > 0 ? '+' : '' }}{{ data.quantity_change }}</span></template></Column>
             </template>
             <Column header="Suggested Action" style="min-width: 185px">
-              <template #body="{ data }"><Badge :value="data.action" :severity="data.severity" /></template>
+              <template #body="{ data }">
+                <Badge v-if="data.action_key === 'monitor'" :value="data.action" :severity="data.severity" />
+                <Button v-else :label="data.action" :severity="data.severity === 'danger' ? 'danger' : 'warn'"
+                  outlined rounded size="small" @click="performAction(data)" />
+              </template>
             </Column>
-            <Column header="" style="width: 75px"><template #body="{ data }"><Button label="View" severity="warn" text size="small" @click.stop="openRow({ data })" /></template></Column>
+            <Column header="Actions" style="width: 90px"><template #body="{ data }"><Button label="View" severity="secondary" outlined rounded size="small" @click="openRow({ data })" /></template></Column>
           </DataTable>
         </template>
       </template>
@@ -203,10 +207,28 @@ const loadReport = async () => {
 const openRow = ({ data }: { data: ReportRow }) => {
   if (selectedReport.value === 'transactions') {
     router.push({ name: 'inventory.transactions.detail', params: { id: data.id } })
-  } else if (data.product_id) {
-    router.push({ name: 'inventory.products.detail', params: { id: data.product_id },
-      query: data.variation_id ? { variation_id: String(data.variation_id) } : {} })
+  } else if (data.id) {
+    router.push({ name: 'inventory.items.show', params: { id: data.id } })
   }
+}
+
+const performAction = (data: ReportRow) => {
+  if (data.action_key !== 'create_restock') {
+    openRow({ data })
+    return
+  }
+
+  const suggested = Math.max(1, Number(data.reorder_point || 0) - Number(data.available || 0))
+  router.push({
+    name: 'inventory.requisites.create',
+    query: {
+      branch_inventory_id: String(data.id),
+      product_id: String(data.product_id),
+      variation_id: data.variation_id ? String(data.variation_id) : undefined,
+      requested_quantity: String(suggested),
+      notes: `Restock requested from the ${label(selectedReport.value)} report.`,
+    },
+  })
 }
 
 const exportCsv = () => {

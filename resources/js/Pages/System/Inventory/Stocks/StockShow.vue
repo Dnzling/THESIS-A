@@ -13,7 +13,6 @@
         </div>
       </div>
       <div v-if="item" class="flex flex-wrap gap-2 sm:justify-end">
-        <Button v-if="primary3DModel" label="View 3D" icon="pi pi-cube" severity="secondary" outlined size="small" @click="openView3DModal" />
         <Button label="Reorder rule" icon="pi pi-sliders-h" severity="secondary" outlined size="small" @click="goToReorderRule" />
         <Button v-if="['low_stock', 'out_of_stock'].includes(item.stock_status)" label="Create PR" icon="pi pi-plus" severity="warn" outlined size="small" @click="createPurchaseRequisition" />
         <Button v-if="canUpdateItems" label="Edit item" icon="pi pi-pencil" severity="warn" size="small" @click="router.push({ name: 'inventory.items.edit', params: { id: itemId } })" />
@@ -58,6 +57,33 @@
         </div>
       </section>
 
+      <Card v-if="isFinishedProduct" class="border border-slate-200 shadow-sm">
+        <template #title>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-base font-semibold text-slate-900">Item performance</p>
+              <p class="mt-1 text-xs font-normal text-slate-500">Recorded sales and stock movement for this exact item and branch.</p>
+            </div>
+            <Select v-model="performanceDays" :options="performancePeriods" optionLabel="label" optionValue="value"
+              size="small" class="w-full sm:w-36" @change="loadPerformance" />
+          </div>
+        </template>
+        <template #content>
+          <Skeleton v-if="performanceLoading" height="18rem" borderRadius="0.75rem" />
+          <div v-else-if="performanceError" class="rounded-lg border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
+            {{ performanceError }}
+          </div>
+          <div v-else class="space-y-4">
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Units sold</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ performance?.units_sold || 0 }}</p></div>
+              <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Current stock</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ performance?.current_stock || 0 }}</p></div>
+              <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Reorder point</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ performance?.reorder_point || 0 }}</p></div>
+            </div>
+            <Chart type="line" :data="performanceChartData" :options="performanceChartOptions" class="h-72" />
+          </div>
+        </template>
+      </Card>
+
       <div class="grid gap-4 lg:grid-cols-2">
         <Card class="border border-slate-200 shadow-sm">
           <template #title><span class="text-base">Reorder settings</span></template>
@@ -95,26 +121,6 @@
     </div>
     <div v-else class="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center text-sm text-slate-500">Inventory item not found.</div>
 
-    <Dialog
-      v-model:visible="view3DModalVisible"
-      :header="primary3DModel?.file_name || '3D Model'"
-      :modal="true"
-      class="w-full max-w-4xl"
-    >
-      <div v-if="primary3DModel" class="space-y-4">
-        <Model3DPreview
-          :model-url="primary3DModel.url"
-          :model-format="primary3DModel.model_format"
-          :camera-x="primary3DModel?.camera_settings?.angle_x ?? 0"
-          :camera-y="primary3DModel?.camera_settings?.angle_y ?? 15"
-          :zoom="primary3DModel?.camera_settings?.zoom ?? 1.5"
-          height="500px"
-        />
-      </div>
-      <template #footer>
-        <Button label="Close" severity="secondary" outlined @click="view3DModalVisible = false" />
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -123,10 +129,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
-import merchandisingService from '../../../../services/merchandising.service'
 import { useAuthStore } from '../../../../stores/auth'
-import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import Badge from 'primevue/badge'
+import Chart from 'primevue/chart'
+import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 
@@ -138,6 +144,11 @@ const authStore = useAuthStore()
 const itemId = Number(route.params.id)
 const item = ref<any>(null)
 const loading = ref(false)
+const performance = ref<any>(null)
+const performanceLoading = ref(false)
+const performanceError = ref('')
+const performanceDays = ref(30)
+const performancePeriods = [30, 60, 90].map(value => ({ label: `${value} days`, value }))
 const reorderRuleId = ref<number | null>(null)
 const productImage = computed(() => {
   const assets = Array.isArray(item.value?.product?.assets) ? item.value.product.assets : []
@@ -151,13 +162,29 @@ const stockMetrics = computed(() => [
   { label: 'On hand', value: Number(item.value?.quantity_on_hand || 0), note: 'Physical quantity recorded' },
   { label: 'Reserved', value: Number(item.value?.quantity_reserved || 0), note: 'Held for current orders' },
   { label: 'Available', value: Number(item.value?.quantity_available || 0), note: 'Ready to allocate or sell' },
-  { label: 'Incoming', value: Number(item.value?.quantity_incoming || 0), note: 'Expected replenishment' },
+  { label: 'Pre Order', value: Number(item.value?.quantity_incoming || 0), note: 'Expected replenishment' },
 ])
 
-const view3DModalVisible = ref(false)
-const primary3DModel = ref<any>(null)
-
 const canUpdateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
+const isFinishedProduct = computed(() => item.value?.product?.product_type === 'finished_good')
+const performanceChartData = computed(() => ({
+  labels: performance.value?.labels || [],
+  datasets: [
+    { label: 'Stock level', data: performance.value?.stock || [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: 0.25, yAxisID: 'y' },
+    { type: 'bar', label: 'Units sold', data: performance.value?.sales || [], backgroundColor: '#0f766e', borderRadius: 3, yAxisID: 'sales' },
+  ],
+}))
+const performanceChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { labels: { usePointStyle: true, boxWidth: 8 } } },
+  scales: {
+    x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+    y: { beginAtZero: true, title: { display: true, text: 'Stock' } },
+    sales: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Sold' } },
+  },
+}
 
 const formatCurrency = (value: any) => {
   const amount = Number(value || 0)
@@ -222,20 +249,6 @@ const loadReorderRule = async () => {
   }
 }
 
-const load3DAssets = async () => {
-  const productId = Number(item.value?.product_id || 0)
-  if (!productId) return
-
-  try {
-    const response = await merchandisingService.get3DData(productId)
-    const payload = response?.data ?? response
-    const models = payload?.assets_by_type?.['3D_Model'] || []
-    primary3DModel.value = models.find((model: any) => model.is_primary) || models[0] || null
-  } catch {
-    primary3DModel.value = null
-  }
-}
-
 const loadItem = async () => {
   loading.value = true
   try {
@@ -243,7 +256,7 @@ const loadItem = async () => {
       branch_id: route.query.branch_id ? Number(route.query.branch_id) : undefined,
     })
     item.value = response?.data ?? response
-    await Promise.all([loadReorderRule(), load3DAssets()])
+    await Promise.all([loadReorderRule(), loadPerformance()])
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -254,6 +267,23 @@ const loadItem = async () => {
     router.push({ name: 'inventory.items' })
   } finally {
     loading.value = false
+  }
+}
+
+const loadPerformance = async () => {
+  if (!isFinishedProduct.value || !item.value?.id) return
+  performanceLoading.value = true
+  performanceError.value = ''
+  try {
+    const response = await inventoryService.getInventoryItemPerformance(item.value.id, {
+      days: performanceDays.value,
+      branch_id: item.value.branch_id,
+    })
+    performance.value = response?.data ?? response
+  } catch (error: any) {
+    performanceError.value = error?.response?.data?.message || 'Performance data is unavailable.'
+  } finally {
+    performanceLoading.value = false
   }
 }
 
@@ -295,19 +325,6 @@ const createPurchaseRequisition = () => {
       notes: 'Auto-generated from Branch Inventory low stock.',
     }
   })
-}
-
-const openView3DModal = () => {
-  if (!primary3DModel.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'No 3D Model',
-      detail: 'No 3D model available for this product.',
-      life: 2500
-    })
-    return
-  }
-  view3DModalVisible.value = true
 }
 
 onMounted(() => {

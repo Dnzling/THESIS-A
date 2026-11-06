@@ -24,7 +24,7 @@ class ModulesFromPermissionsSeeder extends Seeder
         // Seed modules table from distinct module values
         $modules = $permissions->pluck('module')->unique()->filter()->values();
         foreach ($modules as $moduleKey) {
-            $moduleName = $moduleKey === 'merchandising' ? 'E-Commerce' : Str::headline($moduleKey);
+            $moduleName = $moduleKey === 'merchandising' ? 'Product Catalog' : Str::headline($moduleKey);
             DB::table('modules')->updateOrInsert(
                 ['key' => $moduleKey],
                 [

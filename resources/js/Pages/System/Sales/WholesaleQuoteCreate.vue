@@ -10,8 +10,7 @@
         </div>
       </div>
     </div>
-    <Message severity="info" :closable="false">Wholesale prices are entered manually and remain separate from
-      online-store promotions and product discounts.</Message>
+    <Message severity="info" :closable="false">Apply either a discount percentage or a fixed discount amount to each product line. Both values stay synchronized.</Message>
     <div v-if="loading" class="space-y-3">
       <Skeleton height="9rem" />
       <Skeleton height="20rem" />
@@ -70,15 +69,16 @@
           </div>
         </template><template #content>
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[850px] text-sm">
+            <table class="w-full min-w-[1100px] text-sm">
               <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
                   <th class="px-3 py-3">Product</th>
                   <th class="px-3 py-3 w-28">Available</th>
                   <th class="px-3 py-3 w-28">Quantity</th>
                   <th class="px-3 py-3 w-44">Retail reference</th>
-                  <th class="px-3 py-3 w-44">Agreed unit price</th>
-                  <th class="px-3 py-3 w-40 text-right">Line total</th>
+                  <th class="px-3 py-3 w-36">Discount %</th>
+                  <th class="px-3 py-3 w-44">Discount amount</th>
+                  <th class="px-3 py-3 w-40 text-right">Agreed total</th>
                   <th class="w-12"></th>
                 </tr>
               </thead>
@@ -111,14 +111,12 @@
                     </Select></td>
                   <td class="p-3">{{ selected(item)?.available ?? '—' }}</td>
                   <td class="p-3">
-                    <InputNumber v-model="item.quantity" :min="1" :max="selected(item)?.available || undefined" fluid />
+                    <InputNumber v-model="item.quantity" :min="1" :max="selected(item)?.available || undefined" fluid @update:model-value="syncFromPercent(item)" />
                   </td>
                   <td class="p-3 text-slate-500">{{ money(selected(item)?.base_price) }}</td>
-                  <td class="p-3">
-                    <InputNumber v-model="item.unit_price" mode="currency" currency="PHP" locale="en-PH" :min="0.01"
-                      fluid />
-                  </td>
-                  <td class="p-3 text-right font-semibold">{{ money(item.quantity * item.unit_price) }}</td>
+                  <td class="p-3"><InputNumber v-model="item.discount_percent" suffix="%" :min="0" :max="100" :maxFractionDigits="2" fluid @update:model-value="syncFromPercent(item)" /></td>
+                  <td class="p-3"><InputNumber v-model="item.discount_amount" mode="currency" currency="PHP" locale="en-PH" :min="0" :max="grossLine(item)" fluid @update:model-value="syncFromAmount(item)" /></td>
+                  <td class="p-3 text-right"><p class="font-semibold">{{ money(netLine(item)) }}</p><p v-if="item.discount_amount > 0" class="text-xs text-slate-400 line-through">{{ money(grossLine(item)) }}</p></td>
                   <td><Button icon="pi pi-trash" severity="danger" text rounded :disabled="form.items.length === 1"
                       @click="form.items.splice(index, 1)" /></td>
                 </tr>
@@ -159,7 +157,9 @@ const toast = useToast(),
 const newItem = () => ({
   branch_inventory_id: null as number | null,
   quantity: 1,
-  unit_price: 0
+  unit_price: 0,
+  discount_percent: 0,
+  discount_amount: 0
 })
 const form = reactive({
   customer_name: '',
@@ -197,10 +197,7 @@ const availableFor = (index: number) =>
       )
   )
 const total = computed(() =>
-  form.items.reduce(
-    (s, x) => s + (+x.quantity || 0) * (+x.unit_price || 0),
-    0
-  )
+  form.items.reduce((sum, item) => sum + netLine(item), 0)
 )
 const totalQuantity = computed(() =>
   form.items.reduce((s, x) => s + (+x.quantity || 0), 0)
@@ -211,8 +208,24 @@ const money = (v: any) =>
     currency: 'PHP'
   }).format(+v || 0)
 const resetItems = () => (form.items = [newItem()])
-const selectProduct = (item: any) =>
-  (item.unit_price = +selected(item)?.base_price || 0)
+const roundMoney = (value: number) => Math.round(value * 100) / 100
+const grossLine = (item: any) => roundMoney((Number(item.quantity) || 0) * (Number(selected(item)?.base_price) || 0))
+const netLine = (item: any) => Math.max(0, roundMoney(grossLine(item) - (Number(item.discount_amount) || 0)))
+const syncFromPercent = (item: any) => {
+  item.discount_percent = Math.min(100, Math.max(0, Number(item.discount_percent) || 0))
+  item.discount_amount = roundMoney(grossLine(item) * item.discount_percent / 100)
+  item.unit_price = item.quantity > 0 ? roundMoney(netLine(item) / item.quantity) : 0
+}
+const syncFromAmount = (item: any) => {
+  item.discount_amount = Math.min(grossLine(item), Math.max(0, Number(item.discount_amount) || 0))
+  item.discount_percent = grossLine(item) > 0 ? roundMoney(item.discount_amount / grossLine(item) * 100) : 0
+  item.unit_price = item.quantity > 0 ? roundMoney(netLine(item) / item.quantity) : 0
+}
+const selectProduct = (item: any) => {
+  item.discount_percent = 0
+  item.discount_amount = 0
+  item.unit_price = Number(selected(item)?.base_price) || 0
+}
 const date = (v: Date | null) =>
   v
     ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(

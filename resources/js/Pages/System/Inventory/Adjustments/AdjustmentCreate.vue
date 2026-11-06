@@ -225,16 +225,6 @@
       </template>
     </Card>
   
-    <!-- Confirmation Dialog for Cancel -->
-    <Dialog v-model:visible="showCancelDialog" header="Discard Changes" :modal="true" class="w-full sm:w-96">
-      <div class="space-y-4">
-        <p class="text-gray-600">Are you sure you want to cancel? Any unsaved changes will be lost.</p>
-        <div class="flex justify-end gap-2">
-          <Button label="No, Stay" severity="secondary" outlined @click="showCancelDialog = false" />
-          <Button label="Yes, Discard" severity="danger" @click="confirmCancel" />
-        </div>
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -252,7 +242,6 @@ const authStore = useAuthStore()
 // State
 const submitting = ref(false)
 const loadingProducts = ref(false)
-const showCancelDialog = ref(false)
 
 // Form data - Updated to match backend expectations
 const form = reactive({
@@ -615,15 +604,6 @@ const submitAdjustment = async () => {
 }
 
 const cancel = () => {
-  if (form.items.length > 0 || form.remarks || form.type) {
-    showCancelDialog.value = true
-  } else {
-    router.push({ name: 'inventory.adjustments' })
-  }
-}
-
-const confirmCancel = () => {
-  showCancelDialog.value = false
   router.push({ name: 'inventory.adjustments' })
 }
 

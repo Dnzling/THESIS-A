@@ -113,7 +113,7 @@ const route = useRoute()
 const toast = useToast()
 const authStore = useAuthStore()
 
-const canManageChats = computed(() => authStore.hasPermission('sales.chats.manage'))
+const canManageChats = computed(() => authStore.hasPermission('crm.chats.manage'))
 const search = ref('')
 const threads = ref<any[]>([])
 const selectedThreadId = ref<number | null>(null)

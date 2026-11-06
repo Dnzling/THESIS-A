@@ -36,6 +36,7 @@ class ReportingService
                     'quantity_change' => (int) $tx->quantity_change,
                     'transaction_date' => $tx->transaction_date,
                     'action' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'Review movement' : 'View transaction',
+                    'action_key' => 'view_item',
                     'severity' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'warn' : 'info',
                 ])->values()->all();
             return ['rows' => $transactions, 'total' => count($transactions), 'limited' => count($transactions) === 200];
@@ -76,22 +77,28 @@ class ReportingService
                 ? (int) $item->created_at->diffInDays($end) : 0;
 
             if ($available <= 0 && $sold > 0) {
-                $action = 'Out of stock - replenish';
+                $action = 'Create Restock Request';
+                $actionKey = 'create_restock';
                 $severity = 'danger';
             } elseif ($available <= $reorderPoint && $sold > 0) {
-                $action = 'Replenish now';
+                $action = 'Create Restock Request';
+                $actionKey = 'create_restock';
                 $severity = 'danger';
             } elseif ($daysCover !== null && $daysCover <= 14) {
-                $action = 'Plan replenishment';
+                $action = 'Create Restock Request';
+                $actionKey = 'create_restock';
                 $severity = 'warn';
             } elseif ($available > 0 && $sold === 0 && $daysListed >= 30) {
                 $action = 'Review price or promote';
+                $actionKey = 'review_product';
                 $severity = 'warn';
             } elseif ($available > 0 && $daysSinceSale !== null && $daysSinceSale >= 90) {
-                $action = 'Review aging stock';
+                $action = 'Review product';
+                $actionKey = 'review_product';
                 $severity = 'warn';
             } else {
                 $action = 'Monitor';
+                $actionKey = 'monitor';
                 $severity = 'success';
             }
 
@@ -112,6 +119,7 @@ class ReportingService
                 'reorder_point' => $reorderPoint,
                 'stock_value' => $available * (float) ($item->variation?->cost_price ?? $item->product?->cost_price ?? 0),
                 'action' => $action,
+                'action_key' => $actionKey,
                 'severity' => $severity,
             ];
         });
@@ -120,6 +128,7 @@ class ReportingService
             'slow_movers' => $rows->filter(fn ($row) => $row['available'] > 0 && (($row['units_sold'] === 0 && $row['days_listed'] >= 30) || ($row['days_cover'] ?? 0) > 60))
                 ->map(function ($row) {
                     $row['action'] = $row['units_sold'] === 0 ? 'Review price or promote' : 'Reduce next replenishment';
+                    $row['action_key'] = 'review_product';
                     $row['severity'] = 'warn';
                     return $row;
                 })->sortByDesc('stock_value'),
@@ -130,6 +139,7 @@ class ReportingService
                     $idle = $row['days_since_sale'] ?? $row['days_listed'];
                     $row['action'] = $idle >= 90 ? 'Review markdown or transfer'
                         : ($idle >= 30 ? 'Promote or review' : 'Monitor');
+                    $row['action_key'] = $idle >= 30 ? 'review_product' : 'monitor';
                     $row['severity'] = $idle >= 90 ? 'danger' : ($idle >= 30 ? 'warn' : 'success');
                     return $row;
                 })->sortByDesc(fn ($row) => $row['days_since_sale'] ?? $row['days_listed']),

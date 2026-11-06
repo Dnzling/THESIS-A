@@ -279,10 +279,15 @@ class SupplierPOFeedbackController extends Controller
             // Create or update feedback
             $feedback = SupplierPOFeedback::updateOrCreate(
                 [
-                    'supplier_portal_id' => $portal->id,
+                    'supplier_id' => $portal->supplier_id,
                     'purchase_order_id' => $request->purchase_order_id,
                 ],
                 [
+                    'supplier_portal_id' => $portal->id,
+                    'response_source' => 'portal',
+                    'response_channel' => 'portal',
+                    'response_date' => now()->toDateString(),
+                    'recorded_by' => null,
                     'response' => $request->response,
                     'fulfillment_method' => $request->response === 'accepted' ? 'store_pickup' : null,
                     'rejection_reason' => $request->get('rejection_reason'),

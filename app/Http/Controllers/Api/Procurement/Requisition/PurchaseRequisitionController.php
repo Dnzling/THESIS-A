@@ -136,6 +136,23 @@ class PurchaseRequisitionController extends Controller
         }
         $requisition->setAttribute('suppliers', $suppliers->unique('id')->values());
 
+        $allocatedQuantities = DB::table('purchase_order_items as poi')
+            ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+            ->where('po.store_id', (int) Auth::user()->store_id)
+            ->where('po.purchase_requisition_id', $requisition->id)
+            ->whereNotIn('po.status', ['cancelled', 'canceled', 'rejected'])
+            ->selectRaw('poi.product_id, poi.variation_id, SUM(COALESCE(poi.allocated_quantity, poi.quantity_ordered)) as allocated_quantity')
+            ->groupBy('poi.product_id', 'poi.variation_id')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
+
+        foreach ($requisition->items as $item) {
+            $key = (int) $item->product_id . ':' . (int) ($item->variation_id ?? 0);
+            $orderedQuantity = (int) ($allocatedQuantities->get($key)->allocated_quantity ?? 0);
+            $item->setAttribute('ordered_quantity', $orderedQuantity);
+            $item->setAttribute('remaining_quantity', max(0, (int) $item->quantity_requested - $orderedQuantity));
+        }
+
         return response()->json([
             'success' => true,
             'data' => $requisition,
@@ -148,22 +165,104 @@ class PurchaseRequisitionController extends Controller
      */
     public function splitPreview(int $id): JsonResponse
     {
-        $requisition = PurchaseRequisition::with(['items.product', 'items.product.suppliers', 'items.variation'])->findOrFail($id);
+        $storeId = (int) Auth::user()->store_id;
+        $requisition = PurchaseRequisition::with(['items.product', 'items.variation'])
+            ->where('store_id', $storeId)
+            ->findOrFail($id);
 
         $groups = [];
-        $rfqItems = [];
+        $unassignedItems = [];
+        $allocatedQuantities = DB::table('purchase_order_items as poi')
+            ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+            ->where('po.purchase_requisition_id', $requisition->id)
+            ->whereNotIn('po.status', ['cancelled', 'canceled', 'rejected'])
+            ->whereNotNull('poi.purchase_requisition_item_id')
+            ->select('poi.purchase_requisition_item_id')
+            ->selectRaw('SUM(COALESCE(poi.allocated_quantity, poi.quantity_ordered)) as allocated_quantity')
+            ->groupBy('poi.purchase_requisition_item_id')
+            ->pluck('allocated_quantity', 'purchase_requisition_item_id');
+        $legacyAllocatedQuantities = DB::table('purchase_order_items as poi')
+            ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+            ->where('po.store_id', $storeId)
+            ->where('po.purchase_requisition_id', $requisition->id)
+            ->whereNotIn('po.status', ['cancelled', 'canceled', 'rejected'])
+            ->whereNull('poi.purchase_requisition_item_id')
+            ->selectRaw('poi.product_id, poi.variation_id, SUM(COALESCE(poi.allocated_quantity, poi.quantity_ordered)) as allocated_quantity')
+            ->groupBy('poi.product_id', 'poi.variation_id')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
 
         foreach ($requisition->items as $item) {
-            $supId = $item->selected_supplier_id ?? ($item->product->suppliers[0]->id ?? null);
-            if ($supId) {
-                if (!isset($groups[$supId])) $groups[$supId] = [
-                    'supplier_id' => $supId,
-                    'supplier' => $item->product->suppliers->firstWhere('id', $supId) ?? null,
+            $itemKey = (int) $item->product_id . ':' . (int) ($item->variation_id ?? 0);
+            $allocated = (int) ($allocatedQuantities[$item->id] ?? 0)
+                + (int) ($legacyAllocatedQuantities->get($itemKey)->allocated_quantity ?? 0);
+            $remainingQuantity = max(0, (int) $item->quantity_requested - $allocated);
+            if ($remainingQuantity === 0) {
+                continue;
+            }
+
+            $supplierRows = DB::table('supplier_products')
+                ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+                ->where('supplier_products.product_id', $item->product_id)
+                ->where('suppliers.store_id', $storeId)
+                ->whereNull('suppliers.deleted_at')
+                ->whereExists(function ($query) use ($storeId) {
+                    $query->selectRaw('1')
+                        ->from('supplier_contracts')
+                        ->whereColumn('supplier_contracts.supplier_id', 'suppliers.id')
+                        ->where('supplier_contracts.store_id', $storeId)
+                        ->where('supplier_contracts.status', 'active')
+                        ->whereDate('supplier_contracts.start_date', '<=', now()->toDateString())
+                        ->whereDate('supplier_contracts.end_date', '>=', now()->toDateString());
+                })
+                ->select(
+                    'suppliers.id',
+                    'suppliers.supplier_name',
+                    'suppliers.company_name',
+                    'supplier_products.supplier_price',
+                    'supplier_products.minimum_order_quantity'
+                )
+                ->distinct()
+                ->orderBy('suppliers.supplier_name')
+                ->get();
+
+            if ($item->selected_supplier_id) {
+                $supplierRows = $supplierRows
+                    ->where('id', (int) $item->selected_supplier_id)
+                    ->values();
+            }
+
+            if ($supplierRows->isEmpty()) {
+                $unassignedItems[] = [
+                    'id' => $item->id,
+                    'product_name' => $item->product?->product_name ?? 'Unknown product',
+                    'sku' => $item->variation?->variation_sku ?? $item->product?->sku,
+                    'variant' => $item->variation?->variation_name,
+                    'quantity' => $remainingQuantity,
+                    'requested_quantity' => (int) $item->quantity_requested,
+                ];
+                continue;
+            }
+
+            foreach ($supplierRows as $supplier) {
+                $supplierId = (int) $supplier->id;
+                $groups[$supplierId] ??= [
+                    'supplier_id' => $supplierId,
+                    'supplier_name' => $supplier->supplier_name ?: $supplier->company_name ?: "Supplier #{$supplierId}",
                     'items' => [],
                 ];
-                $groups[$supId]['items'][] = $item;
-            } else {
-                $rfqItems[] = $item;
+                $groups[$supplierId]['items'][] = [
+                    'requisition_item_id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'variation_id' => $item->variation_id,
+                    'product_name' => $item->product?->product_name ?? 'Unknown product',
+                    'sku' => $item->variation?->variation_sku ?? $item->product?->sku,
+                    'variant' => $item->variation?->variation_name,
+                    'quantity' => $remainingQuantity,
+                    'requested_quantity' => (int) $item->quantity_requested,
+                    'supplier_price' => (float) $supplier->supplier_price,
+                    'minimum_order_quantity' => (int) $supplier->minimum_order_quantity,
+                ];
             }
         }
 
@@ -173,7 +272,7 @@ class PurchaseRequisitionController extends Controller
             'success' => true,
             'data' => [
                 'supplier_groups' => $grouped,
-                'rfq_items' => $rfqItems,
+                'unassigned_items' => $unassignedItems,
                 'requisition' => $requisition,
             ],
         ]);
@@ -235,41 +334,6 @@ class PurchaseRequisitionController extends Controller
                     isset($item['variation_id']) ? (int) $item['variation_id'] : null
                 );
                 $resolvedItems[] = $item;
-            }
-
-            // Hard validation: disallow mixed selected supplier assignment.
-            $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                return !is_null($item['selected_supplier_id'] ?? null);
-            });
-            $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                return is_null($item['selected_supplier_id'] ?? null);
-            });
-            if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot create request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
-                    'errors' => [
-                        'items' => [
-                            'All line items must either all have selected supplier or all have no selected supplier.',
-                        ],
-                    ],
-                ], 422);
-            }
-
-            // Also disallow mixed supplier availability by product mapping.
-            $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) {
-                return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), (int) Auth::user()->store_id);
-            });
-            if ($itemHasSupplierFlags->contains(true) && $itemHasSupplierFlags->contains(false)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
-                    'errors' => [
-                        'items' => [
-                            'All line items must either all have supplier mapping or all have no supplier mapping.',
-                        ],
-                    ],
-                ], 422);
             }
 
             // Calculate estimated amount
@@ -471,40 +535,6 @@ class PurchaseRequisitionController extends Controller
                         isset($item['variation_id']) ? (int) $item['variation_id'] : null
                     );
                     $resolvedItems[] = $item;
-                }
-
-                // Hard validation on update path as well.
-                $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                    return !is_null($item['selected_supplier_id'] ?? null);
-                });
-                $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                    return is_null($item['selected_supplier_id'] ?? null);
-                });
-                if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Cannot update request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
-                        'errors' => [
-                            'items' => [
-                                'All line items must either all have selected supplier or all have no selected supplier.',
-                            ],
-                        ],
-                    ], 422);
-                }
-
-                $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) {
-                    return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), (int) Auth::user()->store_id);
-                });
-                if ($itemHasSupplierFlags->contains(true) && $itemHasSupplierFlags->contains(false)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
-                        'errors' => [
-                            'items' => [
-                                'All line items must either all have supplier mapping or all have no supplier mapping.',
-                            ],
-                        ],
-                    ], 422);
                 }
 
                 $estimatedAmount = 0;
@@ -907,19 +937,6 @@ class PurchaseRequisitionController extends Controller
         return DB::table('supplier_products')
             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.supplier_id', $supplierId)
-            ->where('supplier_products.product_id', $productId)
-            ->where('suppliers.store_id', $storeId)
-            ->exists();
-    }
-
-    private function productHasMappedSupplier(int $productId, int $storeId): bool
-    {
-        if ($productId <= 0) {
-            return false;
-        }
-
-        return DB::table('supplier_products')
-            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.product_id', $productId)
             ->where('suppliers.store_id', $storeId)
             ->exists();

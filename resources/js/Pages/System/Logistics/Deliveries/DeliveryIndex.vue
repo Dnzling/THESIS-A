@@ -68,7 +68,7 @@
             </template>
           </Column>
   
-          <Column header="Source" style="width: 9rem">
+          <Column header="Source" style="width: 12rem">
             <template #body="{ data }">
               <Badge :value="sourceLabel(data.source_type)" :severity="sourceSeverity(data.source_type)" />
             </template>
@@ -298,7 +298,10 @@ const openDetail = (order: any) => {
     return
   }
   if (order.source_type === 'pickup') {
-    router.push({ name: 'procurement.purchase-orders.detail', params: { id: order.order_id } })
+    router.push({
+      name: 'logistics.deliveries.detail',
+      params: { source: 'pickup', orderId: order.order_id },
+    })
     return
   }
   router.push({

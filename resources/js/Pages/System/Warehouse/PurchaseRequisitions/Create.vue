@@ -33,9 +33,8 @@
                 <small v-if="errors.requisition_type" class="text-red-500">{{ errors.requisition_type }}</small>
               </div>
               <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-semibold text-slate-700">Reason / Notes
-                  <span class="text-red-500">*</span></label><Textarea v-model="form.reason" rows="2"
-                  placeholder="Why is replenishment required?" /><small v-if="errors.reason" class="text-red-500">{{
+                <label class="text-xs font-semibold text-slate-700">Notes <span class="font-normal text-slate-500">(optional)</span></label><Textarea v-model="form.reason" rows="2"
+                  placeholder="Add details about this replenishment request (optional)." /><small v-if="errors.reason" class="text-red-500">{{
                   errors.reason }}</small>
               </div>
             </div>
@@ -61,8 +60,9 @@
                   </div>
                 </template>
                 <Column header="Inventory Item" style="min-width: 300px"><template #body="{ data, index }"><Select
-                      v-model="data.branch_inventory_id" :options="inventoryOptions" optionLabel="searchText"
+                      v-model="data.branch_inventory_id" :options="inventoryOptionsFor(index)" optionLabel="searchText"
                       optionValue="value" filter fluid placeholder="Select product"
+                      :invalid="!!errors[`items.${index}.branch_inventory_id`]"
                       @change="selectItem(index)"><template #option="{ option }">
                         <div>
                           <div class="font-medium">
@@ -72,7 +72,7 @@
                             option.subtitle
                           }}</small>
                         </div>
-                      </template></Select></template></Column>
+                      </template></Select><small v-if="errors[`items.${index}.branch_inventory_id`]" class="mt-1 block text-red-500">{{ errors[`items.${index}.branch_inventory_id`] }}</small></template></Column>
                 <Column header="Available"><template #body="{ data }">{{
                   stock(data)?.quantity_available ?? "—"
                 }}</template></Column>
@@ -100,6 +100,7 @@
                         confirmRemoveItem(index)
                         " /></template></Column>
               </DataTable><small v-if="errors.items" class="mt-2 block text-red-500">{{ errors.items }}</small>
+              <small v-if="duplicateItemIds.length" class="mt-2 block text-red-500">Each stock item can only be added once to a request.</small>
               <div class="mt-4 flex justify-end">
                 <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div class="flex items-center justify-between text-sm text-slate-600">
@@ -170,12 +171,34 @@ const inventoryOptions = computed(() =>
     })
     .sort((a, b) => a.stockQuantity - b.stockQuantity),
 );
+const inventoryOptionsFor = (itemIndex: number) => {
+  const selectedElsewhere = new Set(
+    form.items
+      .filter((_: any, index: number) => index !== itemIndex)
+      .map((item: any) => Number(item.branch_inventory_id))
+      .filter((id: number) => id > 0),
+  );
+  return inventoryOptions.value.filter(
+    (option) => !selectedElsewhere.has(Number(option.value)),
+  );
+};
 const branchLabel = computed(
   () => branches.value[0]?.name || "No branch assigned",
 ),
   blank = () => ({ branch_inventory_id: null, quantity_requested: 1 }),
-  addItem = () => form.items.push(blank()),
-  removeItem = (i: number) => form.items.splice(i, 1),
+  clearItemErrors = () => {
+    Object.keys(errors)
+      .filter((key) => key === "items" || key.startsWith("items."))
+      .forEach((key) => delete errors[key]);
+  },
+  addItem = () => {
+    clearItemErrors();
+    form.items.push(blank());
+  },
+  removeItem = (i: number) => {
+    form.items.splice(i, 1);
+    clearItemErrors();
+  },
   resetItems = () => {
     form.items = [blank()];
   };
@@ -206,6 +229,7 @@ const totalRequestedValue = computed(() =>
   ),
 );
 const selectItem = (i: number) => {
+  clearItemErrors();
   const row = stock(form.items[i]);
   form.items[i].quantity_requested = Number(row?.reorder_quantity || 1);
 };
@@ -231,14 +255,25 @@ const isFormValid = computed(() =>
   Boolean(
     form.branch_id &&
     form.requisition_type &&
-    form.reason.trim() &&
     form.items.length > 0 &&
+    duplicateItemIds.value.length === 0 &&
     form.items.every(
       (item: any) =>
         item.branch_inventory_id && Number(item.quantity_requested) > 0,
     ),
   ),
 );
+const duplicateItemIds = computed(() => {
+  const seen = new Set<number>();
+  const duplicates = new Set<number>();
+  form.items.forEach((item: any) => {
+    const id = Number(item.branch_inventory_id || 0);
+    if (id <= 0) return;
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  });
+  return [...duplicates];
+});
 const submit = async () => {
   Object.keys(errors).forEach((k) => delete errors[k]);
   const items = form.items.filter(
@@ -246,7 +281,6 @@ const submit = async () => {
   );
   if (!form.branch_id) errors.branch_id = "Select a warehouse branch.";
   if (!form.requisition_type) errors.requisition_type = "Select a PR type.";
-  if (!form.reason.trim()) errors.reason = "Reason is required.";
   if (!items.length) errors.items = "Add at least one valid item.";
   if (Object.keys(errors).length) return;
   saving.value = true;
@@ -254,7 +288,7 @@ const submit = async () => {
     await WarehouseService.createPurchaseRequisition({
       branch_id: form.branch_id,
       requisition_type: form.requisition_type,
-      reason: form.reason,
+      reason: form.reason.trim() || null,
       items,
     });
     toast.add({
@@ -265,6 +299,10 @@ const submit = async () => {
     });
     router.visit("/warehouse/purchase-requisitions");
   } catch (e: any) {
+    const validationErrors = e?.response?.data?.errors || {};
+    Object.entries(validationErrors).forEach(([field, messages]) => {
+      errors[field] = Array.isArray(messages) ? String(messages[0]) : String(messages);
+    });
     toast.add({
       severity: "error",
       summary: "Unable to Create",

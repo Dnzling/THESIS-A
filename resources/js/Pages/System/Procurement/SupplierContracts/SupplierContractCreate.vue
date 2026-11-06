@@ -197,6 +197,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -805,7 +806,11 @@ const saveDraft = async () => {
       formData.append('contract_file', contractFile.value)
     }
 
-    await procurementService.createSupplierContract(formData)
+    if (route.query.from_inventory) {
+      await inventoryService.createSupplierContract(formData)
+    } else {
+      await procurementService.createSupplierContract(formData)
+    }
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -822,6 +827,8 @@ const saveDraft = async () => {
           router.push({ name: 'supplier.stores' })
         }
       }, 1500)
+    } else if (route.query.from_inventory && route.query.supplier_id) {
+      setTimeout(() => router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } }), 1500)
     } else {
       // If coming from supplier creation flow, redirect to suppliers list
       const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
@@ -866,7 +873,11 @@ const submitForm = async () => {
       formData.append('contract_file', contractFile.value)
     }
 
-    await procurementService.createSupplierContract(formData)
+    if (route.query.from_inventory) {
+      await inventoryService.createSupplierContract(formData)
+    } else {
+      await procurementService.createSupplierContract(formData)
+    }
     showReviewDialog.value = false
     toast.add({
       severity: 'success',
@@ -884,6 +895,8 @@ const submitForm = async () => {
           router.push({ name: 'supplier.stores' })
         }
       }, 1500)
+    } else if (route.query.from_inventory && route.query.supplier_id) {
+      setTimeout(() => router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } }), 1500)
     } else {
       // If coming from supplier creation flow, redirect to suppliers list
       const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
@@ -925,6 +938,11 @@ const skipOrCancel = () => {
   }
 
   if (route.query.supplier_id) {
+    if (route.query.from_inventory) {
+      router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } })
+      return
+    }
+
     // Coming from supplier creation - go to suppliers list
     router.push({ name: 'procurement.suppliers' })
   } else {
@@ -945,7 +963,9 @@ onMounted(async () => {
     if (route.query.supplier_id) {
       form.supplier_id = parseInt(route.query.supplier_id as string)
       if (!selectedSupplierName.value || selectedSupplierName.value === 'Not Selected') {
-        const response = await procurementService.getSuppliers({ per_page: 100 })
+        const response = route.query.from_inventory
+          ? await inventoryService.getSuppliers({ per_page: 100 })
+          : await procurementService.getSuppliers({ per_page: 100 })
         suppliers.value = response.data?.data || []
         const supplier = suppliers.value.find(s => s.id === form.supplier_id)
         if (supplier) {

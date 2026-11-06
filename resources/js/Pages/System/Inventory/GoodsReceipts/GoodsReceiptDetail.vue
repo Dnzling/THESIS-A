@@ -1,8 +1,40 @@
 <template>
   <div class="mx-auto max-w-7xl space-y-6 pb-8">
-    <div v-if="loading" class="py-12 text-center text-gray-500 space-y-2">
-      <p class="text-lg font-semibold">Loading receipt...</p>
-      <p class="text-sm text-gray-500">Please wait while we fetch the latest information.</p>
+    <div v-if="loading" class="space-y-6 pb-8" aria-label="Loading goods receipt details">
+      <div class="flex items-center gap-3">
+        <Skeleton shape="circle" size="2.5rem" />
+        <div class="flex-1 space-y-2">
+          <Skeleton width="14rem" height="1.5rem" />
+          <Skeleton width="20rem" height="0.875rem" />
+        </div>
+        <Skeleton width="7rem" height="2.25rem" />
+      </div>
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div v-for="card in 4" :key="`summary-${card}`" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <Skeleton width="7rem" height="0.875rem" class="mb-4" />
+          <Skeleton width="9rem" height="1.5rem" />
+        </div>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div class="flex gap-6 border-b border-gray-100 px-5 py-4">
+          <Skeleton width="4rem" height="1rem" />
+          <Skeleton width="5rem" height="1rem" />
+          <Skeleton width="4rem" height="1rem" />
+        </div>
+        <div class="grid gap-5 p-5 md:grid-cols-2">
+          <div v-for="panel in 2" :key="`panel-${panel}`" class="space-y-4 rounded-xl border border-gray-100 p-4">
+            <Skeleton width="10rem" height="1.125rem" />
+            <div v-for="line in 5" :key="`line-${panel}-${line}`" class="flex justify-between gap-4">
+              <Skeleton width="7rem" height="0.875rem" />
+              <Skeleton width="9rem" height="0.875rem" />
+            </div>
+          </div>
+        </div>
+        <div class="space-y-3 px-5 pb-5">
+          <Skeleton height="2.25rem" />
+          <Skeleton v-for="row in 3" :key="`row-${row}`" height="2.75rem" />
+        </div>
+      </div>
     </div>
     <div v-else-if="!receipt" class="py-12 text-center text-gray-500 space-y-3">
       <p class="text-lg font-semibold">Receipt not found.</p>
@@ -48,11 +80,14 @@
             v-if="canRateSupplier"
             :label="receipt.supplier_evaluation ? 'Update Supplier Rating' : 'Rate Supplier'"
             icon="pi pi-star"
+            rounded
+            size="small"
             @click="openSupplierRating"
           />
           <Button
-            label="Print PDF"
+            label="Print"
             severity="secondary"
+            icon="pi pi-print"
             size="small"
             :loading="printing"
             @click="printReceipt"
@@ -125,7 +160,7 @@
                   <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Reference PO</span>
                     <RouterLink
-                      :to="`/procurement/purchase-orders/${receipt.po_id}`"
+                      :to="`/inventory/purchase-orders/${receipt.po_id}`"
                       class="font-semibold text-blue-600 hover:underline"
                     >
                       {{ receipt.po_number }}
@@ -199,12 +234,9 @@
                 <div class="space-y-3">
                   <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Supplier</span>
-                    <RouterLink
-                      :to="`/procurement/suppliers/${receipt.supplier_id}`"
-                      class="font-semibold text-blue-600 hover:underline"
-                    >
+                    <span class="font-semibold text-gray-900">
                       {{ receipt.supplier_name }}
-                    </RouterLink>
+                    </span>
                   </div>
                   <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Contact</span>
@@ -460,6 +492,7 @@ import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import axiosClient from '@/axios'
 import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -471,7 +504,7 @@ const authStore = useAuthStore()
 const receipt = ref<any>(null)
 const activeTab = ref(0)
 const saving = ref(false)
-const loading = ref(false)
+const loading = ref(true)
 const printing = ref(false)
 const timeline = ref<any[]>([])
 const supplierRatingVisible = ref(false)
@@ -658,12 +691,6 @@ async function saveSupplierRating() {
     const response = await procurementService.saveSupplierEvaluation(receipt.value.id, ratingForm.value as any)
     receipt.value.supplier_evaluation = response?.data ?? response
     supplierRatingVisible.value = false
-    toast.add({
-      severity: 'success',
-      summary: 'Rating saved',
-      detail: 'The supplier performance record is now available in Procurement.',
-      life: 3500,
-    })
   } catch (error: any) {
     toast.add({
       severity: 'error',

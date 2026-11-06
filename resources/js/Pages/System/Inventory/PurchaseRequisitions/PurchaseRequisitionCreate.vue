@@ -45,14 +45,11 @@
                       <template #option="optionProps">
                         <div class="flex flex-col">
                           <span class="text-sm text-gray-800">{{ optionProps.option.title }}</span>
-                          <span class="text-xs text-gray-500">{{ optionProps.option.subtitle }}</span>
                         </div>
                       </template>
                       <template #value="valueProps">
                         <div v-if="getInventoryOptionByValue(valueProps.value)" class="flex flex-col">
                           <span class="text-sm text-gray-800">{{ getInventoryOptionByValue(valueProps.value)?.title
-                            }}</span>
-                          <span class="text-xs text-gray-500">{{ getInventoryOptionByValue(valueProps.value)?.subtitle
                             }}</span>
                         </div>
                         <span v-else class="text-sm text-gray-500">{{ valueProps.placeholder }}</span>
@@ -103,48 +100,28 @@
               </DataTable>
   
               <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
-              <div v-if="previewItems.length" class="mt-4">
-                <div class="text-sm font-semibold text-gray-800 mb-2">Product List Preview</div>
-                <DataTable :value="previewItems" class="p-datatable-sm text-xs" responsiveLayout="scroll">
-                  <Column header="Product" style="min-width: 260px">
-                    <template #body="{ data }">
-                      <div class="text-sm">
-                        <div class="font-semibold text-gray-900">{{ data.product_name || 'N/A' }}</div>
-                        <div class="text-gray-500">SKU: {{ data.sku || '-' }}</div>
-                      </div>
-                    </template>
-                  </Column>
-                  <Column header="Qty" style="width: 120px">
-                    <template #body="{ data }">
-                      <span class="font-semibold text-gray-900">{{ data.quantity_requested }}</span>
-                    </template>
-                  </Column>
-                  <Column header="Unit" style="width: 120px">
-                    <template #body="{ data }">
-                      {{ data.unit_of_measurement || '-' }}
-                    </template>
-                  </Column>
-  
-                  <Column header="Unit Cost" style="width: 140px">
-                    <template #body="{ data }">
-                      {{ formatMoney(data.estimated_unit_cost) }}
-                    </template>
-                  </Column>
-                  <Column header="Unit Total" style="width: 160px">
-                    <template #body="{ data }">
-                      {{ formatMoney(Number(data.quantity_requested || 0) * Number(data.estimated_unit_cost || 0)) }}
-                    </template>
-                  </Column>
-                </DataTable>
+              <div v-if="validItems.length" class="mt-4 grid gap-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3 sm:grid-cols-3">
+                <div>
+                  <p class="text-xs text-slate-500">Line Items</p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ validItems.length }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-slate-500">Total Requested Quantity</p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ totalRequestedQuantity.toLocaleString('en-PH') }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-slate-500">Estimated Request Amount</p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatMoney(estimatedRequestAmount) }}</p>
+                </div>
               </div>
             </div>
   
             <div class="flex justify-end gap-2 pt-3 border-t">
               <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
               <Button type="button" label="Save Draft" severity="secondary" outlined size="small" :loading="saving"
-                :disabled="!canManage || validItems.length === 0" @click="submit(false)" />
+                :disabled="!canSubmit || validItems.length === 0" @click="submit(false)" />
               <Button type="submit" :label="editId ? 'Save & Submit' : 'Submit Request'" severity="warn" size="small" :loading="saving"
-                :disabled="!canManage || validItems.length === 0" />
+                :disabled="!canSubmit || validItems.length === 0" />
             </div>
           </form>
         </template>
@@ -172,7 +149,13 @@ const inventoryRows = ref<any[]>([])
 const errors = reactive<Record<string, string>>({})
 const editId = computed(() => Number(route.params.id || 0))
 
-const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const hasRequisitionPermission = (action: 'create' | 'manage') => [
+  `inventory.requisites.${action}`,
+  `inventory.requisitions.${action}`,
+].some(permission => authStore.hasPermission(permission))
+const canManage = computed(() => hasRequisitionPermission('manage'))
+const canCreate = computed(() => hasRequisitionPermission('create') || canManage.value)
+const canSubmit = computed(() => editId.value ? canManage.value : canCreate.value)
 const canViewBranchInventory = computed(() => authStore.hasPermission('inventory.branch_inventory.view'))
 
 const currentBranchId = computed(() => {
@@ -218,18 +201,10 @@ const prTypeOptions = [
 ]
 
 const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
-const previewItems = computed(() => {
-  return validItems.value.map((item) => {
-    const inventoryRow = getInventoryById(item.branch_inventory_id)
-    return {
-      product_name: inventoryRow?.product?.product_name || inventoryRow?.product_name || 'N/A',
-      sku: inventoryRow?.variation?.variation_sku || inventoryRow?.product?.sku || inventoryRow?.sku || '-',
-      unit_of_measurement: inventoryRow?.product?.unit_of_measurement || inventoryRow?.unit_of_measurement || '-',
-      quantity_requested: Number(item.requested_quantity || 0),
-      estimated_unit_cost: resolveUnitCost(inventoryRow),
-    }
-  })
-})
+const totalRequestedQuantity = computed(() => validItems.value.reduce((total, item) => total + Number(item.requested_quantity || 0), 0))
+const estimatedRequestAmount = computed(() => validItems.value.reduce((total, item) => {
+  return total + Number(item.requested_quantity || 0) * resolveUnitCost(getInventoryById(item.branch_inventory_id))
+}, 0))
 const inventoryOptions = computed(() => {
   return inventoryRows.value
     .slice()
@@ -238,14 +213,11 @@ const inventoryOptions = computed(() => {
       const productName = row?.product?.product_name || row?.product_name || 'Unknown'
       const sku = row?.product?.sku || row?.sku || ''
       const variant = row?.variation?.variation_name || row?.variant_name || ''
-      const stock = Number(row?.quantity_available ?? 0)
       const title = `${productName}${variant ? ` - ${variant}` : ''}${sku ? ` (${sku})` : ''}`
-      const subtitle = `Stock: ${stock}`
       return {
         value: row.id,
         title,
-        subtitle,
-        searchText: `${title} ${subtitle}`,
+        searchText: title,
       }
     })
 })
@@ -255,7 +227,7 @@ const getInventoryOptionByValue = (value: number | string | null | undefined) =>
   return inventoryOptions.value.find((option: any) => Number(option.value) === Number(value)) || null
 }
 
-const goBack = () => router.push({ name: 'inventory.requisites.index' })
+const goBack = () => router.push({ name: 'inventory.stock-requests' })
 const formatMoney = (value: any) => {
   const n = Number(value || 0)
   return n.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
@@ -384,8 +356,18 @@ const doCreate = async (submitNow: boolean) => {
       : await inventoryService.createPurchaseRequisitionFromInventory(payload)
 
     if (response?.success) {
-      toast.add({ severity: 'success', summary: submitNow ? 'Request Submitted' : 'Draft Saved', detail: submitNow ? 'Purchase requisition is pending in Procurement.' : 'You can edit or submit this draft later.', life: 3500 })
-      router.push({ name: 'inventory.requisites.detail', params: { id: response.data?.id } })
+      const autoApproved = response.data?.status === 'procurement_processing'
+      toast.add({
+        severity: 'success',
+        summary: !submitNow ? 'Draft Saved' : autoApproved ? 'Request Approved' : 'Request Submitted',
+        detail: !submitNow
+          ? 'You can edit or submit this draft later.'
+          : autoApproved
+            ? 'Your approval permission automatically approved this request. It is ready for Procurement.'
+            : 'Purchase requisition is pending in Procurement.',
+        life: 3500,
+      })
+      router.push({ name: 'inventory.stock-requests.detail', params: { type: 'purchase', id: response.data?.id } })
     } else {
       toast.add({ severity: 'error', summary: 'Error', detail: response?.message || 'Failed to create request', life: 3000 })
     }
@@ -405,7 +387,7 @@ const doCreate = async (submitNow: boolean) => {
 
 const submit = async (submitNow: boolean) => {
   Object.keys(errors).forEach(k => delete errors[k])
-  if (!canManage.value) return
+  if (!canSubmit.value) return
   if (validItems.value.length === 0) {
     errors.items = 'Please add at least one valid item with quantity.'
     return

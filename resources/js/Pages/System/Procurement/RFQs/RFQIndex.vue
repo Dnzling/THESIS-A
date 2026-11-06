@@ -167,9 +167,9 @@
                       <p class="text-gray-600">Created</p>
                       <p class="font-medium text-gray-900">{{ formatDateTime(data.created_at) }}</p>
                     </div>
-                    <div v-if="data.description">
-                      <p class="text-gray-600">Description</p>
-                      <p class="font-medium text-gray-900 line-clamp-2">{{ data.description }}</p>
+                    <div v-if="data.description || data.instructions">
+                      <p class="text-gray-600">Request Details</p>
+                      <p class="font-medium text-gray-900 line-clamp-2">{{ [data.description, data.instructions].filter(Boolean).join(' ') }}</p>
                     </div>
                   </div>
                 </div>

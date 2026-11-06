@@ -21,6 +21,8 @@ use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Store\Branch;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
+use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
+use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Services\Procurement\PurchaseOrderShippingFeeService;
 use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\Request;
@@ -301,6 +303,8 @@ class PurchaseOrderController extends Controller
             'shipment.driverEmployee.branch',
             'shipment.driverUser',
             'shipment.vehicle',
+            'supplierResponse.supplier',
+            'supplierResponse.recordedBy:id,fname,lname',
         ])->where('store_id', auth()->user()->store_id)
             ->findOrFail($id);
 
@@ -375,6 +379,7 @@ class PurchaseOrderController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.feedback_id' => 'nullable|integer|exists:supplier_rfq_feedbacks,id',
             'items.*.rfq_item_id' => 'nullable|exists:rfq_items,id',
+            'items.*.purchase_requisition_item_id' => 'nullable|integer|exists:purchase_requisition_items,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
             'items.*.quantity_ordered' => 'required|integer|min:1',
             'items.*.unit_cost' => 'required|numeric|min:0',
@@ -384,6 +389,32 @@ class PurchaseOrderController extends Controller
         DB::beginTransaction();
         try {
             $storeId = auth()->user()->store_id;
+
+            if (!empty($validated['purchase_requisition_id'])) {
+                $requisition = PurchaseRequisition::where('store_id', (int) $storeId)
+                    ->findOrFail((int) $validated['purchase_requisition_id']);
+
+                if (!empty($validated['branch_id']) && (int) $validated['branch_id'] !== (int) $requisition->branch_id) {
+                    throw ValidationException::withMessages([
+                        'branch_id' => 'The PO receiving branch must match the linked purchase requisition.',
+                    ]);
+                }
+            }
+
+            if (!empty($validated['branch_id'])) {
+                Branch::where('store_id', (int) $storeId)->findOrFail((int) $validated['branch_id']);
+            }
+
+            if (!empty($validated['purchase_requisition_id']) && !empty($validated['rfq_id'])) {
+                $rfq = RequestForQuotation::where('store_id', $storeId)
+                    ->findOrFail((int) $validated['rfq_id']);
+
+                if ((int) $rfq->purchase_requisition_id !== (int) $validated['purchase_requisition_id']) {
+                    throw ValidationException::withMessages([
+                        'rfq_id' => 'The selected RFQ is not linked to this purchase requisition.',
+                    ]);
+                }
+            }
 
             if ($isSplitFromRequisition) {
                 $createdOrders = $this->createSplitPurchaseOrdersFromRequisition($validated, (int) $storeId);
@@ -403,6 +434,9 @@ class PurchaseOrderController extends Controller
             $taxAmount = 0;
             $items = [];
             $quotedExpectedDeliveryDate = null;
+            Supplier::where('store_id', (int) $storeId)
+                ->whereNull('deleted_at')
+                ->findOrFail((int) $validated['supplier_id']);
             $contract = SupplierContract::where('store_id', $storeId)
                 ->where('supplier_id', $validated['supplier_id'])
                 ->active()
@@ -549,6 +583,7 @@ class PurchaseOrderController extends Controller
                 $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'po_created');
             } else {
                 // Manual PO creation from items
+                $requisitionAllocationsInRequest = [];
                 foreach ($validated['items'] as $index => $item) {
                     $requiresVariation = ProductVariation::query()
                         ->where('store_id', $storeId)
@@ -600,16 +635,94 @@ class PurchaseOrderController extends Controller
                         }
 
                         if ((int) $approvedFeedback->rfq_item_id !== (int) ($item['rfq_item_id'] ?? 0)
-                            || (int) $approvedFeedback->rfqItem?->product_id !== (int) $item['product_id']) {
+                            || (int) $approvedFeedback->rfqItem?->product_id !== (int) $item['product_id']
+                            || (int) ($approvedFeedback->rfqItem?->variation_id ?? 0) !== (int) ($item['variation_id'] ?? 0)) {
                             throw ValidationException::withMessages([
                                 "items.{$index}.rfq_item_id" => 'The product does not match the approved RFQ item.',
                             ]);
                         }
+
+                        if ((float) $item['quantity_ordered'] > (float) $approvedFeedback->available_quantity) {
+                            throw ValidationException::withMessages([
+                                "items.{$index}.quantity_ordered" => 'The ordered quantity exceeds the quantity offered by the supplier.',
+                            ]);
+                        }
+                    }
+
+                    $supplierProduct = null;
+                    if (!empty($validated['purchase_requisition_id']) && empty($validated['rfq_id'])) {
+                        $supplierProduct = DB::table('supplier_products')
+                            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+                            ->where('supplier_products.supplier_id', (int) $validated['supplier_id'])
+                            ->where('supplier_products.product_id', (int) $item['product_id'])
+                            ->where('suppliers.store_id', (int) $storeId)
+                            ->whereNull('suppliers.deleted_at')
+                            ->first([
+                                'supplier_products.supplier_price',
+                                'supplier_products.minimum_order_quantity',
+                            ]);
+
+                        if (!$supplierProduct) {
+                            throw ValidationException::withMessages([
+                                "items.{$index}.product_id" => 'The selected supplier is not linked to this PR product.',
+                            ]);
+                        }
+
+                    }
+
+                    $purchaseRequisitionItemId = null;
+                    if (!empty($validated['purchase_requisition_id'])) {
+                        $requisitionItemQuery = PurchaseRequisitionItem::query()
+                            ->where('requisition_id', (int) $validated['purchase_requisition_id'])
+                            ->where('product_id', (int) $item['product_id']);
+                        if (!empty($item['variation_id'])) {
+                            $requisitionItemQuery->where('variation_id', (int) $item['variation_id']);
+                        } else {
+                            $requisitionItemQuery->whereNull('variation_id');
+                        }
+                        if (!empty($item['purchase_requisition_item_id'])) {
+                            $requisitionItemQuery->whereKey((int) $item['purchase_requisition_item_id']);
+                        }
+                        $requisitionItem = $requisitionItemQuery->lockForUpdate()->first();
+
+                        if (!$requisitionItem) {
+                            throw ValidationException::withMessages([
+                                "items.{$index}.product_id" => 'This item is not part of the linked purchase requisition.',
+                            ]);
+                        }
+
+                        $allocationKey = (int) $requisitionItem->id;
+                        $existingAllocated = PurchaseOrderItem::query()
+                            ->where('product_id', (int) $item['product_id'])
+                            ->whereHas('purchaseOrder', function ($query) use ($storeId, $validated) {
+                                $query->where('store_id', $storeId)
+                                    ->where('purchase_requisition_id', (int) $validated['purchase_requisition_id'])
+                                    ->whereNotIn('status', ['cancelled', 'canceled', 'rejected']);
+                            });
+                        if (!empty($item['variation_id'])) {
+                            $existingAllocated->where('variation_id', (int) $item['variation_id']);
+                        } else {
+                            $existingAllocated->whereNull('variation_id');
+                        }
+                        $existingAllocated = (int) $existingAllocated->sum(DB::raw('COALESCE(allocated_quantity, quantity_ordered)'));
+                        $alreadyInRequest = (int) ($requisitionAllocationsInRequest[$allocationKey] ?? 0);
+                        $remainingQuantity = max(0, (int) $requisitionItem->quantity_requested - $existingAllocated - $alreadyInRequest);
+
+                        if ((int) $item['quantity_ordered'] > $remainingQuantity) {
+                            throw ValidationException::withMessages([
+                                "items.{$index}.quantity_ordered" => "Only {$remainingQuantity} unit(s) remain on the linked purchase requisition.",
+                            ]);
+                        }
+
+                        $requisitionAllocationsInRequest[$allocationKey] = $alreadyInRequest + (int) $item['quantity_ordered'];
+                        $purchaseRequisitionItemId = $requisitionItem->id;
                     }
 
                     $unitCostValue = $approvedFeedback
                         ? (float) $approvedFeedback->quoted_price
-                        : (float) ($item['unit_cost'] ?? $variation?->cost_price ?? $product?->cost_price ?? 0);
+                        : ($supplierProduct
+                            ? (float) $supplierProduct->supplier_price
+                            : (float) ($item['unit_cost'] ?? $variation?->cost_price ?? $product?->cost_price ?? 0));
                     if ($approvedFeedback?->estimated_delivery_date) {
                         $feedbackDate = $approvedFeedback->estimated_delivery_date->toDateString();
                         $quotedExpectedDeliveryDate = !$quotedExpectedDeliveryDate || $feedbackDate > $quotedExpectedDeliveryDate
@@ -627,7 +740,9 @@ class PurchaseOrderController extends Controller
                     $items[] = [
                         'product_id' => $item['product_id'],
                         'variation_id' => $item['variation_id'] ?? null,
+                        'purchase_requisition_item_id' => $purchaseRequisitionItemId,
                         'quantity_ordered' => $item['quantity_ordered'],
+                        'allocated_quantity' => $item['quantity_ordered'],
                         'unit_cost' => $unitCostValue,
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $itemSubtotal,
@@ -662,7 +777,9 @@ class PurchaseOrderController extends Controller
                 // Get procurement settings for approval tiers
                 $settings = ProcurementSettings::where('store_id', $storeId)->first();
                 $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
-                $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
+                $rfqRequired = !empty($validated['purchase_requisition_id']) && empty($validated['rfq_id'])
+                    ? false
+                    : ($settings?->shouldRequireRFQ($totalAmount) ?? false);
 
                 $po = PurchaseOrder::create([
                     'po_number' => $poNumber,
@@ -700,9 +817,11 @@ class PurchaseOrderController extends Controller
                     PurchaseOrderItem::create([
                         'purchase_order_id' => $po->id,
                         'product_id' => $item['product_id'],
+                        'purchase_requisition_item_id' => $item['purchase_requisition_item_id'] ?? null,
                         'rfq_item_id' => $item['rfq_item_id'] ?? null,
                         'variation_id' => $item['variation_id'],
                         'quantity_ordered' => $item['quantity_ordered'],
+                        'allocated_quantity' => $item['allocated_quantity'] ?? $item['quantity_ordered'],
                         'quantity_received' => 0,
                         'quantity_rejected' => 0,
                         'unit_cost' => $item['unit_cost'],
@@ -728,51 +847,45 @@ class PurchaseOrderController extends Controller
             }
 
             $user = auth()->user();
-            if ($this->userHasAnyPermission(['finance.purchase-orders.approve'], $user) && $po->status === 'pending_finance_approval') {
-                $settings = ProcurementSettings::forStore((int) $user->store_id);
-                $isSelfApproval = $this->isSelfApproval($po, $user);
+            if ($this->userHasAnyPermission(['finance.purchase_orders.approve'], $user) && $po->status === 'pending_finance_approval') {
+                $approvalPermission = 'finance.purchase_orders.approve';
 
-                if (!$isSelfApproval || !$settings->enforce_separation_of_duties || $settings->isSelfApprovalAllowedForAmount((float) $po->total_amount)) {
-                    $approvalPermission = 'finance.purchase_orders.approve';
+                $approversReceived = collect($po->approvals_received ?? []);
+                $approverPermissions = $approversReceived
+                    ->pluck('approver_permission')
+                    ->filter()
+                    ->map(fn($permission) => $this->normalizePermission((string) $permission))
+                    ->toArray();
 
-                    $approversReceived = collect($po->approvals_received ?? []);
-                    $approverPermissions = $approversReceived
-                        ->pluck('approver_permission')
-                        ->filter()
-                        ->map(fn($permission) => $this->normalizePermission((string) $permission))
-                        ->toArray();
+                if (!in_array($this->normalizePermission($approvalPermission), $approverPermissions, true)) {
+                    $po->addApproval(
+                        $approvalPermission,
+                        auth()->id(),
+                        $user->full_name,
+                        'Auto-approved on creation (finance.purchase_orders.approve)',
+                        null
+                    );
 
-                    if (!in_array($this->normalizePermission($approvalPermission), $approverPermissions, true)) {
-                        $po->addApproval(
-                            $approvalPermission,
-                            auth()->id(),
-                            $user->full_name,
-                            'Auto-approved on creation (finance.purchase-orders.approve)',
-                            null
-                        );
+                    $po->update(['status' => 'approved']);
+                    $po = $po->fresh();
 
-                        $po->update(['status' => 'approved']);
-                        $this->enforceMinimumApprovers($po, $settings);
+                    $autoSent = false;
+                    if ($this->shouldAutoSendAfterFinanceApproval($po)) {
+                        $autoSent = $this->dispatchApprovedPoToSupplier($po, true);
                         $po = $po->fresh();
-
-                        $autoSent = false;
-                        if ($this->shouldAutoSendAfterFinanceApproval($po)) {
-                            $autoSent = $this->dispatchApprovedPoToSupplier($po, true);
-                            $po = $po->fresh();
-                        }
-
-                        ActivityLog::record(
-                            'po_auto_approved',
-                            "PO {$po->po_number} auto-approved by finance on creation.",
-                            [
-                                'po_number' => $po->po_number,
-                                'permission' => $approvalPermission,
-                                'auto_sent' => $autoSent,
-                            ],
-                            'purchase_order',
-                            $po->id
-                        );
                     }
+
+                    ActivityLog::record(
+                        'po_auto_approved',
+                        "PO {$po->po_number} auto-approved by finance on creation.",
+                        [
+                            'po_number' => $po->po_number,
+                            'permission' => $approvalPermission,
+                            'auto_sent' => $autoSent,
+                        ],
+                        'purchase_order',
+                        $po->id
+                    );
                 }
             }
 
@@ -1164,6 +1277,140 @@ class PurchaseOrderController extends Controller
         }
     }
 
+    public function markSentOffline(Request $request, int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['procurement.purchase_orders.manage']), 403, 'You are not authorized to send purchase orders.');
+        $validated = $request->validate([
+            'response_channel' => ['required', 'in:email,phone,paper,in_person'],
+            'sent_at' => ['required', 'date', 'before_or_equal:today'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $po = PurchaseOrder::where('store_id', (int) $request->user()->store_id)->findOrFail($id);
+        abort_unless($po->status === 'approved', 422, 'Only finance-approved purchase orders can be sent to suppliers.');
+
+        DB::transaction(function () use ($po, $validated) {
+            $po->sendToSupplier();
+            ActivityLog::record(
+                'po_sent_to_supplier',
+                "PO {$po->po_number} sent to supplier outside the Supplier Portal.",
+                ['source' => 'procurement_recorded', 'channel' => $validated['response_channel'], 'sent_at' => $validated['sent_at'], 'notes' => $validated['notes'] ?? null],
+                'purchase_order',
+                $po->id
+            );
+        });
+
+        return response()->json(['success' => true, 'message' => 'Purchase order marked as sent.', 'data' => $po->fresh()]);
+    }
+
+    public function recordSupplierResponse(Request $request, int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['procurement.purchase_orders.manage']), 403, 'You are not authorized to record supplier responses.');
+
+        $validated = $request->validate([
+            'response' => ['required', 'in:accepted,rejected'],
+            'response_channel' => ['required', 'in:email,phone,paper,in_person'],
+            'response_date' => ['required', 'date', 'before_or_equal:today'],
+            'fulfillment_method' => ['required_if:response,accepted', 'nullable', 'in:store_pickup,supplier_delivery'],
+            'expected_delivery_date' => ['nullable', 'date', 'after_or_equal:response_date'],
+            'rejection_reason' => ['required_if:response,rejected', 'nullable', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:3000'],
+            'attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx', 'max:10240'],
+        ]);
+
+        $user = $request->user();
+        $po = PurchaseOrder::with('supplier')
+            ->where('store_id', (int) $user->store_id)
+            ->findOrFail($id);
+        abort_unless($po->status === 'sent_to_supplier', 422, 'A supplier response can only be recorded after the PO is sent.');
+
+        $attachmentPath = $request->hasFile('attachment')
+            ? $request->file('attachment')->store("procurement/purchase-orders/{$po->id}/supplier-responses", 'public')
+            : null;
+
+        $feedback = DB::transaction(function () use ($validated, $po, $user, $attachmentPath) {
+            $feedback = SupplierPOFeedback::updateOrCreate(
+                ['supplier_id' => $po->supplier_id, 'purchase_order_id' => $po->id],
+                [
+                    'supplier_portal_id' => null,
+                    'response_source' => 'procurement_recorded',
+                    'response_channel' => $validated['response_channel'],
+                    'response_date' => $validated['response_date'],
+                    'response' => $validated['response'],
+                    'fulfillment_method' => $validated['response'] === 'accepted' ? $validated['fulfillment_method'] : null,
+                    'rejection_reason' => $validated['rejection_reason'] ?? null,
+                    'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
+                    'delivery_notes' => $validated['notes'] ?? null,
+                    'attachment_path' => $attachmentPath,
+                    'recorded_by' => $user->id,
+                    'submitted_at' => now(),
+                ]
+            );
+
+            if ($validated['response'] === 'accepted') {
+                $po->update(array_filter([
+                    'fulfillment_method' => $validated['fulfillment_method'],
+                    'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
+                ], fn ($value) => $value !== null));
+                $po->markSupplierAccepted();
+            } else {
+                $po->markSupplierDeclined($validated['rejection_reason']);
+            }
+
+            ActivityLog::record(
+                $validated['response'] === 'accepted' ? 'po_supplier_accepted' : 'po_supplier_declined',
+                "Supplier response for PO {$po->po_number} was recorded by procurement.",
+                ['source' => 'procurement_recorded', 'channel' => $validated['response_channel'], 'response' => $validated['response']],
+                'purchase_order',
+                $po->id
+            );
+
+            return $feedback;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => $validated['response'] === 'accepted' ? 'Supplier acceptance recorded successfully.' : 'Supplier rejection recorded successfully.',
+            'data' => [
+                'purchase_order' => $po->fresh(),
+                'supplier_response' => $feedback->load(['supplier', 'recordedBy']),
+            ],
+        ]);
+    }
+
+    public function updateSupplierDeliveryStatus(Request $request, int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['procurement.purchase_orders.manage']), 403, 'You are not authorized to update supplier delivery status.');
+        $validated = $request->validate([
+            'status' => ['required', 'in:out_for_delivery,delivered'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $po = PurchaseOrder::where('store_id', (int) $request->user()->store_id)->findOrFail($id);
+        abort_unless($po->fulfillment_method === 'supplier_delivery', 422, 'This status action is only for supplier-delivered orders.');
+        $expectedFrom = $validated['status'] === 'out_for_delivery' ? 'supplier_accepted' : 'out_for_delivery';
+        abort_unless($po->status === $expectedFrom, 422, "This purchase order must be {$expectedFrom} before this update.");
+
+        DB::transaction(function () use ($po, $validated) {
+            if ($validated['status'] === 'out_for_delivery') {
+                $po->markOutForDelivery();
+            } else {
+                $po->markDelivered();
+                $po->update(['actual_delivery_date' => now()->toDateString()]);
+            }
+
+            ActivityLog::record(
+                $validated['status'] === 'out_for_delivery' ? 'po_supplier_out_for_delivery' : 'po_supplier_delivered',
+                "Supplier delivery for PO {$po->po_number} updated to {$validated['status']}.",
+                ['status' => $validated['status'], 'notes' => $validated['notes'] ?? null],
+                'purchase_order',
+                $po->id
+            );
+        });
+
+        return response()->json(['success' => true, 'message' => 'Supplier delivery status updated.', 'data' => $po->fresh()]);
+    }
+
     /**
      * Cancel purchase order
      * POST /api/procurement/ purchase_orders/{id}/cancel
@@ -1397,6 +1644,41 @@ class PurchaseOrderController extends Controller
                 $po->id
             );
 
+            $user = Auth::user();
+            if (
+                $po->status === 'pending_finance_approval'
+                && $this->userHasAnyPermission(['finance.purchase_orders.approve'], $user)
+            ) {
+                $po->addApproval(
+                    'finance.purchase_orders.approve',
+                    (int) $user->id,
+                    (string) $user->full_name,
+                    'Auto-approved on creation (finance.purchase_orders.approve)',
+                    null
+                );
+
+                $po->update(['status' => 'approved']);
+                $po = $po->fresh();
+
+                $autoSent = false;
+                if ($this->shouldAutoSendAfterFinanceApproval($po)) {
+                    $autoSent = $this->dispatchApprovedPoToSupplier($po, true);
+                    $po = $po->fresh();
+                }
+
+                ActivityLog::record(
+                    'po_auto_approved',
+                    "PO {$po->po_number} auto-approved by finance on creation.",
+                    [
+                        'po_number' => $po->po_number,
+                        'permission' => 'finance.purchase_orders.approve',
+                        'auto_sent' => $autoSent,
+                    ],
+                    'purchase_order',
+                    $po->id
+                );
+            }
+
             $this->notifyRequisitionRequesterPoCreated($po);
 
             $createdOrders[] = $po->load(['supplier', 'items.product', 'items.variation', 'createdBy']);
@@ -1477,6 +1759,39 @@ class PurchaseOrderController extends Controller
         $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
         if (in_array($pr->status, $terminalStatuses, true)) {
             return;
+        }
+
+        if ($status === 'po_created') {
+            $requestedItems = PurchaseRequisitionItem::query()
+                ->where('requisition_id', $pr->id)
+                ->get(['id', 'product_id', 'variation_id', 'quantity_requested']);
+            $allocatedByItem = DB::table('purchase_order_items as poi')
+                ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+                ->where('po.purchase_requisition_id', $pr->id)
+                ->whereNotIn('po.status', ['cancelled', 'canceled', 'rejected'])
+                ->whereNotNull('poi.purchase_requisition_item_id')
+                ->select('poi.purchase_requisition_item_id')
+                ->selectRaw('SUM(COALESCE(poi.allocated_quantity, poi.quantity_ordered)) as allocated_quantity')
+                ->groupBy('poi.purchase_requisition_item_id')
+                ->pluck('allocated_quantity', 'purchase_requisition_item_id');
+            $legacyAllocated = DB::table('purchase_order_items as poi')
+                ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+                ->where('po.store_id', (int) $pr->store_id)
+                ->where('po.purchase_requisition_id', $pr->id)
+                ->whereNotIn('po.status', ['cancelled', 'canceled', 'rejected'])
+                ->whereNull('poi.purchase_requisition_item_id')
+                ->selectRaw('poi.product_id, poi.variation_id, SUM(COALESCE(poi.allocated_quantity, poi.quantity_ordered)) as allocated_quantity')
+                ->groupBy('poi.product_id', 'poi.variation_id')
+                ->get()
+                ->keyBy(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
+
+            $hasRemaining = $requestedItems->contains(function ($item) use ($allocatedByItem, $legacyAllocated) {
+                $key = (int) $item->product_id . ':' . (int) ($item->variation_id ?? 0);
+                $allocated = (int) ($allocatedByItem[$item->id] ?? 0)
+                    + (int) ($legacyAllocated->get($key)->allocated_quantity ?? 0);
+                return $allocated < (int) $item->quantity_requested;
+            });
+            $status = $hasRemaining ? 'procurement_processing' : 'po_created';
         }
 
         if ($pr->status === $status) {

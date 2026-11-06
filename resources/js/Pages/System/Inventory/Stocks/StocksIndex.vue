@@ -3,7 +3,7 @@
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-xl font-bold text-gray-800">Stocks Overview</h1>
-        <p class="text-xs text-gray-500">Monitor available stock, incoming quantities, and reorder levels.</p>
+        <p class="text-xs text-gray-500">Monitor available stock, pre-order quantities, and reorder levels.</p>
       </div>
       <div class="flex items-center gap-2">
         <Button
@@ -101,8 +101,8 @@
             <template #body="{ data }">
               <div class="flex items-center gap-3">
                 <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                  <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name" class="block h-full w-full object-contain" />
-                  <i v-else class="pi pi-image text-slate-300"></i>
+                  <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name || 'Product image'" class="block h-full w-full object-contain" @error="handleProductImageError(data, $event)" />
+                  <div v-else class="flex h-full w-full items-center justify-center"><i class="pi pi-image text-lg text-slate-300"></i></div>
                 </div>
                 <div>
                   <p class="text-xs font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</p>
@@ -134,7 +134,7 @@
             </template>
           </Column>
 
-          <Column header="Incoming">
+          <Column header="Pre Order">
             <template #body="{ data }">
               <span class="text-xs font-medium text-blue-700">{{ data.quantity_incoming || 0 }}</span>
             </template>
@@ -195,6 +195,7 @@ import Tag from 'primevue/tag'
 
 const loading = ref(true)
 const items = ref<any[]>([])
+const failedProductImageUrls = ref<Record<string, string[]>>({})
 const expandedRows = ref<Record<string, boolean>>({})
 const totalRecords = ref(0)
 const toast = useToast()
@@ -432,11 +433,28 @@ const getBranchName = (data: any) => {
 
 const getProductImage = (data: any) => {
   const assets = Array.isArray(data?.product?.assets) ? data.product.assets : []
+  const productKey = String(data?.product_id || data?.product?.id || '')
+  const failedUrls = failedProductImageUrls.value[productKey] || []
   const image = assets
-    .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type) && (asset.thumbnail_url || asset.url))
+    .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type) && asset.url && !failedUrls.includes(asset.url))
     .sort((a: any, b: any) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
       || Number(a.display_order || 0) - Number(b.display_order || 0))[0]
-  return image?.thumbnail_url || image?.url || null
+  return image?.url || null
+}
+
+const handleProductImageError = (data: any, event: Event) => {
+  const productKey = String(data?.product_id || data?.product?.id || '')
+  const image = event.target as HTMLImageElement | null
+  const failedUrl = image?.getAttribute('src') || image?.src
+  if (!productKey || !failedUrl) return
+
+  const failedUrls = failedProductImageUrls.value[productKey] || []
+  if (!failedUrls.includes(failedUrl)) {
+    failedProductImageUrls.value = {
+      ...failedProductImageUrls.value,
+      [productKey]: [...failedUrls, failedUrl],
+    }
+  }
 }
 
 const getStockLocation = (data: any) => {

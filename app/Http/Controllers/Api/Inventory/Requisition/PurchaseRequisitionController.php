@@ -202,6 +202,13 @@ class PurchaseRequisitionController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        abort_unless($this->userHasAnyPermission([
+            'inventory.requisites.create',
+            'inventory.requisites.manage',
+            'inventory.requisitions.create',
+            'inventory.requisitions.manage',
+        ]), 403);
+
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
 
@@ -287,14 +294,28 @@ class PurchaseRequisitionController extends Controller
             if ($estimatedAmount >= 500000) $requiredApprovals[] = 'finance_manager';
 
             $requestedByEmployeeId = Auth::user()?->employee?->id;
+            $isSubmitted = !empty($validated['submit']);
+            $autoApproved = $isSubmitted && $this->userHasAnyPermission([
+                'inventory.requisites.approve',
+                'inventory.requisitions.approve',
+            ]);
+            $approvalChain = $autoApproved ? [[
+                'role' => Auth::user()?->role?->name ?? 'approver',
+                'user_id' => Auth::id(),
+                'user_name' => Auth::user()?->full_name,
+                'action' => 'approved',
+                'notes' => 'Auto-approved on submission because the creator has PR approval permission.',
+                'approved_at' => now()->toDateTimeString(),
+            ]] : null;
 
             $pr = PurchaseRequisition::create([
                 'pr_number' => $prNumber,
                 'store_id' => $storeId,
                 'branch_id' => $branchId,
                 'requisition_type' => $validated['requisition_type'] ?? 'regular',
-                'status' => !empty($validated['submit']) ? 'pending' : 'draft',
-                'submitted_at' => !empty($validated['submit']) ? now() : null,
+                'status' => !$isSubmitted ? 'draft' : ($autoApproved ? 'procurement_processing' : 'pending'),
+                'submitted_at' => $isSubmitted ? now() : null,
+                'approval_chain' => $approvalChain,
                 'estimated_amount' => $estimatedAmount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => $requiredApprovals,
@@ -323,7 +344,9 @@ class PurchaseRequisitionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Purchase requisition created successfully',
+                'message' => $autoApproved
+                    ? 'Purchase requisition created and auto-approved successfully'
+                    : 'Purchase requisition created successfully',
                 'data' => $pr->load(['branch', 'requestedBy', 'items.product', 'items.variation']),
             ], 201);
         } catch (\Exception $e) {

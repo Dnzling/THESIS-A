@@ -9,20 +9,13 @@
       <div class="flex items-center gap-4">
         <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-orders' })" />
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Purchase Order Details</h1>
-          <p class="text-sm text-gray-500 mt-1">View complete purchase order information</p>
+          <h1 class="break-all text-2xl font-semibold text-gray-900">{{ detail?.po_number || 'Purchase Order' }}</h1>
+          <p class="mt-1 text-sm text-gray-500">Purchase order details</p>
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <Button v-if="detail" label="Timeline" icon="pi pi-history" size="small" severity="secondary" outlined rounded @click="showTimelineDialog = true" />
         <Button v-if="detail" size=small icon="pi pi-print" severity="secondary" text @click="printPO" />
-        <Button v-if="canManagePurchaseOrders && detail?.status === 'draft'" label="Edit Purchase Order"
-          icon="pi pi-pencil" severity="info" @click="editPO" />
-        <Button v-if="canManagePurchaseOrders && detail?.status === 'approved'" label="Send to Supplier" icon="pi pi-send"
-          severity="success" @click="confirmSend" />
-        <Button v-if="canManagePurchaseOrders && detail?.status === 'sent_to_supplier'" label="Resend to Supplier"
-          icon="pi pi-replay" severity="secondary" @click="confirmResend" />
-        <Button v-if="canManageReceiving && detail?.status === 'delivered'" label="Receive Supplies" size="small"
-          icon="pi pi-inbox" severity="info" @click="createGoodsReceipt" />
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
       </div>
     </div>
@@ -36,26 +29,32 @@
   
     <!-- Main Content -->
     <div v-else-if="detail" class="space-y-6">
-      <!-- Delivery Status Steps -->
-    <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered'].includes(detail?.status)" class="space-y-6">
-        <Card v-if="steps && steps.length" class="rounded-2xl border border-slate-200/70 shadow-sm">
-          <template #content>
-            <div class="flex flex-col gap-4">
-              <div class="flex items-center justify-between text-sm font-semibold text-slate-600">
-                <div class="flex items-center gap-2" v-for="step in steps" :key="step.key">
-                  <div :class="['w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold',
-                      step.active ? 'bg-emerald-500' : 'bg-slate-300']">
-                    {{ step.index }}
-                  </div>
-                  <span :class="step.active ? 'text-emerald-600' : 'text-slate-500'">{{ step.label }}</span>
-                  <div v-if="step.index !== steps.length" class="w-10 h-px bg-slate-200 mx-3"></div>
-                </div>
-              </div>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+        <template #content>
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-semibold text-slate-900">Purchase order progress</h2>
+              <p class="text-xs text-slate-500">From Finance approval through receiving.</p>
             </div>
-          </template>
-  
-        </Card>
-  
+            <Badge :value="formatStatus(detail.status)" :severity="statusSeverity(detail.status)" />
+          </div>
+          <ol class="flex items-start gap-2 overflow-x-auto pb-2" aria-label="Purchase order progress">
+            <li v-for="step in steps" :key="step.key" class="flex min-w-[8rem] flex-1 items-start gap-2 last:min-w-[7rem]">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                :class="step.state === 'complete' ? 'bg-emerald-100 text-emerald-700' : step.state === 'current' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'">
+                <i v-if="step.state === 'complete'" class="pi pi-check text-xs" aria-hidden="true" />
+                <span v-else>{{ step.index }}</span>
+              </span>
+              <div class="min-w-0 pt-0.5">
+                <p class="text-xs font-medium leading-4" :class="step.state === 'complete' ? 'text-emerald-700' : step.state === 'current' ? 'text-orange-700' : 'text-slate-500'">{{ step.label }}</p>
+                <p v-if="step.state === 'current'" class="mt-0.5 text-[11px] text-slate-500">Current stage</p>
+              </div>
+            </li>
+          </ol>
+        </template>
+      </Card>
+
+    <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered', 'pending_receipt', 'partially_received', 'goods_received'].includes(detail?.status)" class="space-y-6">
         <Card class="overflow-hidden rounded-2xl border border-slate-200/70 shadow-sm" v-if="deliveryLogs.length || shipmentInfo">
           <template #header>
             <div class="flex items-center gap-3 border-b border-slate-100 bg-slate-50/80 px-6 py-4">
@@ -77,7 +76,7 @@
                 <p class="mt-1"><i class="pi pi-map-marker mr-1"></i>{{ currentPickupAddress }}</p>
               </div>
             </div>
-            <div v-if="shipmentInfo && ['in_transit', 'out_for_delivery'].includes(String(shipmentStatus))" class="mx-6 mb-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div v-if="shipmentInfo && ['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(String(shipmentStatus))" class="mx-6 mb-5 overflow-hidden rounded-2xl border border-slate-200">
               <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
                 <div>
                   <p class="font-semibold text-slate-900">Live Truck Tracking</p>
@@ -128,23 +127,19 @@
         Awaiting Finance Approval — this PO cannot be sent to supplier yet.
       </div>
       <!-- PO Header Information -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">PO Number</p>
-          <p class="text-lg font-semibold text-gray-900 mt-1">{{ detail?.po_number || '-' }}</p>
+      <div class="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Order Date</p>
+          <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(detail.order_date) }}</p>
         </div>
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Order Date</p>
-          <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatDate(detail?.order_date) }}</p>
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Expected Pickup</p>
+          <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(detail.expected_delivery_date) }}</p>
         </div>
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Expected Pickup</p>
-          <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatDate(detail?.expected_delivery_date) }}</p>
+        <div class="sm:col-span-2 lg:col-span-1">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
+          <p class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{{ detail.notes || 'No notes provided' }}</p>
         </div>
-        <!-- <div class="bg-white p-4 rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Payment Terms</p>
-              <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatPaymentTerms(detail?.payment_terms) }}</p>
-            </div> -->
       </div>
   
       <!-- Supplier and Branch Info -->
@@ -175,6 +170,22 @@
           </div>
         </div>
       </div>
+
+      <Card v-if="detail.supplier_response" class="rounded-2xl border border-slate-200 shadow-sm">
+        <template #content>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="font-semibold text-slate-900">Supplier Response</h3>
+              <p class="mt-1 text-sm text-slate-600">{{ detail.supplier_response.response === 'accepted' ? 'Accepted' : 'Declined' }} via {{ formatLabel(detail.supplier_response.response_channel) }} on {{ formatDate(detail.supplier_response.response_date) }}</p>
+              <p v-if="detail.supplier_response.recorded_by" class="mt-1 text-xs text-slate-500">Recorded by {{ getPersonName(detail.supplier_response.recorded_by) }}</p>
+              <p v-if="detail.supplier_response.rejection_reason" class="mt-2 text-sm text-red-700">{{ detail.supplier_response.rejection_reason }}</p>
+              <p v-if="detail.supplier_response.delivery_notes" class="mt-2 whitespace-pre-wrap text-sm text-slate-700">{{ detail.supplier_response.delivery_notes }}</p>
+            </div>
+            <a v-if="detail.supplier_response.attachment_path" :href="`/storage/${detail.supplier_response.attachment_path}`" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"><i class="pi pi-paperclip"></i>View evidence</a>
+          </div>
+          <p v-if="detail.supplier_response.response === 'accepted'" class="mt-3 text-xs text-slate-500">Fulfillment: {{ formatFulfillment(detail.supplier_response.fulfillment_method) }}<span v-if="detail.supplier_response.expected_delivery_date"> · Expected {{ formatDate(detail.supplier_response.expected_delivery_date) }}</span></p>
+        </template>
+      </Card>
   
       <!-- Created By Info -->
       <div class="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 text-sm text-gray-600">
@@ -260,15 +271,6 @@
       </aside>
       </div>
   
-      <!-- Notes -->
-      <div v-if="detail?.notes" class="bg-white p-5 rounded-lg border border-gray-200">
-        <div class="flex items-center gap-2 mb-3">
-          <i class="pi pi-file-text text-gray-400"></i>
-          <h3 class="font-medium text-gray-700">Notes</h3>
-        </div>
-        <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ detail.notes }}</p>
-      </div>
-  
       <!-- Terms and Conditions -->
       <div v-if="detail?.terms_conditions" class="bg-white p-5 rounded-lg border border-gray-200">
         <div class="flex items-center gap-2 mb-3">
@@ -285,37 +287,15 @@
         This purchase order is in <strong>{{ formatStatus(detail?.status) }}</strong> status and is view-only.
       </div>
   
-      <!-- Activity Timeline -->
-      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-          <div class="flex items-center gap-2">
-            <i class="pi pi-history text-gray-500"></i>
-            <h3 class="font-medium text-gray-700">Activity Timeline</h3>
-          </div>
-        </div>
-        <div class="p-6">
-          <ol class="divide-y divide-slate-100">
-            <li v-for="(item, index) in timelineItems" :key="index" class="flex gap-4 py-3 first:pt-0 last:pb-0">
-              <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
-              <div>
-                <p class="text-sm font-medium text-slate-900">{{ item.title }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ item.subtitle }}</p>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </div>
-  
       <!-- Goods Receipt Section -->
-      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div v-if="detail?.goods_receipts?.length" class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div class="flex items-center gap-2">
             <i class="pi pi-inbox text-gray-500"></i>
             <h3 class="font-medium text-gray-700">Goods Receipts</h3>
           </div>
         </div>
-        <p v-if="!detail?.goods_receipts?.length" class="px-6 py-5 text-sm text-slate-500">No goods receipts recorded for this purchase order yet.</p>
-        <div v-else class="overflow-x-auto">
+        <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
               <tr>
@@ -342,7 +322,30 @@
         </div>
       </div>
 
-     
+      <!-- Workflow Actions -->
+      <div
+        v-if="(canManagePurchaseOrders && ['draft', 'approved', 'sent_to_supplier'].includes(detail.status)) || (canManagePurchaseOrders && detail.fulfillment_method === 'supplier_delivery' && ['supplier_accepted', 'out_for_delivery'].includes(detail.status)) || (canManageReceiving && detail.status === 'delivered')"
+        class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-5"
+      >
+        <Button v-if="canManagePurchaseOrders && detail.status === 'draft'" label="Edit Purchase Order"
+          icon="pi pi-pencil" size="small" severity="info" rounded @click="editPO" />
+        <Button v-if="canManagePurchaseOrders && detail.status === 'approved'" label="Send to Supplier"
+          icon="pi pi-send" size="small" severity="success" rounded @click="confirmSend" />
+        <Button v-if="canManagePurchaseOrders && detail.status === 'approved'" label="Record Manual Send"
+          icon="pi pi-file-edit" size="small" severity="secondary" outlined rounded @click="openManualSendDialog" />
+        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Resend to Supplier"
+          icon="pi pi-replay" size="small" severity="secondary" outlined rounded @click="confirmResend" />
+        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Record Supplier Response"
+          icon="pi pi-file-edit" size="small" severity="warn" rounded @click="openSupplierResponseDialog" />
+        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Mark Supplier Pickup"
+          icon="pi pi-box" size="small" severity="info" outlined rounded @click="openSupplierPickupDialog" />
+        <Button v-if="canManagePurchaseOrders && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'supplier_accepted'" label="Mark Supplier Dispatched"
+          icon="pi pi-truck" size="small" severity="info" rounded @click="advanceSupplierDeliveryStatus('out_for_delivery')" />
+        <Button v-if="canManagePurchaseOrders && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'out_for_delivery'" label="Confirm Delivery at Store"
+          icon="pi pi-check" size="small" severity="success" rounded @click="advanceSupplierDeliveryStatus('delivered')" />
+        <Button v-if="canManageReceiving && detail.status === 'delivered'" label="Receive Supplies"
+          icon="pi pi-inbox" size="small" severity="info" rounded @click="createGoodsReceipt" />
+      </div>
     </div>
     <!-- Not Found State -->
     <div v-else class="text-center py-12 bg-white rounded-lg border border-gray-200">
@@ -354,6 +357,57 @@
         @click="router.push({ name: 'procurement.purchase-orders' })" />
     </div>
   
+    <Dialog v-model:visible="showTimelineDialog" modal header="Purchase Order Timeline" :style="{ width: 'min(36rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
+      <p class="mb-4 text-sm text-slate-500">{{ detail?.po_number || 'Purchase order' }} activity in chronological order.</p>
+      <ol class="max-h-[65vh] space-y-0 overflow-y-auto pr-1">
+        <li v-for="(item, index) in timelineItems" :key="index" class="flex gap-3 border-l border-slate-200 py-3 pl-4 first:pt-0 last:pb-0">
+          <span class="-ml-[1.35rem] mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-orange-500 ring-4 ring-white" />
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-900">{{ item.title }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ item.subtitle }}</p>
+          </div>
+        </li>
+      </ol>
+      <template #footer><Button label="Close" size="small" severity="secondary" outlined @click="showTimelineDialog = false" /></template>
+    </Dialog>
+
+    <Dialog v-model:visible="supplierResponseVisible" modal :header="supplierPickupMode ? 'Mark Supplier Pickup' : 'Record Supplier Response'" :style="{ width: 'min(38rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">
+          {{ supplierPickupMode ? 'Confirm that the supplier accepted this PO and it is ready for your store to pick up. This will make it available to Logistics for driver assignment.' : "Record the supplier's response received outside the portal. You can attach the email or signed quotation as evidence." }}
+        </p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label v-if="!supplierPickupMode" class="text-xs font-medium text-slate-600">Response
+            <select v-model="supplierResponseForm.response" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="accepted">Accepted</option><option value="rejected">Declined</option></select>
+          </label>
+          <label class="text-xs font-medium text-slate-600">Received via
+            <select v-model="supplierResponseForm.response_channel" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="email">Email</option><option value="phone">Phone</option><option value="paper">Paper</option><option value="in_person">In person</option></select>
+          </label>
+          <label class="text-xs font-medium text-slate-600">Response date<input v-model="supplierResponseForm.response_date" type="date" :max="todayDate" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
+          <label v-if="supplierResponseForm.response === 'accepted' && !supplierPickupMode" class="text-xs font-medium text-slate-600">Fulfillment method
+            <select v-model="supplierResponseForm.fulfillment_method" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="store_pickup">Pickup from Supplier</option><option value="supplier_delivery">Supplier Delivery</option></select>
+          </label>
+          <label v-if="supplierResponseForm.response === 'accepted'" class="text-xs font-medium text-slate-600">Expected delivery date<input v-model="supplierResponseForm.expected_delivery_date" type="date" :min="supplierResponseForm.response_date" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
+        </div>
+        <label v-if="supplierResponseForm.response === 'rejected'" class="block text-xs font-medium text-slate-600">Reason for decline<textarea v-model="supplierResponseForm.rejection_reason" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea></label>
+        <label class="block text-xs font-medium text-slate-600">Notes<textarea v-model="supplierResponseForm.notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="Optional details"></textarea></label>
+        <label class="block text-xs font-medium text-slate-600">Evidence attachment (optional)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" class="mt-1 block w-full text-sm" @change="supplierResponseForm.attachment = ($event.target as HTMLInputElement).files?.[0] || null" /></label>
+      </div>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="supplierResponseVisible = false" /><Button :label="supplierPickupMode ? 'Confirm Supplier Pickup' : supplierResponseForm.response === 'accepted' ? 'Record Acceptance' : 'Record Decline'" icon="pi pi-check" severity="warn" :loading="supplierResponseSaving" @click="submitSupplierResponse" /></template>
+    </Dialog>
+
+    <Dialog v-model:visible="manualSendVisible" modal header="Record Manual PO Send" :style="{ width: 'min(32rem, calc(100vw - 2rem))' }">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">Use this after sending or handing over the PO outside the system. The supplier does not need a portal account.</p>
+        <label class="block text-xs font-medium text-slate-600">Sent via
+          <select v-model="manualSendForm.response_channel" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="email">Email (sent outside system)</option><option value="phone">Phone</option><option value="paper">Printed copy</option><option value="in_person">In person</option></select>
+        </label>
+        <label class="block text-xs font-medium text-slate-600">Date sent<input v-model="manualSendForm.sent_at" type="date" :max="todayDate" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
+        <label class="block text-xs font-medium text-slate-600">Notes<textarea v-model="manualSendForm.notes" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="Optional delivery or communication details"></textarea></label>
+      </div>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="manualSendVisible = false" /><Button label="Mark PO Sent" icon="pi pi-send" severity="warn" :loading="manualSendSaving" @click="submitManualSend" /></template>
+    </Dialog>
+
     <!-- Email Preview Modal -->
     <Dialog v-model:visible="showEmailDialog" modal header="Supplier Email Preview" :style="{ width: '40rem' }">
       <div class="space-y-4">
@@ -400,17 +454,61 @@ const authStore = useAuthStore()
 const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 const canManageReceiving = computed(() => authStore.hasPermission('inventory.receiving.manage'))
 const poId = Number(route.params.id)
+const todayDate = new Date().toISOString().slice(0, 10)
+const supplierResponseVisible = ref(false)
+const supplierResponseSaving = ref(false)
+const supplierPickupMode = ref(false)
+const supplierResponseForm = ref<any>({ response: 'accepted', response_channel: 'email', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null })
+const manualSendVisible = ref(false)
+const manualSendSaving = ref(false)
+const manualSendForm = ref({ response_channel: 'phone', sent_at: todayDate, notes: '' })
+const completedStage = computed(() => {
+  if (!detail.value) return 0
+  const status = String(detail.value.status || '')
+  const pickupFlow = detail.value.fulfillment_method !== 'supplier_delivery'
+  const receiptStage = pickupFlow ? 8 : 6
+  const deliveredStage = pickupFlow ? 7 : 5
+  const stages: Record<string, number> = {
+    approved: 1,
+    sent_to_supplier: 2,
+    supplier_accepted: 3,
+    in_transit: pickupFlow ? 6 : 4,
+    out_for_delivery: pickupFlow ? 6 : 4,
+    delivered: deliveredStage,
+    pending_receipt: deliveredStage,
+    partially_received: deliveredStage,
+    goods_received: receiptStage,
+  }
+  const shipmentStages: Record<string, number> = {
+    pending: 4,
+    en_route_to_supplier: 5,
+    in_transit: 6,
+    out_for_delivery: pickupFlow ? 6 : 4,
+    delivered: deliveredStage,
+  }
+  return Math.max(
+    stages[status] || 0,
+    shipmentStages[String(shipmentStatus.value || '')] || 0,
+    detail.value.goods_receipts?.length ? receiptStage : 0,
+  )
+})
 const steps = computed(() => {
-  const sent = detail.value?.status === 'sent_to_supplier' || detail.value?.status === 'supplier_accepted'
-  const inTransit = ['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))
-  const outForDelivery = ['out_for_delivery', 'delivered'].includes(String(shipmentStatus.value))
-  const delivered = shipmentStatus.value === 'delivered'
-  return [
-    { key: 'supplier', label: 'Supplier Approval', index: 1, active: sent || inTransit || delivered },
-    { key: 'transit', label: 'In Transit', index: 2, active: inTransit || delivered },
-    { key: 'out_for_delivery', label: 'Out for Delivery', index: 3, active: outForDelivery },
-    { key: 'delivered', label: 'Order Delivered', index: 4, active: delivered },
-  ]
+  const labels = detail.value?.fulfillment_method === 'supplier_delivery'
+    ? [
+        ['finance', 'Finance approval'], ['sent', 'Sent to supplier'], ['supplier', 'Supplier accepted'],
+        ['out_for_delivery', 'Out for delivery'], ['delivered', 'Delivered'], ['receipt', 'Goods receipt'],
+      ]
+    : [
+        ['finance', 'Finance approval'], ['sent', 'Sent to supplier'], ['supplier', 'Supplier accepted'],
+        ['assigned', 'Driver assigned'], ['en_route', 'En route to supplier'], ['picked_up', 'Pickup confirmed'],
+        ['delivered', 'Delivered'], ['receipt', 'Goods receipt'],
+      ]
+  return labels.map(([key, label], index) => ({
+    key,
+    label,
+    index: index + 1,
+    state: index + 1 <= completedStage.value ? 'complete' : !['draft', 'cancelled', 'rejected_finance', 'declined_supplier'].includes(String(detail.value?.status)) && index + 1 === completedStage.value + 1 ? 'current' : 'upcoming',
+  }))
 })
 
 // State
@@ -428,6 +526,7 @@ let pickupTruckMarker: MapboxMarker | null = null
 let pickupDestinationMarker: MapboxMarker | null = null
 let pickupRefreshTimer: number | null = null
 const showEmailDialog = ref(false)
+const showTimelineDialog = ref(false)
 const emailSending = ref(false)
 const emailForm = ref({
   recipient_email: '',
@@ -435,6 +534,65 @@ const emailForm = ref({
   message: '',
   mode: 'send' as 'send' | 'resend',
 })
+
+const openSupplierResponseDialog = () => {
+  supplierPickupMode.value = false
+  supplierResponseForm.value = { response: 'accepted', response_channel: 'email', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
+  supplierResponseVisible.value = true
+}
+
+const openSupplierPickupDialog = () => {
+  supplierPickupMode.value = true
+  supplierResponseForm.value = { response: 'accepted', response_channel: 'phone', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
+  supplierResponseVisible.value = true
+}
+
+const openManualSendDialog = () => {
+  manualSendForm.value = { response_channel: 'phone', sent_at: todayDate, notes: '' }
+  manualSendVisible.value = true
+}
+
+const submitManualSend = async () => {
+  manualSendSaving.value = true
+  try {
+    await procurementService.markPurchaseOrderSentOffline(poId, manualSendForm.value)
+    manualSendVisible.value = false
+    toast.add({ severity: 'success', summary: 'PO Sent', detail: 'Manual supplier handoff recorded.', life: 3000 })
+    await loadDetail()
+  } catch (error: any) {
+    const firstError = Object.values(error.response?.data?.errors || {})[0] as any
+    toast.add({ severity: 'error', summary: 'Unable to Mark Sent', detail: error.response?.data?.message || firstError?.[0] || 'Please check the details.', life: 4000 })
+  } finally { manualSendSaving.value = false }
+}
+
+const advanceSupplierDeliveryStatus = async (status: 'out_for_delivery' | 'delivered') => {
+  try {
+    await procurementService.updateSupplierDeliveryStatus(poId, { status })
+    toast.add({ severity: 'success', summary: 'Status Updated', detail: status === 'delivered' ? 'Supplier delivery marked as received at the store.' : 'Supplier dispatch recorded.', life: 3000 })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to Update Status', detail: error.response?.data?.message || 'Please try again.', life: 4000 })
+  }
+}
+
+const submitSupplierResponse = async () => {
+  supplierResponseSaving.value = true
+  try {
+    const form = new FormData()
+    for (const key of ['response', 'response_channel', 'response_date', 'fulfillment_method', 'expected_delivery_date', 'rejection_reason', 'notes']) {
+      if (supplierResponseForm.value[key]) form.append(key, supplierResponseForm.value[key])
+    }
+    if (supplierResponseForm.value.attachment) form.append('attachment', supplierResponseForm.value.attachment)
+    await procurementService.recordPurchaseOrderSupplierResponse(poId, form)
+    supplierResponseVisible.value = false
+    toast.add({ severity: 'success', summary: supplierPickupMode.value ? 'Supplier Pickup Ready' : 'Response Recorded', detail: supplierPickupMode.value ? 'The PO is now available in Logistics for pickup assignment.' : 'Supplier response saved.', life: 3000 })
+    supplierPickupMode.value = false
+    await loadDetail()
+  } catch (error: any) {
+    const firstError = Object.values(error.response?.data?.errors || {})[0] as any
+    toast.add({ severity: 'error', summary: 'Unable to Record Response', detail: error.response?.data?.message || firstError?.[0] || 'Please check the response details.', life: 4000 })
+  } finally { supplierResponseSaving.value = false }
+}
 
 // Methods
 const loadDetail = async () => {
@@ -569,6 +727,8 @@ const timelineItems = computed(() => {
       po_email_sent: 'Email Sent to Supplier',
       po_supplier_accepted: 'Supplier Accepted',
       po_supplier_declined: 'Supplier Declined',
+      po_supplier_out_for_delivery: 'Supplier Dispatched',
+      po_supplier_delivered: 'Delivered to Store',
       po_shipment_created: 'Delivery Form Created',
       po_invoice_created: 'Invoice Created',
       po_rejected: 'Rejected by Finance',
@@ -583,6 +743,8 @@ const timelineItems = computed(() => {
 
 const formatStatus = (status: string) => {
   if (!status) return 'DRAFT'
+  if (status === 'in_transit') return 'Out for Delivery'
+  if (status === 'supplier_accepted' && detail.value?.fulfillment_method === 'store_pickup') return 'Supplier Pickup'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
@@ -612,7 +774,8 @@ const logDotColor = (eventType: string) => {
 const normalizeEventType = (eventType?: string) => String(eventType || '').trim().toLowerCase().replaceAll(' ', '_')
 const deliveryLogLabel = (eventType?: string) => ({
   pickup_assigned: 'Pickup Assigned',
-  in_transit: 'Supplies Picked Up',
+  en_route_to_supplier: 'Driver En Route to Supplier',
+  in_transit: 'Out for Delivery',
   out_for_delivery: 'Out for Delivery',
   delivered: 'Arrived at Store',
   cancelled: 'Pickup Cancelled',
@@ -620,7 +783,8 @@ const deliveryLogLabel = (eventType?: string) => ({
 }[normalizeEventType(eventType)] || formatStatus(eventType || 'pickup_update'))
 const deliveryLogDescription = (eventType?: string) => ({
   pickup_assigned: 'A driver and vehicle were assigned to this purchase order.',
-  in_transit: 'The supplies were collected from the supplier and are now in transit.',
+  en_route_to_supplier: 'The driver has started the trip to the supplier.',
+  in_transit: 'Legacy pickup status; the supplies are on their way to the store.',
   out_for_delivery: 'The supplies are on the final delivery leg to the store.',
   delivered: 'The driver arrived at the store with the supplies.',
   cancelled: 'The assigned supplier pickup was cancelled.',
@@ -628,6 +792,7 @@ const deliveryLogDescription = (eventType?: string) => ({
 }[normalizeEventType(eventType)] || 'Pickup activity was recorded.')
 const logIcon = (eventType?: string) => ({
   pickup_assigned: 'pi pi-user-plus',
+  en_route_to_supplier: 'pi pi-map-marker',
   in_transit: 'pi pi-truck',
   out_for_delivery: 'pi pi-map-marker',
   delivered: 'pi pi-check-circle',
@@ -636,13 +801,14 @@ const logIcon = (eventType?: string) => ({
 }[normalizeEventType(eventType)] || 'pi pi-info-circle')
 const logIconClass = (eventType?: string) => ({
   pickup_assigned: 'bg-blue-100 text-blue-600',
+  en_route_to_supplier: 'bg-blue-100 text-blue-700',
   in_transit: 'bg-amber-100 text-amber-700',
   out_for_delivery: 'bg-blue-100 text-blue-700',
   delivered: 'bg-emerald-100 text-emerald-700',
   cancelled: 'bg-red-100 text-red-700',
   note: 'bg-sky-100 text-sky-700',
 }[normalizeEventType(eventType)] || 'bg-slate-100 text-slate-600')
-const proofAttachments = (log: any) => ['in_transit', 'delivered'].includes(normalizeEventType(log?.event_type)) ? (log?.attachments || []) : []
+const proofAttachments = (log: any) => ['out_for_delivery', 'in_transit', 'delivered'].includes(normalizeEventType(log?.event_type)) ? (log?.attachments || []) : []
 const proofLabel = (eventType?: string) => normalizeEventType(eventType) === 'delivered' ? 'Arrival proof' : 'Supplier pickup proof'
 const logAddress = (log: any) => log?.location_address || resolvedLogAddresses.value[Number(log?.id)] || ''
 const currentPickupAddress = computed(() => shipmentInfo.value?.current_address || resolvedShipmentAddress.value || deliveryLogs.value.map(logAddress).find(Boolean) || '')
@@ -701,7 +867,7 @@ const loadDeliveryLogs = async () => {
 const fetchRoadRoute = fetchMapboxRoadRoute
 
 const renderPickupMap = async () => {
-  if (!pickupMapElement.value || !shipmentInfo.value || !['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) return
+  if (!pickupMapElement.value || !shipmentInfo.value || !['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) return
   const branch = detail.value?.branch || {}
   const destination: [number, number] | null = Number.isFinite(Number(branch.latitude)) && Number.isFinite(Number(branch.longitude))
     ? [Number(branch.latitude), Number(branch.longitude)]
@@ -760,7 +926,7 @@ const renderPickupMap = async () => {
 }
 
 const startPickupRefresh = () => {
-  if (!['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) {
+  if (!['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) {
     if (pickupRefreshTimer !== null) window.clearInterval(pickupRefreshTimer)
     pickupRefreshTimer = null
     return
@@ -774,15 +940,18 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
     approved: 'success',
     sent_to_supplier: 'info',
     supplier_accepted: 'success',
-    in_transit: 'warn',
+    in_transit: 'info',
     out_for_delivery: 'info',
     delivered: 'success',
+    pending_receipt: 'warn',
+    partially_received: 'info',
+    goods_received: 'success',
     pending_finance_approval: 'warn',
     rejected_finance: 'danger',
     declined_supplier: 'danger',
-    cancelled: 'danger',
+    cancelled: 'secondary',
     revision_requested: 'warn',
-    draft: 'contrast'
+    draft: 'secondary'
   }
   return statusMap[status] || 'contrast'
 }
@@ -816,7 +985,8 @@ const formatDimensions = (item: any) => {
     ? `${formatDecimal(length)} × ${formatDecimal(width)} × ${formatDecimal(height)} cm`
     : '-'
 }
-const formatFulfillment = (value?: string) => value === 'supplier_delivery' ? 'Supplier Delivery' : value === 'store_pickup' ? 'Store Pickup' : 'Not selected'
+const formatFulfillment = (value?: string) => value === 'supplier_delivery' ? 'Supplier Delivery' : value === 'store_pickup' ? 'Pickup from Supplier' : 'Not selected'
+const formatLabel = (value?: string) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 const formatPaymentTerms = (term: string) => {
   const terms: Record<string, string> = {

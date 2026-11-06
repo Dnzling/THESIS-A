@@ -20,8 +20,8 @@
           </div>
         </template>
         <template #content>
-          <div v-if="loadingProducts" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <div v-for="n in 6" :key="n" class="h-64 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+          <div v-if="loadingProducts" class="space-y-2">
+            <div v-for="n in 6" :key="n" class="h-24 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
           </div>
           <div v-else-if="!products.length" class="rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
             <template v-if="productLoadError">
@@ -30,44 +30,36 @@
             </template>
             <template v-else>No in-stock products found.</template>
           </div>
-          <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-else class="space-y-2">
             <article
               v-for="row in products"
               :key="row.id"
-              class="group cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              class="group flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
               role="button"
               tabindex="0"
-              @click="openProductDetails(row)"
-              @keydown.enter="openProductDetails(row)"
+              :aria-disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
+              @click="selectProduct(row)"
+              @keydown.enter.prevent="selectProduct(row)"
             >
-              <div class="relative flex h-40 items-center justify-center bg-slate-50">
-                <img v-if="productImage(row)" :src="productImage(row)" :alt="row.product?.product_name || 'Product image'" class="h-full w-full object-contain p-3" loading="lazy" />
+              <div class="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-24 sm:w-24">
+                <img v-if="productImage(row)" :src="productImage(row)" :alt="row.product?.product_name || 'Product image'" class="h-full w-full object-contain p-2" loading="lazy" />
                 <i v-else class="pi pi-image text-3xl text-slate-300" />
-                <Badge class="absolute left-2 top-2" :value="`${Number(row.quantity_available || 0)} in stock`" :severity="getStockSeverity(row.quantity_available)" />
-                <Button
-                  v-if="productModel(row)"
-                  icon="pi pi-box"
-                  rounded
-                  severity="secondary"
-                  class="!absolute right-2 top-2"
-                  aria-label="View 3D model"
-                  @click.stop="openProduct3D(row)"
-                />
               </div>
-              <div class="space-y-2 p-3">
-                <div class="min-h-10">
-                  <h3 class="line-clamp-2 text-sm font-semibold text-slate-900">{{ row.product?.product_name }}<span v-if="row.variation?.variation_name"> - {{ row.variation.variation_name }}</span></h3>
-                  <p class="mt-0.5 truncate text-xs text-slate-500">SKU: {{ productSku(row) }}</p>
+              <div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                  <h3 class="truncate text-sm font-semibold text-slate-900">{{ row.product?.product_name }}<span v-if="row.variation?.variation_name"> - {{ row.variation.variation_name }}</span></h3>
+                  <p class="mt-1 truncate text-xs text-slate-500">SKU: {{ productSku(row) }}</p>
+                  <Badge class="mt-2" :value="`${Number(row.quantity_available || 0)} in stock`" :severity="getStockSeverity(row.quantity_available)" />
                 </div>
-                <div class="flex min-h-7 items-end justify-between gap-2">
-                  <div>
+                <div class="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                  <div class="text-right">
                     <p v-if="hasDiscount(row)" class="text-xs text-slate-400 line-through">{{ money(productBasePrice(row)) }}</p>
                     <p class="font-semibold text-orange-600">{{ money(productSellingPrice(row)) }}</p>
                   </div>
                   <Button
                     :icon="productIsCustomizable(row) ? 'pi pi-palette' : 'pi pi-plus'"
                     rounded
-                    :aria-label="productIsCustomizable(row) ? 'Customize and add to cart' : 'Add to cart'"
+                    :aria-label="productIsCustomizable(row) ? 'Customize and add to order' : 'Add to order'"
                     :disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
                     @click.stop="productIsCustomizable(row) ? openCustomizationDialog(row) : addToCart(row)"
                   />
@@ -78,18 +70,18 @@
         </template>
       </Card>
 
-      <!-- Cart Section -->
+      <!-- Order Section -->
       <Card>
         <template #title>
           <div class="flex items-center gap-2">
-            <span>Cart</span>
+            <span>Order</span>
             <Badge v-if="cart.length" :value="cart.length" class="ml-auto" />
           </div>
         </template>
         <template #content>
           <div v-if="!cart.length" class="text-center py-8 text-gray-500">
             <i class="pi pi-inbox text-4xl mb-2 text-gray-300"></i>
-            <p>No items in cart</p>
+            <p>No items in order</p>
           </div>
           <div v-else class="space-y-2 max-h-96 overflow-y-auto mb-4">
             <div v-for="item in cart" :key="item.cart_line_key" class="border rounded-lg p-3">
@@ -245,44 +237,6 @@
       </Card>
     </div>
 
-    <Dialog v-model:visible="productDetailVisible" modal header="Product Details" :style="{ width: 'min(900px, 95vw)' }" :breakpoints="{ '640px': '96vw' }">
-      <div v-if="selectedProduct" class="grid gap-5 md:grid-cols-2">
-        <div class="flex min-h-64 items-center justify-center rounded-xl bg-slate-50 p-4">
-          <img v-if="productImage(selectedProduct)" :src="productImage(selectedProduct)" :alt="selectedProduct.product?.product_name || 'Product image'" class="max-h-80 w-full object-contain" />
-          <i v-else class="pi pi-image text-5xl text-slate-300" />
-        </div>
-        <div class="space-y-3">
-          <div>
-            <h2 class="text-xl font-semibold text-slate-900">{{ selectedProduct.product?.product_name }}<span v-if="selectedProduct.variation?.variation_name"> - {{ selectedProduct.variation.variation_name }}</span></h2>
-            <p class="mt-1 text-sm text-slate-500">SKU: {{ productSku(selectedProduct) }}</p>
-          </div>
-          <div class="flex items-end gap-2">
-            <span class="text-xl font-bold text-orange-600">{{ money(productSellingPrice(selectedProduct)) }}</span>
-            <span v-if="hasDiscount(selectedProduct)" class="text-sm text-slate-400 line-through">{{ money(productBasePrice(selectedProduct)) }}</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <Badge :value="`${Number(selectedProduct.quantity_available || 0)} in stock`" :severity="getStockSeverity(selectedProduct.quantity_available)" />
-            <Tag v-if="selectedProduct.variation?.color" :value="selectedProduct.variation.color" />
-            <Tag v-if="selectedProduct.variation?.size" :value="selectedProduct.variation.size" />
-            <Tag v-if="selectedProduct.variation?.material" :value="selectedProduct.variation.material" />
-          </div>
-          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-slate-100 py-3 text-sm">
-            <template v-for="detail in productDetails(selectedProduct)" :key="detail.label">
-              <dt class="text-slate-500">{{ detail.label }}</dt><dd class="text-right font-medium text-slate-800">{{ detail.value }}</dd>
-            </template>
-          </dl>
-          <p v-if="plainDescription(selectedProduct.product?.description)" class="whitespace-pre-line text-sm leading-6 text-slate-600">{{ plainDescription(selectedProduct.product?.description) }}</p>
-          <div class="flex flex-wrap justify-end gap-2 pt-2">
-            <Button v-if="productModel(selectedProduct)" label="View 3D" icon="pi pi-box" severity="secondary" outlined @click="openProduct3D(selectedProduct)" />
-            <Button label="Add to Cart" icon="pi pi-plus" :disabled="!canManagePos || cartQuantity(selectedProduct.id) >= Number(selectedProduct.quantity_available || 0)" @click="addToCart(selectedProduct)" />
-            <Button v-if="productIsCustomizable(selectedProduct)" label="Customize & Add" icon="pi pi-palette" severity="warn"
-              :disabled="!canManagePos || cartQuantity(selectedProduct.id) >= Number(selectedProduct.quantity_available || 0)"
-              @click="openCustomizationDialog(selectedProduct)" />
-          </div>
-        </div>
-      </div>
-    </Dialog>
-
     <Dialog v-model:visible="customizationDialogVisible" modal header="Upholstery Customization" :style="{ width: 'min(640px, 95vw)' }" :breakpoints="{ '640px': '96vw' }">
       <div v-if="customizationSource" class="space-y-4">
         <div class="rounded-xl border border-orange-100 bg-orange-50 p-3">
@@ -322,10 +276,6 @@
         <Button :label="customizationEditing ? 'Save Changes' : 'Add Customized Item'" icon="pi pi-check" severity="warn"
           :disabled="!canManagePos" @click="saveCustomizationToCart" />
       </template>
-    </Dialog>
-
-    <Dialog v-model:visible="product3DVisible" modal header="3D Product View" :style="{ width: 'min(800px, 95vw)' }" :breakpoints="{ '640px': '96vw' }" :unmount-on-hide="false">
-      <Model3DPreview v-if="selectedModel" :model-url="selectedModel.url" :model-format="selectedModel.model_format" :camera-x="selectedModel.camera_settings?.angle_x" :camera-y="selectedModel.camera_settings?.angle_y" :zoom="selectedModel.camera_settings?.zoom" height="min(65vh, 560px)" allow-bottom-view />
     </Dialog>
 
     <!-- Customer Dialog -->
@@ -443,11 +393,9 @@ import Divider from 'primevue/divider'
 import Checkbox from 'primevue/checkbox'
 import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
-import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Message from 'primevue/message'
 import ConfirmDialog from 'primevue/confirmdialog'
-import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
@@ -463,10 +411,6 @@ const authStore = useAuthStore()
 const search = ref('')
 const products = ref<any[]>([])
 const productLoadError = ref('')
-const productDetailVisible = ref(false)
-const product3DVisible = ref(false)
-const selectedProduct = ref<any | null>(null)
-const selectedModel = ref<any | null>(null)
 const customizationDialogVisible = ref(false)
 const customizationSource = ref<any | null>(null)
 const customizationEditing = ref(false)
@@ -553,27 +497,13 @@ const productImage = (row: any) => {
   const asset = row.variation?.custom_image || images.find((item: any) => item.is_primary || item.asset_type === 'Image_Main') || images[0]
   return asset?.url || asset?.thumbnail_url || null
 }
-const productModel = (row: any) => row.variation?.custom3dModel || row.product?.assets?.find((item: any) => item.asset_type === '3D_Model') || null
-const productDetails = (row: any) => {
-  const product = row.product || {}
-  const variation = row.variation || {}
-  const dimensions = [variation.length_cm ?? product.length_cm, variation.width_cm ?? product.width_cm, variation.height_cm ?? product.height_cm]
-  return [
-    { label: 'Brand', value: product.brand },
-    { label: 'Unit', value: variation.unit_of_measurement || product.unit_of_measurement },
-    { label: 'Dimensions', value: dimensions.every((value: any) => value !== null && value !== undefined) ? `${dimensions.join(' × ')} cm` : null },
-    { label: 'Weight', value: variation.weight_kg ?? product.weight_kg ? `${variation.weight_kg ?? product.weight_kg} kg` : null },
-  ].filter((detail) => detail.value)
-}
-const plainDescription = (value: any) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-const openProductDetails = (row: any) => {
-  selectedProduct.value = row
-  productDetailVisible.value = true
-}
-const openProduct3D = (row: any) => {
-  selectedProduct.value = row
-  selectedModel.value = productModel(row)
-  product3DVisible.value = true
+const selectProduct = (row: any) => {
+  if (!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)) return
+  if (productIsCustomizable(row)) {
+    openCustomizationDialog(row)
+    return
+  }
+  addToCart(row)
 }
 
 const openCustomizationDialog = (row: any, cartItem: any | null = null) => {
@@ -587,7 +517,6 @@ const openCustomizationDialog = (row: any, cartItem: any | null = null) => {
     fee: Number(existing?.customization_fee || 0),
     leadTimeDays: existing?.customization_lead_time_days ? Number(existing.customization_lead_time_days) : null,
   }
-  productDetailVisible.value = false
   customizationDialogVisible.value = true
 }
 
@@ -635,7 +564,6 @@ const addToCart = (row: any) => {
     if (cartQuantity(id) >= Number(row.quantity_available || 0)) return
     existing.quantity += 1
     updateCartTotal()
-    productDetailVisible.value = false
     return 
   }
   cart.value.push({
@@ -649,7 +577,6 @@ const addToCart = (row: any) => {
     is_customizable: productIsCustomizable(row),
   })
   updateCartTotal()
-  productDetailVisible.value = false
 }
 
 const saveCustomizationToCart = () => {
@@ -707,7 +634,7 @@ const removeCart = (item: any) => {
 
   confirm.require({
     header: 'Remove Item',
-    message: `Remove ${item.product_name || 'this item'} from the cart?`,
+    message: `Remove ${item.product_name || 'this item'} from the order?`,
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Remove',
     rejectLabel: 'Cancel',
@@ -761,7 +688,7 @@ const updateShippingFee = async () => {
 
 const checkout = async () => {
   if (!cart.value.length) {
-    toast.add({ severity: 'warn', summary: 'Empty Cart', detail: 'Please add items to cart first.', life: 2500 })
+    toast.add({ severity: 'warn', summary: 'Empty Order', detail: 'Please add products to the order first.', life: 2500 })
     return
   }
 

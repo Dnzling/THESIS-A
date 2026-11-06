@@ -65,7 +65,7 @@ class WholesaleQuoteController extends Controller
             ->whereHas('product', fn ($query) => $query->where('product_type', 'finished_good')->where('is_active', true))
             ->with([
                 'product:id,product_name,sku,base_price',
-                'variation:id,variation_name,variation_sku,color,size,material',
+                'variation:id,variation_name,variation_sku,color,size,material,base_price',
                 'branch:id,name',
             ])
             ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_available'])
@@ -81,7 +81,7 @@ class WholesaleQuoteController extends Controller
                 ])->filter()->implode(' · '),
                 'sku' => $stock->variation?->variation_sku ?: $stock->product?->sku,
                 'available' => (int) $stock->quantity_available,
-                'base_price' => (float) ($stock->product?->base_price ?? 0),
+                'base_price' => (float) ($stock->variation?->base_price ?? $stock->product?->base_price ?? 0),
             ]);
         return response()->json(['success' => true, 'data' => ['branches' => $branches, 'products' => $products]]);
     }
@@ -100,7 +100,8 @@ class WholesaleQuoteController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.branch_inventory_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'gt:0'],
+            'items.*.discount_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $items = [];
@@ -108,18 +109,35 @@ class WholesaleQuoteController extends Controller
             $stock = BranchInventory::query()->where('store_id', $storeId)
                 ->where('branch_id', $validated['branch_id'])
                 ->whereKey($row['branch_inventory_id'])
-                ->with('product:id,product_name,sku,product_type,is_active')->first();
+                ->with(['product:id,product_name,sku,product_type,is_active,base_price', 'variation:id,variation_sku,base_price'])->first();
             if (!$stock || $stock->product?->product_type !== 'finished_good' || !$stock->product?->is_active) {
                 return response()->json(['success' => false, 'message' => 'Select active finished goods from the chosen branch.'], 422);
             }
             $quantity = (int) $row['quantity'];
-            $price = round((float) $row['unit_price'], 2);
+            if ($quantity > (int) $stock->quantity_available) {
+                return response()->json(['success' => false, 'message' => "Not enough stock for {$stock->product->product_name}."], 422);
+            }
+            $retailPrice = round((float) ($stock->variation?->base_price ?? $stock->product->base_price ?? 0), 2);
+            if ($retailPrice <= 0) {
+                return response()->json(['success' => false, 'message' => "{$stock->product->product_name} does not have a valid retail price."], 422);
+            }
+            $grossTotal = round($quantity * $retailPrice, 2);
+            $discountAmount = array_key_exists('discount_amount', $row)
+                ? round((float) $row['discount_amount'], 2)
+                : round($grossTotal * ((float) ($row['discount_percent'] ?? 0) / 100), 2);
+            if ($discountAmount > $grossTotal) {
+                return response()->json(['success' => false, 'message' => "The discount for {$stock->product->product_name} cannot exceed its line total."], 422);
+            }
+            $discountPercent = $grossTotal > 0 ? round($discountAmount / $grossTotal * 100, 2) : 0;
+            $lineTotal = round($grossTotal - $discountAmount, 2);
+            $price = round($lineTotal / $quantity, 2);
             $items[] = [
                 'branch_inventory_id' => $stock->id, 'product_id' => $stock->product_id,
                 'variation_id' => $stock->variation_id,
-                'product_name' => $stock->product->product_name, 'sku' => $stock->product->sku,
-                'quantity' => $quantity, 'unit_price' => $price,
-                'line_total' => round($quantity * $price, 2),
+                'product_name' => $stock->product->product_name, 'sku' => $stock->variation?->variation_sku ?: $stock->product->sku,
+                'quantity' => $quantity, 'retail_unit_price' => $retailPrice, 'unit_price' => $price,
+                'gross_total' => $grossTotal, 'discount_percent' => $discountPercent,
+                'discount_amount' => $discountAmount, 'line_total' => $lineTotal,
             ];
         }
         $quote = WholesaleQuote::create([
@@ -197,6 +215,8 @@ class WholesaleQuoteController extends Controller
                 }
             }
             $legacyLead = $quote->crmLead;
+            $grossSubtotal = round(collect($quote->items)->sum(fn ($item) => (float) ($item['gross_total'] ?? ((float) $item['unit_price'] * (int) $item['quantity']))), 2);
+            $discountTotal = round(collect($quote->items)->sum(fn ($item) => (float) ($item['discount_amount'] ?? 0)), 2);
             $order = SalesOrder::create([
                 'store_id' => $quote->store_id, 'branch_id' => $quote->branch_id,
                 'order_number' => 'WHO-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
@@ -206,7 +226,7 @@ class WholesaleQuoteController extends Controller
                 'customer_name' => $quote->customer_name ?: $legacyLead?->full_name,
                 'customer_phone' => $quote->customer_phone ?: $legacyLead?->phone,
                 'delivery_email' => $quote->customer_email ?: $legacyLead?->email,
-                'subtotal' => $quote->subtotal, 'total_amount' => $quote->subtotal,
+                'subtotal' => $grossSubtotal, 'discount_amount' => $discountTotal, 'total_amount' => $quote->subtotal,
                 'notes' => 'Wholesale quote ' . $quote->quote_number . ($quote->payment_terms ? ' | Terms: ' . $quote->payment_terms : '') . ($quote->notes ? ' | ' . $quote->notes : ''),
                 'created_by' => $request->user()->id,
             ]);
@@ -215,8 +235,8 @@ class WholesaleQuoteController extends Controller
                     'order_id' => $order->id, 'product_id' => $item['product_id'],
                     'variation_id' => $item['variation_id'], 'branch_inventory_id' => $item['branch_inventory_id'],
                     'product_name' => $item['product_name'], 'sku' => $item['sku'],
-                    'quantity' => $item['quantity'], 'unit_price' => $item['unit_price'],
-                    'line_discount' => 0, 'line_tax' => 0, 'line_total' => $item['line_total'],
+                    'quantity' => $item['quantity'], 'unit_price' => $item['retail_unit_price'] ?? $item['unit_price'],
+                    'line_discount' => $item['discount_amount'] ?? 0, 'line_tax' => 0, 'line_total' => $item['line_total'],
                 ]);
             }
             $quote->update([

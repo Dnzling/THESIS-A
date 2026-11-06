@@ -35,9 +35,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import Card from 'primevue/card'
-import Chart from 'primevue/chart'
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'

@@ -19,6 +19,7 @@ use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Supplier\SupplierPayment;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
+use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 
 class PurchaseOrder extends Model
 {
@@ -141,6 +142,11 @@ class PurchaseOrder extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(SupplierPayment::class);
+    }
+
+    public function supplierResponse()
+    {
+        return $this->hasOne(SupplierPOFeedback::class)->latestOfMany();
     }
 
     // Scopes

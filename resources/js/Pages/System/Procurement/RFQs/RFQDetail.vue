@@ -78,11 +78,10 @@
         </div>
         <div class="p-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Basic Information -->
             <div class="space-y-4">
               <div>
-                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Description</p>
-                <p class="text-gray-900">{{ detail.description || 'No description provided' }}</p>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Request Details &amp; Instructions</p>
+                <p class="whitespace-pre-line text-gray-900">{{ requestDetails || 'No request details provided' }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-500 mb-1">Issue Date</p>
@@ -97,10 +96,6 @@
                 <p class="font-semibold text-gray-900">{{ detail.currency }}</p>
               </div>
   
-              <div>
-                <p class="text-xs text-gray-500 mb-1">Special Instructions</p>
-                <p class="text-gray-900">{{ detail.instructions || 'None' }}</p>
-              </div>
             </div>
           </div>
   
@@ -229,9 +224,11 @@
               <div>
                 <p class="font-semibold text-gray-900">{{ group.supplier_name }}</p>
                 <p class="text-sm text-gray-600">{{ group.supplier_email }}</p>
+                <p v-if="group.response_channel" class="mt-1 text-xs text-slate-500">Received by {{ formatLabel(group.response_channel) }}<span v-if="group.response_received_at"> · {{ formatDateTime(group.response_received_at) }}</span><span v-if="group.recorded_by"> · Recorded by {{ getPersonName(group.recorded_by) }}</span></p>
               </div>
               <div class="flex items-center gap-2">
                 <Tag :value="group.items.length + ' Item/s'" severity="info" class="text-xs" />
+                <Tag :value="group.response_source === 'procurement_recorded' ? 'Recorded by Procurement' : 'Supplier Portal'" severity="secondary" class="text-xs" />
                 <button v-if="group.items.length > 1 && group.items.some((item) => item.status === 'pending')"
                   @click="bulkApproveGroup(group.items.filter((item) => item.status === 'pending').map((item) => item.feedback_id))"
                   class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors">
@@ -394,6 +391,10 @@
   
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3">
+        <button v-if="canManageRfq && ['pending', 'sent', 'receiving', 'quotes_received'].includes(detail.status) && detail.suppliers?.length && detail.items?.length" @click="openOfflineQuoteDialog"
+          class="px-4 py-2 rounded-xl border border-orange-200 bg-orange-50 text-orange-700 text-sm font-medium hover:bg-orange-100">
+          <i class="pi pi-file-edit mr-2"></i>Record Supplier Quote
+        </button>
         <button v-if="canManageRfq && detail.status === 'draft'" @click="editRFQ"
           class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200">
           <i class="pi pi-pencil text-sm"></i>
@@ -432,6 +433,66 @@
       </button>
     </div>
   
+    <Dialog v-model:visible="offlineQuoteVisible" modal header="Record Supplier Quote" :style="{ width: 'min(58rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">Record a quote received outside the Supplier Portal. It follows the same review and approval workflow.</p>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">Supplier <span class="text-red-500">*</span></label>
+            <Select v-model="offlineQuote.supplier_id" :options="invitedSupplierOptions" optionLabel="label" optionValue="value" placeholder="Select invited supplier" class="w-full" size="small" />
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">Received via <span class="text-red-500">*</span></label>
+            <Select v-model="offlineQuote.response_channel" :options="offlineQuoteChannels" optionLabel="label" optionValue="value" class="w-full" size="small" />
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">Response date <span class="text-red-500">*</span></label>
+            <DatePicker v-model="offlineQuote.response_received_at" dateFormat="M d, yy" :maxDate="todayDate" :manualInput="false" showIcon iconDisplay="button" fluid size="small" />
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">Valid until <span class="text-red-500">*</span></label>
+            <DatePicker v-model="offlineQuote.quotation_valid_until" dateFormat="M d, yy" :minDate="offlineQuote.response_received_at || todayDate" :manualInput="false" showIcon iconDisplay="button" fluid size="small" />
+          </div>
+        </div>
+        <div class="max-h-[42vh] space-y-3 overflow-y-auto pr-1">
+          <div v-for="(item, index) in offlineQuote.items" :key="item.rfq_item_id" class="rounded-xl border border-slate-200 p-3">
+            <p class="mb-3 text-sm font-semibold text-slate-900">{{ item.product_name }} <span class="font-normal text-slate-500">· Requested {{ item.quantity }} {{ item.unit }}</span></p>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-600">Unit quote ({{ detail?.currency || 'PHP' }}) <span class="text-red-500">*</span></label>
+                <InputNumber v-model="offlineQuote.items[index].quoted_price" mode="currency" :currency="detail?.currency || 'PHP'" locale="en-PH" :min="0" :minFractionDigits="2" :maxFractionDigits="2" fluid size="small" />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-600">Available quantity <span class="text-red-500">*</span></label>
+                <InputNumber v-model="offlineQuote.items[index].available_quantity" :min="0" :minFractionDigits="0" :maxFractionDigits="0" fluid size="small" />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-600">Estimated delivery</label>
+                <DatePicker v-model="offlineQuote.items[index].estimated_delivery_date" dateFormat="M d, yy" :minDate="offlineQuote.response_received_at || todayDate" :manualInput="false" showIcon iconDisplay="button" fluid size="small" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-xs font-medium text-slate-600">Quote attachment <span class="font-normal text-slate-400">(optional)</span></label>
+          <div class="flex flex-wrap items-center gap-3">
+            <FileUpload ref="offlineQuoteFileUpload" mode="basic" name="attachment" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" :maxFileSize="10485760" :customUpload="true" :auto="false" chooseLabel="Choose Quote File" @select="offlineQuote.attachment = $event.files?.[0] || null" />
+            <span v-if="offlineQuote.attachment" class="text-xs text-slate-600">{{ offlineQuote.attachment.name }}</span>
+            <Button v-if="offlineQuote.attachment" label="Remove" icon="pi pi-times" severity="danger" text size="small" @click="clearOfflineQuoteAttachment" />
+          </div>
+          <small class="text-slate-500">PDF, image, or document up to 10 MB.</small>
+        </div>
+        <div class="space-y-1">
+          <label class="block text-xs font-medium text-slate-600">Notes <span class="font-normal text-slate-400">(optional)</span></label>
+          <Textarea v-model="offlineQuote.notes" rows="2" autoResize class="w-full" placeholder="Optional supplier details" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined size="small" @click="offlineQuoteVisible = false" />
+        <Button :label="processing ? 'Saving...' : 'Save Quote for Review'" icon="pi pi-check" severity="warn" size="small" :loading="processing" :disabled="!offlineQuote.supplier_id || !offlineQuote.response_received_at || !offlineQuote.quotation_valid_until || offlineQuote.items.some((item: any) => item.quoted_price === null || item.quoted_price === undefined || item.available_quantity === null || item.available_quantity === undefined)" @click="submitOfflineQuote" />
+      </template>
+    </Dialog>
+
     <ConfirmDialog />
   
     <!-- Reject Dialog -->
@@ -500,6 +561,12 @@ import Skeleton from 'primevue/skeleton'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
+import Button from 'primevue/button'
+import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import InputNumber from 'primevue/inputnumber'
+import FileUpload from 'primevue/fileupload'
+import Textarea from 'primevue/textarea'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -537,7 +604,7 @@ const hasMultipleApprovedSuppliers = computed(() => {
   const supplierIds = new Set(
     (detail.value?.supplier_portal_feedbacks || [])
       .filter((feedback: any) => feedback?.status === 'approved')
-      .map((feedback: any) => feedback?.supplier_portal?.supplier_id || feedback?.supplier_portal_id)
+      .map((feedback: any) => feedback?.supplier_id || feedback?.supplier_portal?.supplier_id || feedback?.supplier_portal_id)
       .filter(Boolean),
   )
 
@@ -547,6 +614,10 @@ const hasMultipleApprovedSuppliers = computed(() => {
 const loading = ref(false)
 const processing = ref(false)
 const detail = ref<RFQDetail | null>(null)
+const requestDetails = computed(() => [detail.value?.description, detail.value?.instructions]
+  .map(value => value?.trim())
+  .filter(Boolean)
+  .join('\n\n'))
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectTargetFeedbackId = ref<number | null>(null)
@@ -567,6 +638,76 @@ const attachmentPreviewMimeType = ref('')
 const attachmentPreviewTitle = ref('Supplier Attachment Preview')
 const attachmentPreviewLoading = ref(false)
 const attachmentPreviewError = ref('')
+const offlineQuoteVisible = ref(false)
+const todayDate = new Date()
+todayDate.setHours(0, 0, 0, 0)
+const offlineQuoteFileUpload = ref<any>(null)
+const offlineQuoteChannels = [
+  { label: 'Email', value: 'email' },
+  { label: 'Phone', value: 'phone' },
+  { label: 'Paper quotation', value: 'paper' },
+  { label: 'In person', value: 'in_person' },
+]
+const invitedSupplierOptions = computed(() => (detail.value?.suppliers || []).map((entry: any) => ({
+  label: entry.supplier?.supplier_name || entry.supplier_name || `Supplier #${entry.supplier_id}`,
+  value: String(entry.supplier_id),
+})))
+const offlineQuote = ref<any>({ supplier_id: '', response_channel: 'email', response_received_at: new Date(todayDate), quotation_valid_until: null, notes: '', attachment: null, items: [] })
+
+const toDatePayload = (value: Date | string | null | undefined) => {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const clearOfflineQuoteAttachment = () => {
+  offlineQuote.value.attachment = null
+  offlineQuoteFileUpload.value?.clear?.()
+}
+
+const openOfflineQuoteDialog = () => {
+  offlineQuote.value = {
+    supplier_id: '', response_channel: 'email', response_received_at: new Date(todayDate),
+    quotation_valid_until: null, notes: '', attachment: null,
+    items: (detail.value?.items || []).map((item: any) => ({
+      rfq_item_id: item.id, product_name: item.product?.product_name || 'RFQ item',
+      quantity: item.quantity, unit: item.unit || item.product?.unit_of_measurement || '',
+      quoted_price: null, available_quantity: Number(item.quantity || 0), estimated_delivery_date: null,
+    })),
+  }
+  offlineQuoteFileUpload.value?.clear?.()
+  offlineQuoteVisible.value = true
+}
+
+const submitOfflineQuote = async () => {
+  processing.value = true
+  try {
+    const form = new FormData()
+    form.append('supplier_id', offlineQuote.value.supplier_id)
+    form.append('response_channel', offlineQuote.value.response_channel)
+    form.append('response_received_at', toDatePayload(offlineQuote.value.response_received_at))
+    form.append('quotation_valid_until', toDatePayload(offlineQuote.value.quotation_valid_until))
+    form.append('notes', offlineQuote.value.notes || '')
+    offlineQuote.value.items.forEach((item: any, index: number) => {
+      form.append(`items[${index}][rfq_item_id]`, String(item.rfq_item_id))
+      form.append(`items[${index}][quoted_price]`, String(item.quoted_price ?? ''))
+      form.append(`items[${index}][available_quantity]`, String(item.available_quantity ?? ''))
+      form.append(`items[${index}][estimated_delivery_date]`, toDatePayload(item.estimated_delivery_date))
+    })
+    if (offlineQuote.value.attachment) form.append('attachment', offlineQuote.value.attachment)
+    await procurementService.recordOfflineQuotation(rfqId, form)
+    offlineQuoteVisible.value = false
+    toast.add({ severity: 'success', summary: 'Quote Recorded', detail: 'The supplier quote is ready for review.', life: 3000 })
+    await loadDetail()
+  } catch (error: any) {
+    const firstError = Object.values(error.response?.data?.errors || {})[0] as any
+    toast.add({ severity: 'error', summary: 'Unable to Record Quote', detail: error.response?.data?.message || firstError?.[0] || 'Please check the quote details.', life: 4000 })
+  } finally { processing.value = false }
+}
 
 // Helper functions
 const formatStatus = (status: string): string => {
@@ -634,13 +775,17 @@ const portalFeedbackGroups = computed(() => {
   const groups: Record<string, any> = {}
 
   detail.value.supplier_portal_feedbacks.forEach((feedback: any) => {
-    const supplier = feedback?.supplier_portal?.supplier
-    const supplierId = supplier?.id || feedback?.supplier_portal_id || 'unknown'
+    const supplier = feedback?.supplier_portal?.supplier || feedback?.supplier
+    const supplierId = feedback?.supplier_id || supplier?.id || feedback?.supplier_portal_id || 'unknown'
     if (!groups[supplierId]) {
       groups[supplierId] = {
         supplier_id: supplierId,
         supplier_name: supplier?.supplier_name || supplier?.company_name || 'Unknown Supplier',
         supplier_email: supplier?.email || '',
+        response_source: feedback?.response_source || 'portal',
+        response_channel: feedback?.response_channel || null,
+        response_received_at: feedback?.response_received_at || null,
+        recorded_by: feedback?.recorded_by || null,
         items: [],
         notes: [],
       }

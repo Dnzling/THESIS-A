@@ -15,8 +15,7 @@
             @click="router.push({ name: 'inventory.goods-receipts' })"
           />
           <Button
-            v-if="canManage"
-            label="Create PR" 
+            label="Create Stock Request" 
             severity="warn"
             size="small"
             @click="router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.create' : 'inventory.requisites.create' })"

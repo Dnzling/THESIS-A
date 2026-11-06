@@ -161,44 +161,53 @@
               </div>
 
               <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">Cost Price/Unit</label>
+                <label class="mb-1 block text-sm font-medium text-gray-700">Current Inventory Cost / Unit</label>
+                <small class="mb-1 block text-xs text-gray-500">Used for current stock valuation. Supplier prices are recorded separately below.</small>
                 <InputNumber v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
                   class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
               </div>
               <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Supplier</label>
-                <Select v-model="form.supplier_id" :options="suppliers" optionLabel="supplier_name"
+                <label class="mb-1 block text-sm font-medium text-gray-700">Available Suppliers</label>
+                <MultiSelect v-model="selectedSupplierIds" :options="suppliers" optionLabel="supplier_name"
                   optionValue="id" :filterFields="['supplier_name', 'company_name', 'supplier_code']"
-                  class="w-full text-sm" placeholder="Search and select a supplier" filter showClear
-                  :loading="loadingSuppliers" size="small">
-                  <template #option="slotProps">
-                    <div class="flex min-w-0 items-center gap-3 py-1">
-                      <img v-if="slotProps.option.logo_url" :src="slotProps.option.logo_url"
-                        :alt="`${supplierDisplayName(slotProps.option)} logo`"
-                        class="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
-                      <div v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
-                        {{ supplierInitial(slotProps.option) }}
-                      </div>
-                      <div class="min-w-0">
-                        <p class="truncate text-sm font-medium text-gray-800">{{ supplierDisplayName(slotProps.option) }}</p>
-                      </div>
-                    </div>
-                  </template>
-                </Select>
-                <small v-if="errors.supplier_id" class="text-red-500">{{ errors.supplier_id }}</small>
-                <div v-else-if="selectedSupplier" class="mt-2 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                  <img v-if="selectedSupplier.logo_url" :src="selectedSupplier.logo_url"
-                    :alt="`${supplierDisplayName(selectedSupplier)} logo`" class="h-10 w-10 rounded-lg border border-gray-200 object-cover" />
-                  <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 font-semibold text-orange-700">
-                    {{ supplierInitial(selectedSupplier) }}
-                  </div>
-                  <div>
-                    <p class="text-sm font-medium text-gray-800">{{ supplierDisplayName(selectedSupplier) }}</p>
-                  </div>
-                </div>
+                  class="w-full text-sm" placeholder="Select one or more suppliers" filter display="chip"
+                  :loading="loadingSuppliers" size="small" />
+                <p class="mt-1 text-xs text-gray-500">Set each supplier's price separately. One supplier can be marked as preferred.</p>
+                <small v-if="errors.supplier_links" class="text-red-500">{{ errors.supplier_links }}</small>
                 <small v-else-if="!loadingSuppliers && suppliers.length === 0" class="text-amber-600">
                   No active suppliers are available. Add a supplier from Inventory first.
                 </small>
+
+                <div v-if="form.supplier_links.length" class="mt-3 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
+                  <div class="hidden grid-cols-[minmax(0,1.5fr)_minmax(130px,1fr)_100px_100px_100px] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid">
+                    <span>Supplier</span><span>Supplier Unit Price</span><span>Min. Qty</span><span>Lead Days</span><span>Preferred</span>
+                  </div>
+                  <div v-for="(link, index) in form.supplier_links" :key="link.supplier_id" class="grid gap-3 p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(130px,1fr)_100px_100px_100px] md:items-center">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <img v-if="supplierById(link.supplier_id)?.logo_url" :src="supplierById(link.supplier_id)?.logo_url"
+                        :alt="`${supplierNameById(link.supplier_id)} logo`" class="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                      <span v-else class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-sm font-semibold text-orange-700">{{ supplierInitialById(link.supplier_id) }}</span>
+                      <span class="truncate text-sm font-medium text-slate-800">{{ supplierNameById(link.supplier_id) }}</span>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-slate-500 md:hidden">Supplier unit price</label>
+                      <InputNumber v-model="link.supplier_price" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" class="w-full" fluid size="small" />
+                      <small v-if="errors[`supplier_links.${index}.supplier_price`]" class="mt-1 block text-xs text-red-600">{{ errors[`supplier_links.${index}.supplier_price`] }}</small>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-slate-500 md:hidden">Minimum quantity</label>
+                      <InputNumber v-model="link.minimum_order_quantity" :min="1" :maxFractionDigits="0" class="w-full" fluid size="small" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs text-slate-500 md:hidden">Lead days</label>
+                      <InputNumber v-model="link.lead_time_days" :min="0" :maxFractionDigits="0" class="w-full" fluid size="small" />
+                    </div>
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                      <RadioButton v-model="preferredSupplierId" :value="link.supplier_id" :inputId="`preferred-supplier-${link.supplier_id}`" />
+                      <span>Preferred</span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Shipping details</p>
@@ -257,6 +266,8 @@ import { useAuthStore } from '../../../../stores/auth'
 import Chip from 'primevue/chip'
 import Popover from 'primevue/popover'
 import Textarea from 'primevue/textarea'
+import MultiSelect from 'primevue/multiselect'
+import RadioButton from 'primevue/radiobutton'
 
 const route = useRoute()
 const router = useRouter()
@@ -307,7 +318,7 @@ const form = reactive({
   description: '',
   category_id: null as number | null,
   subcategory_id: null as number | null,
-  supplier_id: null as number | null,
+  supplier_links: [] as SupplierLink[],
   cost_price: null as number | null,
   base_price: null as number | null,
   length_cm: null as number | null,
@@ -336,7 +347,20 @@ type SupplierOption = {
   supplier_name?: string | null
   company_name?: string | null
   logo_url?: string | null
-  pivot?: { is_preferred_supplier?: boolean | number }
+  pivot?: {
+    supplier_price?: string | number | null
+    minimum_order_quantity?: number | null
+    lead_time_days?: number | null
+    is_preferred_supplier?: boolean | number
+  }
+}
+
+type SupplierLink = {
+  supplier_id: number
+  supplier_price: number | null
+  minimum_order_quantity: number
+  lead_time_days: number
+  is_preferred_supplier: boolean
 }
 
 const categories = ref<ProductCategory[]>([])
@@ -359,9 +383,36 @@ const filteredSubcategories = computed(() =>
 )
 const parentCategoryName = (parentId: number | null) =>
   categories.value.find(category => Number(category.id) === Number(parentId))?.category_name || 'Main category'
-const selectedSupplier = computed(() =>
-  suppliers.value.find(supplier => Number(supplier.id) === Number(form.supplier_id)) || null
-)
+const selectedSupplierIds = computed<number[]>({
+  get: () => form.supplier_links.map(link => Number(link.supplier_id)),
+  set: (ids) => {
+    const existing = new Map(form.supplier_links.map(link => [Number(link.supplier_id), link]))
+    form.supplier_links = ids.map(id => existing.get(Number(id)) || ({
+      supplier_id: Number(id),
+      supplier_price: null,
+      minimum_order_quantity: 1,
+      lead_time_days: 7,
+      is_preferred_supplier: false,
+    }))
+    if (!form.supplier_links.some(link => link.is_preferred_supplier) && form.supplier_links.length) {
+      form.supplier_links[0].is_preferred_supplier = true
+    }
+  },
+})
+
+const preferredSupplierId = computed<number | null>({
+  get: () => form.supplier_links.find(link => link.is_preferred_supplier)?.supplier_id ?? null,
+  set: (id) => form.supplier_links.forEach(link => {
+    link.is_preferred_supplier = Number(link.supplier_id) === Number(id)
+  }),
+})
+
+const supplierById = (id: number) => suppliers.value.find(supplier => Number(supplier.id) === Number(id)) || null
+const supplierNameById = (id: number) => {
+  const supplier = supplierById(id)
+  return supplier ? supplierDisplayName(supplier) : `Supplier #${id}`
+}
+const supplierInitialById = (id: number) => supplierNameById(id).charAt(0).toUpperCase()
 
 const supplierDisplayName = (supplier: SupplierOption) =>
   supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`
@@ -404,9 +455,16 @@ const loadProduct = async (id: number) => {
     form.category_id = product.category_id ? Number(product.category_id) : null
     form.subcategory_id = product.subcategory_id ? Number(product.subcategory_id) : null
     const linkedSuppliers: SupplierOption[] = Array.isArray(product.suppliers) ? product.suppliers : []
-    const preferredSupplier = linkedSuppliers.find(supplier => Boolean(supplier.pivot?.is_preferred_supplier))
-      || linkedSuppliers[0]
-    form.supplier_id = preferredSupplier ? Number(preferredSupplier.id) : null
+    form.supplier_links = linkedSuppliers.map(supplier => ({
+      supplier_id: Number(supplier.id),
+      supplier_price: supplier.pivot?.supplier_price == null ? null : Number(supplier.pivot.supplier_price),
+      minimum_order_quantity: Number(supplier.pivot?.minimum_order_quantity ?? 1),
+      lead_time_days: Number(supplier.pivot?.lead_time_days ?? 7),
+      is_preferred_supplier: Boolean(supplier.pivot?.is_preferred_supplier),
+    }))
+    if (form.supplier_links.length && !form.supplier_links.some(link => link.is_preferred_supplier)) {
+      form.supplier_links[0].is_preferred_supplier = true
+    }
     form.cost_price = product.inventory_cost_price ?? product.cost_price ?? null
     form.base_price = product.base_price != null ? Number(product.base_price) : null
     form.length_cm = product.length_cm != null ? Number(product.length_cm) : null
@@ -489,6 +547,11 @@ const validate = () => {
       : 'Category is required for a finished good'
   }
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
+  form.supplier_links.forEach((link, index) => {
+    if (link.supplier_price == null || !Number.isFinite(Number(link.supplier_price)) || Number(link.supplier_price) < 0) {
+      errors.value[`supplier_links.${index}.supplier_price`] = "Enter this supplier's unit price."
+    }
+  })
   if (Object.keys(errors.value).length > 0) {
     submitError.value = 'Please correct the highlighted fields before saving.'
     return false
@@ -520,7 +583,7 @@ const handleSubmit = async () => {
     payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
     payload.append('depth_cm', form.depth_cm == null ? '' : String(form.depth_cm))
     payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
-    payload.append('supplier_id', form.supplier_id != null ? String(form.supplier_id) : '')
+    payload.append('supplier_links', JSON.stringify(form.supplier_links))
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
     if (!isEditMode.value && form.initial_stock != null) {
       payload.append('initial_stock', String(form.initial_stock))

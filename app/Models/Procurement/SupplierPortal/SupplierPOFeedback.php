@@ -5,6 +5,8 @@ namespace App\Models\Procurement\SupplierPortal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Core\User;
 
 class SupplierPOFeedback extends Model
 {
@@ -12,6 +14,10 @@ class SupplierPOFeedback extends Model
 
     protected $fillable = [
         'supplier_portal_id',
+        'supplier_id',
+        'response_source',
+        'response_channel',
+        'response_date',
         'purchase_order_id',
         'response',
         'fulfillment_method',
@@ -20,6 +26,8 @@ class SupplierPOFeedback extends Model
         'expected_delivery_date',
         'delivery_quantity',
         'delivery_notes',
+        'attachment_path',
+        'recorded_by',
         'receipt_confirmed_at',
         'submitted_at',
     ];
@@ -29,6 +37,7 @@ class SupplierPOFeedback extends Model
         'receipt_confirmed_at' => 'datetime',
         'submitted_at' => 'datetime',
         'delivery_quantity' => 'integer',
+        'response_date' => 'date',
     ];
 
     // Relationships
@@ -40,6 +49,16 @@ class SupplierPOFeedback extends Model
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class, 'purchase_order_id', 'id');
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function recordedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
     }
 
     // Scopes

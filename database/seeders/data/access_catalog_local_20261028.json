@@ -555,6 +555,14 @@
       "deleted_at": null
     },
     {
+      "name": "inventory.stock-requests.view",
+      "display_name": "View Stock Requests",
+      "module": "inventory",
+      "description": "View supplier purchase requests and warehouse stock requests.",
+      "is_active": 1,
+      "deleted_at": null
+    },
+    {
       "name": "procurement.requisitions.approve",
       "display_name": "Procurement Dashboard View",
       "module": "procurement",
@@ -2193,6 +2201,20 @@
       "deleted_at": null
     },
     {
+      "name": "inventory.stock-requests",
+      "display_name": "Stock Requests",
+      "module": "inventory",
+      "section": null,
+      "route_name": "inventory.stock-requests",
+      "route_path": "/inventory/stock-requests",
+      "icon": "pi pi-file-edit",
+      "parent_name": null,
+      "display_order": 5,
+      "is_active": 1,
+      "meta": "{\"subtitle\": \"Request supplier replenishment or stock from a warehouse\"}",
+      "deleted_at": null
+    },
+    {
       "name": "inventory.adjustments",
       "display_name": "Adjustments",
       "module": "inventory",
@@ -2832,9 +2854,9 @@
       "icon": "pi pi-file",
       "parent_name": null,
       "display_order": 3,
-      "is_active": 1,
+      "is_active": 0,
       "meta": null,
-      "deleted_at": null
+      "deleted_at": "2026-11-04 00:00:00"
     },
     {
       "name": "finance.price-approvals",
@@ -4241,6 +4263,10 @@
       "permission_name": "inventory.requisites.view"
     },
     {
+      "navigation_name": "inventory.stock-requests",
+      "permission_name": "inventory.stock-requests.view"
+    },
+    {
       "navigation_name": "Stock Overview",
       "permission_name": "inventory.items.view"
     },
@@ -5428,6 +5454,11 @@
     },
     {
       "plan_key": "free",
+      "permission_name": "inventory.stock-requests.view",
+      "included": 1
+    },
+    {
+      "plan_key": "free",
       "permission_name": "inventory.transactions.view",
       "included": 1
     },
@@ -5870,6 +5901,11 @@
       "plan_key": "simple",
       "permission_name": "inventory.requisites.view",
       "included": 0
+    },
+    {
+      "plan_key": "simple",
+      "permission_name": "inventory.stock-requests.view",
+      "included": 1
     },
     {
       "plan_key": "simple",
@@ -6710,6 +6746,11 @@
       "plan_key": "unlimited",
       "permission_name": "inventory.requisites.view",
       "included": 0
+    },
+    {
+      "plan_key": "unlimited",
+      "permission_name": "inventory.stock-requests.view",
+      "included": 1
     },
     {
       "plan_key": "unlimited",
@@ -8519,6 +8560,11 @@
     {
       "plan_key": "growth",
       "permission_name": "inventory.requisites.view",
+      "included": 1
+    },
+    {
+      "plan_key": "growth",
+      "permission_name": "inventory.stock-requests.view",
       "included": 1
     },
     {

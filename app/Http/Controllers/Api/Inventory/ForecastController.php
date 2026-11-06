@@ -69,18 +69,30 @@ class ForecastController extends Controller
             $point = (float) $item->reorder_point;
             $forecast = $daily * 30;
             $recommended = max(0, (int) ceil($forecast + (float) $item->safety_stock - $available - (float) $item->quantity_incoming));
+            $daysCover = $daily > 0 ? round($available / $daily, 1) : null;
+            $status = $available <= 0 ? 'Out of stock'
+                : ($available <= $point ? 'Reorder now'
+                    : ($recommended > 0 ? 'Watch'
+                        : ($daysCover !== null && $daysCover > 90 ? 'Projected excess' : 'Healthy')));
+            $actionKey = in_array($status, ['Out of stock', 'Reorder now', 'Watch'], true)
+                ? 'create_restock'
+                : ($status === 'Projected excess' ? 'review_replenishment' : 'monitor');
             return [
                 'id' => $item->id, 'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
                 'branch_id' => $item->branch_id,
                 'branch_name' => $branches->firstWhere('id', $item->branch_id)?->name,
                 'product_name' => $item->product_name, 'sku' => $item->sku,
                 'available' => $available, 'incoming' => (float) $item->quantity_incoming,
                 'reorder_point' => $point, 'sold' => $sold,
                 'forecast_30_days' => round($forecast, 1), 'recommended' => $recommended,
-                'days_cover' => $daily > 0 ? round($available / $daily, 1) : null,
-                'status' => $available <= 0 ? 'Out of stock' : ($available <= $point ? 'Reorder now' : ($recommended > 0 ? 'Watch' : 'Healthy')),
+                'days_cover' => $daysCover,
+                'status' => $status,
+                'action_key' => $actionKey,
+                'action_label' => $actionKey === 'create_restock' ? 'Restock'
+                    : ($actionKey === 'review_replenishment' ? 'Review' : 'Monitor'),
             ];
-        })->sortBy(fn ($row) => match ($row['status']) { 'Out of stock' => 0, 'Reorder now' => 1, 'Watch' => 2, default => 3 })->values();
+        })->sortBy(fn ($row) => match ($row['status']) { 'Out of stock' => 0, 'Reorder now' => 1, 'Watch' => 2, 'Projected excess' => 3, default => 4 })->values();
         if ($request->filled('search')) {
             $term = mb_strtolower((string) $request->search);
             $rows = $rows->filter(fn ($row) => str_contains(mb_strtolower($row['product_name'].' '.$row['sku']), $term))->values();

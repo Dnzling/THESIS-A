@@ -149,11 +149,6 @@
         >
             <div class="mb-6 flex items-end justify-between gap-4">
                 <div>
-                    <p
-                        class="text-xs font-bold uppercase tracking-[.18em] text-orange-600"
-                    >
-                        Pick up where you left off
-                    </p>
                     <h2
                         class="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl"
                     >

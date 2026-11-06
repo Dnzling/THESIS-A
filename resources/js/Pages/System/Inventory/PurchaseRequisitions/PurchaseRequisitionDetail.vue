@@ -13,7 +13,7 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Button v-if="canEditDraft" label="Edit Draft" severity="warn" size="small" outlined @click="editDraft" />
+          <Button v-if="canEditDraft" label="Edit" icon="pi pi-pencil" severity="warn" size="small" outlined @click="editDraft" />
           <Button v-if="canEditDraft" label="Submit" severity="warn" size="small" :loading="submitting" @click="confirmSubmit" />
           <Button v-if="canEditDraft" label="Delete" severity="danger" size="small" text :loading="deleting" @click="confirmDelete" />
           <Button
@@ -202,7 +202,9 @@ const cancelDialogVisible = ref(false)
 const cancelReason = ref('')
 const cancelError = ref('')
 
-const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
+const canManage = computed(() => props.warehouseMode
+  ? authStore.hasPermission('warehouse.purchase-requisitions.manage')
+  : authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.manage'))
 const canEditDraft = computed(() => !props.warehouseMode && canManage.value && detail.value?.status === 'draft')
 const canApprove = computed(() =>
   !props.warehouseMode && (authStore.hasPermission('inventory.requisitions.approve') ||
@@ -223,7 +225,7 @@ const canGenerateReceipt = computed(() => {
 })
 
 const id = computed(() => String(route.params.id || ''))
-const editDraft = () => router.push({ name: 'inventory.requisites.edit', params: { id: id.value } })
+const editDraft = () => router.push({ name: 'inventory.stock-requests.edit', params: { id: id.value } })
 const confirmDelete = () => confirm.require({
   header: 'Delete Draft PR?',
   message: `Delete ${detail.value?.pr_number || 'this draft'}? This cannot be undone.`,
@@ -303,7 +305,11 @@ const formatStatus = (status: any) => {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'
 }
 
-const goBack = () => router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions' : 'inventory.requisites.index' })
+const goBack = () => {
+  const fallback = props.warehouseMode ? 'warehouse.purchase-requisitions' : 'inventory.stock-requests'
+  if (window.history.state?.back) router.back()
+  else router.push({ name: fallback })
+}
 const generateReceipt = () => {
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
     ? detail.value.purchase_orders

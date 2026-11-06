@@ -1,9 +1,10 @@
 <template>
-  <div class="module-dashboard dashboard--ecommerce space-y-5 pb-6 text-sm">
+  <div class="module-dashboard space-y-5 pb-6 text-sm">
     <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-slate-950">E-Commerce Dashboard</h1>
-        <p class="mt-1 text-sm text-slate-500">Online orders, product performance, and storefront readiness across your store.</p>
+        <h1 class="text-2xl font-semibold text-slate-950">Product Catalog Performance</h1>
+        <p class="mt-1 text-sm text-slate-600">See which products are selling and how each store branch is performing.</p>
+        <p class="mt-1 text-xs text-slate-500">Includes POS, wholesale, and paid online orders for the selected period.</p>
       </div>
       <div class="flex items-center gap-2">
         <Select v-model="days" :options="periods" optionLabel="label" optionValue="value" class="w-40" aria-label="Reporting period" @change="loadDashboard" />
@@ -12,16 +13,23 @@
     </header>
 
     <div v-if="loading" class="space-y-5">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 4" :key="item" height="118px" class="rounded-2xl" /></div>
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 4" :key="item" height="112px" class="rounded-2xl" /></div>
       <div class="grid gap-4 xl:grid-cols-3"><Skeleton height="290px" class="rounded-2xl xl:col-span-2" /><Skeleton height="290px" class="rounded-2xl" /></div>
-      <Skeleton v-for="item in 2" :key="item" height="190px" class="rounded-2xl" />
+      <Skeleton height="300px" class="rounded-2xl" />
     </div>
-    <div v-else-if="loadError" class="dashboard-panel rounded-2xl border border-red-200 bg-white p-6"><p class="font-semibold text-slate-900">The E-Commerce dashboard could not load.</p><p class="mt-1 text-slate-500">{{ loadError }}</p><Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" /></div>
+    <div v-else-if="loadError" class="rounded-2xl border border-red-200 bg-white p-6">
+      <p class="font-semibold text-slate-900">Product performance could not load.</p>
+      <p class="mt-1 text-slate-600">{{ loadError }}</p>
+      <Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" />
+    </div>
     <template v-else-if="data">
       <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card v-for="(metric, index) in salesMetrics" :key="metric.label" class="dashboard-panel border shadow-sm" :class="index === 0 ? 'border-orange-200' : 'border-slate-200'">
+        <Card v-for="metric in metrics" :key="metric.label" class="border shadow-sm" :class="metric.highlight ? 'border-orange-200' : 'border-slate-200'">
           <template #content>
-            <div class="flex items-start justify-between gap-2"><p class="text-xs font-medium text-slate-500">{{ metric.label }}</p><i :class="[metric.icon, 'text-orange-500']" /></div>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-slate-600">{{ metric.label }}</p>
+              <i :class="[metric.icon, 'text-orange-600']" />
+            </div>
             <p class="mt-2 text-2xl font-semibold text-slate-950">{{ metric.value }}</p>
             <p class="mt-2 text-xs text-slate-500">{{ metric.caption }}</p>
           </template>
@@ -30,105 +38,170 @@
 
       <section class="grid gap-4 xl:grid-cols-3">
         <Card class="border border-slate-200 shadow-sm xl:col-span-2">
-          <template #title><div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Online order value</h2><p class="mt-1 text-xs font-normal text-slate-500">Non-cancelled online order value</p></div><Select v-model="orderValueTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Online order value period" /></div></template>
-          <template #content><Skeleton v-if="orderValueTrend.loading.value" height="16rem" class="rounded-xl" /><div v-else-if="orderValueTrend.error.value" class="flex h-64 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ orderValueTrend.error.value }}<Button text label="Try again" @click="orderValueTrend.reload" /></div><Chart v-else-if="hasSales" type="line" :data="salesChart" :options="lineOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online sales in this period.</div></template>
+          <template #title>
+            <div>
+              <h2 class="text-base font-semibold">Store-wide sales trend</h2>
+              <p class="mt-1 text-xs font-normal text-slate-500">Sales from all active store branches</p>
+            </div>
+          </template>
+          <template #content>
+            <Chart v-if="hasSales" type="line" :data="salesChart" :options="lineOptions" class="h-64" />
+            <div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No product sales in this period.</div>
+          </template>
         </Card>
         <Card class="border border-slate-200 shadow-sm">
-          <template #title><h2 class="text-base font-semibold">Order status</h2><p class="mt-1 text-xs font-normal text-slate-500">All online orders in the selected period</p></template>
-          <template #content><Chart v-if="statusRows.length" type="doughnut" :data="statusChart" :options="doughnutOptions" class="mx-auto h-64 max-w-72" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online orders yet.</div></template>
-        </Card>
-      </section>
-
-      <section class="grid gap-4 xl:grid-cols-3">
-        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
-          <template #title><div class="flex items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Best selling products</h2><p class="mt-1 text-xs font-normal text-slate-500">Item sales from valid online orders</p></div><Button label="Product listings" text size="small" @click="go('merchandising.products')" /></div></template>
-          <template #content><Chart v-if="topProducts.length" type="bar" :data="productChart" :options="barOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">Product performance appears after your first online order.</div></template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #title><h2 class="text-base font-semibold">Daily online orders</h2><p class="mt-1 text-xs font-normal text-slate-500">Order activity over the selected period</p></template>
-          <template #content><Chart v-if="hasOrders" type="bar" :data="ordersChart" :options="ordersOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No orders in this period.</div></template>
-        </Card>
-      </section>
-
-      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card v-for="metric in storefrontMetrics" :key="metric.label" class="border border-slate-200 shadow-sm"><template #content><div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ metric.label }}</span><i :class="metric.icon" class="text-orange-500" /></div><p class="mt-2 text-2xl font-bold text-slate-950">{{ metric.value }}</p><p class="mt-1 text-xs text-slate-500">{{ metric.caption }}</p></template></Card>
-      </section>
-
-      <section class="grid gap-4 xl:grid-cols-2">
-        <Card class="border border-slate-200 shadow-sm">
-          <template #title><div class="flex items-center justify-between gap-2"><h2 class="text-base font-semibold">Top product performance</h2><Button label="View all" text size="small" @click="go('merchandising.products')" /></div></template>
-          <template #content><DataTable :value="topProducts" size="small" stripedRows responsiveLayout="scroll"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="units" header="Units" /><Column header="Item sales"><template #body="{ data: item }">{{ money(item.sales) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales yet.</div></template></DataTable></template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #title><h2 class="text-base font-semibold">Recent online orders</h2></template>
-          <template #content><DataTable :value="data.recent_orders || []" size="small" stripedRows responsiveLayout="scroll"><Column field="order_number" header="Order" /><Column field="shipping_name" header="Customer" /><Column header="Status"><template #body="{ data: item }"><Tag :value="statusLabel(item.status)" :severity="statusSeverity(item.status)" /></template></Column><Column header="Total"><template #body="{ data: item }">{{ money(item.total_amount) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No online orders in this period.</div></template></DataTable></template>
+          <template #title>
+            <h2 class="text-base font-semibold">Branch sales comparison</h2>
+            <p class="mt-1 text-xs font-normal text-slate-500">Sales by branch for this period</p>
+          </template>
+          <template #content>
+            <Chart v-if="branchesWithSales.length" type="bar" :data="branchChart" :options="branchChartOptions" class="h-64" />
+            <div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No branch sales in this period.</div>
+          </template>
         </Card>
       </section>
 
       <section class="grid gap-4 xl:grid-cols-2">
-        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings needing an image</h2></template><template #content><DataTable :value="data.missing_images || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.edit', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have a main image.</div></template></DataTable></template></Card>
-        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings unavailable to shoppers</h2></template><template #content><DataTable :value="data.out_of_stock_products || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have available stock.</div></template></DataTable></template></Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title>
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-base font-semibold">Top-performing products</h2>
+                <p class="mt-1 text-xs font-normal text-slate-500">Ranked by item sales across branches</p>
+              </div>
+              <Button label="Product catalog" text size="small" @click="go('merchandising.products')" />
+            </div>
+          </template>
+          <template #content>
+            <DataTable :value="topProducts" size="small" rowHover responsiveLayout="scroll">
+              <Column header="Product">
+                <template #body="{ data: item }">
+                  <button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button>
+                  <p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p>
+                </template>
+              </Column>
+              <Column field="units" header="Units sold" />
+              <Column header="Branches">
+                <template #body="{ data: item }">{{ item.branches_selling }} / {{ summary.branch_count || 0 }}</template>
+              </Column>
+              <Column header="Sales">
+                <template #body="{ data: item }"><span class="font-semibold text-slate-900">{{ money(item.sales) }}</span></template>
+              </Column>
+              <template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales in this period.</div></template>
+            </DataTable>
+          </template>
+        </Card>
+
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title>
+            <h2 class="text-base font-semibold">Branch performance</h2>
+            <p class="mt-1 text-xs font-normal text-slate-500">Compare sales, units, and product availability</p>
+          </template>
+          <template #content>
+            <DataTable :value="branchPerformance" size="small" rowHover responsiveLayout="scroll">
+              <Column header="Branch">
+                <template #body="{ data: branch }">
+                  <span class="font-medium text-slate-900">{{ branch.name }}</span>
+                  <p class="mt-0.5 text-xs text-slate-500">{{ formatLabel(branch.branch_type) }}</p>
+                </template>
+              </Column>
+              <Column header="Sales">
+                <template #body="{ data: branch }"><span class="font-semibold">{{ money(branch.sales) }}</span></template>
+              </Column>
+              <Column field="units_sold" header="Units" />
+              <Column field="products_sold" header="Products" />
+              <Column header="Available stock">
+                <template #body="{ data: branch }">{{ number(branch.available_units) }}</template>
+              </Column>
+              <Column header="Change">
+                <template #body="{ data: branch }">
+                  <span v-if="branch.sales_change_percent !== null" class="text-xs font-medium" :class="branch.sales_change_percent >= 0 ? 'text-emerald-700' : 'text-red-600'">
+                    <i :class="branch.sales_change_percent >= 0 ? 'pi pi-arrow-up-right' : 'pi pi-arrow-down-right'" class="mr-1" />{{ Math.abs(branch.sales_change_percent).toFixed(1) }}%
+                  </span>
+                  <span v-else class="text-xs text-slate-500">No prior sales</span>
+                </template>
+              </Column>
+              <template #empty><div class="py-8 text-center text-sm text-slate-500">No active store branches found.</div></template>
+            </DataTable>
+          </template>
+        </Card>
       </section>
+
+      <p class="px-1 text-xs text-slate-500">Comparison is against the immediately preceding {{ data.period_days }} days. Stock counts show current branch availability.</p>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import merchandisingService from '../../../services/merchandising.service'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
-import Chart from 'primevue/chart'
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
-import Tag from 'primevue/tag'
-import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
-type TrendPoint = { date: string; label: string; sales: number; orders: number }
-type ProductPerformance = { id: number; name: string; sku?: string | null; units: number; sales: number }
-type DashboardData = { period_days: number; summary: Record<string, number>; sales_trend: TrendPoint[]; status_breakdown: { status: string; count: number }[]; top_products: ProductPerformance[]; missing_images: any[]; out_of_stock_products: any[]; recent_orders: any[] }
+type TrendPoint = { date: string; label: string; sales: number; units: number; orders: number }
+type ProductPerformance = { id: number; name: string; sku?: string | null; units: number; sales: number; branches_selling: number }
+type BranchPerformance = { id: number; name: string; branch_type: string; sales: number; previous_sales: number; sales_change_percent: number | null; units_sold: number; orders: number; products_sold: number; stocked_products: number; available_units: number }
+type Summary = { sales: number; orders: number; average_order_value: number; units_sold: number; previous_sales: number; previous_units_sold: number; previous_orders: number; branches_with_sales: number; branch_count: number; active_listings: number; out_of_stock_products: number }
+type DashboardData = { period_days: number; summary: Summary; sales_trend: TrendPoint[]; top_products: ProductPerformance[]; branch_performance: BranchPerformance[] }
 
 const router = useRouter()
-const orderValueTrend = useDashboardTrend('/api/product-catalog/dashboard/trend')
 const periods = [{ label: 'Last 7 days', value: 7 }, { label: 'Last 30 days', value: 30 }, { label: 'Last 90 days', value: 90 }]
 const days = ref(30)
 const loading = ref(false)
 const loadError = ref('')
 const data = ref<DashboardData | null>(null)
-const summary = computed(() => data.value?.summary || {})
+const summary = computed(() => data.value?.summary || {} as Summary)
 const trend = computed(() => data.value?.sales_trend || [])
 const topProducts = computed(() => data.value?.top_products || [])
-const statusRows = computed(() => data.value?.status_breakdown || [])
-const hasSales = computed(() => orderValueTrend.points.value.some((row: any) => Number(row.value) > 0))
-const hasOrders = computed(() => trend.value.some(row => Number(row.orders) > 0))
+const branchPerformance = computed(() => data.value?.branch_performance || [])
+const branchesWithSales = computed(() => branchPerformance.value.filter(branch => branch.sales > 0))
+const hasSales = computed(() => trend.value.some(row => Number(row.sales) > 0))
 const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const number = (value: unknown) => Number(value || 0).toLocaleString('en-PH')
-const change = (current: number, previous: number) => previous > 0 ? `${current >= previous ? '+' : ''}${(((current - previous) / previous) * 100).toFixed(1)}% vs prior period` : (current > 0 ? 'New activity this period' : 'No activity this period')
-const salesMetrics = computed(() => [
-  { label: 'Online order value', value: money(summary.value.order_value), caption: change(Number(summary.value.order_value || 0), Number(summary.value.previous_order_value || 0)), icon: 'pi pi-wallet', tone: 'bg-orange-100 text-orange-600' },
-  { label: 'Online orders', value: number(summary.value.orders), caption: change(Number(summary.value.orders || 0), Number(summary.value.previous_orders || 0)), icon: 'pi pi-shopping-bag', tone: 'bg-blue-100 text-blue-600' },
-  { label: 'Average order value', value: money(summary.value.average_order_value), caption: 'Value per online order', icon: 'pi pi-chart-bar', tone: 'bg-violet-100 text-violet-600' },
-  { label: 'Units sold', value: number(summary.value.units_sold), caption: 'From valid online orders', icon: 'pi pi-box', tone: 'bg-emerald-100 text-emerald-600' },
+const percentChange = (current: number, previous: number) => previous > 0 ? `${current >= previous ? '+' : ''}${(((current - previous) / previous) * 100).toFixed(1)}% vs previous period` : current > 0 ? 'New activity this period' : 'No activity this period'
+const metrics = computed(() => [
+  { label: 'Product sales', value: money(summary.value.sales), caption: percentChange(Number(summary.value.sales || 0), Number(summary.value.previous_sales || 0)), icon: 'pi pi-wallet', highlight: true },
+  { label: 'Units sold', value: number(summary.value.units_sold), caption: percentChange(Number(summary.value.units_sold || 0), Number(summary.value.previous_units_sold || 0)), icon: 'pi pi-box' },
+  { label: 'Paid orders', value: number(summary.value.orders), caption: percentChange(Number(summary.value.orders || 0), Number(summary.value.previous_orders || 0)), icon: 'pi pi-shopping-bag' },
+  { label: 'Branches with sales', value: `${number(summary.value.branches_with_sales)} / ${number(summary.value.branch_count)}`, caption: `${number(summary.value.active_listings)} active products · ${number(summary.value.out_of_stock_products)} without stock`, icon: 'pi pi-building' },
 ])
-const storefrontMetrics = computed(() => [
-  { label: 'Active listings', value: number(summary.value.active_listings), caption: 'Finished goods visible in the catalog', icon: 'pi pi-list' },
-  { label: 'Image ready', value: number(summary.value.image_ready_products), caption: `${number(summary.value.missing_main_images)} missing a main image`, icon: 'pi pi-image' },
-  { label: '3D enabled', value: number(summary.value.products_with_3d), caption: 'Active products with a 3D model', icon: 'pi pi-cube' },
-  { label: 'Unavailable', value: number(summary.value.out_of_stock_products), caption: 'Active products without available stock', icon: 'pi pi-exclamation-circle' },
-])
-const salesChart = computed(() => ({ labels: orderValueTrend.points.value.map((row: any) => row.label), datasets: [{ label: 'Order value', data: orderValueTrend.points.value.map((row: any) => Number(row.value)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35, pointRadius: orderValueTrend.period.value === 'month' ? 1 : 2 }] }))
-const ordersChart = computed(() => ({ labels: trend.value.map(row => row.label), datasets: [{ label: 'Orders', data: trend.value.map(row => Number(row.orders)), backgroundColor: '#60a5fa', borderRadius: 4, maxBarThickness: 20 }] }))
-const productChart = computed(() => ({ labels: topProducts.value.map(row => row.name), datasets: [{ label: 'Item sales', data: topProducts.value.map(row => Number(row.sales)), backgroundColor: '#fb923c', borderRadius: 6 }] }))
-const statusLabel = (value: unknown) => String(value || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
-const statusSeverity = (value: unknown) => ['delivered', 'completed'].includes(String(value)) ? 'success' : ['cancelled', 'rejected'].includes(String(value)) ? 'danger' : ['pending', 'processing'].includes(String(value)) ? 'warn' : 'info'
-const statusChart = computed(() => ({ labels: statusRows.value.map(row => statusLabel(row.status)), datasets: [{ data: statusRows.value.map(row => Number(row.count)), backgroundColor: ['#f97316', '#60a5fa', '#34d399', '#a78bfa', '#f87171', '#fbbf24', '#94a3b8'] }] }))
-const lineOptions = { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } } } }
-const ordersOptions = { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 7 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
-const barOptions = { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } }, y: { grid: { display: false }, ticks: { callback: (value: any) => String(topProducts.value[Number(value)]?.name || '').slice(0, 20) } } } }
-const doughnutOptions = { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } } }
+const salesChart = computed(() => ({
+  labels: trend.value.map(row => row.label),
+  datasets: [
+    { label: 'Product sales', data: trend.value.map(row => Number(row.sales)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35, pointRadius: days.value === 90 ? 0 : 2, yAxisID: 'sales' },
+    { label: 'Units sold', data: trend.value.map(row => Number(row.units)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: .3, pointRadius: days.value === 90 ? 0 : 2, yAxisID: 'units' },
+  ],
+}))
+const branchChart = computed(() => ({
+  labels: branchesWithSales.value.slice(0, 8).map(branch => branch.name),
+  datasets: [{ label: 'Sales', data: branchesWithSales.value.slice(0, 8).map(branch => Number(branch.sales)), backgroundColor: '#fb923c', borderRadius: 5, maxBarThickness: 24 }],
+}))
+const lineOptions = {
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { position: 'bottom' as const, labels: { usePointStyle: true, boxWidth: 8 } } },
+  scales: {
+    x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+    sales: { type: 'linear' as const, position: 'left' as const, beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } },
+    units: { type: 'linear' as const, position: 'right' as const, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { precision: 0 } },
+  },
+}
+const branchChartOptions = {
+  indexAxis: 'y' as const,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } },
+    y: { grid: { display: false }, ticks: { autoSkip: false } },
+  },
+}
+const formatLabel = (value: unknown) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
 const go = (name: string, id?: number) => router.push(id ? { name, params: { id } } : { name })
 const loadDashboard = async () => {
   loading.value = true
@@ -137,8 +210,11 @@ const loadDashboard = async () => {
     const response = await merchandisingService.getDashboardOverview(days.value)
     if (response?.success === false) throw new Error(response.message || 'Unable to load dashboard.')
     data.value = response.data
-  } catch (error: any) { loadError.value = error?.response?.data?.message || error?.message || 'Unable to load E-Commerce performance.' }
-  finally { loading.value = false }
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || error?.message || 'Unable to load product performance.'
+  } finally {
+    loading.value = false
+  }
 }
 onMounted(loadDashboard)
 </script>

@@ -285,23 +285,33 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axiosClient from '@/axios'
 import { useRouter } from 'vue-router'
-import { Chart, registerables } from 'chart.js'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
-// Register Chart.js
-Chart.register(...registerables)
+let ChartConstructor: any = null
+let chartJsPromise: Promise<any> | null = null
+const loadChartJs = async () => {
+  if (!chartJsPromise) {
+    chartJsPromise = import('chart.js').then((module) => {
+      module.Chart.register(...module.registerables)
+      ChartConstructor = module.Chart
+      return module.Chart
+    })
+  }
+
+  return chartJsPromise
+}
 
 const router = useRouter()
 
 // Chart refs
 const revenueChartRef = ref<HTMLCanvasElement | null>(null)
 const growthChartRef = ref<HTMLCanvasElement | null>(null)
-let revenueChart: Chart | null = null
-let growthChart: Chart | null = null
+let revenueChart: any = null
+let growthChart: any = null
 let dateInterval: number | null = null
 
 // State
@@ -401,7 +411,9 @@ const getPaymentStatusSeverity = (status: string) => {
 }
 
 // Chart Functions
-const initRevenueChart = () => {
+const initRevenueChart = async () => {
+  if (!revenueChartRef.value) return
+  await loadChartJs()
   if (!revenueChartRef.value) return
 
   if (revenueChart) {
@@ -415,7 +427,7 @@ const initRevenueChart = () => {
     ? revenueSeries.value.monthly
     : revenueSeries.value.yearly
 
-  revenueChart = new Chart(ctx, {
+  revenueChart = new ChartConstructor(ctx, {
     type: 'line',
     data: {
       labels: data.labels,
@@ -462,7 +474,9 @@ const initRevenueChart = () => {
   })
 }
 
-const initGrowthChart = () => {
+const initGrowthChart = async () => {
+  if (!growthChartRef.value) return
+  await loadChartJs()
   if (!growthChartRef.value) return
 
   if (growthChart) {
@@ -473,7 +487,7 @@ const initGrowthChart = () => {
   if (!ctx) return
 
   const growthData = storeGrowthSeries.value
-  growthChart = new Chart(ctx, {
+  growthChart = new ChartConstructor(ctx, {
     type: 'bar',
     data: {
       labels: growthData.labels,
@@ -520,7 +534,7 @@ const initGrowthChart = () => {
 // Action Functions
 const setRevenueChartView = (view: 'monthly' | 'yearly') => {
   revenueChartView.value = view
-  initRevenueChart()
+  void initRevenueChart()
 }
 
 const loadDashboard = async () => {
@@ -544,8 +558,7 @@ const loadDashboard = async () => {
       revenueSeries.value = d.revenue_series || revenueSeries.value
       storeGrowthSeries.value = d.store_growth_series || storeGrowthSeries.value
 
-      initRevenueChart()
-      initGrowthChart()
+      await Promise.all([initRevenueChart(), initGrowthChart()])
       // recent activities
       if (Array.isArray(d.recent_activities)) {
         recentActivities.value = d.recent_activities.map((r: any, idx: number) => ({

@@ -4,8 +4,8 @@
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Stock Transfer</h2>
-        <p class="text-sm text-gray-500 mt-1">Request available stock from a warehouse or another branch.</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ reorderSuggestionId ? 'Request Restock from Warehouse' : 'Create Stock Transfer' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">{{ reorderSuggestionId ? 'This grouped request is linked to reorder suggestions. The warehouse can replenish any shortage before approving dispatch.' : 'Request available stock from a warehouse or another branch.' }}</p>
       </div>
     </div>
 
@@ -28,6 +28,7 @@
                   optionValue="id" 
                   placeholder="Select warehouse or branch"
                   :loading="loadingBranches"
+                  :disabled="Boolean(reorderSuggestionId)"
                   fluid
                   @change="onFromBranchChange"
                   :class="{ 'p-invalid': errors.from_branch_id }"
@@ -89,8 +90,12 @@
             <span class="text-sm font-semibold text-gray-600">Transfer Items</span>
           </Divider>
 
+          <Message v-if="reorderRequestNotice" severity="info" :closable="false" class="mb-3">
+            {{ reorderRequestNotice }}
+          </Message>
+
           <!-- Add Item Form -->
-          <div class="bg-gray-50 p-4 rounded-lg space-y-4">
+          <div v-if="!reorderSuggestionId" class="bg-gray-50 p-4 rounded-lg space-y-4">
             <h3 class="text-sm font-semibold text-gray-700">Add Transfer Item</h3>
             
             <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -197,7 +202,7 @@
               <template #body="{ data }">{{ getProductUnit(data.inventory_item_id) }}</template>
             </Column>
 
-            <Column header="Actions" style="width: 20%">
+            <Column v-if="!reorderSuggestionId" header="Actions" style="width: 20%">
               <template #body="{ index }">
                 <Button 
                   icon="pi pi-trash" 
@@ -247,16 +252,6 @@
       </template>
     </Card>
 
-    <!-- Confirmation Dialog for Cancel -->
-    <Dialog v-model:visible="showCancelDialog" header="Discard Changes" :modal="true" class="w-full sm:w-96">
-      <div class="space-y-4">
-        <p class="text-gray-600">Are you sure you want to cancel? Any unsaved changes will be lost.</p>
-        <div class="flex justify-end gap-2">
-          <Button label="No, Stay" severity="secondary" outlined @click="showCancelDialog = false" />
-          <Button label="Yes, Discard" severity="danger" @click="confirmCancel" />
-        </div>
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -264,13 +259,15 @@
 import { reactive, ref, computed, onMounted, watch } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import axios from 'axios'
+import Message from 'primevue/message'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const confirm = useConfirm()
 const saving = ref(false)
@@ -279,7 +276,14 @@ const loadingProducts = ref(false)
 const estimating = ref(false)
 let estimateTimer: number | null = null
 const autoFillBranchLoading = ref(true)
-const showCancelDialog = ref(false)
+const reorderRequestNotice = ref('')
+const reorderSuggestionIds = computed(() => {
+  const plural = route.query.reorder_suggestion_ids
+  const value = plural || route.query.reorder_suggestion_id || ''
+  const values = Array.isArray(value) ? value : [value]
+  return [...new Set(values.flatMap(item => String(item || '').split(',')).map(Number).filter(id => Number.isInteger(id) && id > 0))]
+})
+const reorderSuggestionId = computed(() => reorderSuggestionIds.value[0] || 0)
 const authStore = useAuthStore()
 
 // Form state
@@ -319,7 +323,10 @@ const estimate = reactive({ goods_value: 0, distance_km: 0, shipping_fee: 0, tot
 
 // Computed
 const receivingLocation = computed(() => branches.value.find(branch => Number(branch.id) === Number(form.to_branch_id)) || null)
-const sourceLocationOptions = computed(() => branches.value.filter(branch => Number(branch.id) !== Number(form.to_branch_id)))
+const sourceLocationOptions = computed(() => branches.value.filter(branch =>
+  Number(branch.id) !== Number(form.to_branch_id)
+  && (!reorderSuggestionId.value || (String(branch.branch_type || '').toLowerCase() === 'warehouse' && String(branch.status || '').toLowerCase() === 'active'))
+))
 
 const availableProducts = computed(() => {
   if (!form.from_branch_id) return []
@@ -403,6 +410,81 @@ const loadBranches = async () => {
   }
 }
 
+const prefillFromReorderSuggestion = async () => {
+  if (!reorderSuggestionIds.value.length) return
+
+  try {
+    const suggestions = await Promise.all(reorderSuggestionIds.value.map(async id => {
+      const response = await inventoryService.getReorderSuggestion(id)
+      return response?.data?.data ?? response?.data
+    }))
+    if (suggestions.some(suggestion => !suggestion?.id || !suggestion?.product_id || !suggestion?.branch_id)) {
+      throw new Error('One or more reorder suggestions are missing their product or receiving branch.')
+    }
+
+    const receivingBranchIds = new Set(suggestions.map(suggestion => Number(suggestion.branch_id)))
+    if (receivingBranchIds.size !== 1) throw new Error('Group suggestions for one receiving branch at a time.')
+    const productKeys = suggestions.map(suggestion => `${Number(suggestion.product_id)}:${Number(suggestion.variation_id || 0)}`)
+    if (new Set(productKeys).size !== productKeys.length) throw new Error('Select only one pending suggestion per product or variant.')
+
+    form.to_branch_id = Number(suggestions[0].branch_id)
+    const warehouses = branches.value.filter((branch: any) =>
+      String(branch.branch_type || '').toLowerCase() === 'warehouse' && String(branch.status || '').toLowerCase() === 'active'
+    )
+    if (!warehouses.length) throw new Error('This store no longer has an active warehouse branch.')
+
+    const stockChecks = await Promise.all(warehouses.map(async (branch: any) => {
+      const result = await inventoryService.getBranchInventory(Number(branch.id), { per_page: 1000 })
+      const payload = result?.data ?? result
+      const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+      const items = suggestions.map(suggestion => rows.find((row: any) => Number(row.product_id) === Number(suggestion.product_id)
+        && Number(row.variation_id || 0) === Number(suggestion.variation_id || 0)))
+      if (items.some(item => !item)) return null
+      const available = items.reduce((total: number, item: any) => total + Math.max(0, Number(item.quantity_available || 0)), 0)
+      const shortage = items.reduce((total: number, item: any, index: number) =>
+        total + Math.max(0, Math.ceil(Number(suggestions[index].suggested_quantity || 1)) - Math.floor(Number(item.quantity_available || 0))), 0)
+      return { branch, items, available, shortage }
+    }))
+    const match = stockChecks.filter(Boolean).sort((left: any, right: any) => left.shortage - right.shortage || right.available - left.available)[0] as any
+
+    if (!match) {
+      const names = suggestions.map(suggestion => suggestion.product?.product_name || `Product #${suggestion.product_id}`)
+      reorderRequestNotice.value = `No single active warehouse has inventory records for every selected item (${names.join(', ')}). Split the selection by warehouse or ask the warehouse team to add the missing items to its catalog.`
+      return
+    }
+
+    form.from_branch_id = Number(match.branch.id)
+    await onFromBranchChange()
+    const requestItems = suggestions.map((suggestion: any) => {
+      const sourceItem = inventoryItems.value.find((row: any) => Number(row.product_id) === Number(suggestion.product_id)
+        && Number(row.variation_id || 0) === Number(suggestion.variation_id || 0))
+      if (!sourceItem) throw new Error(`The warehouse stock record for ${suggestion.product?.product_name || 'a selected item'} changed. Refresh the page and try again.`)
+      return {
+        suggestion,
+        sourceItem,
+        requestQty: Math.max(1, Math.ceil(Number(suggestion.suggested_quantity || 1))),
+        availableQty: Math.max(0, Math.floor(Number(sourceItem.quantity_available || 0))),
+      }
+    })
+    form.items = requestItems.map(({ sourceItem, requestQty }: any) => ({ inventory_item_id: Number(sourceItem.id), quantity: requestQty }))
+    form.reason = 'Branch replenishment from warehouse'
+    const shortages = requestItems.filter(({ availableQty, requestQty }: any) => availableQty < requestQty)
+    if (shortages.length) {
+      const shortageNotes = shortages.map(({ suggestion, availableQty, requestQty }: any) => {
+        const shortfall = requestQty - availableQty
+        return `${suggestion.product?.product_name || `Product #${suggestion.product_id}`}: need ${requestQty}, warehouse has ${availableQty}, procure ${shortfall}`
+      })
+      reorderRequestNotice.value = `${match.branch.name} is short on ${shortages.length} selected item(s). The grouped request will include all suggested quantities; the warehouse should procure the listed shortfalls before approving dispatch.`
+      form.remarks = `Grouped reorder suggestions ${suggestions.map(suggestion => `#${suggestion.id}`).join(', ')}. Warehouse shortfalls: ${shortageNotes.join('; ')}.`
+    } else {
+      reorderRequestNotice.value = `Prefilled ${suggestions.length} item(s) from ${match.branch.name} for ${receivingLocation.value?.name || 'the receiving branch'}.`
+      form.remarks = `Grouped reorder suggestions ${suggestions.map(suggestion => `#${suggestion.id}`).join(', ')}.`
+    }
+  } catch (error: any) {
+    reorderRequestNotice.value = error?.response?.data?.message || error?.message || 'Unable to prefill this warehouse request.'
+  }
+}
+
 const onFromBranchChange = async () => {
   form.items = [] // Clear items when source branch changes
   inventoryItems.value = []
@@ -418,7 +500,7 @@ const loadInventoryForBranch = async (branchId: number | null) => {
   
   loadingProducts.value = true
   try {
-    const response = await inventoryService.getBranchInventory(branchId, { per_page: 100 })
+    const response = await inventoryService.getBranchInventory(branchId, { per_page: reorderSuggestionId.value ? 1000 : 100 })
     const payload = response?.data ?? response
     inventoryItems.value = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
     
@@ -477,6 +559,7 @@ const loadEstimate = async () => {
     const response = await axios.post('/api/inventory/transfers/estimate', {
       from_branch_id: form.from_branch_id,
       to_branch_id: form.to_branch_id,
+      reorder_suggestion_ids: reorderSuggestionIds.value.length ? reorderSuggestionIds.value : undefined,
       items: estimatePayloadItems(),
     })
     Object.assign(estimate, response.data?.data || {})
@@ -568,6 +651,7 @@ const doCreateTransfer = async () => {
       expected_delivery_date: form.expected_receive_date?.toISOString().split('T')[0],
       reason: form.reason,
       remarks: form.remarks || undefined,
+      reorder_suggestion_ids: reorderSuggestionIds.value.length ? reorderSuggestionIds.value : undefined,
       items: form.items.map(item => {
         const inventoryItem = inventoryItems.value.find(inv => inv.id === item.inventory_item_id)
         return {
@@ -589,7 +673,7 @@ const doCreateTransfer = async () => {
       life: 3000
     })
     
-    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
+    router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id: transferId } })
   } catch (error: any) {
     console.error('Failed to create transfer', error)
     const responseData = error?.response?.data || {}
@@ -651,16 +735,7 @@ const submitTransfer = async () => {
 }
 
 const cancel = () => {
-  if (form.items.length > 0 || form.remarks || form.expected_receive_date) {
-    showCancelDialog.value = true
-  } else {
-    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
-  }
-}
-
-const confirmCancel = () => {
-  showCancelDialog.value = false
-    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
+  router.push({ name: 'inventory.stock-requests' })
 }
 
 // Watch for quantity validation
@@ -712,6 +787,7 @@ onMounted(async () => {
         life: 4000
       })
     }
+    await prefillFromReorderSuggestion()
   } finally {
     autoFillBranchLoading.value = false
   }

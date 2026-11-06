@@ -154,6 +154,11 @@ class ReorderSuggestionController extends Controller
             }
 
             $storeId = (int) ($context['store_id'] ?? 0);
+            $hasWarehouse = $storeId > 0 && Branch::query()
+                ->where('store_id', $storeId)
+                ->where('branch_type', 'warehouse')
+                ->where('status', 'active')
+                ->exists();
             $useDirectPo = $storeId > 0 && (
                 app(ForecastPlanService::class)->key($storeId) === 'simple'
                 || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId)
@@ -165,7 +170,7 @@ class ReorderSuggestionController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $suggestions,
-                'reorder_destination' => $useDirectPo ? 'po' : 'pr',
+                'reorder_destination' => $hasWarehouse ? 'warehouse' : ($useDirectPo ? 'po' : 'pr'),
                 'message' => 'Reorder suggestions retrieved successfully.',
             ]);
 
@@ -275,9 +280,14 @@ class ReorderSuggestionController extends Controller
 
             $suggestion->load(['reorderRule', 'product', 'variation', 'branch', 'approver', 'implementer']);
             $storeId = (int) ($suggestion->branch?->store_id ?? 0);
+            $hasWarehouse = $storeId > 0 && Branch::query()
+                ->where('store_id', $storeId)
+                ->where('branch_type', 'warehouse')
+                ->where('status', 'active')
+                ->exists();
             $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
                 || !request()->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
-            $suggestion->setAttribute('reorder_destination', $useDirectPo ? 'po' : 'pr');
+            $suggestion->setAttribute('reorder_destination', $hasWarehouse ? 'warehouse' : ($useDirectPo ? 'po' : 'pr'));
 
             return response()->json([
                 'success' => true,
@@ -385,6 +395,27 @@ class ReorderSuggestionController extends Controller
             ]);
 
             $storeId = (int) $suggestion->branch()->value('store_id');
+            $hasWarehouse = Branch::query()
+                ->where('store_id', $storeId)
+                ->where('branch_type', 'warehouse')
+                ->where('status', 'active')
+                ->exists();
+            if ($hasWarehouse) {
+                if (!$request->user()?->hasPermissionTo('inventory.transfers.create', $storeId)
+                    && !$request->user()?->hasPermissionTo('inventory.transfers.manage', $storeId)) {
+                    return response()->json(['success' => false, 'message' => 'You need Inventory Transfer access to request this item from the warehouse.'], 403);
+                }
+                if (!$suggestion->canBeApproved()) {
+                    return response()->json(['success' => false, 'message' => 'This suggestion is no longer pending.'], 422);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'action_required' => 'create_warehouse_request',
+                    'url' => "/inventory/stock-requests/create?type=transfer&reorder_suggestion_id={$suggestion->id}",
+                    'message' => 'Create a warehouse stock request for this suggestion.',
+                ]);
+            }
             $useDirectPo = app(ForecastPlanService::class)->key($storeId) === 'simple'
                 || !$request->user()?->hasPermissionTo('inventory.requisites.manage', $storeId);
             if ($useDirectPo) {

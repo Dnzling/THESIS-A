@@ -21,22 +21,22 @@
             <h3 class="mb-4 text-lg font-semibold text-gray-800">Reference Purchase Order</h3>
 
             <!-- PO Details Summary -->
-            <div v-if="selectedPO" class="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <p class="text-xs font-semibold text-gray-500">PO Number</p>
-                <p class="font-semibold text-gray-800">{{ selectedPO.po_number }}</p>
+            <div v-if="selectedPO" class="grid grid-cols-1 gap-3 rounded-xl border border-slate-300 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">PO Number</p>
+                <p class="mt-1 break-words font-semibold text-slate-950">{{ selectedPO.po_number }}</p>
               </div>
-              <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <p class="text-xs text-blue-600 font-semibold">Supplier</p>
-                <p class="text-gray-800 font-semibold">{{ selectedPO.supplier?.supplier_name }}</p>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Supplier</p>
+                <p class="mt-1 break-words font-semibold text-slate-950">{{ selectedPO.supplier?.supplier_name || '—' }}</p>
               </div>
-              <div class="bg-green-50 p-4 rounded-lg border border-green-200">
-                <p class="text-xs text-green-600 font-semibold">Total Items</p>
-                <p class="text-gray-800 font-semibold">{{ selectedPO.items?.length || 0 }} items</p>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Total Items</p>
+                <p class="mt-1 font-semibold text-slate-950">{{ selectedPO.items?.length || 0 }} items</p>
               </div>
-              <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                <p class="text-xs text-purple-600 font-semibold">PO Total</p>
-                <p class="text-gray-800 font-semibold">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">PO Total</p>
+                <p class="mt-1 font-semibold text-slate-950">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
               </div>
             </div>
             <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -44,37 +44,7 @@
             </div>
           </div>
 
-          <!-- Section 2: Barcode Scanner -->
-          <div class="border-b pb-6">
-            <h3 class="mb-4 text-lg font-semibold text-gray-800">Receive Items</h3>
-
-            <div class="space-y-4">
-              <!-- Barcode Input -->
-              <div>
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  Barcode Scanner / Product Search
-                </label>
-                <div class="flex gap-2">
-                  <InputText
-                    v-model="barcodeInput"
-                    placeholder="Scan barcode or type product name..."
-                    class="flex-1"
-                    @keyup.enter="addByBarcode"
-                  />
-                  <Button
-                    label="Search"
-                    :loading="scanningBarcode"
-                    @click="addByBarcode"
-                    v-tooltip="'Or press Enter'"
-                  />
-                </div>
-                <p class="mt-1 text-xs text-gray-500">Barcode scanning or product search matches items from this purchase order.</p>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- Section 3: Received Items Table -->
+          <!-- Received Items Table -->
           <div class="border-b pb-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-semibold text-gray-800">Received Items ({{ receivedItems.length }})</h3>
@@ -169,7 +139,7 @@
             </div>
           </div>
 
-          <!-- Section 4: Verification Summary -->
+          <!-- Verification Summary -->
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card class="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
               <template #content>
@@ -268,8 +238,6 @@ const form = reactive({
 // UI State
 const saving = ref(false)
 const saveDraft = ref(false)
-const scanningBarcode = ref(false)
-const barcodeInput = ref('')
 const selectedPO = ref<any>(null)
 const receivedItems = ref<any[]>([])
 const draftId = ref<number | null>(null)
@@ -416,70 +384,6 @@ const prefillFromRequisition = async (prId: number) => {
       detail: 'Failed to prefill goods receipt from requisition',
       life: 3000
     })
-  }
-}
-
-const addByBarcode = async () => {
-  if (!barcodeInput.value.trim()) return
-
-  scanningBarcode.value = true
-  try {
-    // Simulate barcode lookup - in real scenario, call API
-    // For now, search in PO items
-    const matchedItem = selectedPO.value?.items?.find((item: any) =>
-      item.product?.sku?.includes(barcodeInput.value) ||
-      item.product?.product_name?.toLowerCase().includes(barcodeInput.value.toLowerCase())
-    )
-
-    if (matchedItem) {
-      const exists = receivedItems.value.find((ri) => ri.product_id === matchedItem.product_id)
-      if (!exists) {
-        receivedItems.value.push({
-          id: matchedItem.id,
-          purchase_order_item_id: matchedItem.id,
-          product_id: matchedItem.product_id,
-          product: matchedItem.product,
-          variation_id: matchedItem.variation_id,
-          quantity_ordered: matchedItem.quantity_ordered,
-          quantity_expected: matchedItem.quantity_ordered,
-          quantity_received: 1, // Start with 1 for barcode scans
-          confirmedQuantityReceived: 1,
-          quantity_damaged: 0,
-          variance: 1 - matchedItem.quantity_ordered,
-          variance_percent: Math.round(
-            ((1 - matchedItem.quantity_ordered) / matchedItem.quantity_ordered) * 100
-          ),
-          varianceTouched: false,
-          quantityError: '',
-          status: 'short',
-          remarks: ''
-        })
-        toast.add({
-          severity: 'success',
-          summary: 'Scanned',
-          detail: `${matchedItem.product?.product_name} detected`,
-          life: 2000
-        })
-      } else {
-        toast.add({
-          severity: 'warn',
-          summary: 'Already Added',
-          detail: 'Product already in receipt list',
-          life: 2000
-        })
-      }
-    } else {
-      toast.add({
-        severity: 'warn',
-        summary: 'Not Found',
-        detail: 'Product not found in this PO',
-        life: 2000
-      })
-    }
-
-    barcodeInput.value = ''
-  } finally {
-    scanningBarcode.value = false
   }
 }
 

@@ -11,8 +11,8 @@
       <div class="flex flex-wrap items-center gap-2">
         <Button icon="pi pi-refresh" severity="secondary" text rounded aria-label="Refresh order" :loading="loading" @click="loadOrder" />
         <Button icon="pi pi-history" label="Timeline" severity="secondary" outlined size="small" :disabled="!order" @click="timelineDialogVisible = true" />
-        <Button v-if="canSendToLogistics" icon="pi pi-send" label="Mark Ready for Dispatch" size="small" :loading="sendingToLogistics" :disabled="sendDisabled" @click="confirmReadyForDispatch" />
-        <Button icon="pi pi-print" label="Print Receipt" severity="secondary" outlined size="small" :loading="printingReceipt" :disabled="!order || order.payment_status !== 'paid'" @click="printReceipt" />
+        <Button v-if="canSendToLogistics && order?.payment_status === 'paid'" icon="pi pi-send" label="Mark Ready for Dispatch" size="small" :loading="sendingToLogistics" :disabled="sendDisabled" @click="confirmReadyForDispatch" />
+        <Button v-if="order?.payment_status === 'paid'" icon="pi pi-print" label="Print Receipt" severity="secondary" outlined size="small" :loading="printingReceipt" @click="printReceipt" />
         <Button v-if="order?.payment_status === 'paid' && !order?.refund_request && authStore.hasPermission('sales.refunds.manage')" label="Request Refund" severity="secondary" outlined size="small" @click="refundDialogVisible = true" />
       </div>
     </div>

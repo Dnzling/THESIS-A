@@ -115,6 +115,12 @@
               <span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span>
             </template>
           </Column>
+          <Column field="contract_status" header="Contract" style="min-width: 140px">
+            <template #body="{ data }">
+              <Tag :value="humanize(data.contract_status || 'no_contract')"
+                :severity="contractStatusSeverity(data.contract_status)" />
+            </template>
+          </Column>
           <Column field="status" header="Status" style="min-width: 110px">
             <template #body="{ data }">
               <Tag :value="humanize(data.status)" :severity="statusSeverity(data.status)" />
@@ -153,6 +159,7 @@ type Supplier = {
   supplier_type?: string
   rating?: number | string | null
   status?: string
+  contract_status?: string | null
   logo_url?: string | null
 }
 
@@ -242,6 +249,13 @@ const formatRating = (rating?: number | string | null) => {
 const statusSeverity = (status?: string) => {
   if (status === 'active') return 'success'
   if (status === 'blacklisted') return 'danger'
+  return 'secondary'
+}
+
+const contractStatusSeverity = (status?: string | null) => {
+  if (status === 'active') return 'success'
+  if (status === 'pending') return 'warn'
+  if (status === 'rejected' || status === 'terminated') return 'danger'
   return 'secondary'
 }
 

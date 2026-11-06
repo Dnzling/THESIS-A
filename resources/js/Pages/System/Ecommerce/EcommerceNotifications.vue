@@ -4,7 +4,6 @@
       <header class="border-b border-slate-200 bg-gradient-to-r from-orange-50 to-white px-5 py-5 sm:px-7">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">My updates</p>
             <h1 class="mt-1 text-2xl font-bold text-slate-900">Notifications</h1>
             <p class="mt-1 text-sm text-slate-500">Order, return, refund, chat, and review updates appear here.</p>
           </div>
@@ -284,7 +283,7 @@ function notificationIcon(notification: any) {
   if (type.includes('return') || type.includes('refund')) return 'pi pi-replay'
   if (type.includes('chat')) return 'pi pi-comments'
   if (type.includes('review')) return 'pi pi-star'
-  if (type.includes('order')) return 'pi pi-box'
+  if (type.includes('order')) return 'pi pi-shopping-bag'
   return 'pi pi-bell'
 }
 

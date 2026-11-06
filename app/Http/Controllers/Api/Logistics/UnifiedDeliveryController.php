@@ -37,6 +37,7 @@ class UnifiedDeliveryController extends Controller
         'assigned',
         'packed',
         'in_transit',
+        'en_route_to_supplier',
         'out_for_delivery',
         'delivered',
         'failed_delivery',
@@ -196,7 +197,8 @@ class UnifiedDeliveryController extends Controller
                     'vehicle_id' => $pickup->vehicle_id,
                     'vehicle' => $pickup->vehicle,
                 ];
-            });
+            })
+            ->toBase();
 
         $awaitingAssignment = PurchaseOrder::query()
             ->with(['supplier', 'branch', 'items.product'])
@@ -229,7 +231,8 @@ class UnifiedDeliveryController extends Controller
                     'can_create_delivery' => true,
                     'driver_user_id' => null,
                 ];
-            });
+            })
+            ->toBase();
 
         return $shipments->merge($awaitingAssignment);
     }
@@ -463,15 +466,43 @@ class UnifiedDeliveryController extends Controller
         }
 
         if ($source === 'pickup') {
-            $pickup = $this->resolvePickupShipment($request, $orderId);
+            $storeId = $this->resolveStoreId($request);
+            $purchaseOrder = PurchaseOrder::query()
+                ->with([
+                    'items.product',
+                    'items.variation',
+                    'supplier',
+                    'branch',
+                    'purchaseRequisition:id,pr_number,status,branch_id',
+                    'purchaseRequisition.branch:id,name,address,latitude,longitude,contact_number,email',
+                ])
+                ->where('store_id', $storeId)
+                ->findOrFail($orderId);
+
+            abort_if($purchaseOrder->fulfillment_method === 'supplier_delivery', 422, 'This purchase order is delivered by the supplier, not collected by your store.');
+            abort_unless(in_array($purchaseOrder->status, ['supplier_accepted', 'out_for_delivery', 'delivered', 'pending_receipt', 'partially_received', 'goods_received'], true), 422, 'This purchase order is not in the supplier pickup workflow.');
+
+            $pickup = PurchaseOrderShipment::query()
+                ->with([
+                    'driverUser:id,fname,lname,email,phone_number',
+                    'driverEmployee:id,user_id,employee_number',
+                    'vehicle',
+                    'logs' => fn ($query) => $query->with(['creator:id,fname,lname,email', 'attachments'])->orderByDesc('logged_at'),
+                ])
+                ->where('purchase_order_id', $purchaseOrder->id)
+                ->first();
+
+            if ($request->user()->hasRole('driver') && (!$pickup || (int) $pickup->driver_user_id !== (int) $request->user()->id)) {
+                return response()->json(['success' => false, 'message' => 'This pickup is not assigned to you.'], 403);
+            }
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'source_type' => 'pickup',
-                    'order' => $pickup->purchaseOrder,
+                    'order' => $purchaseOrder,
                     'delivery' => $pickup,
-                    'logs' => $pickup->logs,
+                    'logs' => $pickup?->logs ?? collect(),
                 ],
             ]);
         }
@@ -928,8 +959,8 @@ class UnifiedDeliveryController extends Controller
     {
         $source = strtolower($source);
         $targetStatus = strtolower((string) $request->input('status'));
-        $proofRequired = in_array($targetStatus, ['in_transit', 'delivered'], true)
-            && in_array($source, ['pickup', 'ecommerce'], true);
+        $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['out_for_delivery', 'delivered'], true))
+            || (in_array($source, ['ecommerce', 'sales'], true) && in_array($targetStatus, ['in_transit', 'delivered'], true));
         // GPS is best-effort for delivery milestones. A driver may submit the
         // required proof even when the device cannot provide a fresh position.
         $locationRequired = false;
@@ -945,7 +976,7 @@ class UnifiedDeliveryController extends Controller
         ]);
 
         if ($source === 'pickup') {
-            if (!in_array($validated['status'], ['in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true)) {
+            if (!in_array($validated['status'], ['en_route_to_supplier', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid supplier pickup status.'], 422);
             }
 
@@ -955,7 +986,8 @@ class UnifiedDeliveryController extends Controller
             }
             $from = (string) $pickup->status;
             $allowedTransitions = [
-                'pending' => ['in_transit', 'cancelled'],
+                'pending' => ['en_route_to_supplier', 'in_transit', 'cancelled'],
+                'en_route_to_supplier' => ['out_for_delivery', 'cancelled'],
                 'in_transit' => ['out_for_delivery', 'cancelled'],
                 'out_for_delivery' => ['delivered', 'cancelled'],
             ];
@@ -979,7 +1011,7 @@ class UnifiedDeliveryController extends Controller
             $pickup->current_latitude = $validated['latitude'] ?? $pickup->current_latitude;
             $pickup->current_longitude = $validated['longitude'] ?? $pickup->current_longitude;
             $pickup->current_address = $locationAddress ?: $pickup->current_address;
-            if ($validated['status'] === 'in_transit' && !$pickup->dispatched_at) {
+            if (in_array($validated['status'], ['en_route_to_supplier', 'in_transit'], true) && !$pickup->dispatched_at) {
                 $pickup->dispatched_at = now();
             }
             if ($validated['status'] === 'out_for_delivery' && !$pickup->out_for_delivery_at) {
@@ -991,9 +1023,7 @@ class UnifiedDeliveryController extends Controller
             $log = DB::transaction(function () use ($pickup, $validated, $request, $locationAddress, $from) {
                 $pickup->save();
 
-                if ($validated['status'] === 'in_transit') {
-                    $pickup->purchaseOrder?->markInTransit();
-                } elseif ($validated['status'] === 'out_for_delivery') {
+                if ($validated['status'] === 'out_for_delivery') {
                     $pickup->purchaseOrder?->markOutForDelivery();
                 } elseif ($validated['status'] === 'delivered') {
                     // This synchronizes both the PO and its linked PR to delivered.

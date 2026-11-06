@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory\StockTransfer;
 use App\Models\Inventory\StockTransferItem;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\ReorderSuggestion;
+use App\Models\Store\Branch;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
@@ -20,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -81,6 +84,66 @@ class StockTransferController extends Controller
         ];
     }
 
+    private function validateReorderTransferGroup(
+        array $suggestionIds,
+        array $items,
+        int $storeId,
+        int $fromBranchId,
+        int $toBranchId,
+        bool $lock = false,
+    ): Collection {
+        if ($suggestionIds === []) {
+            return collect();
+        }
+
+        $query = ReorderSuggestion::query()
+            ->whereIn('id', $suggestionIds)
+            ->whereHas('branch', fn ($branch) => $branch->where('store_id', $storeId));
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $suggestions = $query->get();
+
+        $validWarehouse = Branch::query()
+            ->whereKey($fromBranchId)
+            ->where('store_id', $storeId)
+            ->where('branch_type', 'warehouse')
+            ->where('status', 'active')
+            ->exists();
+
+        if ($suggestions->count() !== count($suggestionIds)
+            || count($items) !== count($suggestionIds)
+            || !$validWarehouse) {
+            throw ValidationException::withMessages([
+                'reorder_suggestion_ids' => 'Select valid reorder suggestions for one active warehouse and receiving branch.',
+            ]);
+        }
+
+        $seenProducts = [];
+        foreach ($suggestions as $suggestion) {
+            $productKey = (int) $suggestion->product_id . ':' . (int) ($suggestion->variation_id ?? 0);
+            $matchingItems = collect($items)->filter(fn ($item) =>
+                (int) $item['product_id'] === (int) $suggestion->product_id
+                && (int) ($item['variation_id'] ?? 0) === (int) ($suggestion->variation_id ?? 0)
+            );
+
+            if (isset($seenProducts[$productKey])
+                || !$suggestion->canBeApproved()
+                || $suggestion->getMetadataValue('stock_transfer_id')
+                || (int) $suggestion->branch_id !== $toBranchId
+                || $matchingItems->count() !== 1
+                || (int) $matchingItems->first()['requested_quantity'] !== (int) ceil((float) $suggestion->suggested_quantity)) {
+                throw ValidationException::withMessages([
+                    'reorder_suggestion_ids' => 'A selected suggestion is no longer pending, is already requested, or does not exactly match its transfer item.',
+                ]);
+            }
+
+            $seenProducts[$productKey] = true;
+        }
+
+        return $suggestions;
+    }
+
     /**
      * List all stock transfers
      * GET /api/inventory/transfers
@@ -105,7 +168,7 @@ class StockTransferController extends Controller
             'fromBranch',
             'toBranch',
             'requestedBy.user'
-        ]);
+        ])->withCount('items');
 
         if ($storeId > 0) {
             $query->where('store_id', $storeId);
@@ -131,6 +194,25 @@ class StockTransferController extends Controller
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('requested_date', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('requested_date', '<=', $request->input('date_to'));
+        }
+
+        if ($request->filled('search')) {
+            $term = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($term) {
+                $builder->where('transfer_number', 'like', "%{$term}%")
+                    ->orWhere('reason', 'like', "%{$term}%")
+                    ->orWhere('notes', 'like', "%{$term}%")
+                    ->orWhereHas('fromBranch', fn ($branch) => $branch->where('name', 'like', "%{$term}%"))
+                    ->orWhereHas('toBranch', fn ($branch) => $branch->where('name', 'like', "%{$term}%"));
+            });
         }
 
         $sortBy = in_array($request->input('sort_by'), ['requested_date', 'created_at'], true)
@@ -183,6 +265,9 @@ class StockTransferController extends Controller
         $validated = $request->validate([
             'from_branch_id' => 'required|integer|different:to_branch_id',
             'to_branch_id' => 'required|integer',
+            'reorder_suggestion_ids' => 'nullable|array|min:1|max:100',
+            'reorder_suggestion_ids.*' => 'required|integer|distinct|exists:reorder_suggestions,id',
+            'reorder_suggestion_id' => 'nullable|integer|exists:reorder_suggestions,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.variation_id' => 'nullable|integer|exists:product_variations,id',
@@ -195,6 +280,16 @@ class StockTransferController extends Controller
             ->count();
         abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
 
+        $suggestionIds = $validated['reorder_suggestion_ids']
+            ?? (empty($validated['reorder_suggestion_id']) ? [] : [(int) $validated['reorder_suggestion_id']]);
+        $linkedSuggestions = $this->validateReorderTransferGroup(
+            $suggestionIds,
+            $validated['items'],
+            $storeId,
+            (int) $validated['from_branch_id'],
+            (int) $validated['to_branch_id'],
+        );
+
         $goodsValue = 0.0;
         foreach ($validated['items'] as $item) {
             $inventory = BranchInventory::with('product')
@@ -206,6 +301,7 @@ class StockTransferController extends Controller
 
             abort_unless($inventory, 422, 'An item is not stocked at the selected source location.');
             abort_if(
+                $linkedSuggestions->isEmpty() &&
                 (int) $item['requested_quantity'] > (int) $inventory->quantity_available,
                 422,
                 "Requested quantity exceeds available stock for {$inventory->product?->product_name}."
@@ -239,12 +335,17 @@ class StockTransferController extends Controller
     {
         $user = Auth::user();
         $storeId = (int) ($user?->store_id ?? 0);
+        abort_unless($this->userHasAnyPermission(['inventory.transfers.create', 'inventory.transfers.manage'], $storeId), 403, 'You do not have permission to create stock transfer requests.');
 
         $validated = $request->validate([
             'from_branch_id' => 'required|exists:branches,id|different:to_branch_id',
             'to_branch_id' => 'required|exists:branches,id',
             'reason' => 'required|string',
+            'remarks' => 'nullable|string|max:2000',
             'expected_delivery_date' => 'required|date|after:today',
+            'reorder_suggestion_id' => 'nullable|integer|exists:reorder_suggestions,id',
+            'reorder_suggestion_ids' => 'nullable|array|min:1|max:100',
+            'reorder_suggestion_ids.*' => 'required|integer|distinct|exists:reorder_suggestions,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
@@ -258,8 +359,27 @@ class StockTransferController extends Controller
             ->count();
         abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
 
+        $suggestionIds = $validated['reorder_suggestion_ids']
+            ?? (empty($validated['reorder_suggestion_id']) ? [] : [(int) $validated['reorder_suggestion_id']]);
+        $linkedSuggestions = $this->validateReorderTransferGroup(
+            $suggestionIds,
+            $validated['items'],
+            $storeId,
+            (int) $validated['from_branch_id'],
+            (int) $validated['to_branch_id'],
+        );
+
         DB::beginTransaction();
         try {
+            $linkedSuggestions = $this->validateReorderTransferGroup(
+                $suggestionIds,
+                $validated['items'],
+                $storeId,
+                (int) $validated['from_branch_id'],
+                (int) $validated['to_branch_id'],
+                true,
+            );
+
             // Get procurement settings
             $settings = ProcurementSettings::where('store_id', $storeId)->first();
 
@@ -275,7 +395,7 @@ class StockTransferController extends Controller
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
 
-                if (! $inventory || (int) $item['requested_quantity'] > (int) $inventory->quantity_available) {
+                if (! $inventory || ($linkedSuggestions->isEmpty() && (int) $item['requested_quantity'] > (int) $inventory->quantity_available)) {
                     throw ValidationException::withMessages([
                         'items' => "Requested quantity exceeds the stock available at the selected source location for product #{$item['product_id']}.",
                     ]);
@@ -306,6 +426,7 @@ class StockTransferController extends Controller
                 'goods_value' => $goodsValue,
                 'cost_calculation_notes' => "Calculated using {$settings?->transfer_cost_method} method",
                 'reason' => $validated['reason'],
+                'notes' => $validated['remarks'] ?? null,
                 'expected_delivery_date' => $validated['expected_delivery_date'],
                 'requested_by' => EmployeeContext::currentEmployeeId(),
                 'requested_date' => now(),
@@ -329,7 +450,36 @@ class StockTransferController extends Controller
                 ]);
             }
 
-            if ($user && $this->userHasAnyPermission(['inventory.transfers.approve'], $storeId)) {
+            if ($linkedSuggestions->isNotEmpty()) {
+                foreach ($linkedSuggestions as $reorderSuggestion) {
+                    $metadata = $reorderSuggestion->metadata ?? [];
+                    $metadata['stock_transfer_id'] = $transfer->id;
+                    $reorderSuggestion->update([
+                        'status' => 'approved',
+                        'approved_at' => now(),
+                        'approved_by' => EmployeeContext::currentEmployeeId(),
+                        'approval_notes' => 'Warehouse stock request created: ' . $transfer->transfer_number,
+                        'metadata' => $metadata,
+                    ]);
+                }
+            }
+
+            $canAutoApprove = $user && $this->userHasAnyPermission(['inventory.transfers.approve'], $storeId);
+            if ($canAutoApprove && $linkedSuggestions->isNotEmpty()) {
+                $canAutoApprove = true;
+                foreach ($transfer->items as $item) {
+                    $inventory = BranchInventory::where('branch_id', $transfer->from_branch_id)
+                        ->where('product_id', $item->product_id)
+                        ->where('variation_id', $item->variation_id)
+                        ->first();
+                    if (!$inventory || (int) $inventory->quantity_available < (int) $item->requested_quantity) {
+                        $canAutoApprove = false;
+                        break;
+                    }
+                }
+            }
+
+            if ($canAutoApprove) {
                 $transfer->load(['items.product']);
 
                 foreach ($transfer->items as $item) {
@@ -894,6 +1044,26 @@ class StockTransferController extends Controller
                 'notes' => implode("\n", $noteParts),
             ]);
 
+            $linkedSuggestions = ReorderSuggestion::query()
+                ->where('metadata->stock_transfer_id', $transfer->id)
+                ->where('status', 'approved')
+                ->lockForUpdate()
+                ->get();
+            foreach ($linkedSuggestions as $suggestion) {
+                $receivedQuantity = (int) $transfer->items()
+                    ->where('product_id', $suggestion->product_id)
+                    ->where('variation_id', $suggestion->variation_id)
+                    ->sum('received_quantity');
+                if ($receivedQuantity >= (int) ceil((float) $suggestion->suggested_quantity)) {
+                    $suggestion->update([
+                        'status' => 'implemented',
+                        'implemented_at' => now(),
+                        'implemented_by' => EmployeeContext::currentEmployeeId(),
+                        'implementation_notes' => 'The linked warehouse transfer was received in full.',
+                    ]);
+                }
+            }
+
             DB::commit();
 
             $this->recordLog(
@@ -938,10 +1108,37 @@ class StockTransferController extends Controller
             ], 422);
         }
 
-        $transfer->update([
-            'status' => 'cancelled',
-            'rejection_reason' => $validated['reason'],
-        ]);
+        DB::beginTransaction();
+        try {
+            $transfer->update([
+                'status' => 'cancelled',
+                'rejection_reason' => $validated['reason'],
+            ]);
+
+            $linkedSuggestions = ReorderSuggestion::query()
+                ->where('metadata->stock_transfer_id', $transfer->id)
+                ->where('status', 'approved')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($linkedSuggestions as $suggestion) {
+                $metadata = $suggestion->metadata ?? [];
+                unset($metadata['stock_transfer_id']);
+
+                $suggestion->update([
+                    'status' => 'pending',
+                    'approved_at' => null,
+                    'approved_by' => null,
+                    'approval_notes' => 'The linked warehouse request was cancelled: ' . $validated['reason'],
+                    'metadata' => $metadata,
+                ]);
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
 
         $this->recordLog(
             'inventory.stock_transfer.cancelled',

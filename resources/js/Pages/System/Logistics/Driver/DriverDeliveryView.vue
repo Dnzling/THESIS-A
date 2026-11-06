@@ -788,7 +788,8 @@ const nextStatus = computed(() =>
     : source.value === 'pickup'
     ? (
         {
-          pending: 'in_transit',
+          pending: 'en_route_to_supplier',
+          en_route_to_supplier: 'out_for_delivery',
           in_transit: 'out_for_delivery',
           out_for_delivery: 'delivered',
         } as any
@@ -805,11 +806,14 @@ const nextStatus = computed(() =>
 )
 
 const nextStatusLabel = computed(() => {
+  if (source.value === 'pickup' && nextStatus.value === 'en_route_to_supplier') {
+    return 'Start Route to Supplier'
+  }
   if (source.value === 'return_pickup' && nextStatus.value === 'picked_up') {
     return 'Confirm Pickup & Start Delivery'
   }
   if (nextStatus.value === 'out_for_delivery') {
-    return 'Mark Out for Delivery'
+    return source.value === 'pickup' ? 'Confirm Pickup & Start Delivery' : 'Mark Out for Delivery'
   }
 
   if (nextStatus.value === 'delivered') {
@@ -860,6 +864,8 @@ const proofInstruction = computed(() =>
 const proofSubmitLabel = computed(() =>
   source.value === 'return_pickup' && nextStatus.value === 'picked_up'
     ? 'Confirm Pickup'
+    : source.value === 'pickup' && nextStatus.value === 'out_for_delivery'
+      ? 'Confirm Pickup & Start Delivery'
     : nextStatus.value === 'delivered'
     ? 'Mark Delivered'
     : 'Mark In Transit',
@@ -1011,7 +1017,9 @@ const beginAdvance = async () => {
     ['pickup', 'ecommerce', 'return_pickup'].includes(source.value) &&
     (source.value === 'return_pickup'
       ? ['picked_up', 'delivered'].includes(nextStatus.value)
-      : ['in_transit', 'delivered'].includes(nextStatus.value))
+      : source.value === 'pickup'
+        ? ['out_for_delivery', 'delivered'].includes(nextStatus.value)
+        : ['in_transit', 'delivered'].includes(nextStatus.value))
 
   if (needsProof) {
     proofPhoto.value = null

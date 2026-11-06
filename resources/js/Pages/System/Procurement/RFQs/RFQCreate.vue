@@ -96,21 +96,11 @@
               </div>
 
               <div class="space-y-2">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Description</label>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Request Details &amp; Instructions</label>
                 <Textarea 
                   v-model="form.description" 
-                  placeholder="Brief description of the RFQ" 
-                  rows="3"
-                  class="w-full bg-gray-50 border-gray-200 rounded-xl resize-none"
-                />
-              </div>
-
-              <div class="space-y-2">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Submission Instructions</label>
-                <Textarea 
-                  v-model="form.instructions" 
-                  placeholder="Any special instructions for suppliers" 
-                  rows="3"
+                  placeholder="Describe what you need and include any instructions for suppliers"
+                  rows="4"
                   class="w-full bg-gray-50 border-gray-200 rounded-xl resize-none"
                 />
               </div>
@@ -210,6 +200,18 @@
                       <li v-for="line in group.lines" :key="line.key">{{ line.product_name }} • Qty {{ line.qty }}</li>
                     </ul>
                   </div>
+                </div>
+                <div v-if="splitRfqPreviewLoading" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Checking supplier links and active contracts for every PR item...
+                </div>
+                <div v-if="splitRfqUnassignedItems.length" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                  <p class="font-semibold">Some PR items cannot be quoted yet.</p>
+                  <p class="mt-1 text-xs">Link each item to a supplier with an active contract before sending supplier RFQs.</p>
+                  <ul class="mt-2 list-inside list-disc space-y-1 text-xs">
+                    <li v-for="item in splitRfqUnassignedItems" :key="item.id">
+                      {{ item.product_name }}<span v-if="item.variant"> - {{ item.variant }}</span><span v-if="item.sku"> ({{ item.sku }})</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -331,7 +333,7 @@
           iconPos="right" 
           @click="showReview = true" 
           :loading="saving"
-          :disabled="!splitRfqMode && selectedSupplierIds.length === 0"
+          :disabled="splitRfqMode ? (splitRfqPreviewLoading || splitRfqSupplierGroups === 0 || splitRfqUnassignedItems.length > 0) : selectedSupplierIds.length === 0"
           class="rounded-xl px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white border-none"
         />
       </div>
@@ -465,7 +467,7 @@
             :label="isEditMode ? 'Update & Send RFQ' : 'Create & Send RFQ'" 
             icon="pi pi-send" 
             @click="submitForm"
-            :disabled="!confirmTerms || (!splitRfqMode && selectedSupplierIds.length === 0)"
+            :disabled="!confirmTerms || (splitRfqMode ? (splitRfqPreviewLoading || splitRfqSupplierGroups === 0 || splitRfqUnassignedItems.length > 0) : selectedSupplierIds.length === 0)"
             class="rounded-xl px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white border-none"
           />
         </div>
@@ -669,7 +671,6 @@ interface RFQForm {
   rfq_type: 'purchase' | 'service' | 'both'
   currency: string
   shipping_terms: string
-  instructions: string
   qualification_requirements: string
   items: RFQItem[]
   invitation_method: string
@@ -713,6 +714,9 @@ const editingRfqId = ref<number | null>(null)
 const isEditMode = computed(() => editingRfqId.value !== null)
 const splitRfqMode = ref(false)
 const splitRfqSupplierGroups = ref<number>(0)
+const splitRfqPreview = ref<any>(null)
+const splitRfqPreviewLoading = ref(false)
+const splitRfqUnassignedItems = computed(() => splitRfqPreview.value?.unassigned_items || [])
 const products = ref<Product[]>([])
 const sourcingMode = ref<'materials' | 'finished_goods'>('materials')
 const sourcingOptions = [
@@ -740,6 +744,24 @@ const loadProductOptions = async () => {
 const suppliers = ref<Supplier[]>([])
 const errors = reactive<FormErrors>({})
 const splitRfqSummary = computed(() => {
+  const previewGroups = splitRfqPreview.value?.supplier_groups
+  if (Array.isArray(previewGroups)) {
+    return previewGroups.map((group: any) => {
+      const lines = Array.isArray(group.items) ? group.items : []
+      return {
+        supplier_id: Number(group.supplier_id),
+        supplier_name: group.supplier_name || `Supplier #${group.supplier_id}`,
+        item_count: lines.length,
+        total_qty: lines.reduce((total: number, item: any) => total + Number(item.quantity || 0), 0),
+        lines: lines.map((item: any, index: number) => ({
+          key: `${group.supplier_id}-${item.requisition_item_id || item.product_id}-${index}`,
+          product_name: `${item.product_name || 'Product'}${item.variant ? ` - ${item.variant}` : ''}`,
+          qty: Number(item.quantity || 0),
+        })),
+      }
+    })
+  }
+
   const groups = new Map<number, {
     supplier_id: number
     supplier_name: string
@@ -780,6 +802,23 @@ const splitRfqSummary = computed(() => {
   return Array.from(groups.values())
 })
 
+const canSubmitSupplierSplit = () => {
+  if (!splitRfqMode.value) return true
+  if (splitRfqPreviewLoading.value) {
+    toast.add({ severity: 'info', summary: 'Checking Suppliers', detail: 'Wait for supplier eligibility to finish loading.', life: 2500 })
+    return false
+  }
+  if (splitRfqSupplierGroups.value === 0) {
+    toast.add({ severity: 'warn', summary: 'No Eligible Suppliers', detail: 'Link the PR products to suppliers with active contracts before creating RFQs.', life: 4000 })
+    return false
+  }
+  if (splitRfqUnassignedItems.value.length > 0) {
+    toast.add({ severity: 'warn', summary: 'Supplier Links Needed', detail: 'Some PR items have no linked supplier with an active contract. Resolve the listed items before sending RFQs.', life: 4000 })
+    return false
+  }
+  return true
+}
+
 const rfqTypes = [
   { label: 'Purchase', value: 'purchase' },
   { label: 'Service', value: 'service' },
@@ -807,7 +846,6 @@ const form = reactive<RFQForm>({
   rfq_type: 'purchase',
   currency: 'PHP',
   shipping_terms: '',
-  instructions: '',
   qualification_requirements: '',
   items: [{ product_id: null, variation_id: null, quantity: 1, unit: 'pcs', target_price: null, specifications: '', notes: '' }],
   invitation_method: 'both',
@@ -849,12 +887,14 @@ const loadRfqForEdit = async (id: number) => {
 
     form.purchase_requisition_id = rfq.purchase_requisition_id ?? null
     form.title = rfq.title || ''
-    form.description = rfq.description || ''
+    form.description = [rfq.description, rfq.instructions]
+      .map((value: string | null | undefined) => value?.trim())
+      .filter(Boolean)
+      .join('\n\n')
     form.issue_date = toDateOrNull(rfq.issue_date) || new Date()
     form.rfq_type = rfq.rfq_type || 'purchase'
     form.currency = rfq.currency || 'PHP'
     form.shipping_terms = rfq.shipping_terms
-    form.instructions = rfq.instructions || ''
     form.qualification_requirements = rfq.qualification_requirements || ''
 
     if (Array.isArray(rfq.items) && rfq.items.length > 0) {
@@ -961,12 +1001,20 @@ const prefillFromRequisition = (requisition: any) => {
     form.description = requisition.reason
   }
 
-  if (Array.isArray(requisition.items) && requisition.items.length > 0) {
-    if (requisition.items.some((item: any) => item.product?.product_type === 'finished_good')) {
+  const requestedItemIds = String(route.query.requisition_item_ids || '')
+    .split(',')
+    .map((id) => Number(id))
+    .filter((id) => id > 0)
+  const requisitionItems = Array.isArray(requisition.items)
+    ? requisition.items.filter((item: any) => requestedItemIds.length === 0 || requestedItemIds.includes(Number(item.id)))
+    : []
+
+  if (requisitionItems.length > 0) {
+    if (requisitionItems.some((item: any) => item.product?.product_type === 'finished_good')) {
       sourcingMode.value = 'finished_goods'
       void loadProductOptions()
     }
-    form.items = requisition.items.map((item: any) => ({
+    form.items = requisitionItems.map((item: any) => ({
       product_id: item.product_id || null,
       variation_id: item.variation_id || null,
       selected_supplier_id: item.selected_supplier_id || null,
@@ -983,7 +1031,19 @@ const prefillFromRequisition = (requisition: any) => {
       notes: ''
     }))
 
-    const resolvedSupplierIds = requisition.items
+    if (String(route.query.split || '') === '1') {
+      splitRfqMode.value = true
+      selectedSupplierIds.value = []
+      return
+    }
+
+    if (String(route.query.source_unlinked || '') === '1') {
+      splitRfqMode.value = false
+      selectedSupplierIds.value = []
+      return
+    }
+
+    const resolvedSupplierIds = requisitionItems
       .map((item: any) => {
         if (item?.selected_supplier_id) return Number(item.selected_supplier_id)
         const productSuppliers = Array.isArray(item?.product?.suppliers) ? item.product.suppliers : []
@@ -1005,6 +1065,8 @@ const prefillFromRequisition = (requisition: any) => {
 }
 
 const saveDraft = async () => {
+  if (!canSubmitSupplierSplit()) return
+
   if (!validateForm()) {
     toast.add({
       severity: 'error',
@@ -1051,7 +1113,6 @@ const saveDraft = async () => {
         rfq_type: form.rfq_type,
         currency: form.currency,
         shipping_terms: form.shipping_terms,
-        instructions: form.instructions,
         qualification_requirements: form.qualification_requirements,
       }
 
@@ -1131,6 +1192,8 @@ const saveDraft = async () => {
 }
 
 const submitForm = async () => {
+  if (!canSubmitSupplierSplit()) return
+
   if (!validateForm()) {
     toast.add({
       severity: 'error',
@@ -1185,7 +1248,6 @@ const submitForm = async () => {
         rfq_type: form.rfq_type,
         currency: form.currency,
         shipping_terms: form.shipping_terms,
-        instructions: form.instructions,
         qualification_requirements: form.qualification_requirements,
       }
 
@@ -1230,7 +1292,6 @@ const submitForm = async () => {
       rfq_type: form.rfq_type,
       currency: form.currency,
       shipping_terms: form.shipping_terms,
-      instructions: form.instructions,
       qualification_requirements: form.qualification_requirements,
       items: validItems.map(item => ({
         product_id: item.product_id,
@@ -1350,8 +1411,30 @@ onMounted(async () => {
     if (route.query.requisition_id) {
       const requisitionId = parseInt(route.query.requisition_id as string)
       const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId).catch(() => null)
-      const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
+      const requisition = requisitionRes?.data?.data || requisitionRes?.data || requisitionRes
       prefillFromRequisition(requisition)
+
+      if (String(route.query.split || '') === '1') {
+        splitRfqMode.value = true
+        splitRfqPreviewLoading.value = true
+        try {
+          const previewResponse = await procurementService.getPurchaseRequisitionSplitPreview(requisitionId)
+          splitRfqPreview.value = previewResponse?.data || null
+          splitRfqSupplierGroups.value = Array.isArray(splitRfqPreview.value?.supplier_groups)
+            ? splitRfqPreview.value.supplier_groups.length
+            : 0
+        } catch (error: any) {
+          splitRfqPreview.value = { supplier_groups: [], unassigned_items: [] }
+          toast.add({
+            severity: 'error',
+            summary: 'Supplier Check Failed',
+            detail: error?.response?.data?.message || 'Could not check linked suppliers for the PR items.',
+            life: 4000,
+          })
+        } finally {
+          splitRfqPreviewLoading.value = false
+        }
+      }
     }
 
     if (route.query.rfq_id) {

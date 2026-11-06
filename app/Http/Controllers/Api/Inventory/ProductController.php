@@ -152,6 +152,43 @@ class ProductController extends Controller
         ]);
     }
 
+    private function syncSupplierLinks(Product $product, array $links): void
+    {
+        $preferredCount = collect($links)->filter(fn ($link) => (bool) ($link['is_preferred_supplier'] ?? false))->count();
+        if ($preferredCount > 1) {
+            throw ValidationException::withMessages([
+                'supplier_links' => 'Choose only one preferred supplier for this product.',
+            ]);
+        }
+
+        if ($links && $preferredCount === 0) {
+            $links[0]['is_preferred_supplier'] = true;
+        }
+
+        $sync = [];
+        foreach ($links as $link) {
+            $sync[(int) $link['supplier_id']] = [
+                'supplier_price' => (float) $link['supplier_price'],
+                'minimum_order_quantity' => (int) ($link['minimum_order_quantity'] ?? 1),
+                'lead_time_days' => (int) ($link['lead_time_days'] ?? 7),
+                'is_preferred_supplier' => (bool) ($link['is_preferred_supplier'] ?? false),
+            ];
+        }
+
+        $product->suppliers()->sync($sync);
+    }
+
+    private function normalizeSupplierLinks(Request $request): void
+    {
+        $value = $request->input('supplier_links');
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $request->merge(['supplier_links' => $decoded]);
+            }
+        }
+    }
+
     private function validateMerchandisingFields(Request $request, array &$validated, int $storeId): void
     {
         $user = $request->user();
@@ -448,6 +485,8 @@ class ProductController extends Controller
         try {
             $context = $this->getUserContext();
 
+            $this->normalizeSupplierLinks($request);
+
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
                 'sku' => 'nullable|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
@@ -476,6 +515,15 @@ class ProductController extends Controller
                     'integer',
                     Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
                 ],
+                'supplier_links' => 'sometimes|array',
+                'supplier_links.*.supplier_id' => [
+                    'required', 'integer', 'distinct',
+                    Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
+                ],
+                'supplier_links.*.supplier_price' => 'required|numeric|min:0',
+                'supplier_links.*.minimum_order_quantity' => 'nullable|integer|min:1',
+                'supplier_links.*.lead_time_days' => 'nullable|integer|min:0',
+                'supplier_links.*.is_preferred_supplier' => 'nullable|boolean',
                 'initial_stock' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
@@ -534,7 +582,9 @@ class ProductController extends Controller
                 $this->syncProductTags($product, $validated['tag_ids'] ?? [], $context['store_id']);
             }
 
-            if (!empty($validated['supplier_id'])) {
+            if (array_key_exists('supplier_links', $validated)) {
+                $this->syncSupplierLinks($product, $validated['supplier_links'] ?? []);
+            } elseif (!empty($validated['supplier_id'])) {
                 $this->setPreferredSupplier(
                     $product,
                     (int) $validated['supplier_id'],
@@ -662,6 +712,8 @@ class ProductController extends Controller
 
             $product = Product::where('store_id', $context['store_id'])->findOrFail($id);
 
+            $this->normalizeSupplierLinks($request);
+
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
                 'sku' => 'nullable|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
@@ -690,6 +742,15 @@ class ProductController extends Controller
                     'integer',
                     Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
                 ],
+                'supplier_links' => 'sometimes|array',
+                'supplier_links.*.supplier_id' => [
+                    'required', 'integer', 'distinct',
+                    Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
+                ],
+                'supplier_links.*.supplier_price' => 'required|numeric|min:0',
+                'supplier_links.*.minimum_order_quantity' => 'nullable|integer|min:1',
+                'supplier_links.*.lead_time_days' => 'nullable|integer|min:0',
+                'supplier_links.*.is_preferred_supplier' => 'nullable|boolean',
                 'initial_stock' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
@@ -761,7 +822,9 @@ class ProductController extends Controller
                 $this->syncProductTags($product, $validated['tag_ids'] ?? [], $context['store_id']);
             }
 
-            if (array_key_exists('supplier_id', $validated)) {
+            if (array_key_exists('supplier_links', $validated)) {
+                $this->syncSupplierLinks($product, $validated['supplier_links'] ?? []);
+            } elseif (array_key_exists('supplier_id', $validated)) {
                 $this->setPreferredSupplier(
                     $product,
                     isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null,

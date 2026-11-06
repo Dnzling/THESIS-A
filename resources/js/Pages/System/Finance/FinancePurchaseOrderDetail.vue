@@ -19,23 +19,6 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <div v-if="detail?.status === 'pending_finance_approval'" class="flex items-center gap-2">
-   
-          <button
-            @click="confirmReject"
-            class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-          >
-            <i class="pi pi-times text-sm"></i>
-            <span>Reject</span>
-          </button>
-                 <button
-            @click="confirmApprove"
-            class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <i class="pi pi-check text-sm"></i>
-            <span>Approve</span>
-          </button>
-        </div>
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="text-xs" />
       </div>
     </div>
@@ -294,6 +277,23 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div v-if="detail?.status === 'pending_finance_approval'" class="flex justify-end gap-2 border-t border-gray-200 pt-5">
+        <button
+          @click="confirmReject"
+          class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+        >
+          <i class="pi pi-times text-sm"></i>
+          <span>Reject</span>
+        </button>
+        <button
+          @click="confirmApprove"
+          class="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700"
+        >
+          <i class="pi pi-check text-sm"></i>
+          <span>Approve</span>
+        </button>
       </div>
     </div>
   

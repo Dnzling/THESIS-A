@@ -43,6 +43,24 @@ it('registers every API route with a public callable controller action', functio
     expect($invalidActions)->toBe([], implode(PHP_EOL, $invalidActions));
 });
 
+it('registers inventory supplier contract workflow endpoints', function () {
+    $routes = collect(apiRoutesForContractTest())
+        ->filter(fn (Route $route) => str_starts_with($route->uri(), 'api/inventory/supplier-contracts'))
+        ->keyBy(fn (Route $route) => implode('|', $route->methods()) . ' ' . $route->uri());
+
+    expect($routes->keys()->all())->toContain(
+        'GET|HEAD api/inventory/supplier-contracts',
+        'POST api/inventory/supplier-contracts',
+        'GET|HEAD api/inventory/supplier-contracts/{id}',
+        'POST api/inventory/supplier-contracts/{id}/activate',
+    );
+
+    foreach ($routes as $route) {
+        $action = $route->getAction('uses');
+        expect(is_string($action) && str_starts_with($action, App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController::class . '@'))->toBeTrue();
+    }
+});
+
 it('uses registered middleware on every API route', function () {
     $router = app('router');
     $aliases = $router->getMiddleware();

@@ -8,6 +8,7 @@ use App\Http\Requests\Inventory\StoreInventoryRequest;
 use App\Models\Core\ActivityLog;
 use App\Models\Hr\Employee;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\ReorderRule;
 use App\Services\Inventory\InventoryService;
 use App\Services\Inventory\AlertService;
@@ -250,6 +251,77 @@ class BranchInventoryController extends Controller
                 'message' => 'Failed to retrieve inventory: ' . $e->getMessage(),
             ], 400);
         }
+    }
+
+    public function performance(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'days' => ['nullable', 'integer', 'in:30,60,90'],
+            'branch_id' => ['nullable', 'integer'],
+        ]);
+
+        $context = $this->getUserContext();
+        $targetBranchId = (int) ($validated['branch_id'] ?? $context['branch_id']);
+        $days = (int) ($validated['days'] ?? 30);
+
+        $inventory = BranchInventory::query()
+            ->with('product:id,store_id,product_type')
+            ->where('store_id', $context['store_id'])
+            ->where('branch_id', $targetBranchId)
+            ->findOrFail($id);
+
+        abort_unless($inventory->product?->product_type === 'finished_good', 422, 'Performance is available only for finished products.');
+
+        $start = now()->subDays($days - 1)->startOfDay();
+        $end = now()->endOfDay();
+        $transactions = InventoryTransaction::query()
+            ->where('store_id', $context['store_id'])
+            ->where('branch_id', $inventory->branch_id)
+            ->where('product_id', $inventory->product_id)
+            ->when($inventory->variation_id,
+                fn ($query) => $query->where('variation_id', $inventory->variation_id),
+                fn ($query) => $query->whereNull('variation_id'))
+            ->whereBetween('transaction_date', [$start, $end])
+            ->orderBy('transaction_date')
+            ->orderBy('id')
+            ->get(['id', 'transaction_type', 'quantity_change', 'quantity_before', 'quantity_after', 'transaction_date']);
+
+        $byDate = $transactions->groupBy(fn (InventoryTransaction $transaction) => $transaction->transaction_date->toDateString());
+        $first = $transactions->first();
+        $runningStock = $first ? (int) $first->quantity_before : (int) $inventory->quantity_on_hand;
+        $labels = [];
+        $stock = [];
+        $sales = [];
+
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $key = $date->toDateString();
+            $dayTransactions = $byDate->get($key, collect());
+            $unitsSold = 0;
+
+            foreach ($dayTransactions as $transaction) {
+                $runningStock = (int) $transaction->quantity_after;
+                if ($transaction->transaction_type === 'sale') {
+                    $unitsSold += abs((int) $transaction->quantity_change);
+                }
+            }
+
+            $labels[] = $date->format('M j');
+            $stock[] = $runningStock;
+            $sales[] = $unitsSold;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'days' => $days,
+                'labels' => $labels,
+                'stock' => $stock,
+                'sales' => $sales,
+                'units_sold' => array_sum($sales),
+                'current_stock' => (int) $inventory->quantity_on_hand,
+                'reorder_point' => (int) $inventory->effectiveReorderPoint(),
+            ],
+        ]);
     }
 
     /**
