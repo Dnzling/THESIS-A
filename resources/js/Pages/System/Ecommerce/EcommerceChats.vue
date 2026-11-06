@@ -1,6 +1,11 @@
 <template>
   <div class="h-[calc(100dvh-190px)] min-h-[520px] overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-sm">
-    <div class="grid h-full grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]" :class="lockedStoreContext ? 'grid-rows-1 lg:grid-cols-1' : 'grid-rows-[minmax(130px,0.4fr)_minmax(300px,1fr)] lg:grid-rows-1'">
+    <div
+      class="grid h-full min-w-0 grid-cols-1"
+      :class="lockedStoreContext
+        ? 'grid-rows-1 lg:grid-cols-1'
+        : 'grid-rows-[minmax(130px,0.4fr)_minmax(300px,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] lg:grid-rows-1'"
+    >
       <aside v-if="!lockedStoreContext" class="flex min-h-0 flex-col border-b border-orange-100 bg-white lg:border-b-0 lg:border-r">
         <div class="border-b border-orange-100 p-4">
           <div class="mb-3 flex items-center justify-between">
