@@ -1,14 +1,14 @@
 <template>
-  <div class="space-y-6">
-    <Card class="border  shadow-none">
+  <div class="mx-auto max-w-7xl space-y-5 pb-8">
+    <Card class="border border-slate-200 shadow-none">
       <template #content>
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 class="text-2xl font-semibold text-slate-900">Stores</h1>
-            <p class="text-sm text-slate-500">Browse all stores, subscription details, sales, and products in one place.</p>
+            <h1 class="text-xl font-semibold text-slate-900">Stores</h1>
+            <p class="mt-1 text-sm text-slate-500">Review registered stores, their status, and plan information.</p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <Button label="Store Verify" icon="pi pi-shield" severity="warning" @click="goToValidation" />
+            <Button label="Store Verification Directory" icon="pi pi-verified" severity="secondary" outlined size="small" @click="goToValidation" />
           </div>
         </div>
       </template>
@@ -16,14 +16,14 @@
 
     <Card class="border border-slate-200 shadow-none">
       <template #content>
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-          <div class="md:col-span-7">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="w-full sm:w-72">
             <IconField>
               <InputIcon class="pi pi-search" />
-              <InputText v-model="filters.search" placeholder="Search by store, owner, email, city..." fluid />
+              <InputText v-model="filters.search" placeholder="Search store, owner, city..." size="small" fluid />
             </IconField>
           </div>
-          <div class="md:col-span-4">
+          <div class="w-full sm:w-44">
             <Select
               v-model="filters.status"
               :options="statusOptions"
@@ -31,19 +31,19 @@
               optionValue="value"
               placeholder="Filter status"
               showClear
+              size="small"
               fluid
             />
           </div>
-          <div class="md:col-span-1 flex justify-end">
-            <Button icon="pi pi-filter-slash" text severity="secondary" @click="clearFilters" />
-          </div>
+          <Button v-if="filters.search || filters.status" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="clearFilters" />
+          <Button icon="pi pi-refresh" severity="secondary" outlined rounded size="small" aria-label="Refresh stores" :loading="loading" @click="loadStores" />
         </div>
       </template>
     </Card>
 
     <Card class="border border-slate-200 shadow-none">
       <template #content>
-        <DataTable :value="stores" :loading="loading" dataKey="id" stripedRows paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+        <DataTable :value="stores" :loading="loading" dataKey="id" paginator :rows="15" :rowsPerPageOptions="[15, 25, 50]" row-hover responsive-layout="scroll" class="text-sm">
           <Column field="store_name" header="Store" sortable>
             <template #body="{ data }">
               <div>
@@ -67,7 +67,7 @@
           </Column>
           <Column field="status" header="Status" sortable>
             <template #body="{ data }">
-              <Tag :value="displayStatus(data.status)" :severity="statusSeverity(data.status)" />
+              <Badge :value="displayStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
           <Column field="subscription_tier" header="Subscription" sortable>
@@ -75,18 +75,12 @@
               <Tag :value="toTitle(data.subscription_tier)" :severity="tierSeverity(data.subscription_tier)" />
             </template>
           </Column>
-          <Column header="Main Person">
-            <template #body="{ data }">
-              <p class="text-sm text-slate-900">{{ data.contact_person || '-' }}</p>
-              <p class="text-xs text-slate-500">{{ data.email || '-' }}</p>
-            </template>
+          <Column field="created_at" header="Registered" sortable>
+            <template #body="{ data }"><span class="text-sm text-slate-600">{{ formatDate(data.created_at) }}</span></template>
           </Column>
-        
-
-          <Column header="Actions" style="width: 120px">
+          <Column header="Action" style="width: 100px">
             <template #body="{ data }">
-    
-              <Button icon="pi pi-arrow-right" text severity="info" rounded @click="openDetail(data.id)" />
+              <Button label="View" icon="pi pi-arrow-right" icon-pos="right" outlined rounded size="small" severity="secondary" @click="openDetail(data.id)" />
             </template>
           </Column>
         </DataTable>
@@ -160,6 +154,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
@@ -214,7 +209,7 @@ const statusSeverity = (status: string) => {
       return 'success'
     case 'pending':
     case 'unverified':
-      return 'warning'
+      return 'warn'
     case 'rejected':
     case 'suspended':
       return 'danger'
@@ -273,9 +268,13 @@ const formatMoney = (value: number | string) => {
 }
 
 const formatSubscriptionDuration = (endsAt: string | null | undefined) => {
-  if (!endsAt) return 'No end date'
+  if (!endsAt) return 'Unlimited'
   return endsAt
 }
+
+const formatDate = (value: string | null | undefined) => value
+  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(value))
+  : '—'
 
 const goToValidation = () => {
   router.push('/admin/store-validation')

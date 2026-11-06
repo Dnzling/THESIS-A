@@ -17,6 +17,9 @@ class PayrollIndexResource extends JsonResource
             'payment_date' => $this->payment_date,
             'created_at' => $this->created_at,
             'base_salary' => $this->base_salary,
+            'hourly_rate' => $this->employee
+                ? \App\Services\Hr\PayrollService::deriveHourlyRate($this->employee)
+                : 0,
             'overtime_hours' => $this->overtime_hours,
             'overtime_amount' => $this->overtime_amount,
             'deductions_total' => $this->deductions_total,
@@ -24,6 +27,17 @@ class PayrollIndexResource extends JsonResource
             'bonuses_total' => $this->bonuses_total,
             'allowances_total' => $this->allowances_total,
             'tax_amount' => $this->tax_amount,
+            'period_metrics' => $this->period_metrics ?? null,
+            'allowance_items' => $this->whenLoaded('items', fn () => $this->items
+                ->where('type', 'allowance')->values()->map(fn ($item) => [
+                    'name' => $item->name,
+                    'amount' => (float) $item->amount,
+                ]), []),
+            'incentive_items' => $this->whenLoaded('items', fn () => $this->items
+                ->where('type', 'bonus')->values()->map(fn ($item) => [
+                    'name' => $item->name,
+                    'amount' => (float) $item->amount,
+                ]), []),
             'deduction_items' => $this->whenLoaded('items', function () {
                 return $this->items
                     ->where('type', 'deduction')

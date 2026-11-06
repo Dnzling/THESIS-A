@@ -103,7 +103,7 @@ class ProcurementSettingsController extends Controller
             [
                 'max_amount' => 999999999,
                 'level' => 4,
-                'approvers' => ['warehouse_manager', 'finance_manager', 'store_admin'],
+                'approvers' => ['warehouse_manager', 'finance_manager', 'owner'],
             ],
         ];
 

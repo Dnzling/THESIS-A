@@ -13,15 +13,14 @@
           <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-48" />
           <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
             placeholder="Date Range" fluid />
-          <Button label="New Period" icon="pi pi-plus" severity="info" class="ml-auto" @click="createPeriod" />
         </div>
       </template>
-  
+
       <template #content>
-        <DataTable :value="filteredPayPeriods" class="w-full" :loading="loading" paginator :rows="10"
+        <DataTable :value="filteredPayPeriods" class="w-full" rowHover :loading="loading" paginator :rows="10"
           :rowsPerPageOptions="[5, 10, 20, 50]"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" rowHover showGridlines
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" showGridlines
           removableSort responsiveLayout="scroll" sortField="name" :sortOrder="1" tableStyle="min-width: 50rem">
           <Column field="period" header="Period" sortable></Column>
           <Column field="cutoffStart" header="Start Date" sortable></Column>
@@ -30,16 +29,12 @@
           <Column field="status" header="Status" sortable>
             <template #body="slotProps">
               <div class="flex items-center gap-2">
-                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)" class="capitalize" />
-                <Select
-                  :modelValue="slotProps.data.status"
-                  :options="statusOptions"
-                  placeholder="Change status"
-                  class="w-36"
-                  size="small"
+                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)"
+                  class="capitalize" />
+                <Select :modelValue="slotProps.data.status" :options="statusOptions" placeholder="Change status"
+                  class="w-36" size="small"
                   :disabled="isStatusLocked(slotProps.data.status) || updatingStatusId === slotProps.data.id"
-                  @update:modelValue="(value) => changePeriodStatus(slotProps.data, value)"
-                />
+                  @update:modelValue="(value) => changePeriodStatus(slotProps.data, value)" />
               </div>
             </template>
           </Column>
@@ -51,62 +46,31 @@
               </div>
             </template>
           </Column>
-  
+
           <template #empty>
             <div class="text-center py-12">
               <p class="text-gray-500 text-lg">No periods found</p>
               <p class="text-gray-400 text-sm mb-4">Try adjusting your search or filter criteria</p>
-              <Button label="Add Your First Period" icon="pi pi-plus" severity="info" @click="showDialog = true" />
             </div>
           </template>
         </DataTable>
       </template>
-  
+
       <ScrollTop />
     </Card>
-  
-    <!-- Create/Edit Dialog -->
-    <Dialog v-model:visible="showDialog" :header="dialogTitle" modal :style="{ width: '500px' }">
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm mb-1">Start Date</label>
-            <DatePicker v-model="periodForm.startDate" showIcon showClear fluid iconDisplay="input" />
-          </div>
-          <div>
-            <label class="block text-sm mb-1">End Date</label>
-            <DatePicker v-model="periodForm.endDate" showIcon showClear fluid iconDisplay="input" />
-          </div>
-        </div>
 
-        <div>
-          <label class="block text-sm mb-1">Auto Period Name</label>
-          <InputText :modelValue="periodForm.name" class="w-full" readonly />
-          <small class="text-gray-500">Generated from selected start and end dates.</small>
-        </div>
-  
-        <div class="flex flex-wrap gap-4">
-          <label for="">Type:</label>
-          <div class="flex items-center gap-2">
-            <RadioButton v-model="periodForm.halfType" value="1st Half" />
-            <label>1st Half</label>
-          </div>
-          <div class="flex items-center gap-2">
-            <RadioButton v-model="periodForm.halfType" value="2nd Half" />
-            <label>2nd Half</label>
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Pay Date</label>
-          <DatePicker v-model="periodForm.payDate" showIcon fluid showClear iconDisplay="input" />
-        </div>
+    <!-- Edit existing period -->
+    <Dialog v-model:visible="showDialog" :header="dialogTitle" modal :style="{ width: '500px' }">
+      <div>
+        <label class="block text-sm mb-1">Period Name</label>
+        <InputText v-model="periodForm.name" class="w-full" maxlength="100" />
       </div>
       <template #footer>
-        <Button label="Cancel" severity="secondary" @click="resetForm" />
-        <Button label="Save" severity="info" @click="savePeriod" />
+        <Button label="Cancel" severity="secondary" @click="showDialog = false" />
+        <Button label="Save Changes" severity="warn" @click="savePeriod" />
       </template>
     </Dialog>
-  
+
     <Dialog v-model:visible="showDeleteModal" header="Confirm Delete" :style="{ width: '400px' }" modal>
       <div class="text-center">
         <i class="pi pi-exclamation-triangle text-4xl text-yellow-500 mb-3"></i>
@@ -114,20 +78,20 @@
         <p class="font-bold">{{ periodToDelete?.period }}</p>
         <small class="text-gray-500">This action cannot be undone.</small>
       </div>
-  
+
       <template #footer>
         <Button label="Cancel" severity="secondary" rounded @click="showDeleteModal = false" />
         <Button label="Delete" severity="danger" rounded @click="deletePeriod" />
       </template>
     </Dialog>
-  
-  
+
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { useToast } from 'primevue/usetoast'
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
@@ -153,7 +117,7 @@ const payPeriods = ref<PayPeriods[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const showDialog = ref(false)
-const dialogTitle = ref('Create Pay Period')
+const dialogTitle = ref('Edit Pay Period')
 const editingId = ref<number | null>(null)
 const showDeleteModal = ref(false)
 const periodToDelete = ref<PayPeriods | null>(null)
@@ -166,13 +130,7 @@ const filters = ref<Filters>({
   dateRange: null
 })
 
-const periodForm = ref({
-  name: '',
-  startDate: null as Date | null,
-  endDate: null as Date | null,
-  halfType: null as string | null,
-  payDate: null as Date | null
-})
+const periodForm = ref({ name: '' })
 
 const statusOptions = ref(['draft', 'processing', 'locked', 'completed'])
 
@@ -247,151 +205,24 @@ const fetchPayPeriods = async () => {
   }
 }
 
-const toYmd = (date: Date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const generatePeriodName = (start: Date | null, end: Date | null) => {
-  if (!start || !end) return ''
-  return `Pay Period ${toYmd(start)} to ${toYmd(end)}`
-}
-
-// Keep generated name and related defaults in sync with selected date range.
-watch([() => periodForm.value.startDate, () => periodForm.value.endDate], ([newStartDate, newEndDate]) => {
-  if (!newStartDate) {
-    periodForm.value.name = ''
-    return
-  }
-
-  const start = new Date(newStartDate)
-
-  if (!newEndDate) {
-    const defaultEndDate = new Date(start)
-    defaultEndDate.setDate(start.getDate() + 14)
-    periodForm.value.endDate = defaultEndDate
-    return
-  }
-
-  const end = new Date(newEndDate)
-  periodForm.value.halfType = start.getDate() <= 15 ? '1st Half' : '2nd Half'
-  periodForm.value.name = generatePeriodName(start, end)
-
-  // Default pay date to period end unless user has chosen one.
-  if (!periodForm.value.payDate) {
-    periodForm.value.payDate = new Date(end)
-  }
-})
-
-const createPeriod = () => {
-  // Get current date for default values
-  const today = new Date()
-  const currentYear = today.getFullYear()
-  const currentMonth = today.getMonth()
-  const day = today.getDate()
-
-  // Determine which half of the month we're in
-  const defaultHalfType = day <= 15 ? '1st Half' : '2nd Half'
-
-  // Set start date based on half type
-  let startDate
-  if (defaultHalfType === '1st Half') {
-    startDate = new Date(currentYear, currentMonth, 1)
-  } else {
-    startDate = new Date(currentYear, currentMonth, 16)
-  }
-
-  // Calculate end date and pay date
-  const endDate = new Date(startDate)
-  endDate.setDate(startDate.getDate() + 14)
-
-  const payDate = new Date(startDate)
-  payDate.setDate(startDate.getDate() + 14)
-
-  // Format month name
-  const monthName = startDate.toLocaleString('default', { month: 'long' })
-
-  // Generate the period name
-  const periodName = `${monthName} ${currentYear} (${defaultHalfType})`
-
-  periodForm.value = {
-    name: periodName,
-    startDate: startDate,
-    endDate: endDate,
-    halfType: defaultHalfType,
-    payDate: payDate
-  }
-
-  dialogTitle.value = 'Create Pay Period'
-  showDialog.value = true
-}
 const savePeriod = async () => {
   try {
-    const startDate = periodForm.value.startDate
-    const endDate = periodForm.value.endDate
-    const payDate = periodForm.value.payDate
-
-    if (!startDate || !endDate || !payDate) {
+    if (!editingId.value || !periodForm.value.name.trim()) {
       toast.add({
         severity: 'warn',
         summary: 'Validation',
-        detail: 'Start date, end date, and pay date are required.',
+        detail: 'A period name is required.',
         life: 3000
       })
       return
     }
 
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    const pay = new Date(payDate)
-
-    if (end < start) {
-      toast.add({
-        severity: 'warn',
-        summary: 'Validation',
-        detail: 'End date must be after start date.',
-        life: 3000
-      })
-      return
-    }
-
-    if (pay < start || pay > end) {
-      toast.add({
-        severity: 'warn',
-        summary: 'Validation',
-        detail: 'Pay date must be within the selected period range.',
-        life: 3000
-      })
-      return
-    }
-
-    const generatedName = generatePeriodName(start, end)
-    periodForm.value.name = generatedName
-
-    const response = await hrService.api.post('/api/payroll/periods',
-      {
-        name: generatedName,
-        start_date: toYmd(start),
-        end_date: toYmd(end),
-        cutoff_date: toYmd(pay),
-        notes: '' // Add notes if needed
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${authStore.token}`
-        }
-      }
-    )
+    const response = await hrService.api.put(`/api/payroll/periods/${editingId.value}`, {
+      name: periodForm.value.name.trim()
+    })
 
     if (response.data.success) {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: `Pay period created successfully`,
-        life: 3000
-      })
+      toast.add({ severity: 'success', summary: 'Updated', detail: 'Pay period updated successfully.', life: 3000 })
 
       showDialog.value = false
       resetForm()
@@ -476,13 +307,7 @@ const changePeriodStatus = async (period: PayPeriods, status: string) => {
 
 const editPeriod = (period: PayPeriods) => {
   editingId.value = period.id
-  periodForm.value = {
-    name: period.period,
-    startDate: new Date(period.cutoffStart),
-    endDate: new Date(period.cutoffEnd),
-    halfType: null,
-    payDate: new Date(period.payDate)
-  }
+  periodForm.value.name = period.period
   dialogTitle.value = 'Edit Pay Period'
   showDialog.value = true
 }
@@ -532,15 +357,9 @@ const deletePeriod = async () => {
 
 
 const resetForm = () => {
-  periodForm.value = {
-    name: '',
-    startDate: null,
-    endDate: null,
-    halfType: null,
-    payDate: null
-  }
+  periodForm.value.name = ''
   editingId.value = null
-  dialogTitle.value = 'Create Pay Period'
+  dialogTitle.value = 'Edit Pay Period'
 }
 
 // Lifecycle
@@ -548,4 +367,3 @@ onMounted(() => {
   fetchPayPeriods()
 })
 </script>
-

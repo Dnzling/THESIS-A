@@ -18,16 +18,19 @@
             </div>
           </div>
         </div>
-        <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
-          <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
-          <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+        <div class="flex flex-col items-stretch gap-3 sm:items-end">
+          <Button label="Audit Logs" icon="pi pi-history" size="small" severity="secondary" outlined @click="goToActivityLog" />
+          <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
+            <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+            </div>
           </div>
         </div>
       </div>
     </div>
   
     <!-- Improved KPI Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -37,6 +40,32 @@
           </div>
           <div class="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-store text-blue-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-gray-400">Commission Revenue</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.commissionRevenue) }}</div>
+            <div class="text-sm text-indigo-500 mt-1">{{ formatCurrency(stats.monthlyCommissionRevenue) }} this month</div>
+          </div>
+          <div class="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center">
+            <i class="pi pi-percentage text-indigo-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-gray-400">Subscription Revenue</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.subscriptionRevenue) }}</div>
+            <div class="text-sm text-emerald-500 mt-1">{{ formatCurrency(stats.monthlySubscriptionRevenue) }} this month</div>
+          </div>
+          <div class="w-12 h-12 bg-emerald-50 rounded-lg flex items-center justify-center">
+            <i class="pi pi-wallet text-emerald-600 text-xl"></i>
           </div>
         </div>
       </div>
@@ -256,23 +285,33 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axiosClient from '@/axios'
 import { useRouter } from 'vue-router'
-import { Chart, registerables } from 'chart.js'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 
-// Register Chart.js
-Chart.register(...registerables)
+let ChartConstructor: any = null
+let chartJsPromise: Promise<any> | null = null
+const loadChartJs = async () => {
+  if (!chartJsPromise) {
+    chartJsPromise = import('chart.js').then((module) => {
+      module.Chart.register(...module.registerables)
+      ChartConstructor = module.Chart
+      return module.Chart
+    })
+  }
+
+  return chartJsPromise
+}
 
 const router = useRouter()
 
 // Chart refs
 const revenueChartRef = ref<HTMLCanvasElement | null>(null)
 const growthChartRef = ref<HTMLCanvasElement | null>(null)
-let revenueChart: Chart | null = null
-let growthChart: Chart | null = null
+let revenueChart: any = null
+let growthChart: any = null
 let dateInterval: number | null = null
 
 // State
@@ -290,12 +329,16 @@ const stats = ref({
   pendingValidations: 0,
   monthlyRevenue: 0,
   revenueGrowth: 0,
+  commissionRevenue: 0,
+  subscriptionRevenue: 0,
+  monthlyCommissionRevenue: 0,
+  monthlySubscriptionRevenue: 0,
 })
 
 const totalPlatformRevenue = ref(0)
 const revenueSeries = ref({
-  monthly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
-  yearly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
+  monthly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[], commissionRevenue: [] as number[] },
+  yearly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[], commissionRevenue: [] as number[] },
 })
 const storeGrowthSeries = ref({
   labels: [] as string[],
@@ -368,7 +411,9 @@ const getPaymentStatusSeverity = (status: string) => {
 }
 
 // Chart Functions
-const initRevenueChart = () => {
+const initRevenueChart = async () => {
+  if (!revenueChartRef.value) return
+  await loadChartJs()
   if (!revenueChartRef.value) return
 
   if (revenueChart) {
@@ -382,14 +427,14 @@ const initRevenueChart = () => {
     ? revenueSeries.value.monthly
     : revenueSeries.value.yearly
 
-  revenueChart = new Chart(ctx, {
+  revenueChart = new ChartConstructor(ctx, {
     type: 'line',
     data: {
       labels: data.labels,
       datasets: [
         {
-          label: 'Platform Revenue',
-          data: data.platformRevenue,
+          label: 'Commission Revenue',
+          data: data.commissionRevenue,
           borderColor: '#4f46e5',
           backgroundColor: 'rgba(79, 70, 229, 0.1)',
           borderWidth: 3,
@@ -429,7 +474,9 @@ const initRevenueChart = () => {
   })
 }
 
-const initGrowthChart = () => {
+const initGrowthChart = async () => {
+  if (!growthChartRef.value) return
+  await loadChartJs()
   if (!growthChartRef.value) return
 
   if (growthChart) {
@@ -440,7 +487,7 @@ const initGrowthChart = () => {
   if (!ctx) return
 
   const growthData = storeGrowthSeries.value
-  growthChart = new Chart(ctx, {
+  growthChart = new ChartConstructor(ctx, {
     type: 'bar',
     data: {
       labels: growthData.labels,
@@ -487,7 +534,7 @@ const initGrowthChart = () => {
 // Action Functions
 const setRevenueChartView = (view: 'monthly' | 'yearly') => {
   revenueChartView.value = view
-  initRevenueChart()
+  void initRevenueChart()
 }
 
 const loadDashboard = async () => {
@@ -502,13 +549,16 @@ const loadDashboard = async () => {
       stats.value.pendingValidations = d.pending_validations || 0
       stats.value.monthlyRevenue = d.monthly_revenue || 0
       stats.value.revenueGrowth = d.revenue_growth || 0
+      stats.value.commissionRevenue = d.commission_revenue || 0
+      stats.value.subscriptionRevenue = d.subscription_revenue || 0
+      stats.value.monthlyCommissionRevenue = d.monthly_commission_revenue || 0
+      stats.value.monthlySubscriptionRevenue = d.monthly_subscription_revenue || 0
       totalPlatformRevenue.value = d.total_platform_revenue || 0
 
       revenueSeries.value = d.revenue_series || revenueSeries.value
       storeGrowthSeries.value = d.store_growth_series || storeGrowthSeries.value
 
-      initRevenueChart()
-      initGrowthChart()
+      await Promise.all([initRevenueChart(), initGrowthChart()])
       // recent activities
       if (Array.isArray(d.recent_activities)) {
         recentActivities.value = d.recent_activities.map((r: any, idx: number) => ({

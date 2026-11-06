@@ -12,15 +12,15 @@ class LeaveSeeder extends Seeder
 {
     public function run(): void
     {
-        // Get 3 specific employees (Ahbram Carra - Store Admin, Adrian Lacea - Store Manager, Cash Gshock - Cashier)
+        // Get 3 specific employees (Ahbram Carra - Store Owner, Adrian Lacea - Store Manager, Cash Gshock - Cashier)
         $employees = Employee::whereIn('user_id', [2, 3, 6])->get();
         
-        // Get HR Manager and Store Admin for approval
+        // Get HR Manager and Store Owner for approval
         $hrManager = User::find(4); // Edwin Vasquez
-        $storeAdmin = User::find(2); // Ahbram Carra
+        $storeOwner = User::find(2); // Ahbram Carra
         
         $leaves = [
-            // ============ EMPLOYEE 1: Ahbram Carra (Store Admin) - user_id 2 ============
+            // ============ EMPLOYEE 1: Ahbram Carra (Store Owner) - user_id 2 ============
             [
                 'employee_id' => $employees->where('user_id', 2)->first()->id ?? 1,
                 'leave_type' => 'vacation',
@@ -98,7 +98,7 @@ class LeaveSeeder extends Seeder
                 'reason' => 'Food poisoning',
                 'attachment_path' => '/uploads/leaves/medical_certificate_cash_jan2026.pdf',
                 'status' => 'approved',
-                'approved_by' => $storeAdmin->id,
+                'approved_by' => $storeOwner->id,
                 'rejected_reason' => null,
                 'approved_at' => Carbon::parse('2026-01-07 09:30:00'),
                 'created_at' => Carbon::parse('2026-01-07 07:15:00'),
@@ -114,7 +114,7 @@ class LeaveSeeder extends Seeder
                 'reason' => 'Dental appointment',
                 'attachment_path' => '/uploads/leaves/dental_appointment_cash.pdf',
                 'status' => 'approved',
-                'approved_by' => $storeAdmin->id,
+                'approved_by' => $storeOwner->id,
                 'rejected_reason' => null,
                 'approved_at' => Carbon::parse('2026-01-20 14:50:00'),
                 'created_at' => Carbon::parse('2026-01-19 16:20:00'),

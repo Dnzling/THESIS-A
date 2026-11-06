@@ -397,6 +397,12 @@ class SupplierPortalController extends Controller
                     'message' => 'You already have an approved supplier portal.',
                 ], 409);
             }
+            if ($existingPortal && $existingPortal->status === 'pending' && $existingPortal->last_submission_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your application is already under review and cannot be changed.',
+                ], 409);
+            }
 
             $portal = $existingPortal ?: new SupplierPortal(['user_id' => $user->id]);
 
@@ -470,8 +476,9 @@ class SupplierPortalController extends Controller
             // Persist submission metadata on portal but keep contact details on `suppliers` table
             $portal->status = 'pending';
             $portal->rejection_reason = null;
-            $portal->last_submission_at = now();
-            $portal->resubmission_count = ($portal->resubmission_count ?? 0) + 1;
+            // Saving the profile is only the first onboarding step. The
+            // application is submitted after all required documents exist.
+            $portal->last_submission_at = null;
             $portal->save();
 
             $portal->load(['supplier', 'verificationDocuments']);
@@ -530,6 +537,13 @@ class SupplierPortalController extends Controller
             $user = auth()->user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
+            if ($portal->status === 'pending' && $portal->last_submission_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your application is already under review and cannot be changed.',
+                ], 409);
+            }
+
             $file = $request->file('file');
             $path = 'supplier-documents/' . $portal->id . '/' . $request->document_type;
             
@@ -548,13 +562,15 @@ class SupplierPortalController extends Controller
                     'file_mime_type' => $file->getMimeType(),
                     'file_size' => $file->getSize(),
                     'status' => 'pending',
+                    'rejection_reason' => null,
+                    'reviewed_by' => null,
+                    'reviewed_at' => null,
                 ]
             );
 
-            // Update portal submission time
+            // A changed document must be explicitly submitted again.
             $portal->update([
-                'last_submission_at' => now(),
-                'resubmission_count' => $portal->resubmission_count + 1,
+                'last_submission_at' => null,
             ]);
 
             return response()->json([
@@ -567,6 +583,67 @@ class SupplierPortalController extends Controller
                 'message' => 'Error uploading document: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Submit a complete supplier application for administrator review.
+     * POST /api/supplier-portal/submit-verification
+     */
+    public function submitVerification(Request $request): JsonResponse
+    {
+        $requiredDocuments = ['business_license', 'tax_id', 'company_registration'];
+        $user = $request->user();
+        $portal = SupplierPortal::query()
+            ->with(['supplier', 'verificationDocuments'])
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$portal || !$portal->supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please save your company information first.',
+            ], 422);
+        }
+
+        if ($portal->status === 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your supplier account is already verified.',
+            ], 409);
+        }
+        if ($portal->status === 'pending' && $portal->last_submission_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your application has already been submitted for review.',
+            ], 409);
+        }
+
+        $uploadedTypes = $portal->verificationDocuments
+            ->pluck('document_type')
+            ->unique()
+            ->all();
+        $missingDocuments = array_values(array_diff($requiredDocuments, $uploadedTypes));
+
+        if ($missingDocuments !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please upload all required verification documents before submitting.',
+                'missing_documents' => $missingDocuments,
+            ], 422);
+        }
+
+        $portal->update([
+            'status' => 'pending',
+            'rejection_reason' => null,
+            'last_submission_at' => now(),
+            'resubmission_count' => ((int) $portal->resubmission_count) + 1,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Your verification documents were submitted for review.',
+            'data' => $portal->fresh(['supplier', 'verificationDocuments']),
+        ]);
     }
 
     /**

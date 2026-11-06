@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
 use Carbon\Carbon;
@@ -18,6 +19,7 @@ class ReorderSuggestion extends Model
     protected $fillable = [
         'reorder_rule_id',
         'product_id',
+        'variation_id',
         'branch_id',
         'suggestion_type',
         'current_stock',
@@ -57,6 +59,11 @@ class ReorderSuggestion extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variation(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariation::class, 'variation_id');
     }
 
     public function branch(): BelongsTo

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Core\User;
 
 class SupplierRFQFeedback extends Model
 {
@@ -14,9 +16,37 @@ class SupplierRFQFeedback extends Model
 
     protected $fillable = [
         'supplier_portal_id',
+        'supplier_id',
+        'response_source',
+        'response_channel',
+        'response_received_at',
+        'recorded_by',
         'rfq_id',
         'rfq_item_id',
         'quoted_price',
+        'available_quantity',
+        'has_variant',
+        'variant_name',
+        'supplier_sku',
+        'variant_size',
+        'variant_color',
+        'variant_texture',
+        'variant_finish',
+        'variant_material',
+        'unit_of_measurement',
+        'length_cm',
+        'width_cm',
+        'height_cm',
+        'weight_kg',
+        'estimated_delivery_date',
+        'quotation_valid_until',
+        'attachment_path',
+        'variant_image_paths',
+        'additional_variants',
+        'merchandising_status',
+        'created_variation_id',
+        'product_specifications',
+        'additional_notes',
         'tax_rate',
         'description',
         'status',
@@ -28,15 +58,36 @@ class SupplierRFQFeedback extends Model
 
     protected $casts = [
         'quoted_price' => 'decimal:2',
+        'available_quantity' => 'decimal:2',
+        'has_variant' => 'boolean',
+        'variant_image_paths' => 'array',
+        'additional_variants' => 'array',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
+        'weight_kg' => 'decimal:3',
+        'estimated_delivery_date' => 'date',
+        'quotation_valid_until' => 'date',
         'tax_rate' => 'decimal:2',
         'submitted_at' => 'datetime',
         'reviewed_at' => 'datetime',
+        'response_received_at' => 'datetime',
     ];
 
     // Relationships
     public function supplierPortal(): BelongsTo
     {
         return $this->belongsTo(SupplierPortal::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function recordedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
     }
 
     public function rfq(): BelongsTo

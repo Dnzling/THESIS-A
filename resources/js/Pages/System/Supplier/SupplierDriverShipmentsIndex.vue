@@ -1,99 +1,73 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
-    <!-- iOS-style Header -->
+  <div class="max-w-7xl mx-auto space-y-4 py-4 px-4 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Delivery Board</h1>
-        <p class="text-sm text-gray-500 mt-1">Active shipments assigned to your supplier account</p>
+        <h1 class="text-xl font-semibold text-slate-900">Delivery Board</h1>
+        <p class="mt-1 text-sm text-slate-500">Shipments assigned to your supplier account</p>
       </div>
       <button 
         @click="loadShipments" 
         :disabled="loading"
-        class="w-10 h-10 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center transition-colors shadow-sm border border-gray-200 disabled:opacity-50"
+        class="h-9 w-9 rounded-lg bg-white hover:bg-slate-50 flex items-center justify-center transition-colors border border-slate-200 disabled:opacity-50"
       >
         <i class="pi pi-sync text-gray-600" :class="{ 'animate-spin': loading }"></i>
       </button>
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total Shipments</span>
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <i class="pi pi-truck text-blue-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.total }}</p>
+          <div class="px-4 py-3">
+            <p class="text-xs text-slate-500">Total Shipments</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ stats.total }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">In Transit</span>
-              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                <i class="pi pi-spinner text-orange-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-orange-600">{{ stats.inTransit }}</p>
+          <div class="px-4 py-3">
+            <p class="text-xs text-slate-500">In Transit</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ stats.inTransit }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Delivered</span>
-              <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                <i class="pi pi-check-circle text-green-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-green-600">{{ stats.delivered }}</p>
+          <div class="px-4 py-3">
+            <p class="text-xs text-slate-500">Delivered</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ stats.delivered }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-purple-500 to-purple-600 border-none">
+      <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-purple-100 uppercase tracking-wider">Pending</span>
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-clock text-white text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-bold text-white">{{ stats.pending }}</p>
+          <div class="px-4 py-3">
+            <p class="text-xs text-slate-500">Pending</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ stats.pending }}</p>
           </div>
         </template>
       </Card>
     </div>
 
     <!-- Main Content Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <Card class="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <i class="pi pi-list text-blue-600 text-sm"></i>
-            </div>
-            <h2 class="text-lg font-semibold text-gray-900">Active Shipments</h2>
-          </div>
-          <p class="text-sm text-gray-500 mt-2">Click the eye icon to open the detailed log for a shipment</p>
+        <div class="px-4 pt-4">
+          <h2 class="text-sm font-semibold text-slate-800">Shipments</h2>
+          <p class="mt-1 text-xs text-slate-500">Open a shipment to review its delivery log.</p>
         </div>
       </template>
       
       <template #content>
-        <div class="p-6 pt-0">
+        <div class="px-4 pb-4 pt-3">
           <!-- Loading State -->
           <div v-if="loading" class="space-y-4">
             <div v-for="i in 3" :key="i" class="bg-gray-50 rounded-xl p-4">
-              <div class="grid grid-cols-5 gap-4">
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <Skeleton width="120px" height="20px" />
                 <Skeleton width="100px" height="20px" />
                 <Skeleton width="100px" height="20px" />
@@ -104,12 +78,10 @@
           </div>
 
           <!-- Empty State -->
-          <div v-else-if="shipments.length === 0" class="text-center py-12">
-            <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i class="pi pi-truck text-gray-400 text-3xl"></i>
-            </div>
-            <h3 class="text-lg font-medium text-gray-700">No Shipments Found</h3>
-            <p class="text-gray-500 mt-2">There are no active shipments assigned to your account</p>
+          <div v-else-if="shipments.length === 0" class="text-center py-8">
+            <i class="pi pi-truck mb-2 text-2xl text-slate-400"></i>
+            <h3 class="text-sm font-medium text-slate-700">No shipments found</h3>
+            <p class="mt-1 text-sm text-slate-500">There are no shipments assigned to your account.</p>
           </div>
 
           <!-- Data Table -->
@@ -118,8 +90,11 @@
             :value="shipments" 
             :loading="loading"
             responsive-layout="scroll"
-            class="p-datatable-sm"
-            stripedRows
+            class="p-datatable-sm text-sm"
+            rowHover
+            paginator
+            :rows="15"
+            :rowsPerPageOptions="[15, 25, 50]"
           >
             <Column field="purchase_order.po_number" header="PO Number" style="min-width: 120px">
               <template #body="{ data }">
@@ -159,8 +134,7 @@
             <Column header="Status" style="min-width: 120px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div :class="getStatusDot(data.status)" class="w-2 h-2 rounded-full"></div>
-                  <Tag 
+                  <Badge
                     :value="formatStatus(data.status)" 
                     :severity="statusSeverity(data.status)"
                     class="rounded-full text-xs px-3 py-1"
@@ -173,12 +147,13 @@
               <template #body="{ data }">
                 <div class="flex justify-center">
                   <Button 
-                    label="View" 
-                    icon="pi pi-eye" 
-                    text 
+                    label="View"
+                    icon="pi pi-eye"
+                    outlined
                     rounded
+                    size="small"
                     @click="viewDetail(data.id)"
-                    class="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                    class="text-xs"
                     v-tooltip="'View shipment details'"
                   />
                 </div>
@@ -195,7 +170,7 @@
 
           <!-- Shipment Summary Footer -->
           <div v-if="shipments.length > 0" class="mt-4 pt-4 border-t border-gray-100">
-            <div class="flex items-center justify-between text-sm">
+            <div class="flex items-center justify-between text-xs">
               <span class="text-gray-500">Total shipments</span>
               <span class="font-semibold text-gray-900">{{ shipments.length }}</span>
             </div>
@@ -210,12 +185,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Badge from 'primevue/badge'
 import supplierService from '../../../services/supplier.service'
 
 const router = useRouter()
 const toast = useToast()
 const shipments = ref<any[]>([])
-const loading = ref(false)
+const loading = ref(true)
 
 // Computed stats
 const stats = computed(() => {
@@ -235,11 +211,11 @@ const formatStatus = (status?: string): string => {
 
 const statusSeverity = (status?: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
   const map: Record<string, any> = {
-    pending: 'secondary',
+    pending: 'warn',
     dispatched: 'info',
-    in_transit: 'warn',
+    in_transit: 'info',
     delivered: 'success',
-    cancelled: 'danger',
+    cancelled: 'secondary',
   }
   return map[status || ''] || 'info'
 }
@@ -295,79 +271,26 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-/* iOS-style shadows */
-:deep(.p-card) {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
 :deep(.p-card .p-card-content) {
   padding: 0;
 }
 
-/* iOS-style table */
-:deep(.p-datatable) {
-  border-radius: 16px;
-  overflow: hidden;
-}
-
 :deep(.p-datatable .p-datatable-thead > tr > th) {
-  background-color: #f9fafb;
-  color: #6b7280;
-  font-weight: 500;
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 600;
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 0.75rem;
+  border-color: #e2e8f0;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  padding: 1rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 0.75rem;
+  border-color: #e2e8f0;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr:hover) {
-  background-color: #f9fafb;
-}
-
-/* iOS-style tags */
-:deep(.p-tag) {
-  border-radius: 9999px;
-  font-weight: 500;
-}
-
-/* iOS-style buttons */
-:deep(.p-button.p-button-text) {
-  border-radius: 9999px;
-}
-
-:deep(.p-button.p-button-text:hover) {
-  background-color: #f3f4f6;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background-color: #fff7ed;
 }
 
 /* Animation for refresh icon */

@@ -132,13 +132,14 @@ class CashflowService
         ?int $userId = null,
         ?string $description = null,
         ?string $paymentMethod = null,
-        array $meta = []
+        array $meta = [],
+        bool $allowOverdraft = false
     ): FinanceCashflowTransaction {
         if ($amount <= 0) {
             throw new \RuntimeException('Debit amount must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($storeId, $amount, $referenceType, $referenceId, $userId, $description, $paymentMethod, $meta) {
+        return DB::transaction(function () use ($storeId, $amount, $referenceType, $referenceId, $userId, $description, $paymentMethod, $meta, $allowOverdraft) {
             $account = FinanceAccount::where('store_id', $storeId)
                 ->where('type', 'operating')
                 ->lockForUpdate()
@@ -154,7 +155,7 @@ class CashflowService
             }
 
             $before = (float) $account->current_balance;
-            if ($before < $amount) {
+            if (!$allowOverdraft && $before < $amount) {
                 throw new \RuntimeException('Insufficient funds. Available: ' . number_format($before, 2) . ', Required: ' . number_format($amount, 2));
             }
 

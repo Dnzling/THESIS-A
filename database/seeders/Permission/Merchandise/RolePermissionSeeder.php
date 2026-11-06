@@ -36,7 +36,7 @@ class RolePermissionSeeder extends Seeder
         $assignments = [
             // Full access
             'super_admin' => $allMerchandisingPermissions,
-            'store_admin' => $allMerchandisingPermissions,
+            'owner' => $allMerchandisingPermissions,
             'store_manager' => $allMerchandisingPermissions,
 
             // Warehouse team

@@ -33,13 +33,9 @@ class CategoryController extends Controller
             $query = Category::where('store_id', $context['store_id'])
                 ->withCount('products');
 
-            // Filters - Using correct column names from your table
-            if ($request->has('parent_id')) {
-                // Your table uses 'parent_category_id', not 'parent_id'
+            // Only scope by parent when explicitly requested
+            if ($request->filled('parent_id')) {
                 $query->where('parent_category_id', $request->parent_id);
-            } else {
-                // Root categories (no parent)
-                $query->whereNull('parent_category_id');
             }
 
             if ($request->has('search')) {
@@ -52,6 +48,8 @@ class CategoryController extends Controller
 
             if ($request->has('is_active')) {
                 $query->where('is_active', $request->boolean('is_active'));
+            } elseif ($request->has('active_only')) {
+                $query->where('is_active', $request->boolean('active_only'));
             }
 
             // Filter by level if provided
@@ -88,24 +86,39 @@ class CategoryController extends Controller
             $validated = $request->validate([
                 'category_name' => 'required|string|max:255',
                 'description' => 'nullable|string',
-                'parent_id' => 'nullable|exists:product_categories,id',
-                'sort_order' => 'integer|min:0',
+                'parent_category_id' => 'nullable|exists:product_categories,id',
+                'display_order' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
                 'image_url' => 'nullable|url',
             ]);
 
             // Validate parent category belongs to same store
-            if ($validated['parent_id']) {
+            if (!empty($validated['parent_category_id'])) {
                 $parent = Category::where('store_id', $context['store_id'])
-                    ->findOrFail($validated['parent_id']);
+                    ->findOrFail($validated['parent_category_id']);
+            }
+
+            $categoryName = $this->capitalizeCategoryName((string) $validated['category_name']);
+            $existing = Category::query()
+                ->where('store_id', $context['store_id'])
+                ->where('category_name', $categoryName)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category already exists',
+                    'data' => $existing,
+                ], 422);
             }
 
             $category = Category::create([
                 'store_id' => $context['store_id'],
-                'category_name' => $validated['category_name'],
+                'category_name' => $categoryName,
+                'category_code' => $validated['category_code'] ?? strtoupper(preg_replace('/[^A-Z0-9]+/i', '-', $categoryName)),
                 'description' => $validated['description'] ?? null,
-                'parent_id' => $validated['parent_id'] ?? null,
-                'sort_order' => $validated['sort_order'] ?? 0,
+                'parent_category_id' => $validated['parent_category_id'] ?? null,
+                'display_order' => $validated['display_order'] ?? 0,
                 'is_active' => $validated['is_active'] ?? true,
                 'image_url' => $validated['image_url'] ?? null,
                 'created_by' => auth()->id(),
@@ -139,14 +152,14 @@ class CategoryController extends Controller
             $validated = $request->validate([
                 'category_name' => 'required|string|max:255',
                 'description' => 'nullable|string',
-                'parent_id' => 'nullable|exists:product_categories,id',
-                'sort_order' => 'integer|min:0',
+                'parent_category_id' => 'nullable|exists:product_categories,id',
+                'display_order' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
                 'image_url' => 'nullable|url',
             ]);
 
             // Prevent circular reference
-            if ($validated['parent_id'] == $id) {
+            if (($validated['parent_category_id'] ?? null) == $id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Category cannot be its own parent',
@@ -154,16 +167,16 @@ class CategoryController extends Controller
             }
 
             // Validate parent category belongs to same store
-            if ($validated['parent_id']) {
+            if (!empty($validated['parent_category_id'])) {
                 $parent = Category::where('store_id', $context['store_id'])
-                    ->findOrFail($validated['parent_id']);
+                    ->findOrFail($validated['parent_category_id']);
             }
 
             $category->update([
-                'category_name' => $validated['category_name'],
+                'category_name' => $this->capitalizeCategoryName((string) $validated['category_name']),
                 'description' => $validated['description'] ?? null,
-                'parent_id' => $validated['parent_id'] ?? null,
-                'sort_order' => $validated['sort_order'] ?? $category->sort_order,
+                'parent_category_id' => $validated['parent_category_id'] ?? null,
+                'display_order' => $validated['display_order'] ?? $category->display_order,
                 'is_active' => $validated['is_active'] ?? $category->is_active,
                 'image_url' => $validated['image_url'] ?? $category->image_url,
                 'updated_by' => auth()->id(),
@@ -195,7 +208,7 @@ class CategoryController extends Controller
             $category = Category::where('store_id', $context['store_id'])->findOrFail($id);
 
             // Check if category has subcategories
-            $hasChildren = Category::where('parent_id', $id)->exists();
+            $hasChildren = Category::where('parent_category_id', $id)->exists();
             if ($hasChildren) {
                 return response()->json([
                     'success' => false,
@@ -225,6 +238,16 @@ class CategoryController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function capitalizeCategoryName(string $name): string
+    {
+        $normalized = preg_replace('/\s+/', ' ', trim($name)) ?? '';
+
+        return collect(explode(' ', strtolower($normalized)))
+            ->filter()
+            ->map(fn (string $word) => ucfirst($word))
+            ->implode(' ');
     }
 
     /**

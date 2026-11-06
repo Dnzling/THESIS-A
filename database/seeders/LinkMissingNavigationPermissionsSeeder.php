@@ -76,8 +76,8 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'finance.budgets' => ['finance.budgets.view'],
             'finance.reports' => ['finance.reports.view'],
             'finance.cashflow' => ['finance.cashflow.view'],
+            'finance.tax-vat' => ['finance.tax-vat.view'],
             'finance.invoices' => ['finance.invoices.view'],
-            'finance.price-approvals' => ['finance.price-approvals.view'],
             'finance.purchase-orders' => ['finance.purchase-orders.view'],
             'finance.purchase-orders.detail' => [
                 'finance.purchase-orders.view',

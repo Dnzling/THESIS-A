@@ -5,6 +5,8 @@ namespace App\Models\Hr;
 
 use App\Models\Hr\Employee;
 use App\Models\Core\User;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -140,7 +142,7 @@ class EmployeeDeduction extends Model
 
     // ==================== METHODS ====================
 
-    public function isCurrentlyActive(): bool
+    public function isCurrentlyActive(?CarbonInterface $asOf = null): bool
     {
         // Check if record is active
         if (!$this->is_active) {
@@ -153,7 +155,9 @@ class EmployeeDeduction extends Model
         }
 
         // Check effective dates
-        $today = now()->startOfDay();
+        $today = $asOf
+            ? Carbon::parse($asOf)->startOfDay()
+            : now()->startOfDay();
 
         if ($this->effective_date && $this->effective_date->gt($today)) {
             return false; // Not yet effective
@@ -166,11 +170,15 @@ class EmployeeDeduction extends Model
         return true;
     }
 
-    public function calculateAmount(float $basicSalary = 0, float $grossSalary = 0): float
+    public function calculateAmount(
+        float $basicSalary = 0,
+        float $grossSalary = 0,
+        ?CarbonInterface $asOf = null
+    ): float
     {
         $type = $this->deductionType;
 
-        if (!$type || !$this->isCurrentlyActive()) {
+        if (!$type || !$this->isCurrentlyActive($asOf)) {
             return 0;
         }
 

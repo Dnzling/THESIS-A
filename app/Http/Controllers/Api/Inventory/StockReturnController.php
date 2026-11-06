@@ -53,7 +53,7 @@ class StockReturnController extends Controller
                 'fromBranch',
                 'toBranch',
                 'supplier',
-                'requestedBy',
+                'requestedBy.user',
                 'approvedBy',
                 'items.product'
             ])
@@ -99,8 +99,10 @@ class StockReturnController extends Controller
             }
 
             // Sorting
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
+            $sortBy = in_array($request->get('sort_by'), ['requested_date', 'created_at'], true)
+                ? $request->get('sort_by')
+                : 'created_at';
+            $sortOrder = $request->get('sort_order') === 'asc' ? 'asc' : 'desc';
             $query->orderBy($sortBy, $sortOrder);
 
             $returns = $query->paginate($request->get('per_page', 15));

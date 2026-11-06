@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Admin\SubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,14 +16,17 @@ class UserResource extends JsonResource
     public function toArray(Request $request): array
     {
         $isAdmin = $request->user() && $request->user()->hasRole('super_admin');
-        $isStoreAdmin = $request->user() && $request->user()->hasRole('store_admin');
+        $isOwner = $request->user() && $request->user()->hasRole('owner');
         $isHR = $request->user() && $request->user()->hasRole('hr');
         $isManager = $request->user() && $request->user()->hasRole('manager');
         
-        $canViewSensitive = $isAdmin || $isStoreAdmin || $isHR || $isManager;
+        $canViewSensitive = $isAdmin || $isOwner || $isHR || $isManager;
         // Users should always see their own store/branch assignment (needed by branch-scoped modules).
         $canViewOwnStoreBranch = ($request->user()?->id && $request->user()->id === $this->id);
         $canViewStoreBranch = $canViewSensitive || $canViewOwnStoreBranch;
+        $subscriptionPlan = $this->store
+            ? SubscriptionPlan::query()->find((int) $this->store->getRawOriginal('subscription_tier'))
+            : null;
         
         return [
             'id' => $this->id,
@@ -30,6 +34,11 @@ class UserResource extends JsonResource
             'first_name' => $this->fname,
             'last_name' => $this->lname,
             'email' => $this->email,
+            'avatar_url' => $this->avatar_url,
+            'store_id' => $canViewStoreBranch ? $this->store_id : null,
+            'position_setup_required' => $canViewStoreBranch && $this->store
+                ? app(\App\Services\Store\StoreTrialService::class)->needsPositionSetup($this->store)
+                : false,
             'phone_number' => $this->when($canViewSensitive, $this->phone_number),
             'is_active' => (bool) $this->is_active,
             
@@ -46,11 +55,16 @@ class UserResource extends JsonResource
             // }),
             
             // Store info - only show if allowed
-            'store' => $this->when($canViewStoreBranch && $this->relationLoaded('store'), function () {
+            'store' => $this->when($canViewStoreBranch && $this->relationLoaded('store'), function () use ($subscriptionPlan) {
                 return $this->store ? [
                     'id' => $this->store->id,
                     'name' => $this->store->store_name ?? $this->store->name ?? 'N/A',
                     'code' => $this->store->store_code,
+                    'subscription_name' => $subscriptionPlan?->name,
+                    'subscription_key' => $subscriptionPlan?->plan_key,
+                    'subscription_status' => $this->store->subscription_status,
+                    'trial_started_at' => $this->store->trial_started_at?->toISOString(),
+                    'trial_ends_at' => $this->store->trial_ends_at?->toISOString(),
                 ] : null;
             }),
             

@@ -81,6 +81,15 @@ class ProductAssetController extends BaseController
     public function store(Request $request)
     {
         try {
+            if ($request->input('asset_type') === '3D_Model'
+                && $request->route()->getActionMethod() !== 'storeForProductForm'
+                && !$this->userHasAnyPermission(['merchandising.3d.manage', 'merchandising.admin'])) {
+                return $this->errorResponse(
+                    'Your subscription does not include 3D model management. Upgrade your plan to upload 3D models.',
+                    403
+                );
+            }
+
             $validated = $this->validateRequest($request, [
                 'product_id' => 'required|exists:products,id',
                 'asset_type' => 'required|in:3D_Model,3D_Thumbnail,Image_Main,Image_Gallery,Image_360,Video_Product,Video_Assembly,Manual_PDF,Texture_Map',
@@ -207,6 +216,18 @@ class ProductAssetController extends BaseController
                 $e
             );
         }
+    }
+
+    /** Upload the primary product model through the merchandising product form. */
+    public function storeForProductForm(Request $request, int $productId)
+    {
+        $request->merge([
+            'product_id' => $productId,
+            'asset_type' => '3D_Model',
+            'is_primary' => true,
+        ]);
+
+        return $this->store($request);
     }
 
     /**

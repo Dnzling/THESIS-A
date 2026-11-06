@@ -6,12 +6,13 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\StockAlert;
 use Illuminate\Support\Str;
+use App\Models\ProductCatalog\Product;
 
 class BranchInventoryObserver
 {
     /**
      * Handle the BranchInventory "saving" event.
-     * Auto-calculate stock_status and total_value before every save.
+     * Auto-calculate quantity availability and stock status before every save.
      */
     public function saving(BranchInventory $inventory): void
     {
@@ -37,9 +38,12 @@ class BranchInventoryObserver
             $inventory->stock_status = 'in_stock';
         }
 
-        // Auto-calculate total_value
-        $avgCost = (float) ($inventory->average_cost ?? 0);
-        $inventory->total_value = round($onHand * $avgCost, 2);
+    }
+
+    public function created(BranchInventory $inventory): void
+    {
+        $this->manageAlerts($inventory);
+        $this->refreshReorderSuggestion($inventory);
     }
 
     /**
@@ -48,17 +52,46 @@ class BranchInventoryObserver
      */
     public function updated(BranchInventory $inventory): void
     {
-        // Skip auto-adjustment log when caller already creates a specific transaction
-        // (e.g., purchase from goods receipt) to avoid duplicate TXN rows.
-        if (($inventory->skip_auto_transaction_log ?? false) === true) {
+        $stockStateChanged = $inventory->wasChanged(['quantity_on_hand', 'quantity_available', 'reorder_point']);
+        if (!$stockStateChanged) {
+            if ($inventory->shouldSuppressAutomaticTransactionLog()) {
+                $inventory->clearAutomaticTransactionLogSuppression();
+            }
             return;
         }
 
-        $quantityChanged = $inventory->wasChanged('quantity_on_hand');
+        $this->manageAlerts($inventory);
+        $this->refreshReorderSuggestion($inventory);
 
-        if ($quantityChanged) {
-            $this->manageAlerts($inventory);
+        // The calling workflow writes a detailed reference-linked transaction.
+        if ($inventory->shouldSuppressAutomaticTransactionLog()) {
+            $inventory->clearAutomaticTransactionLogSuppression();
+            return;
+        }
+
+        if ($inventory->wasChanged('quantity_on_hand')) {
             $this->logTransaction($inventory);
+        }
+    }
+
+    private function refreshReorderSuggestion(BranchInventory $inventory): void
+    {
+        if (!$inventory->store_id || !$inventory->branch_id) {
+            return;
+        }
+
+        try {
+            app(\App\Services\Inventory\ReorderSuggestionService::class)->generateSuggestions(
+                (int) $inventory->store_id,
+                (int) $inventory->branch_id,
+                (int) $inventory->id,
+            );
+        } catch (\Throwable $exception) {
+            // Reorder suggestions are helpful automation, but must never block a stock transaction.
+            \Illuminate\Support\Facades\Log::warning('BranchInventoryObserver: Failed to refresh reorder suggestion.', [
+                'branch_inventory_id' => $inventory->id,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 
@@ -134,8 +167,12 @@ class BranchInventoryObserver
                 'quantity_change'    => $change,
                 'quantity_after'     => $after,
                 'notes'              => 'Auto-logged by system on quantity change',
-                'unit_cost'          => $inventory->average_cost ?? 0,
-                'total_value'        => abs($change) * (float) ($inventory->average_cost ?? 0),
+                'unit_cost'          => (float) Product::query()
+                    ->whereKey($inventory->product_id)
+                    ->value('cost_price'),
+                'total_value'        => abs($change) * (float) (Product::query()
+                    ->whereKey($inventory->product_id)
+                    ->value('cost_price') ?? 0),
                 'requires_approval'  => false,
                 'approval_status'    => 'not_required',
                 // Map the authenticated user to an Employee.id when possible.

@@ -35,10 +35,6 @@
             <span class="text-gray-500">Status:</span>
             <Tag class="ml-2" :value="rule.is_active ? 'Active' : 'Inactive'" :severity="rule.is_active ? 'success' : 'secondary'" />
           </div>
-          <div>
-            <span class="text-gray-500">Auto Generate PR/PO:</span>
-            <span class="font-medium">{{ rule.auto_generate_po ? 'Yes' : 'No' }}</span>
-          </div>
           <div class="md:col-span-2">
             <span class="text-gray-500">Notes:</span>
             <p class="mt-1">{{ rule.notes || '-' }}</p>

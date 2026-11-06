@@ -8,7 +8,7 @@ class StoreProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['admin', 'storeAdmin', 'inventoryManager']);
+        return $this->user()->hasAnyRole(['admin', 'owner', 'inventoryManager']);
     }
 
     public function rules(): array
@@ -22,6 +22,7 @@ class StoreProductRequest extends FormRequest
             'color_id' => 'nullable|exists:colors,id',
             'width_cm' => 'nullable|numeric|min:0',
             'height_cm' => 'nullable|numeric|min:0',
+            'length_cm' => 'nullable|numeric|min:0',
             'depth_cm' => 'nullable|numeric|min:0',
             'weight_kg' => 'nullable|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',

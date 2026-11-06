@@ -1,10 +1,16 @@
 <template>
   <div class="space-y-6">
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
+    <div class="">
       <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900">Store Admin Dashboard</h1>
-        <p class="text-sm text-slate-600">Operational overview for your store.</p>
+        <h1 class="text-2xl font-semibold text-slate-900">Store Overview</h1>
       </div>
+    </div>
+    <div v-if="dashboard?.store?.subscription_status === 'trial'" class="rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-sm text-orange-900">
+      <span class="font-semibold">Free Trial</span> · {{ dashboard.store.trial_days_remaining }} days remaining
+    </div>
+    <div v-if="dashboard?.store && !dashboard.store.verified" class="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div><div class="font-semibold text-slate-900">Verify Your Store</div><p class="mt-1 text-sm text-slate-600">Complete business verification to establish your store’s verified status.</p></div>
+      <a href="/system/store/verification" class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Verify Store</a>
     </div>
 
     <div v-if="loading" class="rounded-xl border border-slate-200 bg-white p-6">
@@ -24,7 +30,7 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold text-slate-500 uppercase">Sales Today</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Sales Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_today) }}</p>
               </div>
               <Tag value="Today" severity="success" />
@@ -35,7 +41,7 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold text-slate-500 uppercase">Orders Today</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Orders Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ kpis.orders_today }}</p>
               </div>
               <Tag value="Orders" severity="info" />
@@ -46,11 +52,11 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold text-slate-500 uppercase">Sales (30D)</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Sales | Last 30 Days</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_30d) }}</p>
-                <p class="text-xs text-slate-500 mt-1">Avg Order: {{ formatCurrency(kpis.avg_order_value_30d) }}</p>
+                <p class="text-xs text-slate-500 mt-1">Average Order Value: {{ formatCurrency(kpis.avg_order_value_30d) }}</p>
               </div>
-              <Tag value="30D" severity="secondary" />
+              <Tag value="30 Days" severity="secondary" />
             </div>
           </template>
         </Card>
@@ -58,9 +64,9 @@
           <template #content>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-semibold text-slate-500 uppercase">Inventory Alerts</p>
-                <p class="text-sm text-slate-700 mt-2">Low Stock: <span class="font-semibold text-slate-900">{{ kpis.low_stock_count }}</span></p>
-                <p class="text-sm text-slate-700">Out of Stock: <span class="font-semibold text-slate-900">{{ kpis.out_of_stock_count }}</span></p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock Alerts</p>
+                <p class="text-sm text-slate-700 mt-2">Low stock: <span class="font-semibold text-slate-900">{{ kpis.low_stock_count }}</span></p>
+                <p class="text-sm text-slate-700">Out of stock: <span class="font-semibold text-slate-900">{{ kpis.out_of_stock_count }}</span></p>
               </div>
               <Tag value="Inventory" severity="warn" />
             </div>
@@ -73,20 +79,25 @@
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
-                <h3 class="text-base font-semibold text-slate-800">Sales Trend (Last 7 Days)</h3>
-                <p class="text-xs text-slate-500">Daily sales performance.</p>
+                <h3 class="text-base font-semibold text-slate-800">Sales Trend</h3>
+                <p class="text-xs text-slate-500">Paid sales across all branches and sales channels.</p>
               </div>
+              <Select v-model="ownerSalesTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Sales trend period" />
             </div>
-            <Chart type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <Skeleton v-if="ownerSalesTrend.loading.value" height="18rem" class="rounded-xl" />
+            <div v-else-if="ownerSalesTrend.error.value" class="flex h-72 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ ownerSalesTrend.error.value }}<Button text label="Try again" @click="ownerSalesTrend.reload" /></div>
+            <Chart v-else-if="ownerSalesTrend.points.value.some((point) => point.value)" type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p>
           </template>
         </Card>
         <Card>
           <template #content>
             <div class="mb-3">
-              <h3 class="text-base font-semibold text-slate-800">Order Status (30D)</h3>
+                <h3 class="text-base font-semibold text-slate-800">Order Status | Last 30 Days</h3>
               <p class="text-xs text-slate-500">Distribution of order statuses.</p>
             </div>
-            <Chart type="doughnut" :data="orderStatusData" :options="doughnutOptions" class="h-72" />
+            <Chart v-if="orderStatusData.labels.length" type="doughnut" :data="orderStatusData" :options="doughnutOptions" class="h-72" />
+            <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No orders recorded in the last 30 days.</p>
           </template>
         </Card>
       </div>
@@ -95,8 +106,8 @@
         <Card class="xl:col-span-2">
           <template #content>
             <div class="mb-3">
-              <h3 class="text-base font-semibold text-slate-800">Top Products (30D)</h3>
-              <p class="text-xs text-slate-500">Most ordered items by quantity.</p>
+              <h3 class="text-base font-semibold text-slate-800">Top-Selling Products | Last 30 Days</h3>
+              <p class="text-xs text-slate-500">Ranked by units ordered.</p>
             </div>
             <Chart type="bar" :data="topProductsData" :options="barOptions" class="h-72" />
           </template>
@@ -104,12 +115,12 @@
         <Card>
           <template #content>
             <div class="mb-3">
-              <h3 class="text-base font-semibold text-slate-800">Procurement Queue</h3>
-              <p class="text-xs text-slate-500">Open requests needing attention.</p>
+              <h3 class="text-base font-semibold text-slate-800">Procurement Requests</h3>
+              <p class="text-xs text-slate-500">Requests that still need attention.</p>
             </div>
             <div class="space-y-2">
               <div class="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-                <span class="text-sm text-slate-600">Pending Requisitions</span>
+                <span class="text-sm text-slate-600">Pending Purchase Requisitions</span>
                 <span class="text-lg font-semibold text-slate-900">{{ kpis.pending_requisitions }}</span>
               </div>
               <div class="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
@@ -131,15 +142,20 @@
               </div>
             </div>
             <DataTable :value="dashboard?.recent_orders || []" responsiveLayout="scroll" class="text-sm">
-              <Column field="order_number" header="Order #"></Column>
+              <Column field="channel" header="Channel"></Column>
+              <Column field="order_number" header="Order Number"></Column>
               <Column field="customer_name" header="Customer"></Column>
-              <Column field="status" header="Status"></Column>
-              <Column field="total_amount" header="Total">
+              <Column field="status" header="Status">
+                <template #body="slotProps">
+                  {{ formatStatus(slotProps.data.status) }}
+                </template>
+              </Column>
+              <Column field="total_amount" header="Order Total">
                 <template #body="slotProps">
                   {{ formatCurrency(slotProps.data.total_amount) }}
                 </template>
               </Column>
-              <Column field="created_at" header="Date">
+              <Column field="created_at" header="Order Date">
                 <template #body="slotProps">
                   {{ formatDate(slotProps.data.created_at) }}
                 </template>
@@ -151,8 +167,8 @@
         <Card>
           <template #content>
             <div class="mb-3">
-              <h3 class="text-base font-semibold text-slate-800">Branches</h3>
-              <p class="text-xs text-slate-500">Available branches for this store.</p>
+              <h3 class="text-base font-semibold text-slate-800">Store Branches</h3>
+              <p class="text-xs text-slate-500">Branches registered under this store.</p>
             </div>
             <div v-if="branchList.length" class="space-y-2">
               <div
@@ -163,9 +179,15 @@
                 <div>
                   <div class="text-sm font-semibold text-slate-900">
                     {{ branch.name }}
-                    <span v-if="branch.is_main_branch" class="text-xs text-emerald-600 ml-1">(Main)</span>
+                    <span v-if="branch.is_main_branch" class="text-xs text-emerald-600 ml-1">(Main Branch)</span>
                   </div>
                   <div class="text-xs text-slate-500">{{ [branch.city, branch.province].filter(Boolean).join(', ') }}</div>
+                  <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600">
+                    <span>Today</span><span class="text-right font-medium text-slate-800">{{ formatCurrency(branch.sales_today) }}</span>
+                    <span>Orders today</span><span class="text-right font-medium text-slate-800">{{ branch.orders_today || 0 }}</span>
+                    <span>Sales, 30 days</span><span class="text-right font-medium text-slate-800">{{ formatCurrency(branch.sales_30d) }}</span>
+                    <span>Low / out of stock</span><span class="text-right font-medium text-slate-800">{{ branch.low_stock_count || 0 }} / {{ branch.out_of_stock_count || 0 }}</span>
+                  </div>
                 </div>
                 <Tag :value="branch.status || 'active'" :severity="branch.status === 'inactive' ? 'danger' : 'success'" />
               </div>
@@ -182,10 +204,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeService } from '@/services/store.service'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import Button from 'primevue/button'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
 const loading = ref(true)
 const error = ref('')
 const dashboard = ref<any>(null)
+const ownerSalesTrend = useDashboardTrend('/api/store/dashboard/trend')
 
 const kpis = computed(() => dashboard.value?.kpis || {
   sales_today: 0,
@@ -199,11 +226,11 @@ const kpis = computed(() => dashboard.value?.kpis || {
 })
 
 const salesTrendData = computed(() => ({
-  labels: dashboard.value?.charts?.sales_trend?.labels || [],
+  labels: ownerSalesTrend.points.value.map((point: any) => point.label),
   datasets: [
     {
       label: 'Sales',
-      data: dashboard.value?.charts?.sales_trend?.values || [],
+      data: ownerSalesTrend.points.value.map((point: any) => Number(point.value)),
       borderColor: '#2563eb',
       backgroundColor: 'rgba(37, 99, 235, 0.15)',
       tension: 0.3,
@@ -212,12 +239,32 @@ const salesTrendData = computed(() => ({
   ],
 }))
 
+const formatStatus = (value: string) => {
+  if (!value) return 'Unknown'
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+const statusColor = (status: string) => {
+  const normalized = String(status || '').toLowerCase()
+  if (['completed', 'delivered', 'paid'].includes(normalized)) return '#16a34a'
+  if (['pending', 'pending_payment', 'awaiting_payment'].includes(normalized)) return '#f59e0b'
+  if (['processing', 'confirmed', 'ready_to_dispatch', 'for_dispatch', 'shipped', 'out_for_delivery'].includes(normalized)) return '#3b82f6'
+  if (['rejected', 'failed', 'voided'].includes(normalized)) return '#dc2626'
+  if (['cancelled', 'refunded'].includes(normalized)) return '#94a3b8'
+  return '#64748b'
+}
+
 const orderStatusData = computed(() => ({
-  labels: dashboard.value?.charts?.order_status?.labels || [],
+  labels: (dashboard.value?.charts?.order_status?.labels || []).map(formatStatus),
   datasets: [
     {
       data: dashboard.value?.charts?.order_status?.values || [],
-      backgroundColor: ['#22c55e', '#f97316', '#facc15', '#94a3b8', '#ef4444'],
+      backgroundColor: (dashboard.value?.charts?.order_status?.labels || []).map(statusColor),
+      borderColor: '#ffffff',
+      borderWidth: 2,
+      hoverOffset: 5,
     },
   ],
 }))

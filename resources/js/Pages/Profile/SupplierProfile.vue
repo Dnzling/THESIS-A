@@ -1,13 +1,13 @@
 <template>
   <div class="min-h-screen">
-    <div class="mx-auto min-w-7xl px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Supplier Profile</p>
-          <h1 class="text-2xl font-semibold text-slate-900">Supplier Portal</h1>
-          <p class="text-sm text-slate-500">Manage your verification and supplier details.</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Supplier Portal</p>
+          <h1 class="mt-1 text-xl font-semibold text-slate-900">{{ isPaymentAccountView ? 'Payment History' : 'Supplier Profile' }}</h1>
+          <p class="mt-1 text-sm text-slate-500">{{ isPaymentAccountView ? 'Review payments recorded by your partner stores.' : 'Manage your verification and supplier details.' }}</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="!isPaymentAccountView" class="flex flex-wrap gap-2">
           <Button :label="verificationLabel" icon="pi pi-check-circle" severity="success" class="small-pill"
             :disabled="isVerified" @click="goToVerification" />
         </div>
@@ -94,61 +94,66 @@
             </div>
           </section>
 
-          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4 lg:col-span-2">
-            <div>
-              <p class="text-lg font-semibold text-slate-900">Payment Account Records</p>
-              <p class="text-xs text-slate-500">Payment history only.</p>
-            </div>
-
-            <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="text-xs text-slate-500">Supplier Balance (Total)</div>
-              <div class="mt-1 text-lg font-semibold text-slate-900">PHP {{ formatMoney(supplier?.current_balance || 0) }}</div>
-            </div>
-
-            <div class="rounded-xl border border-slate-100 bg-white p-4">
-              <div class="flex items-center justify-between mb-3">
-                <p class="text-sm font-semibold text-slate-800">Payment History</p>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-slate-500">Latest payments from finance and other payers</span>
-                  <Button
-                    label="Refresh"
-                    size="small"
-                    text
-                    :loading="loadingPaymentHistory"
-                    @click="loadPaymentHistory"
-                  />
+          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="space-y-4 lg:col-span-2">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Supplier Balance</p>
+                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">₱{{ formatMoney(supplier?.current_balance || 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Current balance recorded for your supplier account</p>
+                  </div>
+                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                    <i class="pi pi-wallet" />
+                  </span>
                 </div>
               </div>
-              <DataTable
-                :value="paymentHistoryRows"
-                :loading="loadingPaymentHistory"
-                responsiveLayout="scroll"
-                stripedRows
-                size="small"
-                class="text-sm"
-              >
-                <Column field="payer" header="Store Name" style="min-width: 180px" />
-                <Column field="invoice" header="Invoice" style="min-width: 130px" />
-                <Column field="method" header="Method" style="min-width: 120px" />
-                <Column header="Amount" style="min-width: 120px">
-                  <template #body="{ data }">
-                    <span class="font-semibold text-slate-800">PHP {{ formatMoney(data.amount) }}</span>
-                  </template>
-                </Column>
-                <Column header="Status" style="min-width: 120px">
-                  <template #body="{ data }">
-                    <Tag :value="String(data.status || 'pending').toUpperCase()" :severity="paymentStatusSeverity(data.status)" rounded />
-                  </template>
-                </Column>
-                <Column header="Date" style="min-width: 150px">
-                  <template #body="{ data }">
-                    {{ formatDateTime(data.created_at) }}
-                  </template>
-                </Column>
-                <template #empty>
-                  <div class="py-4 text-center text-slate-500 text-xs">No payment records yet.</div>
-                </template>
-              </DataTable>
+              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Payment Records</p>
+                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ paymentHistoryRows.length }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Recent payments loaded for this account</p>
+                  </div>
+                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                    <i class="pi pi-receipt" />
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+                <div>
+                  <h2 class="text-sm font-semibold text-slate-900">Payment Records</h2>
+                  <p class="mt-0.5 text-xs text-slate-500">Latest payments received from partner stores.</p>
+                </div>
+                <Button label="Refresh" icon="pi pi-refresh" size="small" severity="secondary" outlined rounded
+                  :loading="loadingPaymentHistory" @click="loadPaymentHistory" />
+              </div>
+              <div class="overflow-x-auto">
+                <DataTable :value="paymentHistoryRows" :loading="loadingPaymentHistory" rowHover size="small" class="text-sm">
+                  <Column field="created_at" header="Date" sortable style="min-width: 175px">
+                    <template #body="{ data }"><span class="whitespace-nowrap text-slate-700">{{ formatDateTime(data.created_at) }}</span></template>
+                  </Column>
+                  <Column field="payer" header="Store" style="min-width: 180px">
+                    <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.payer }}</span></template>
+                  </Column>
+                  <Column field="invoice" header="Invoice" style="min-width: 140px">
+                    <template #body="{ data }"><span class="font-mono text-xs text-slate-600">{{ data.invoice }}</span></template>
+                  </Column>
+                  <Column field="method" header="Method" style="min-width: 130px">
+                    <template #body="{ data }"><span class="capitalize text-slate-700">{{ String(data.method || '—').replaceAll('_', ' ') }}</span></template>
+                  </Column>
+                  <Column field="amount" header="Amount" style="min-width: 130px">
+                    <template #body="{ data }"><span class="whitespace-nowrap font-semibold text-slate-900">₱{{ formatMoney(data.amount) }}</span></template>
+                  </Column>
+                  <Column field="status" header="Status" style="min-width: 120px">
+                    <template #body="{ data }"><Badge :value="formatPaymentStatus(data.status)" :severity="paymentStatusSeverity(data.status)" /></template>
+                  </Column>
+                  <template #empty><div class="py-10 text-center text-sm text-slate-500">No payment records yet.</div></template>
+                </DataTable>
+              </div>
             </div>
           </section>
   
@@ -165,6 +170,7 @@ import { useAuthStore } from '@/stores/auth'
 import supplierService from '@/services/supplier.service'
 import SystemLayout from '@/Layouts/SystemLayout.vue'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
@@ -323,9 +329,13 @@ const paymentStatusSeverity = (status: string) => {
   const normalized = String(status || '').toLowerCase()
   if (normalized === 'paid' || normalized === 'processed' || normalized === 'completed') return 'success'
   if (normalized === 'cancelled' || normalized === 'failed' || normalized === 'rejected') return 'danger'
-  if (normalized === 'pending' || normalized === 'pending_approval') return 'warning'
+  if (normalized === 'pending' || normalized === 'pending_approval') return 'warn'
   return 'info'
 }
+
+const formatPaymentStatus = (status: string) => String(status || 'pending')
+  .replaceAll('_', ' ')
+  .replace(/\b\w/g, letter => letter.toUpperCase())
 
 onMounted(async () => {
   if (!isSupplier.value) {

@@ -1,11 +1,11 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-gray-900">Expenses</h1>
         <p class="mt-0.5 text-sm text-gray-500">Submit, approve, and pay operational expenses.</p>
       </div>
-      <Button label="New Expense" icon="pi pi-plus" @click="showCreate = true" />
+      <Button label="New Expense" icon="pi pi-plus" severity="warn" size="small" @click="showCreate = true" />
     </div>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -18,7 +18,8 @@
                 <i class="pi pi-clock text-sm text-orange-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
           </div>
         </template>
       </Card>
@@ -32,7 +33,8 @@
                 <i class="pi pi-check-circle text-sm text-green-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
           </div>
         </template>
       </Card>
@@ -46,12 +48,13 @@
                 <i class="pi pi-wallet text-sm text-blue-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.paid }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.paid }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-linear-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
         <template #content>
           <div class="p-5">
             <div class="mb-3 flex items-center justify-between">
@@ -60,7 +63,8 @@
                 <i class="pi pi-credit-card text-sm"></i>
               </div>
             </div>
-            <p class="text-xl font-bold">₱{{ formatMoney(stats.totalAmount) }}</p>
+            <Skeleton v-if="loading" width="7rem" height="1.75rem" />
+            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.totalAmount) }}</p>
           </div>
         </template>
       </Card>
@@ -68,23 +72,19 @@
 
     <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
       <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Filter Expenses</h2>
-        </div>
-      </template>
-      <template #content>
-        <div class="p-6 pt-2">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div class="space-y-2 md:col-span-2">
+        <div class="m-4 mt-6">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Expense Records</h2>
+          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div class="space-y-2 md:w-80">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText
                 v-model="filters.search"
                 placeholder="Search category or description"
-                class="w-full"
+                class="w-full" size="small"
                 @keyup.enter="loadExpenses"
               />
             </div>
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
               <Select
                 v-model="filters.status"
@@ -92,35 +92,31 @@
                 optionLabel="label"
                 optionValue="value"
                 class="w-full"
-                fluid
+                fluid size="small"
               />
             </div>
-            <div class="flex items-end">
-              <Button fluid icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadExpenses" />
+            <div class="flex items-end gap-2">
+              <Button v-if="filters.search || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+              <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadExpenses" />
             </div>
           </div>
         </div>
       </template>
-    </Card>
-
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Expense Records</h2>
-        </div>
-      </template>
       <template #content>
-        <div class="p-6 pt-2">
+        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-5 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 5" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`expense-${row}`" class="grid grid-cols-5 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 5" :key="cell" height="1.25rem" /></div></div>
+        <div v-else>
           <DataTable
             :value="expenses"
-            :loading="loading"
-            stripedRows
+            rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+            <Column field="expense_date" header="Date" sortable style="width: 140px">
+              <template #body="{ data }">{{ formatDate(data.expense_date) }}</template>
+            </Column>
             <Column field="category" header="Category" style="min-width: 180px">
               <template #body="{ data }">
                 <div>
@@ -134,24 +130,15 @@
                 <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.amount) }}</span>
               </template>
             </Column>
-            <Column field="expense_date" header="Date" style="width: 140px">
-              <template #body="{ data }">{{ formatDate(data.expense_date) }}</template>
-            </Column>
             <Column field="status" header="Status" style="width: 150px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+                <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
             <Column header="Actions" style="width: 190px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center gap-1">
-                  <Button
-                    icon="pi pi-eye"
-                    text
-                    rounded
-                    severity="secondary"
-                    @click="viewExpense(data)"
-                  />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewExpense(data)" />
                   <Button
                     v-if="data.status === 'pending_approval'"
                     icon="pi pi-check"
@@ -251,7 +238,8 @@ import { useRoute, useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -261,7 +249,7 @@ import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import financeService from '../../../services/finance.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const expenses = ref<any[]>([])
 const showCreate = ref(false)
 const showReject = ref(false)
@@ -345,6 +333,11 @@ const loadExpenses = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const clearFilters = () => {
+  filters.value = { search: '', status: '' }
+  loadExpenses()
 }
 
 const createExpense = async () => {

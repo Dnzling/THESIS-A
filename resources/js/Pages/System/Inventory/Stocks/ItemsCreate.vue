@@ -84,18 +84,6 @@
             </div>
           </div>
 
-          <!-- Cost -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Unit Cost</label>
-              <InputNumber v-model="form.unit_cost" :min="0" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Average Cost</label>
-              <InputNumber v-model="form.average_cost" :min="0" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
-            </div>
-          </div>
-
           <!-- Actions -->
           <div class="flex justify-end gap-3 pt-4">
             <Button
@@ -136,9 +124,7 @@ const form = reactive({
   warehouse_section: '',
   aisle: '',
   rack: '',
-  shelf: '',
-  unit_cost: null as number | null,
-  average_cost: null as number | null
+  shelf: ''
 })
 
 const errors = reactive<Record<string, string>>({})

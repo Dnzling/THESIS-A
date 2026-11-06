@@ -46,15 +46,15 @@
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="md:col-span-2 space-y-2">
+        <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+          <div class="space-y-2 md:w-80">
             <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
             <IconField>
               <InputIcon class="pi pi-search" />
               <InputText v-model="filters.search" placeholder="Search by product name or SKU" fluid @keyup.enter="loadRows" />
             </IconField>
           </div>
-          <div class="space-y-2">
+          <div class="space-y-2 md:w-44">
             <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
             <Select
               v-model="filters.price_approval_status"
@@ -66,7 +66,7 @@
             />
           </div>
           <div class="flex items-end">
-            <Button label="Refresh" icon="pi pi-refresh" severity="info" fluid @click="loadRows" />
+            <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadRows" />
           </div>
         </div>
       </template>
@@ -77,7 +77,10 @@
         <div v-if="loading" class="space-y-3">
           <Skeleton v-for="i in 4" :key="i" height="56px" />
         </div>
-        <DataTable v-else :value="rows" stripedRows paginator :rows="10" responsiveLayout="scroll">
+        <DataTable v-else :value="rows" rowHover paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]" responsiveLayout="scroll" class="p-datatable-sm text-xs">
+          <Column field="price_proposed_at" header="Date" sortable style="min-width: 150px">
+            <template #body="{ data }">{{ formatDate(data.price_proposed_at || data.updated_at) }}</template>
+          </Column>
           <Column field="sku" header="SKU" style="min-width: 130px" />
           <Column field="product_name" header="Product" style="min-width: 220px" />
           <Column header="Current Price" style="min-width: 140px">
@@ -92,17 +95,12 @@
           </Column>
           <Column header="Status" style="min-width: 140px">
             <template #body="{ data }">
-              <Tag :value="labelStatus(data.price_approval_status)" :severity="severityStatus(data.price_approval_status)" />
-            </template>
-          </Column>
-          <Column header="Requested At" style="min-width: 160px">
-            <template #body="{ data }">
-              {{ formatDate(data.price_proposed_at || data.updated_at) }}
+              <Badge :value="labelStatus(data.price_approval_status)" :severity="severityStatus(data.price_approval_status)" />
             </template>
           </Column>
           <Column header="Actions" style="width: 100px">
             <template #body="{ data }">
-              <Button icon="pi pi-eye" text rounded severity="info" @click="openDetail(data.id)" />
+              <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="openDetail(data.id)" />
             </template>
           </Column>
           <template #empty>
@@ -122,7 +120,7 @@ import merchandisingService from '@/services/merchandising.service'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Skeleton from 'primevue/skeleton'
 import Toast from 'primevue/toast'
 import InputText from 'primevue/inputtext'

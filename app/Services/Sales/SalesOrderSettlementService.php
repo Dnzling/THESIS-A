@@ -4,6 +4,7 @@ namespace App\Services\Sales;
 
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Hr\Employee;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesPayment;
 use App\Models\Sales\SalesReceipt;
@@ -12,6 +13,11 @@ use Illuminate\Support\Facades\DB;
 
 class SalesOrderSettlementService
 {
+    public function __construct(
+        private readonly OrderCommissionService $commissionService
+    ) {
+    }
+
     public function settlePaid(
         SalesOrder $order,
         string $paymentMethod,
@@ -25,6 +31,10 @@ class SalesOrderSettlementService
                 ->findOrFail($order->id);
 
             if ($lockedOrder->payment_status === 'paid') {
+                $this->commissionService->record(
+                    $lockedOrder,
+                    in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'e_wallet', 'paymongo'], true)
+                );
                 return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);
             }
 
@@ -33,7 +43,7 @@ class SalesOrderSettlementService
                     continue;
                 }
 
-                $inventory = BranchInventory::query()
+                $inventory = BranchInventory::with('product')
                     ->lockForUpdate()
                     ->findOrFail($item->branch_inventory_id);
 
@@ -48,7 +58,16 @@ class SalesOrderSettlementService
                 $inventory->stock_status = $inventory->quantity_available <= 0
                     ? 'out_of_stock'
                     : ($inventory->quantity_available <= $inventory->reorder_point ? 'low_stock' : 'in_stock');
+                $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
+
+                $transactionCreatorId = str_starts_with((string) $lockedOrder->order_number, 'WHO-')
+                    ? Employee::query()->where('store_id', $lockedOrder->store_id)
+                        ->where('user_id', $lockedOrder->created_by)->value('id')
+                    : $lockedOrder->created_by;
+                if (!$transactionCreatorId) {
+                    throw new \RuntimeException('The order creator needs an employee record before payment can be settled.');
+                }
 
                 InventoryTransaction::create([
                     'transaction_number' => 'TXN-SALE-' . now()->format('YmdHis') . '-' . random_int(1000, 9999),
@@ -63,11 +82,11 @@ class SalesOrderSettlementService
                     'reference_type' => 'sales_pos_order',
                     'reference_id' => $lockedOrder->id,
                     'notes' => "POS sale {$lockedOrder->order_number}",
-                    'unit_cost' => (float) ($inventory->average_cost ?? 0),
+                    'unit_cost' => (float) ($inventory->product?->getRawOriginal('cost_price') ?? 0),
                     'total_value' => (float) $item->line_total,
                     'requires_approval' => false,
                     'approval_status' => 'auto_approved',
-                    'created_by' => $lockedOrder->created_by,
+                    'created_by' => $transactionCreatorId,
                     'transaction_date' => now(),
                 ]);
             }
@@ -93,7 +112,9 @@ class SalesOrderSettlementService
             );
 
             $lockedOrder->update([
-                'status' => 'completed',
+                'status' => $lockedOrder->delivery_required
+                    ? ((string) $lockedOrder->status === 'ready_for_dispatch' ? 'ready_for_dispatch' : 'pending')
+                    : 'completed',
                 'payment_status' => 'paid',
                 'payment_channel' => $paymentMethod,
                 'payment_reference' => $paymentReference,
@@ -125,6 +146,11 @@ class SalesOrderSettlementService
                 ]
             );
 
+            $this->commissionService->record(
+                $lockedOrder->fresh(),
+                in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'e_wallet', 'paymongo'], true)
+            );
+
             return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);
         });
     }
@@ -136,7 +162,7 @@ class SalesOrderSettlementService
             if ($lockedOrder->payment_status !== 'paid') {
                 $lockedOrder->update([
                     'payment_status' => 'failed',
-                    'status' => 'pending_payment',
+                    'status' => $lockedOrder->delivery_required ? 'pending' : 'pending_payment',
                 ]);
             }
 
@@ -164,4 +190,3 @@ class SalesOrderSettlementService
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
     }
 }
-

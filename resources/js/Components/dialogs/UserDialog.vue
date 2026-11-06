@@ -4,25 +4,14 @@
     content: { class: 'p-0' }
   }">
     <div class="flex flex-col min-w-50">
-      <!-- Menu Items -->
       <div class="py-2">
-        <!-- Profile -->
-        <!-- <button
+        <button
           @click="goProfile"
           class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
         >
           <i class="pi pi-user text-gray-600 group-hover:text-gray-900 text-sm"></i>
-          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Profile</span>
-        </button> -->
-
-        <!-- Settings (Optional) -->
-        <!-- <button
-          @click="goSettings"
-          class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
-        >
-          <i class="pi pi-cog text-gray-600 group-hover:text-gray-900 text-sm"></i>
-          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Settings</span>
-        </button> -->
+          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Account Profile</span>
+        </button>
       </div>
 
       <div class="border-t border-gray-200"></div>
@@ -40,14 +29,24 @@
     </div>
   </OverlayPanel>
 
-  <!-- Enhanced Logout Dialog -->
-
-   <Dialog v-model:visible="isLoggingOut" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
-    <div class="flex flex-col items-center justify-center p-6">
-      <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
-      <p class="mt-4 text-lg font-medium text-gray-700">Logging you out...</p>
-      <p class="text-gray-500">Please wait a moment</p>
+  <Dialog
+    v-model:visible="confirmLogout"
+    modal
+    :closable="!isLoggingOut"
+    :closeOnEscape="!isLoggingOut"
+    :header="isLoggingOut ? '' : 'Log out of FurniSync?'"
+    :style="{ width: 'min(92vw, 400px)' }"
+  >
+    <div v-if="isLoggingOut" class="flex flex-col items-center justify-center p-4">
+      <ProgressSpinner style="width: 42px; height: 42px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
+      <p class="mt-4 text-base font-medium text-gray-700">Logging you out...</p>
+      <p class="text-sm text-gray-500">Please wait a moment</p>
     </div>
+    <p v-if="!isLoggingOut" class="text-sm text-slate-600">Are you sure you want to end your current session?</p>
+    <template v-if="!isLoggingOut" #footer>
+      <button class="rounded-lg px-4 py-2 text-sm text-slate-600" @click="confirmLogout = false">Cancel</button>
+      <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white" @click="performLogout">Log Out</button>
+    </template>
   </Dialog>
 </template>
 
@@ -58,11 +57,12 @@ import ProgressSpinner from "primevue/progressspinner";
 import { computed, ref } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import { router } from "@inertiajs/vue3";
-import axios from "axios";
+import axios from "@/axios";
 
 const authStore = useAuthStore();
 const op = ref(null);
 const isLoggingOut = ref<boolean>(false);
+const confirmLogout = ref(false);
 
 /* EXPOSED METHODS */
 const toggle = (event: Event) => {
@@ -78,11 +78,17 @@ const hide = () => {
 };
 
 /* ACTIONS */
-const userRole = computed(() => String(authStore.user?.role || '').toLowerCase());
-const isCustomer = computed(() => userRole.value.includes('customer'));
-const isSupplier = computed(() => userRole.value.includes('supplier'));
+const userRole = computed(() => {
+  const role = authStore.user?.role as any;
+  return String(typeof role === 'string' ? role : role?.name || authStore.userRole || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+});
+const isCustomer = computed(() => userRole.value === 'customer');
+const isSupplier = computed(() => userRole.value === 'supplier');
 
-const goProfile = () => {
+const goProfile = async () => {
   hide();
   if (isCustomer.value) {
     router.visit('/shop/profile');
@@ -92,15 +98,17 @@ const goProfile = () => {
     router.visit('/supplier-portal/profile');
     return;
   }
-  router.visit('/profile');
-};
 
-const goSettings = () => {
-  hide();
-  router.visit('/system/settings');
+  router.visit('/employee-profile');
 };
 
 const handleLogout = async () => {
+  hide();
+  confirmLogout.value = true;
+};
+
+const performLogout = async () => {
+  confirmLogout.value = false;
   hide(); // Close popover immediately
   isLoggingOut.value = true;
 

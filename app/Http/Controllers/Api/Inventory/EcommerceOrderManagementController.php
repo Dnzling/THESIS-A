@@ -4,14 +4,12 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
-use App\Models\Ecommerce\EcommerceChatMessage;
-use App\Models\Ecommerce\EcommerceChatThread;
+use App\Models\CRM\EcommerceChatMessage;
+use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
-use App\Models\Ecommerce\EcommerceOrderCancellation;
-use App\Models\Ecommerce\EcommerceOrderReturn;
-use App\Models\Sales\SalesRefund;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +24,7 @@ class EcommerceOrderManagementController extends Controller
         'pending',
         'processing',
         'ready_for_dispatch',
+        'ready_for_pickup',
         'packed',
         'shipped',
         'in_transit',
@@ -81,14 +80,17 @@ class EcommerceOrderManagementController extends Controller
                 'user:id,fname,lname,email',
                 'store',
                 'assignedBranch:id,name,branch_code,city,province',
-                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_total',
-                'items.product:id,product_name,sku',
+                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,customization_request,customization_status,customization_response,customization_reviewed_at,quantity,unit_price,line_subtotal,line_tax,line_total',
+                'items.product:id,product_name,sku,unit_of_measurement',
                 'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
                 'items.branchInventory.branch:id,name,branch_code,city,province',
+                'items.branchInventory.variation:id,variation_name,variation_sku',
                 'items.returnRequests',
                 'cancellationRequests',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
-                'delivery.driver:id,fname,lname,email',
+                'delivery.driver:id,fname,lname,email,phone_number,role_id',
+                'delivery.driver.employee:id,user_id,employee_number,status,department,employment_type',
+                'delivery.driver.role:id,name,display_name',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
             ]);
@@ -101,6 +103,67 @@ class EcommerceOrderManagementController extends Controller
         $data['timeline'] = $this->formatOrderTimeline($order);
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    public function setPickupDate(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'pickup_date' => ['required', 'date', 'after_or_equal:today'],
+        ]);
+
+        $query = EcommerceOrder::query();
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        if ((float) $order->shipping_fee > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pickup date can only be set for orders with no shipping fee.',
+            ], 422);
+        }
+
+        $order->pickup_date = $validated['pickup_date'];
+        $order->fulfillment_method = 'pickup';
+        if (in_array((string) $order->status, ['pending', 'processing', 'ready_for_dispatch'], true)) {
+            $order->status = 'ready_for_pickup';
+        }
+        $order->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pickup date saved.',
+            'data' => $order->fresh(),
+        ]);
+    }
+
+    public function reviewCustomizationRequest(Request $request, int $id, int $itemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['approved', 'rejected'])],
+            'response' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $orderQuery = EcommerceOrder::query();
+        $this->applyStoreScope($request, $orderQuery);
+        $order = $orderQuery->findOrFail($id);
+        $item = $order->items()->whereKey($itemId)->firstOrFail();
+
+        if (!$item->customization_request) {
+            return response()->json(['success' => false, 'message' => 'This item has no customization request to review.'], 422);
+        }
+
+        $item->update([
+            'customization_status' => $validated['status'],
+            'customization_response' => trim((string) ($validated['response'] ?? '')) ?: null,
+            'customization_reviewed_by' => $request->user()?->id,
+            'customization_reviewed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customization request ' . $validated['status'] . '.',
+            'data' => $item->fresh(),
+        ]);
     }
 
     public function receiptPdf(Request $request, int $id)
@@ -157,7 +220,7 @@ class EcommerceOrderManagementController extends Controller
         $targetStatus = (string) $validated['status'];
         if ($targetStatus === 'ready_for_dispatch') {
             $storeId = (int) ($order->store_id ?? 0);
-            if (!$request->user()->hasPermissionTo('sales.order.approve', $storeId ?: null)) {
+            if (!$request->user()->hasPermissionTo('sales.orders.manage', $storeId ?: null)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'You do not have permission to approve orders.',
@@ -168,6 +231,12 @@ class EcommerceOrderManagementController extends Controller
 
         DB::transaction(function () use ($request, $order, $validated, $targetStatus) {
             $previousOrderStatus = (string) $order->status;
+            $reservation = app(\App\Services\Ecommerce\EcommerceStockReservationService::class);
+            if ($targetStatus === 'cancelled') {
+                $reservation->release($order);
+            } elseif (in_array($targetStatus, ['ready_for_dispatch', 'ready_for_pickup'], true)) {
+                $reservation->consume($order);
+            }
             $order->status = $targetStatus;
 
             if (!empty($validated['notes'])) {
@@ -183,7 +252,7 @@ class EcommerceOrderManagementController extends Controller
             $order->save();
 
             $deliveryPayload = $validated['delivery'] ?? [];
-            $needsDelivery = in_array($targetStatus, ['packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'], true) || !empty($deliveryPayload);
+            $needsDelivery = in_array($targetStatus, ['ready_for_dispatch', 'packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true) || !empty($deliveryPayload);
 
             if ($needsDelivery) {
                 $delivery = EcommerceOrderDelivery::query()->firstOrNew(['order_id' => $order->id], [
@@ -191,7 +260,7 @@ class EcommerceOrderManagementController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
                 $isNewDelivery = !$delivery->exists;
-                $previousDeliveryStatus = (string) ($delivery->status ?: 'assigned');
+                $previousDeliveryStatus = (string) ($delivery->status ?: ($targetStatus === 'ready_for_dispatch' ? 'pending' : 'assigned'));
 
                 $delivery->store_id = $order->store_id;
                 $delivery->vehicle_id = $deliveryPayload['vehicle_id'] ?? $delivery->vehicle_id;
@@ -203,6 +272,7 @@ class EcommerceOrderManagementController extends Controller
                 $delivery->updated_by = $request->user()->id;
 
                 $deliveryStatus = match ($targetStatus) {
+                    'ready_for_dispatch' => 'ready_for_dispatch',
                     'packed' => 'packed',
                     'shipped', 'in_transit' => 'in_transit',
                     'out_for_delivery' => 'out_for_delivery',
@@ -231,12 +301,16 @@ class EcommerceOrderManagementController extends Controller
                         'store_id' => $order->store_id,
                         'event_type' => 'created',
                         'status_to' => $delivery->status,
-                        'message' => 'Delivery record created.',
+                        'message' => $targetStatus === 'ready_for_dispatch'
+                            ? 'Delivery is pending logistics assignment.'
+                            : 'Delivery record created.',
                         'created_by' => $request->user()->id,
                     ]);
                 }
 
-                if ($previousDeliveryStatus !== (string) $delivery->status) {
+                $sameOrderTransition = $previousOrderStatus === $previousDeliveryStatus
+                    && $targetStatus === (string) $delivery->status;
+                if ($previousDeliveryStatus !== (string) $delivery->status && !$sameOrderTransition) {
                     EcommerceDeliveryLog::query()->create([
                         'delivery_id' => $delivery->id,
                         'order_id' => $order->id,
@@ -248,6 +322,8 @@ class EcommerceOrderManagementController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
                 }
+
+                $order->setRelation('delivery', $delivery);
             }
 
             if ($previousOrderStatus !== $targetStatus && $order->delivery) {
@@ -268,123 +344,6 @@ class EcommerceOrderManagementController extends Controller
             'success' => true,
             'message' => 'Order status updated successfully.',
             'data' => EcommerceOrder::query()->with(['delivery.vehicle'])->find($order->id),
-        ]);
-    }
-
-    public function reviewCancellationRequest(Request $request, int $id, int $requestId): JsonResponse
-    {
-        $validated = $request->validate([
-            'status' => ['required', Rule::in(['approved', 'rejected'])],
-            'review_notes' => ['nullable', 'string', 'max:2000'],
-        ]);
-
-        $query = EcommerceOrder::query()
-            ->with(['delivery', 'cancellationRequests'])
-            ->whereKey($id);
-
-        $this->applyStoreScope($request, $query);
-        $order = $query->firstOrFail();
-
-        $cancellation = $order->cancellationRequests->firstWhere('id', $requestId);
-        if (!$cancellation) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cancellation request not found for this order.',
-            ], 404);
-        }
-
-        if ($cancellation->status !== 'pending_verification') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only pending cancellation requests can be reviewed.',
-            ], 422);
-        }
-
-        $reviewer = $request->user();
-        $reviewerId = (int) $reviewer->id;
-        $newStatus = (string) $validated['status'];
-        $reviewNotes = $validated['review_notes'] ?? null;
-
-        DB::transaction(function () use ($order, $cancellation, $newStatus, $reviewNotes, $reviewerId, $reviewer) {
-            $cancellation->update([
-                'status' => $newStatus,
-                'reviewed_by' => $reviewerId,
-                'reviewed_at' => now(),
-                'review_notes' => $reviewNotes,
-            ]);
-
-            if ($newStatus === 'approved') {
-                $previousOrderStatus = (string) $order->status;
-                $order->status = 'cancelled';
-                $order->save();
-
-                if ($order->payment_status === 'paid') {
-                    $existingRefund = SalesRefund::query()
-                        ->where('order_type', 'ecommerce_order')
-                        ->where('order_id', $order->id)
-                        ->first();
-
-                    if (!$existingRefund) {
-                        SalesRefund::create([
-                            'store_id' => $reviewer?->store_id,
-                            'branch_id' => $reviewer?->branch_id,
-                            'order_type' => 'ecommerce_order',
-                            'order_id' => $order->id,
-                            'order_number' => (string) $order->order_number,
-                            'customer_name' => (string) $order->shipping_name,
-                            'reason' => (string) ($cancellation->reason ?: 'Order cancellation approved'),
-                            'amount' => (float) $order->total_amount,
-                            'status' => 'pending',
-                            'requested_by' => $reviewerId,
-                        ]);
-                    }
-                }
-
-                if ($order->delivery) {
-                    $previousDeliveryStatus = (string) ($order->delivery->status ?: 'assigned');
-                    $order->delivery->status = 'cancelled';
-                    $order->delivery->save();
-
-                    if ($previousDeliveryStatus !== 'cancelled') {
-                        EcommerceDeliveryLog::query()->create([
-                            'delivery_id' => $order->delivery->id,
-                            'order_id' => $order->id,
-                            'store_id' => $order->store_id,
-                            'event_type' => 'status_updated',
-                            'status_from' => $previousDeliveryStatus,
-                            'status_to' => 'cancelled',
-                            'message' => 'Delivery status updated to cancelled after cancellation approval.',
-                            'created_by' => $reviewerId,
-                        ]);
-                    }
-                }
-
-                if ($previousOrderStatus !== 'cancelled' && $order->delivery) {
-                    EcommerceDeliveryLog::query()->create([
-                        'delivery_id' => $order->delivery->id,
-                        'order_id' => $order->id,
-                        'store_id' => $order->store_id,
-                        'event_type' => 'status_updated',
-                        'status_from' => $previousOrderStatus,
-                        'status_to' => 'cancelled',
-                        'message' => 'Order status updated to cancelled after cancellation approval.',
-                        'created_by' => $reviewerId,
-                    ]);
-                }
-            }
-        });
-
-        $fresh = EcommerceOrder::query()
-            ->with(['delivery.vehicle', 'cancellationRequests', 'items.returnRequests'])
-            ->findOrFail($order->id);
-
-        $payload = $fresh->toArray();
-        $payload['primary_status'] = $this->resolvePrimaryStatus($fresh);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cancellation request reviewed successfully.',
-            'data' => $payload,
         ]);
     }
 
@@ -819,7 +778,7 @@ class EcommerceOrderManagementController extends Controller
             'title' => 'New message about your order',
             'message' => $preview,
             'severity' => 'info',
-            'link' => '/shop/chats?store_id=' . (int) $order->store_id,
+            'link' => '/chats?store_id=' . (int) $order->store_id,
         ]);
 
         return response()->json(['success' => true, 'data' => $message], 201);
@@ -845,9 +804,10 @@ class EcommerceOrderManagementController extends Controller
         }
 
         $flow = [
-            'pending' => ['processing', 'ready_for_dispatch', 'cancelled'],
-            'processing' => ['ready_for_dispatch', 'packed', 'cancelled'],
+            'pending' => ['processing', 'ready_for_dispatch', 'ready_for_pickup', 'cancelled'],
+            'processing' => ['ready_for_dispatch', 'ready_for_pickup', 'packed', 'cancelled'],
             'ready_for_dispatch' => ['packed', 'shipped', 'cancelled'],
+            'ready_for_pickup' => ['cancelled'],
             'packed' => ['shipped', 'cancelled'],
             'shipped' => ['in_transit', 'out_for_delivery', 'delivered', 'cancelled'],
             'in_transit' => ['out_for_delivery', 'delivered', 'cancelled'],
@@ -876,14 +836,34 @@ class EcommerceOrderManagementController extends Controller
             'created_at' => $order->placed_at ?? $order->created_at,
         ]];
 
-        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at');
+        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at')->values();
+        $deliveryLogs = $deliveryLogs->reject(function ($log) use ($deliveryLogs) {
+            if ($log->event_type !== 'status_updated' || !str_starts_with((string) $log->message, 'Delivery status updated from ')) {
+                return false;
+            }
+
+            return $deliveryLogs->contains(fn ($other) =>
+                $other->id !== $log->id
+                && $other->event_type === 'status_updated'
+                && str_starts_with((string) $other->message, 'Order status updated from ')
+                && $other->status_from === $log->status_from
+                && $other->status_to === $log->status_to
+                && $other->created_by === $log->created_by
+                && abs($other->created_at->getTimestamp() - $log->created_at->getTimestamp()) <= 5
+            );
+        });
 
         foreach ($deliveryLogs as $log) {
             $actor = trim((string) (($log->creator?->fname ?? '') . ' ' . ($log->creator?->lname ?? '')));
+            $description = $log->message ?: 'Order updated.';
+            if ($log->event_type === 'status_updated' && $log->status_to) {
+                $subject = str_starts_with($description, 'Order status updated') ? 'Order' : 'Delivery';
+                $description = $subject . ' moved to ' . str($log->status_to)->replace('_', ' ')->title() . '.';
+            }
             $timeline[] = [
                 'type' => $log->event_type ?: 'update',
                 'title' => $this->timelineTitleFromLog($log->event_type, $log->status_to),
-                'description' => $log->message ?: 'Order updated.',
+                'description' => $description,
                 'status_from' => $log->status_from,
                 'status_to' => $log->status_to,
                 'meta' => $log->meta,
@@ -915,7 +895,7 @@ class EcommerceOrderManagementController extends Controller
     private function resolveDriver(int $storeId, int $driverUserId): User
     {
         return User::query()
-            ->with('employee:id,user_id,phone,status')
+            ->with('employee:id,user_id,status')
             ->where('id', $driverUserId)
             ->where('store_id', $storeId)
             ->where('is_active', true)
@@ -924,10 +904,7 @@ class EcommerceOrderManagementController extends Controller
 
     private function resolveDriverContact(User $driver): ?string
     {
-        $employeePhone = $driver->employee?->phone;
-        $userPhone = $driver->phone_number ?? null;
-
-        return $employeePhone ?: $userPhone;
+        return $driver->phone_number ?: null;
     }
 
     private function nextTrackingNumber(int $storeId): string

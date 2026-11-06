@@ -388,7 +388,7 @@
 
           <!-- 3D Model Preview -->
           <div v-else-if="is3DModel(currentAsset)" class="w-full">
-            <div class="relative w-full bg-linear-to-br from-gray-100 to-gray-200 rounded-lg"
+            <div class="relative w-full bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg"
               style="height: 500px;">
               <div ref="dialogModelContainer" class="w-full h-full"></div>
 

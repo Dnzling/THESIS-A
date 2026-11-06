@@ -22,7 +22,7 @@ class InventoryRolePermissionsSeeder extends Seeder
             // Full access
             'super_admin' => $allInventoryPermissions,
             
-            'store_admin' => $allInventoryPermissions,
+            'owner' => $allInventoryPermissions,
             
             // Warehouse Manager - Full inventory control
             'warehouse_manager' => DB::table('permissions')

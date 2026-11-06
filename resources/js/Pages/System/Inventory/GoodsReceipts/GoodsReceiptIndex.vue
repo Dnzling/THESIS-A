@@ -1,72 +1,69 @@
 <template>
-  <div class="space-y-6">
+  <Toast />
+  <div class="p-6 min-h-screen space-y-6">
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Goods Receipts</h1>
-        <p class="text-gray-600">Track receiving confirmations and quality checks</p>
+        <h1 class="text-xl font-bold text-gray-900">Goods Receipts</h1>
+        <p class="text-xs text-gray-600 mt-1">Track received supplies and inventory receiving records</p>
       </div>
-      <Button label="New Receipt" icon="pi pi-plus" class="bg-blue-600 text-white" @click="$router.push('/inventory/goods-receipts/create')" />
+      <!-- <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push(isProcurement ? '/procurement/goods-receipts/create' : '/inventory/goods-receipts/create')" /> -->
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Card v-for="metric in summaryCards" :key="metric.key" class="border border-slate-200 shadow-sm">
         <template #content>
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Receipts</p>
-          <p class="text-3xl font-bold text-gray-900 mt-2">{{ stats.total }}</p>
-          <p class="text-sm text-gray-500 mt-1">Latest compared to total history</p>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Full Receipts</p>
-          <p class="text-3xl font-bold text-green-600 mt-2">{{ stats.full }}</p>
-          <p class="text-sm text-gray-500 mt-1">No discrepancies</p>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Partial</p>
-          <p class="text-3xl font-bold text-amber-600 mt-2">{{ stats.partial }}</p>
-          <p class="text-sm text-gray-500 mt-1">Short receives</p>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Damaged / Rejected</p>
-          <p class="text-3xl font-bold text-red-600 mt-2">{{ stats.damaged }}</p>
-          <p class="text-sm text-gray-500 mt-1">Needs attention</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ metric.label }}</p>
+          <div class="mt-2 flex items-end justify-between gap-3">
+            <p class="text-2xl font-bold text-slate-900">{{ metric.value }}</p>
+            <div class="flex items-center gap-1 text-xs font-semibold" :class="metric.trend.tone">
+              <i :class="`pi ${metric.trend.icon}`" />
+              <span>{{ metric.trend.text }}</span>
+            </div>
+          </div>
+          <p class="mt-2 text-[11px] text-slate-500">vs previous {{ comparisonDays }}-day period</p>
         </template>
       </Card>
     </div>
 
     <Card>
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <InputText v-model="searchTerm" placeholder="Search by GRN, PO, supplier" class="w-full" />
-          <Select v-model="statusFilter" :options="statusOptions" option-label="label" option-value="value" class="w-full" />
-          <Button label="Refresh" icon="pi pi-sync" text @click="loadReceipts" />
+      <template #header>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end m-4 mt-6">
+          <div class="flex flex-col gap-2 md:col-span-2">
+            <label class="text-xs font-medium text-gray-600">Search</label>
+            <InputText v-model="searchTerm" placeholder="Search GRN, PO, or supplier" size="small" @keyup.enter="applyFilters" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-medium text-gray-600">Status</label>
+            <Select v-model="statusFilter" :options="statusOptions" option-label="label" option-value="value" placeholder="All statuses" showClear size="small" @change="applyFilters" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-medium text-gray-600">Receipt date</label>
+            <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false" placeholder="Select date range" dateFormat="M d, yy" size="small" showButtonBar showIcon @date-select="applyFilters" />
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button label="Clear Filters" severity="secondary" outlined size="small" @click="clearFilters" />
+          </div>
         </div>
+      </template>
+      <template #content>
 
-        <DataTable :value="filteredReceipts" :loading="loading" class="p-datatable-sm" stripedRows responsive-layout="scroll">
+        <DataTable :value="receipts" :loading="loading" class="p-datatable-sm" rowHover responsive-layout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage" :rowsPerPageOptions="[15, 25, 50]" @page="onPageChange">
+          <Column header="Date" style="width: 140px">
+            <template #body="{ data }">
+              <span class="text-sm text-gray-700">{{ formatDate(data.receipt_date) }}</span>
+            </template>
+          </Column>
           <Column field="grn_number" header="GRN" />
-          <Column
-            field="purchase_order.po_number"
-            header="Purchase Order"
-            :body="({ data }) => data.purchase_order?.po_number || data.po_number"
-          />
+         
           <Column header="Supplier">
             <template #body="{ data }">
               {{ data.purchase_order?.supplier?.supplier_name || data.supplier_name || '-' }}
             </template>
           </Column>
-          <Column header="Receipt Date">
-            <template #body="{ data }">
-              <span class="text-sm text-gray-700">{{ formatDate(data.receipt_date) }}</span>
-            </template>
-          </Column>
+        
           <Column header="Receipt Status">
             <template #body="{ data }">
-              <Tag :value="data.receipt_status" :severity="statusSeverity(data.receipt_status)" />
+              <Badge :value="formatStatus(data.receipt_status)" :severity="statusSeverity(data.receipt_status)" />
             </template>
           </Column>
           <Column header="Qty Items">
@@ -74,14 +71,26 @@
               {{ data.items_count ?? data.items?.length ?? 0 }}
             </template>
           </Column>
+          <Column header="Received By">
+            <template #body="{ data }">
+              {{ data.received_by?.user?.full_name || data.received_by?.user?.name || '—' }}
+            </template>
+          </Column>
           <Column header="Actions" style="width: 180px">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button icon="pi pi-eye" severity="info" text rounded size="small" @click="goToDetail(data.id)" v-tooltip="'View detail'" />
-                <Button icon="pi pi-file-pdf" severity="secondary" text rounded size="small" @click="printPdf(data.id)" v-tooltip="'Print PDF receipt'" />
+                <Button icon="pi pi-eye" label="View"  outlined rounded size="small" @click="goToDetail(data.id)" v-tooltip="'View detail'" />
+                <Button icon="pi pi-file-pdf" :label="printingId === data.id ? 'Opening' : 'Print'" severity="secondary" outlined rounded size="small" :loading="printingId === data.id" :disabled="printingId !== null && printingId !== data.id" @click="printPdf(data.id)" v-tooltip="'Open print-ready PDF receipt'" />
               </div>
             </template>
           </Column>
+          <template #empty>
+            <div class="text-center py-12">
+              <i class="pi pi-inbox text-5xl text-gray-300 mb-4"></i>
+              <p class="text-lg text-gray-600">No goods receipts found</p>
+              <p class="text-sm text-gray-500 mt-1">Try adjusting your filters.</p>
+            </div>
+          </template>
         </DataTable>
       </template>
     </Card>
@@ -92,47 +101,140 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import procurementService from '../../../../services/procurement.service'
+import WarehouseService from '../../../../services/warehouse.service'
 import InputText from 'primevue/inputtext'
+import Toast from 'primevue/toast'
+import { useToast } from 'primevue/usetoast'
+import { openReceiptPreview } from '@/utils/receiptPreview'
+const toast = useToast()
 const loading = ref(false)
+const printingId = ref<number | null>(null)
+const isProcurement = window.location.pathname.startsWith('/procurement/')
+const isWarehouse = window.location.pathname.startsWith('/warehouse/')
 
 const receipts = ref<any[]>([])
 const searchTerm = ref('')
-const statusFilter = ref<'all' | 'full' | 'partial' | 'damaged' | 'rejected'>('all')
+const statusFilter = ref<string | null>(null)
+const dateRange = ref<Date[] | null>(null)
+const currentPage = ref(1)
+const perPage = ref(15)
+const total = ref(0)
+const summaryPeriods = ref({ current: {} as Record<string, number>, previous: {} as Record<string, number> })
+const comparisonDays = ref(30)
 
 const statusOptions = [
-  { label: 'All', value: 'all' },
   { label: 'Full', value: 'full' },
   { label: 'Partial', value: 'partial' },
   { label: 'Damaged', value: 'damaged' },
   { label: 'Rejected', value: 'rejected' },
 ]
 
-const stats = computed(() => ({
-  total: receipts.value.length,
-  full: receipts.value.filter((r) => r.receipt_status === 'full').length,
-  partial: receipts.value.filter((r) => r.receipt_status === 'partial').length,
-  damaged: receipts.value.filter((r) => ['damaged', 'rejected'].includes(r.receipt_status)).length,
-}))
+const summaryCards = computed(() => [
+  { key: 'total', label: 'Total Receipts', value: Number(summaryPeriods.value.current.total_receipts || 0), trend: trendFor('total_receipts') },
+  { key: 'full', label: 'Full Receipts', value: Number(summaryPeriods.value.current.full_receipts || 0), trend: trendFor('full_receipts') },
+  { key: 'partial', label: 'Partial', value: Number(summaryPeriods.value.current.partial_receipts || 0), trend: trendFor('partial_receipts', true) },
+  { key: 'damaged', label: 'Damaged / Rejected', value: Number(summaryPeriods.value.current.damaged_receipts || 0) + Number(summaryPeriods.value.current.rejected_receipts || 0), trend: trendFor(['damaged_receipts', 'rejected_receipts'], true) },
+])
 
-const filteredReceipts = computed(() => {
-  return receipts.value.filter((receipt) => {
-    const matchesStatus = statusFilter.value === 'all' || receipt.receipt_status === statusFilter.value
-    const term = searchTerm.value.toLowerCase()
-    const matchesSearch =
-      !term ||
-      receipt.grn_number?.toLowerCase().includes(term) ||
-      receipt.purchase_order?.po_number?.toLowerCase().includes(term) ||
-      receipt.supplier_name?.toLowerCase().includes(term)
-    return matchesStatus && matchesSearch
-  })
-})
+const formatFilterDate = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
-const loadReceipts = async () => {
+const comparisonRange = () => {
+  const selectedStart = dateRange.value?.[0]
+  const selectedEnd = dateRange.value?.[1]
+  const end = selectedStart && selectedEnd ? new Date(selectedEnd) : new Date()
+  const start = selectedStart && selectedEnd ? new Date(selectedStart) : new Date(end)
+  if (!(selectedStart && selectedEnd)) start.setDate(start.getDate() - 29)
+
+  const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1)
+  const previousEnd = new Date(start)
+  previousEnd.setDate(previousEnd.getDate() - 1)
+  const previousStart = new Date(previousEnd)
+  previousStart.setDate(previousStart.getDate() - days + 1)
+
+  return { start, end, previousStart, previousEnd, days }
+}
+
+function trendFor(keys: string | string[], adverse = false) {
+  const keyList = Array.isArray(keys) ? keys : [keys]
+  const current = keyList.reduce((sum, key) => sum + Number(summaryPeriods.value.current[key] || 0), 0)
+  const previous = keyList.reduce((sum, key) => sum + Number(summaryPeriods.value.previous[key] || 0), 0)
+  if (current === previous) return { text: 'No change', icon: 'pi-minus', tone: 'text-slate-500' }
+  if (previous === 0) {
+    const tone = current > 0 ? (adverse ? 'text-red-600' : 'text-emerald-600') : 'text-slate-500'
+    return { text: current > 0 ? 'New' : 'No change', icon: current > 0 ? 'pi-arrow-up' : 'pi-minus', tone }
+  }
+
+  const increase = current > previous
+  const percentage = Math.abs(((current - previous) / previous) * 100)
+  const isPositive = increase !== adverse
+  return {
+    text: `${percentage.toFixed(1)}% ${increase ? 'up' : 'down'}`,
+    icon: increase ? 'pi-arrow-up' : 'pi-arrow-down',
+    tone: isPositive ? 'text-emerald-600' : 'text-red-600',
+  }
+}
+
+const loadSummaryComparison = async () => {
+  if (isWarehouse) return
+  const range = comparisonRange()
+  comparisonDays.value = range.days
+  const scope = isProcurement ? 'procurement' : 'inventory'
+  try {
+    const [currentResponse, previousResponse] = await Promise.all([
+      procurementService.getGoodsReceiptSummary({
+        start_date: formatFilterDate(range.start),
+        end_date: formatFilterDate(range.end),
+      }, scope),
+      procurementService.getGoodsReceiptSummary({
+        start_date: formatFilterDate(range.previousStart),
+        end_date: formatFilterDate(range.previousEnd),
+      }, scope),
+    ])
+    summaryPeriods.value = {
+      current: currentResponse?.data || {},
+      previous: previousResponse?.data || {},
+    }
+  } catch (error) {
+    console.error('Failed to load goods receipt period summary', error)
+  }
+}
+
+const formatStatus = (status: string | null | undefined): string => {
+  if (!status) return '-'
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const loadReceipts = async (page = 1) => {
   loading.value = true
   try {
-    const response = await procurementService.getGoodsReceipts()
-    const payload = response?.data ?? response
-    receipts.value = payload?.data?.data || payload?.data || payload || []
+    const params: Record<string, any> = { page, per_page: perPage.value }
+    if (searchTerm.value.trim()) params.search = searchTerm.value.trim()
+    if (statusFilter.value) params.receipt_status = statusFilter.value
+    if (dateRange.value?.[0]) params.start_date = formatFilterDate(dateRange.value[0])
+    if (dateRange.value?.[1]) params.end_date = formatFilterDate(dateRange.value[1])
+
+    const response = isWarehouse
+      ? await WarehouseService.receiving({
+          search: params.search,
+          status: params.receipt_status,
+          page,
+          per_page: perPage.value,
+        })
+      : await procurementService.getGoodsReceipts(params, isProcurement ? 'procurement' : 'inventory')
+    // procurementService already returns response.data, so this is the paginator:
+    // { current_page, data: [], total, ... }.
+    const paginator = response?.data?.current_page !== undefined
+      ? response.data
+      : response
+    receipts.value = Array.isArray(paginator?.data) ? paginator.data : []
+    total.value = Number(paginator?.total || 0)
+    currentPage.value = page
+    await loadSummaryComparison()
   } catch (error) {
     console.error('Failed to load goods receipts', error)
     receipts.value = []
@@ -141,9 +243,21 @@ const loadReceipts = async () => {
   }
 }
 
+const applyFilters = () => loadReceipts(1)
+const clearFilters = () => {
+  searchTerm.value = ''
+  statusFilter.value = null
+  dateRange.value = null
+  applyFilters()
+}
+const onPageChange = (event: any) => {
+  perPage.value = event.rows
+  loadReceipts(event.page + 1)
+}
+
 const statusSeverity = (status: string) => {
   if (status === 'full') return 'success'
-  if (status === 'partial') return 'warning'
+  if (status === 'partial') return 'warn'
   if (['damaged', 'rejected'].includes(status)) return 'danger'
   return 'secondary'
 }
@@ -156,17 +270,26 @@ const formatDate = (value: string | null | undefined): string => {
 
 const router = useRouter()
 const goToDetail = (id: number) => {
-  router.push({ name: 'inventory.goods-receipts.detail', params: { id } })
+  router.push({ name: isProcurement ? 'procurement.goods-receipts.detail' : 'inventory.goods-receipts.detail', params: { id } })
 }
 
 const printPdf = async (id: number) => {
+  if (printingId.value !== null) return
+  printingId.value = id
   try {
-    const response = await procurementService.generateGRPdf(id)
-    const blob = new Blob([response.data], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-  } catch (error) {
-    console.error('Failed to download PDF', error)
+    await openReceiptPreview(async () => {
+      const response = await procurementService.generateGRPdf(id)
+      return response.data as Blob
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to open receipt PDF',
+      detail: error?.response?.data?.message || error?.message || 'Please try again.',
+      life: 4000,
+    })
+  } finally {
+    printingId.value = null
   }
 }
 

@@ -16,9 +16,14 @@ class StoreDeliveryFeeSetting extends Model
         'base_fee',
         'per_km_fee',
         'min_delivery_fee',
+        'per_kg_fee',
         'free_shipping_min_order',
         'bulky_item_surcharge',
+        'bulky_weight_threshold_kg',
+        'bulky_longest_side_threshold_cm',
+        'bulky_volume_threshold_cbm',
         'remote_area_surcharge',
+        'remote_area_service_areas',
         'max_delivery_distance_km',
         'bulk_discount_rate',
         'notes',
@@ -31,9 +36,14 @@ class StoreDeliveryFeeSetting extends Model
         'base_fee' => 'decimal:2',
         'per_km_fee' => 'decimal:2',
         'min_delivery_fee' => 'decimal:2',
+        'per_kg_fee' => 'decimal:2',
         'free_shipping_min_order' => 'decimal:2',
         'bulky_item_surcharge' => 'decimal:2',
+        'bulky_weight_threshold_kg' => 'decimal:2',
+        'bulky_longest_side_threshold_cm' => 'decimal:2',
+        'bulky_volume_threshold_cbm' => 'decimal:3',
         'remote_area_surcharge' => 'decimal:2',
+        'remote_area_service_areas' => 'array',
         'max_delivery_distance_km' => 'decimal:2',
         'bulk_discount_rate' => 'decimal:2',
     ];
@@ -48,4 +58,3 @@ class StoreDeliveryFeeSetting extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 }
-

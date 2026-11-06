@@ -7,13 +7,15 @@
           <h1 class="text-2xl font-semibold text-slate-900">Employee Profile</h1>
           <p class="text-sm text-slate-500">Update personal info, security, and requests.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="!isSimplePlan" class="flex flex-wrap gap-2">
           <Button label="Request Leave" icon="pi pi-calendar" severity="info" outlined class="small-pill"
             @click="showLeaveDialog = true" />
           <Button label="Shift Swap" icon="pi pi-share-alt" severity="secondary" outlined class="small-pill"
             @click="openShiftSwapDialog" />
           <Button label="Overtime" icon="pi pi-clock" severity="warning" outlined class="small-pill"
             @click="openOvertimeDialog" />
+          <Button label="My Benefits" icon="pi pi-heart" severity="secondary" outlined class="small-pill"
+            @click="router.visit('/employee-benefits')" />
         </div>
       </div>
 
@@ -26,7 +28,13 @@
           <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-start justify-between gap-4">
               <div class="flex items-center gap-4">
-                <Avatar :label="initials" size="xlarge" class="bg-emerald-50 text-emerald-600 text-2xl font-semibold" />
+                <div class="relative h-20 w-20 shrink-0">
+                  <img v-if="user?.avatar_url" :src="user.avatar_url" :alt="`${fullName} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
+                  <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-2xl font-semibold text-emerald-600">{{ initials }}</div>
+                  <label class="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload profile photo">
+                    <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadProfilePhoto" />
+                  </label>
+                </div>
                 <div>
                   <p class="text-lg font-semibold text-slate-900">{{ fullName }}</p>
                   <p class="text-xs text-slate-500">{{ employeeSummary }}</p>
@@ -77,7 +85,7 @@
                 </div>
               </div>
 
-              <div>
+              <div v-if="!isSimplePlan">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Compensation</p>
                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <InfoRow label="Monthly Salary" :value="formatCurrency(employee?.salary || 0)" />
@@ -85,7 +93,7 @@
                 </div>
               </div>
 
-              <div>
+              <div v-if="!isSimplePlan">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Government IDs</p>
                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <InfoRow label="TIN" :value="employee?.tax_id || '-'" />
@@ -121,7 +129,7 @@
               </div>
             </div>
 
-            <div>
+            <div v-if="!isSimplePlan">
               <p class="text-sm font-semibold text-slate-800">Requests</p>
               <p class="text-xs text-slate-500">Submit leave or shift swap requests.</p>
               <div class="mt-3 flex flex-wrap gap-2">
@@ -136,7 +144,7 @@
           </section>
         </div>
 
-        <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div v-if="!isSimplePlan" class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-center justify-between">
               <div>
@@ -281,14 +289,12 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-semibold text-slate-800">Payslips</p>
-                <p class="text-xs text-slate-500">Latest payroll entries.</p>
+                <p class="text-xs text-slate-500">Paid payrolls only.</p>
               </div>
               <div class="flex items-center gap-2">
-                <div class="text-xs text-slate-500" v-if="payslipSummary.total_amount">
-                  Total Net: {{ formatCurrency(payslipSummary.total_amount) }}
+                <div class="text-xs text-slate-500" v-if="paidPayslipTotal">
+                  Total Paid: {{ formatCurrency(paidPayslipTotal) }}
                 </div>
-                <Button label="Print Rundown" icon="pi pi-print" severity="warning" outlined class="small-pill"
-                  :disabled="!employee?.id" @click="printPayrollRundown" />
               </div>
             </div>
             <div v-if="loadingPayslips" class="mt-4 flex justify-center">
@@ -650,9 +656,31 @@ const showLeaveDialog = ref(false)
 const showShiftSwapDialog = ref(false)
 const showOvertimeDialog = ref(false)
 const showPayslipDialog = ref(false)
+const uploadingPhoto = ref(false)
 
 const user = ref<any | null>(null)
 const employee = ref<any | null>(null)
+const planKey = ref('free')
+const isSimplePlan = computed(() => ['free', 'simple'].includes(planKey.value))
+const uploadProfilePhoto = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('avatar', file)
+  uploadingPhoto.value = true
+  try {
+    const response = await hrService.api.post('/api/profile/avatar', body)
+    if (user.value) user.value.avatar_url = response.data.data.avatar_url
+    if (authStore.user) authStore.user.avatar_url = response.data.data.avatar_url
+    toast.add({ severity: 'success', summary: 'Profile photo updated', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Photo upload failed', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    uploadingPhoto.value = false
+    input.value = ''
+  }
+}
 
 const form = reactive({
   fname: '',
@@ -732,6 +760,7 @@ const swapRecords = ref<any[]>([])
 const payslips = ref<any[]>([])
 const overtimeRecords = ref<any[]>([])
 const payslipSummary = ref<any>({})
+const paidPayslipTotal = computed(() => payslips.value.reduce((total, row) => total + Number(row.net_salary || row.net_pay || 0), 0))
 const selectedPayslip = ref<any | null>(null)
 
 const initials = computed(() => {
@@ -847,6 +876,7 @@ const loadProfile = async () => {
   try {
     const response = await hrService.api.get('/api/profile')
     const data = response?.data?.data || {}
+    planKey.value = String(data.plan_key || 'free').toLowerCase()
     user.value = data.user || null
     employee.value = data.employee || null
 
@@ -934,7 +964,7 @@ const saveProfile = async () => {
       fname: form.fname,
       lname: form.lname,
       birthday: formatDate(form.birthday),
-      phone: form.phone || null,
+      phone_number: String(form.phone || '').trim() || null,
       gender: form.gender || null,
       address: form.address,
       province: form.province,
@@ -1163,12 +1193,10 @@ const loadPayslips = async () => {
   if (!employee.value?.id) return
   loadingPayslips.value = true
   try {
-    const response = await hrService.api.get(`/api/payroll/payslip/${employee.value.id}`, {
-      params: { per_page: 5 },
-    })
+    const response = await hrService.api.get(`/api/payroll/basic/employee/${employee.value.id}/payslips`)
     const payload = response?.data || {}
     const list = payload?.data?.data || payload?.data || []
-    payslips.value = Array.isArray(list) ? list : []
+    payslips.value = Array.isArray(list) ? list.filter((row: any) => row.status === 'paid') : []
     payslipSummary.value = payload?.summary || {}
   } catch (err) {
     payslips.value = []
@@ -1213,7 +1241,7 @@ const openPayslipDetails = async (payslip: any) => {
 const downloadPayslipPdf = async (payslip: any) => {
   if (!payslip?.id) return
   try {
-    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/pdf`, { responseType: 'blob' })
+    const response = await hrService.api.get(`/api/payroll/basic/${payslip.id}/payslip/print`, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = url
@@ -1236,7 +1264,7 @@ const downloadPayslipPdf = async (payslip: any) => {
 const printPayslipPdf = async (payslip: any) => {
   if (!payslip?.id) return
   try {
-    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/print`, { responseType: 'blob' })
+    const response = await hrService.api.get(`/api/payroll/basic/${payslip.id}/payslip/print`, { responseType: 'blob' })
     const file = new Blob([response.data], { type: 'application/pdf' })
     const fileURL = window.URL.createObjectURL(file)
     window.open(fileURL, '_blank')
@@ -1526,7 +1554,9 @@ onMounted(async () => {
   await fetchProvinces()
   await syncLocationSelection()
   isInitializing.value = false
-  await Promise.all([loadShifts(), loadAttendance(), loadLeaves(), loadSwaps(), loadPayslips(), loadOvertime()])
+  if (!isSimplePlan.value) {
+    await Promise.all([loadShifts(), loadAttendance(), loadLeaves(), loadSwaps(), loadPayslips(), loadOvertime()])
+  }
 })
 
 watch(() => locationSelection.provinceId, async (value) => {

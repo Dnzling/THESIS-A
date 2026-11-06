@@ -14,7 +14,7 @@ class JobPostingController extends Controller
 {
     public function index(): JsonResponse
     {
-        $postings = JobPosting::with(['store', 'role', 'screeningStages', 'applications'])
+        $postings = JobPosting::with(['store.logoBranch', 'role', 'screeningStages', 'applications'])
             ->where('store_id', Auth::user()->store_id)
             ->orderBy('created_at', 'desc')
             ->paginate(15);
@@ -26,7 +26,7 @@ class JobPostingController extends Controller
     {
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
-        $posting->load(['store', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
+        $posting->load(['store.logoBranch', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
 
         return response()->json($posting);
     }
@@ -39,6 +39,7 @@ class JobPostingController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'department' => 'required|string|max:100',
+            'employment_type' => 'required|in:full_time,part_time,contract,intern',
             'role_id' => 'nullable|integer|exists:roles,id',
             'salary_min' => 'required|numeric|min:0',
             'salary_max' => 'required|numeric|min:0|gte:salary_min',
@@ -69,6 +70,7 @@ class JobPostingController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'],
             'department' => $validated['department'],
+            'employment_type' => $validated['employment_type'],
             'salary_min' => $validated['salary_min'],
             'salary_max' => $validated['salary_max'],
             'requirements' => $validated['requirements'] ?? [],
@@ -97,6 +99,7 @@ class JobPostingController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'description' => 'sometimes|required|string',
             'department' => 'sometimes|required|string|max:100',
+            'employment_type' => 'sometimes|required|in:full_time,part_time,contract,intern',
             'role_id' => 'nullable|integer|exists:roles,id',
             'salary_min' => 'sometimes|required|numeric|min:0',
             'salary_max' => 'sometimes|required|numeric|min:0',

@@ -5,6 +5,7 @@ namespace App\Models\Logistics;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Models\Inventory\StockTransfer;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
@@ -54,5 +55,14 @@ class DeliveryTrip extends Model
     {
         return $this->hasMany(SalesOrderDelivery::class, 'trip_id');
     }
-}
 
+    public function returnPickups(): HasMany
+    {
+        return $this->hasMany(ReturnPickup::class, 'trip_id');
+    }
+
+    public function stockTransfers(): HasMany
+    {
+        return $this->hasMany(StockTransfer::class, 'trip_id');
+    }
+}
