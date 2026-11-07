@@ -379,9 +379,9 @@ class RoleController extends Controller
         $allowedPermissionIds = $this->allowedPermissionIds($storeId, $enabledModules);
         $invalidPermissionIds = array_values(array_diff(array_map('intval', $request->permissions), $allowedPermissionIds));
 
-        if ($isOwner && !empty($invalidPermissionIds)) {
+        if (!empty($invalidPermissionIds)) {
             return response()->json([
-                'message' => 'Some permissions belong to modules not enabled for your store.',
+                'message' => 'Some selected permissions are not available to this store under the Owner role or current subscription plan.',
                 'invalid_permission_ids' => $invalidPermissionIds,
             ], 422);
         }
@@ -391,63 +391,9 @@ class RoleController extends Controller
             ->unique()
             ->values();
 
-        if ($isOwner) {
-            $permissionIds = $requestedPermissionIds;
-        } else {
-            $existingNonHrPermissionIds = DB::table('role_permissions')
-                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
-                ->where('role_permissions.role_id', $role->id)
-                ->where(function ($query) {
-                    $query->where(function ($moduleQuery) {
-                        $moduleQuery->where('permissions.module', '!=', 'hr')
-                            ->orWhereNull('permissions.module');
-                    })->where('permissions.name', 'not like', 'hr.%');
-                })
-                ->pluck('role_permissions.permission_id')
-                ->map(fn ($id) => (int) $id);
-
-            $editableNonHrPermissionIds = $existingNonHrPermissionIds
-                ->intersect($allowedPermissionIds)
-                ->values();
-            $requestedNonHrPermissionIds = DB::table('permissions')
-                ->whereIn('id', $requestedPermissionIds)
-                ->where(function ($query) {
-                    $query->where(function ($moduleQuery) {
-                        $moduleQuery->where('module', '!=', 'hr')
-                            ->orWhereNull('module');
-                    })->where('name', 'not like', 'hr.%');
-                })
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->values();
-
-            if ($requestedNonHrPermissionIds->sort()->values()->all() !== $editableNonHrPermissionIds->sort()->values()->all()) {
-                return response()->json([
-                    'message' => 'HR role managers can change HR permissions only. Ask the Owner to change permissions for other modules.',
-                ], 403);
-            }
-
-            $hrPermissionIds = DB::table('permissions')
-                ->whereIn('id', $requestedPermissionIds)
-                ->where(function ($query) {
-                    $query->where('module', 'hr')->orWhere('name', 'like', 'hr.%');
-                })
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id);
-            $disallowedHrPermissionIds = $hrPermissionIds->diff($allowedPermissionIds)->values();
-
-            if ($disallowedHrPermissionIds->isNotEmpty()) {
-                return response()->json([
-                    'message' => 'Some HR permissions are not enabled for this store or the Owner role.',
-                    'invalid_permission_ids' => $disallowedHrPermissionIds,
-                ], 422);
-            }
-
-            $permissionIds = $existingNonHrPermissionIds
-                ->concat($hrPermissionIds)
-                ->unique()
-                ->values();
-        }
+        // HR permission-management access can update the full selected set, while
+        // the Owner-role and subscription allowlist above still limits assignable grants.
+        $permissionIds = $requestedPermissionIds;
 
         DB::transaction(function () use ($role, $permissionIds) {
             DB::table('role_permissions')->where('role_id', $role->id)->delete();
