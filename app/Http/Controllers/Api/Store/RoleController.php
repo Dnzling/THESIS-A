@@ -394,9 +394,44 @@ class RoleController extends Controller
         if ($isOwner) {
             $permissionIds = $requestedPermissionIds;
         } else {
+            $existingNonHrPermissionIds = DB::table('role_permissions')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('role_permissions.role_id', $role->id)
+                ->where(function ($query) {
+                    $query->where(function ($moduleQuery) {
+                        $moduleQuery->where('permissions.module', '!=', 'hr')
+                            ->orWhereNull('permissions.module');
+                    })->where('permissions.name', 'not like', 'hr.%');
+                })
+                ->pluck('role_permissions.permission_id')
+                ->map(fn ($id) => (int) $id);
+
+            $editableNonHrPermissionIds = $existingNonHrPermissionIds
+                ->intersect($allowedPermissionIds)
+                ->values();
+            $requestedNonHrPermissionIds = DB::table('permissions')
+                ->whereIn('id', $requestedPermissionIds)
+                ->where(function ($query) {
+                    $query->where(function ($moduleQuery) {
+                        $moduleQuery->where('module', '!=', 'hr')
+                            ->orWhereNull('module');
+                    })->where('name', 'not like', 'hr.%');
+                })
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+
+            if ($requestedNonHrPermissionIds->sort()->values()->all() !== $editableNonHrPermissionIds->sort()->values()->all()) {
+                return response()->json([
+                    'message' => 'HR role managers can change HR permissions only. Ask the Owner to change permissions for other modules.',
+                ], 403);
+            }
+
             $hrPermissionIds = DB::table('permissions')
                 ->whereIn('id', $requestedPermissionIds)
-                ->where('module', 'hr')
+                ->where(function ($query) {
+                    $query->where('module', 'hr')->orWhere('name', 'like', 'hr.%');
+                })
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id);
             $disallowedHrPermissionIds = $hrPermissionIds->diff($allowedPermissionIds)->values();
@@ -407,16 +442,6 @@ class RoleController extends Controller
                     'invalid_permission_ids' => $disallowedHrPermissionIds,
                 ], 422);
             }
-
-            $existingNonHrPermissionIds = DB::table('role_permissions')
-                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
-                ->where('role_permissions.role_id', $role->id)
-                ->where(function ($query) {
-                    $query->where('permissions.module', '!=', 'hr')
-                        ->orWhereNull('permissions.module');
-                })
-                ->pluck('role_permissions.permission_id')
-                ->map(fn ($id) => (int) $id);
 
             $permissionIds = $existingNonHrPermissionIds
                 ->concat($hrPermissionIds)

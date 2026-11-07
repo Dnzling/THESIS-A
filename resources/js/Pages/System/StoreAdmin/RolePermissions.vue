@@ -97,6 +97,9 @@
             {{ selectedRole?.display_name || selectedRole?.name }} is a shared system role. Its permissions cannot be changed for one store. Create a store-specific role to customize access.
           </p>
           <p class="mb-4 text-xs text-slate-500">Only permissions granted to the platform Owner role and included in this store's subscription plan can be assigned here.</p>
+          <p v-if="!canManageAllPermissions" class="mb-4 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            HR access can change HR permissions only. Other module permissions are managed by the Store Owner.
+          </p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             <InputText v-model="permissionSearch" placeholder="Search permissions..." />
             <Select
@@ -131,7 +134,7 @@
                   <span class="text-xs text-gray-500">{{ module.selected }}/{{ module.total }}</span>
                 </div>
                 <Checkbox
-                  :disabled="isSharedRole"
+                  :disabled="isSharedRole || (!canManageAllPermissions && module.name !== 'hr')"
                   :modelValue="isModuleChecked(module)"
                   :indeterminate="isModuleIndeterminate(module)"
                   :binary="true"
@@ -150,7 +153,7 @@
                       {{ formatLabel(submodule.name) }}
                     </div>
                     <Checkbox
-                      :disabled="isSharedRole"
+                      :disabled="isSharedRole || (!canManageAllPermissions && module.name !== 'hr')"
                       :modelValue="isSubmoduleChecked(submodule)"
                       :indeterminate="isSubmoduleIndeterminate(submodule)"
                       :binary="true"
@@ -167,7 +170,7 @@
                         <div class="font-medium text-gray-900">{{ permission.display_name }}</div>
                       </div>
                       <Checkbox
-                        :disabled="isSharedRole"
+                        :disabled="isSharedRole || !canEditPermission(permission)"
                         :modelValue="selectedRolePermissions.includes(permission.id)"
                         :binary="true"
                         @update:modelValue="(checked) => togglePermission(permission.id, checked)"
@@ -247,6 +250,7 @@ const isSharedRole = computed(() => selectedRole.value?.store_id == null)
 const selectedRolePermissions = ref<number[]>([])
 const toast = useToast()
 const authStore = useAuthStore()
+const canManageAllPermissions = computed(() => String(authStore.user?.role || '').toLowerCase() === 'owner')
 const confirmedStoreId = ref<number | null>(null)
 const storeScopeLoaded = ref(false)
 const hasStore = computed(() => storeScopeLoaded.value
@@ -320,6 +324,8 @@ const filteredPermissions = computed(() => {
 })
 
 const isDriverPermission = (permission: any) => String(permission?.name || '').startsWith('logistics.driver.')
+const canEditPermission = (permission: any) =>
+  canManageAllPermissions.value || permission?.module === 'hr' || String(permission?.name || '').startsWith('hr.')
 
 const allowedPermissionIds = computed(() => {
   // The API already returns only permissions allowed by the store's enabled modules.
