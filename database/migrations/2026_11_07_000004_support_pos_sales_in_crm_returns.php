@@ -41,9 +41,12 @@ return new class extends Migration
         $this->addColumnIfMissing($tableName, 'sales_order_item_id', function (Blueprint $table): void {
             $table->unsignedBigInteger('sales_order_item_id')->nullable()->after('sales_order_id');
         });
+        $this->addColumnIfMissing($tableName, 'orphaned_order_item_id', function (Blueprint $table): void {
+            $table->unsignedBigInteger('orphaned_order_item_id')->nullable()->after('sales_order_item_id');
+        });
 
         $this->moveLegacyPosItemReferences();
-        $this->assertEcommerceItemReferencesAreValid();
+        $this->preserveOrphanedEcommerceItemReferences();
 
         $this->addForeignKeyIfMissing($tableName, 'order_id', 'ecommerce_orders', 'cascade');
         $this->addForeignKeyIfMissing($tableName, 'order_item_id', 'ecommerce_order_items', 'cascade');
@@ -61,6 +64,10 @@ return new class extends Migration
             && DB::table('ecommerce_order_returns')->where('source_type', 'pos')->exists()) {
             throw new RuntimeException('POS-linked CRM returns exist; migrate or remove them before rolling back this migration.');
         }
+        if (Schema::hasColumn('ecommerce_order_returns', 'orphaned_order_item_id')
+            && DB::table('ecommerce_order_returns')->whereNotNull('orphaned_order_item_id')->exists()) {
+            throw new RuntimeException('Returns with missing ecommerce items exist; reconcile them before rolling back this migration.');
+        }
 
         foreach (['order_id', 'order_item_id', 'user_id', 'sales_order_id', 'sales_order_item_id'] as $column) {
             $this->dropForeignKeyForColumn('ecommerce_order_returns', $column);
@@ -74,7 +81,7 @@ return new class extends Migration
 
         $columns = [
             'source_type', 'return_contact_name', 'return_contact_phone', 'return_pickup_address',
-            'sales_order_id', 'sales_order_item_id',
+            'sales_order_id', 'sales_order_item_id', 'orphaned_order_item_id',
         ];
         $existingColumns = array_values(array_filter($columns, fn (string $column): bool => Schema::hasColumn('ecommerce_order_returns', $column)));
         if ($existingColumns) {
@@ -122,23 +129,23 @@ return new class extends Migration
             ]);
     }
 
-    private function assertEcommerceItemReferencesAreValid(): void
+    private function preserveOrphanedEcommerceItemReferences(): void
     {
-        $invalidIds = DB::table('ecommerce_order_returns as returns')
+        $orphanedRows = DB::table('ecommerce_order_returns as returns')
             ->leftJoin('ecommerce_order_items as items', 'items.id', '=', 'returns.order_item_id')
             ->whereNotNull('returns.order_item_id')
             ->whereNull('items.id')
             ->orderBy('returns.id')
-            ->limit(10)
-            ->pluck('returns.id')
-            ->all();
+            ->select('returns.id', 'returns.order_item_id')
+            ->get();
 
-        if ($invalidIds) {
-            throw new RuntimeException(
-                'Cannot add the ecommerce return-item foreign key: return rows still reference missing ecommerce items. '
-                . 'Rows: ' . implode(', ', $invalidIds)
-                . '. These references did not match a POS sale item, so review them before retrying.'
-            );
+        foreach ($orphanedRows as $row) {
+            DB::table('ecommerce_order_returns')
+                ->where('id', $row->id)
+                ->update([
+                    'orphaned_order_item_id' => $row->order_item_id,
+                    'order_item_id' => null,
+                ]);
         }
     }
 
