@@ -25,7 +25,7 @@ $inertia = function (string $uri, string $page, ?string $name = null, ?string $t
 };
 
 
-Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group(function () use ($inertia) {
+Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group(function () use ($inertia, $render) {
 
     // Store staff messaging
     $inertia('/staff-chats', 'System/StaffChats/Index', 'staff-chats', 'Staff Chats');
@@ -34,6 +34,18 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
     $inertia('/store/team', 'System/Store/Team', 'store.team', 'Branch Team');
+    Route::get('/store/expenses', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.view'), 403);
+        return $render('System/Store/Expenses/Index', ['title' => 'Maintenance & Expenses']);
+    })->name('store.expenses');
+    Route::get('/store/expenses/create', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.manage'), 403);
+        return $render('System/Store/Expenses/Create', ['title' => 'Create Expense Request']);
+    })->name('store.expenses.create');
+    Route::get('/store/expenses/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.view'), 403);
+        return $render('System/Store/Expenses/Detail', ['title' => 'Expense Request Details']);
+    })->whereNumber('id')->name('store.expenses.detail');
     Route::get('/store/team/employees/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) {
         abort_unless($permissions->userHasPermission(request()->user(), 'store.team.view'), 403);
 

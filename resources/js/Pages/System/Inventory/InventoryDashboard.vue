@@ -143,7 +143,7 @@
             <DataTable :value="pendingAdjustments" :loading="supportingDataLoading" size="small" rowHover class="text-xs" @row-click="openAdjustment">
               <Column field="adjustment_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.adjustment_number || `ADJ-${data.id}` }}</span></template></Column>
               <Column header="Branch"><template #body="{ data }">{{ data.branch?.name || 'Current branch' }}</template></Column>
-              <Column field="created_at" header="Submitted"><template #body="{ data }">{{ formatDate(data.created_at) }}</template></Column>
+              <Column field="created_at" header="Submitted At" style="min-width: 180px"><template #body="{ data }">{{ formatDateTime(data.created_at) }}</template></Column>
               <Column header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" severity="warn" /></template></Column>
               <template #empty><div class="py-5 text-center text-xs text-slate-500">No stock adjustments need review.</div></template>
             </DataTable>
@@ -162,7 +162,7 @@
               <Column field="transfer_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.transfer_number || data.transfer_no || `TR-${data.id}` }}</span></template></Column>
               <Column header="Route"><template #body="{ data }">{{ data.from_branch?.name || 'Branch' }} <span class="text-slate-400">to</span> {{ data.to_branch?.name || 'Branch' }}</template></Column>
               <Column field="status" header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="data.status === 'in_transit' ? 'info' : 'warn'" /></template></Column>
-              <Column field="created_at" header="Created"><template #body="{ data }">{{ formatDate(data.created_at) }}</template></Column>
+              <Column field="created_at" header="Created At" style="min-width: 180px"><template #body="{ data }">{{ formatDateTime(data.created_at) }}</template></Column>
               <template #empty><div class="py-5 text-center text-xs text-slate-500">No transfers are waiting for follow-up.</div></template>
             </DataTable>
           </template>
@@ -209,9 +209,9 @@
                 </div>
               </template>
 
-              <Column field="created_at" header="Date" style="width: 12%">
+              <Column field="created_at" header="Created At" style="min-width: 180px">
                 <template #body="{ data }">
-                  {{ formatDate(data.created_at) }}
+                  {{ formatDateTime(data.created_at) }}
                 </template>
               </Column>
 
@@ -306,7 +306,7 @@
   
               <Column field="transaction_date" header="Date" sortable removableSort>
                 <template #body="{ data }">
-                  {{ formatDate(data.transaction_date || data.created_at) }}
+                  {{ formatDateTime(data.transaction_date || data.created_at) }}
                 </template>
               </Column>
   
@@ -565,6 +565,14 @@ const formatDate = (dateString: string) => {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
+  })
+}
+
+const formatDateTime = (dateString: string) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
   })
 }
 

@@ -39,7 +39,7 @@
             <span class="text-gray-500">Notes:</span>
             <p class="mt-1">{{ rule.notes || '-' }}</p>
           </div>
-          <div><span class="text-gray-500">Created At:</span> <span class="font-medium">{{ formatDate(rule.created_at) }}</span></div>
+          <div><span class="text-gray-500">Created At:</span> <span class="font-medium">{{ formatDateTime(rule.created_at) }}</span></div>
           <div><span class="text-gray-500">Updated At:</span> <span class="font-medium">{{ formatDate(rule.updated_at) }}</span></div>
         </div>
       </template>
@@ -96,6 +96,13 @@ const formatDate = (value?: string) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
   return d.toLocaleString('en-PH', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+const formatDateTime = (value?: string) => {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 const loadRule = async () => {

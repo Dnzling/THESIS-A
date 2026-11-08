@@ -36,7 +36,10 @@
                     </span>
                   </button>
                   <div class="mt-2 flex items-center justify-between gap-1">
-                    <span class="truncate text-sm font-bold text-slate-900">₱{{ money(product.price) }}</span>
+                    <span class="min-w-0">
+                      <span class="block truncate text-sm font-bold text-slate-900">₱{{ money(product.price ?? product.discounted_price ?? product.base_price) }}</span>
+                      <span v-if="hasPromotionPrice(product)" class="block truncate text-[11px] text-slate-400 line-through">₱{{ money(product.base_price) }}</span>
+                    </span>
                     <button type="button" class="shrink-0 text-[11px] font-semibold text-orange-600 hover:underline" @click="viewProduct(product.id)">View</button>
                   </div>
                 </div>
@@ -98,6 +101,8 @@ const comparisonRows = [
   { label: 'Assembly', key: 'assembly_required', type: 'boolean' },
   { label: 'Available variants', key: 'variations', type: 'variations' },
 ]
+const hasPromotionPrice = (product: any) => Number(product.discounted_price) > 0
+  && Number(product.base_price) > Number(product.discounted_price)
 
 function normalizeImageUrl(raw: string) {
   if (!raw) return ''

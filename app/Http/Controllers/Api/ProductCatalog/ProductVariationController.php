@@ -146,8 +146,8 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'texture' => 'nullable|string|max:100',
                 'finish' => 'nullable|string|max:100',
-                'base_price' => 'required|numeric|min:0',
-                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'base_price' => 'nullable|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'unit_of_measurement' => 'nullable|string|max:50',
@@ -173,6 +173,11 @@ class ProductVariationController extends BaseController
             
             if (!$product) {
                 return $this->errorResponse('Product not found or does not belong to this store', 404);
+            }
+
+            $effectiveBasePrice = (float) ($validated['base_price'] ?? $product->current_price ?? 0);
+            if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
+                throw ValidationException::withMessages(['discounted_price' => ['Discounted price must be lower than the variant selling price or inherited product price.']]);
             }
 
             if (!$product->variations()->exists() && strcasecmp($validated['variation_sku'], (string) $product->sku) === 0) {
@@ -220,7 +225,7 @@ class ProductVariationController extends BaseController
                 }
 
                 if (!$product->variations()->exists()) {
-                    $this->convertProductInventoryToBaselineVariation($product);
+                    $this->convertProductInventoryToBaselineVariation($product, true);
                 }
 
                 $initialStock = (int) ($validated['initial_stock'] ?? 0);
@@ -241,18 +246,18 @@ class ProductVariationController extends BaseController
                     }
                 }
                 $data['store_id'] = $this->getStoreId();
-                $data['base_price'] = $data['base_price'] ?? $product->base_price;
+                $data['base_price'] = $data['base_price'] ?? null;
                 $data['discounted_price'] = $data['discounted_price'] ?? null;
                 $data['price_adjustment'] = 0;
-                $data['cost_price'] = $data['cost_price'] ?? $product->getRawOriginal('cost_price');
+                $data['cost_price'] = $data['cost_price'] ?? null;
                 $data['reorder_point'] = $data['reorder_point'] ?? (int) ($product->reorder_point ?? 0);
                 $data['supplier_name'] = $product->supplier_name;
                 $data['unit_of_measurement'] = $data['unit_of_measurement'] ?? $product->unit_of_measurement;
-                $data['length_cm'] = $data['length_cm'] ?? $product->length_cm;
-                $data['width_cm'] = $data['width_cm'] ?? $product->width_cm;
-                $data['height_cm'] = $data['height_cm'] ?? $product->height_cm;
-                $data['depth_cm'] = $data['depth_cm'] ?? $product->depth_cm;
-                $data['weight_kg'] = $data['weight_kg'] ?? $product->weight_kg;
+                $data['length_cm'] = $data['length_cm'] ?? null;
+                $data['width_cm'] = $data['width_cm'] ?? null;
+                $data['height_cm'] = $data['height_cm'] ?? null;
+                $data['depth_cm'] = $data['depth_cm'] ?? null;
+                $data['weight_kg'] = $data['weight_kg'] ?? null;
                 $data = $this->onlyExistingVariationColumns($data);
                 
                 $variation = ProductVariation::create($data);
@@ -362,8 +367,8 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'texture' => 'nullable|string|max:100',
                 'finish' => 'nullable|string|max:100',
-                'base_price' => 'sometimes|numeric|min:0',
-                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'base_price' => 'sometimes|nullable|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'unit_of_measurement' => 'nullable|string|max:50',
@@ -376,6 +381,11 @@ class ProductVariationController extends BaseController
                 'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
             ]);
+
+            $effectiveBasePrice = (float) ($validated['base_price'] ?? $variation->base_price ?? $variation->product?->current_price ?? 0);
+            if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
+                throw ValidationException::withMessages(['discounted_price' => ['Discounted price must be lower than the variant selling price or inherited product price.']]);
+            }
 
             if (array_key_exists('is_active', $validated) && !$validated['is_active'] && $variation->is_active) {
                 return $this->errorResponse('Use Archive for deactivation so inventory can be checked first.', 422);
@@ -608,8 +618,29 @@ class ProductVariationController extends BaseController
         }
     }
 
-    private function convertProductInventoryToBaselineVariation(Product $product): ProductVariation
+    private function convertProductInventoryToBaselineVariation(Product $product, bool $skipWhenEmpty = false): ?ProductVariation
     {
+        $parentInventory = BranchInventory::query()
+            ->where('store_id', $this->getStoreId())
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id');
+
+        if ($skipWhenEmpty && !$parentInventory->where(function ($query): void {
+            $query->where('quantity_on_hand', '>', 0)
+                ->orWhere('quantity_available', '>', 0)
+                ->orWhere('quantity_reserved', '>', 0)
+                ->orWhere('quantity_damaged', '>', 0)
+                ->orWhere('quantity_incoming', '>', 0);
+        })->exists()) {
+            BranchInventory::query()
+                ->where('store_id', $this->getStoreId())
+                ->where('product_id', $product->id)
+                ->whereNull('variation_id')
+                ->delete();
+
+            return null;
+        }
+
         $product->loadMissing(['assets' => function ($query) {
             $query->orderByDesc('is_primary')->orderBy('display_order');
         }]);

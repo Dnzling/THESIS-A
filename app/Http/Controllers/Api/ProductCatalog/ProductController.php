@@ -7,6 +7,7 @@ use App\Models\Hr\Employee;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
+use App\Services\Ecommerce\PromotionPricingService;
 use App\Models\ProductCatalog\PricingHistory;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
@@ -26,6 +27,14 @@ class ProductController extends BaseController
     public function index(Request $request)
     {
         try {
+            $storeId = (int) $this->getStoreId();
+            $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+            $branches = Branch::query()->where('store_id', $storeId)
+                ->where('branch_type', 'storefront')->where('status', 'active')
+                ->orderBy('name')->get(['id', 'name']);
+            if ($branchId !== null && !$branches->contains('id', $branchId)) {
+                throw ValidationException::withMessages(['branch_id' => 'Select an active storefront branch from this store.']);
+            }
             $query = Product::byStore($this->getStoreId())
                            ->with([
                                'category:id,category_name',
@@ -100,7 +109,25 @@ class ProductController extends BaseController
 
             $products = $query->paginate($request->get('per_page', 15));
 
-            return $this->successResponse($products, 'Products retrieved successfully');
+            $pricingService = app(PromotionPricingService::class);
+            $products->getCollection()->each(function (Product $product) use ($pricingService, $branchId): void {
+                $pricing = $pricingService->price($product, null, 0, $branchId);
+                $product->setAttribute('effective_price', $pricing['price']);
+                $product->setAttribute('regular_price', $pricing['regular_price']);
+                $product->setAttribute('discount_percentage', $pricing['regular_price'] > 0
+                    ? (int) round(($pricing['regular_price'] - $pricing['price']) / $pricing['regular_price'] * 100)
+                    : 0);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Products retrieved successfully',
+                'data' => $products,
+                'branches' => $branches,
+            ]);
+
+        } catch (ValidationException $e) {
+            throw $e;
 
         } catch (\Exception $e) {
             Log::error('Failed to retrieve products', [

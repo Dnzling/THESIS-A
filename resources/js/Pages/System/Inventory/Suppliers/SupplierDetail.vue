@@ -1,12 +1,17 @@
 <template>
-  <div class="space-y-6 px-4 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-4 px-4 pb-6 sm:px-6">
     <ConfirmDialog />
-    <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" severity="secondary" text rounded
-        @click="router.push({ name: 'inventory.suppliers' })" />
-      <div>
-        <h1 class="text-lg font-bold text-gray-800">Supplier Details</h1>
-        <p class="mt-1 text-xs text-gray-500">Supplier information and connected products.</p>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <Button icon="pi pi-chevron-left" rounded size="small" outlined class="!bg-white"
+          aria-label="Go back" @click="goBack" />
+        <h1 class="text-lg font-semibold text-gray-900">Supplier Relationship</h1>
+      </div>
+      <div v-if="supplier" class="flex items-center gap-2">
+        <Button v-if="!loadingContracts && !contractLoadError && !hasActiveContract" label="Create Contract"
+          icon="pi pi-plus" severity="warn" size="small" @click="createContract" />
+        <Badge :value="humanize(supplier.contract_status || (hasActiveContract ? 'active' : 'no_contract'))"
+          :severity="contractStatusSeverity(supplier.contract_status || (hasActiveContract ? 'active' : 'no_contract'))" />
       </div>
     </div>
 
@@ -15,35 +20,54 @@
       <Skeleton height="420px" class="lg:col-span-2" />
     </div>
 
-    <div v-else-if="supplier" class="space-y-6">
-      <Card>
+    <div v-else-if="supplier" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Card class="border border-slate-200 shadow-sm">
         <template #content>
-          <div class="space-y-5">
-            <div class="flex flex-col items-center border-b border-gray-100 pb-5 text-center">
+          <div class="space-y-4">
+            <div class="flex items-center gap-3 border-b border-slate-100 pb-4">
               <img v-if="supplier.logo_url" :src="supplier.logo_url" :alt="`${supplier.supplier_name} logo`"
-                class="h-28 w-28 rounded-2xl border border-gray-200 object-cover" />
-              <div v-else class="flex h-28 w-28 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
-                <i class="pi pi-building text-4xl" />
+                class="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              <div v-else class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                <i class="pi pi-building text-xl" />
               </div>
-              <h2 class="mt-3 text-lg font-bold text-gray-900">{{ supplier.supplier_name }}</h2>
-              <Tag class="mt-2" :value="humanize(supplier.supplier_type)" severity="info" />
-              <Button label="Edit" icon="pi pi-pencil" size="small" severity="warn" outlined
-                class="mt-4" @click="editSupplier" />
+              <div class="min-w-0 flex-1">
+                <h2 class="truncate text-lg font-semibold text-slate-900">{{ supplier.supplier_name }}</h2>
+                <p class="text-xs text-slate-500">{{ supplier.company_name || 'Supplier profile' }}</p>
+              </div>
+              <Button icon="pi pi-pencil" outlined rounded size="small" aria-label="Edit supplier" v-tooltip="'Edit supplier'" @click="editSupplier" />
             </div>
-
-            <InfoRow icon="pi pi-user" label="Contact Person" :value="supplier.contact_person" />
-            <InfoRow icon="pi pi-phone" label="Phone Number" :value="supplier.phone" />
-            <InfoRow icon="pi pi-envelope" label="Email" :value="supplier.email" />
-            <InfoRow icon="pi pi-map-marker" label="Address" :value="fullAddress" />
-            <InfoRow icon="pi pi-star" label="Rating" :value="formatRating(supplier.rating)" />
-            <InfoRow icon="pi pi-circle-fill" label="Status" :value="humanize(supplier.status)" />
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <InfoRow label="Supplier Type" :value="humanize(supplier.supplier_type)" />
+              <InfoRow label="Contact Person" :value="supplier.contact_person" />
+              <InfoRow label="Email" :value="supplier.email" />
+              <InfoRow label="Phone" :value="supplier.phone || supplier.mobile" />
+              <InfoRow label="TIN" :value="supplier.tin" />
+              <InfoRow label="Website" :value="supplier.website" />
+            </div>
+            <InfoRow label="Address" :value="fullAddress" />
           </div>
         </template>
       </Card>
-
+      <Card class="border border-slate-200 shadow-sm">
+        <template #content>
+          <div class="space-y-3">
+            <h2 class="text-sm font-semibold text-slate-900">Store Relationship</h2>
+            <InfoRow label="Linked Since" :value="formatDateTime(supplier.created_at)" />
+            <div class="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2">
+              <div>
+                <p class="text-[11px] uppercase tracking-wide text-slate-500">Total Contracts</p>
+                <p class="text-sm font-semibold text-slate-900">{{ contracts.length }}</p>
+              </div>
+              <Button icon="pi pi-eye" text rounded size="small" aria-label="View contracts" @click="scrollToContracts" />
+            </div>
+            <InfoRow label="Products Linked" :value="totalProducts" />
+            <InfoRow label="Rating" :value="formatRating(supplier.rating)" />
+          </div>
+        </template>
+      </Card>
     </div>
 
-    <Card v-if="!loadingSupplier && supplier">
+    <Card v-if="!loadingSupplier && supplier" id="supplier-contracts" class="border border-slate-200 shadow-sm">
       <template #title>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -219,12 +243,9 @@ import inventoryService from '../../../../services/inventory.service'
 const InfoRow = defineComponent({
   props: { icon: String, label: String, value: [String, Number] },
   setup(props) {
-    return () => h('div', { class: 'flex items-start gap-3' }, [
-      h('i', { class: `${props.icon} mt-1 text-gray-400` }),
-      h('div', { class: 'min-w-0' }, [
-        h('p', { class: 'text-xs text-gray-500' }, props.label),
-        h('p', { class: 'break-words text-sm font-medium text-gray-800' }, String(props.value || '-')),
-      ]),
+    return () => h('div', { class: 'min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2' }, [
+      h('p', { class: 'text-[11px] uppercase tracking-wide text-slate-500' }, props.label),
+      h('p', { class: 'break-words text-sm font-medium text-slate-900' }, String(props.value ?? '-')),
     ])
   },
 })
@@ -249,6 +270,8 @@ const activatingContractId = ref<number | null>(null)
 const currentPage = ref(1)
 const perPage = ref(10)
 const totalProducts = ref(0)
+const goBack = () => window.history.length > 1 ? router.back() : router.push({ name: 'inventory.suppliers' })
+const scrollToContracts = () => document.getElementById('supplier-contracts')?.scrollIntoView({ behavior: 'smooth' })
 
 const hasActiveContract = computed(() => contracts.value.some((contract: any) => contract.status === 'active'))
 
@@ -379,6 +402,7 @@ const humanize = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\
 const formatRating = (value: any) => Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} / 5` : '-'
 const formatCurrency = (value: any) => value == null ? '-' : new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 const formatDate = (value?: string | null) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'
+const formatDateTime = (value?: string | null) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-'
 const contractDocumentUrl = computed(() => {
   const path = String(selectedContract.value?.contract_file_path || '').trim()
   if (!path) return ''

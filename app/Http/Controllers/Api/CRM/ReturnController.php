@@ -235,17 +235,23 @@ class ReturnController extends Controller
         $ticket->update($ticketUpdates);
 
         $returnNumber = $return->return_number ?: 'Return #' . $return->id;
-        $managerUserIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']);
-        $this->notifyMany($managerUserIds, [
+        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.view']);
+        $this->notifyMany($crmViewerIds, [
             'store_id' => $storeId,
             'module' => 'crm',
             'entity_type' => 'crm_return_investigation',
             'entity_id' => (int) $ticket->id,
-            'action' => 'investigation_completed',
-            'title' => 'Return investigation completed',
-            'message' => "Investigation for {$returnNumber} is complete and ready for a decision.",
+            'action' => 'investigation_findings_submitted',
+            'title' => 'Return investigation findings submitted',
+            'message' => "Findings for {$returnNumber} were submitted and are ready for review.",
             'link' => '/crm/returns/' . (int) $return->id,
             'severity' => 'info',
+            'data' => [
+                'required_permission' => 'crm.returns.view',
+                'return_id' => (int) $return->id,
+                'return_number' => $returnNumber,
+                'recommended_resolution' => $ticket->recommended_resolution,
+            ],
         ]);
 
         return response()->json([

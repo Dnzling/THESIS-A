@@ -63,7 +63,10 @@
           <h3 class="font-semibold text-slate-800 truncate group-hover:text-orange-600 transition-colors">
             {{ product.product_name }}
           </h3>
-          <div class="text-sm text-green-600 font-semibold">PHP {{ formatMoney(product.price) }}</div>
+          <div class="flex flex-wrap items-baseline gap-x-2">
+            <span class="text-sm font-semibold text-green-600">PHP {{ formatMoney(product.price ?? product.discounted_price ?? product.base_price) }}</span>
+            <span v-if="hasPromotionPrice(product)" class="text-xs text-slate-400 line-through">PHP {{ formatMoney(product.base_price) }}</span>
+          </div>
           <div class="text-xs text-slate-500">Movement Score: {{ Number(product.movement_score || 0).toFixed(2) }}</div>
           <div class="text-[11px] text-slate-400">
             7d: {{ product.movement?.sold_last_7_days || 0 }} | 30d: {{ product.movement?.sold_last_30_days || 0 }}
@@ -94,6 +97,8 @@ const router = useRouter()
 const loading = ref(false)
 const search = ref('')
 const items = ref<any[]>([])
+const hasPromotionPrice = (product: any) => Number(product.discounted_price) > 0
+  && Number(product.base_price) > Number(product.discounted_price)
 
 function normalizeImageUrl(raw: string) {
   if (!raw) return ''

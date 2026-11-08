@@ -36,7 +36,7 @@
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-gray-500">Reference</span><span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100"><i class="pi pi-file text-blue-600"></i></span></div>
           <p class="break-all font-mono text-lg font-semibold text-gray-900">{{ detail.adjustment_number }}</p>
-          <p class="mt-2 text-xs text-gray-500">Created {{ formatDate(detail.created_at) }}</p>
+          <p class="mt-2 text-xs text-gray-500">Created {{ formatDateTime(detail.created_at) }}</p>
         </div>
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-gray-500">Adjustment Date</span><span class="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100"><i class="pi pi-calendar text-violet-600"></i></span></div>
@@ -173,7 +173,7 @@ function formatReason(value?: string | null) {
 }
 function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' || value === 'cancelled' ? 'danger' : 'secondary' }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' }
-function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—' }
+function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '—' }
 function employeeName(employee: any) { return employee ? [employee.fname || employee.user?.fname, employee.lname || employee.user?.lname].filter(Boolean).join(' ') || `Employee #${employee.id}` : '—' }
 function money(value: any) { return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0)) }
 function signedMoney(value: any) { const number = Number(value || 0); return `${number > 0 ? '+' : number < 0 ? '−' : ''}${money(Math.abs(number))}` }

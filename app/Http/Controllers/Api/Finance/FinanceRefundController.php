@@ -13,6 +13,7 @@ use App\Services\Finance\CashflowService;
 use App\Services\Finance\ReturnRefundAmountService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Payment\EcommerceRefundRoutingService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,8 +23,9 @@ class FinanceRefundController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $storeId = (int) $request->user()->store_id;
         $query = FinanceRefund::query()->with(['branch:id,name', 'requester:id,fname,lname'])
-            ->where('store_id', $request->user()->store_id);
+            ->where('store_id', $storeId);
 
         if ($request->filled('status')) {
             $status = $request->string('status')->toString();
@@ -42,7 +44,52 @@ class FinanceRefundController extends Controller
                 ->orWhere('customer_name', 'like', "%{$term}%")->orWhere('reason', 'like', "%{$term}%"));
         }
 
-        return response()->json(['data' => $query->latest()->get()]);
+        $periodEnd = now()->endOfDay();
+        $periodStart = $periodEnd->copy()->subDays(27)->startOfDay();
+        $previousEnd = $periodStart->copy()->subDay()->endOfDay();
+        $previousStart = $previousEnd->copy()->subDays(27)->startOfDay();
+        $summarizePeriod = static function (Carbon $start, Carbon $end) use ($storeId): array {
+            $periodQuery = FinanceRefund::query()
+                ->where('store_id', $storeId)
+                ->whereBetween('created_at', [$start, $end]);
+            $inspection = (clone $periodQuery)->where('status', 'pending_inspection')->count();
+            $pending = (clone $periodQuery)->where('status', 'pending')->count();
+            $awaitingPayout = (clone $periodQuery)->where(function ($query) {
+                $query->whereIn('status', ['approved', 'awaiting_payout'])
+                    ->orWhere(function ($legacy) {
+                        $legacy->where('status', 'sent')->whereIn('payout_provider', ['simulation', 'paymongo_wallet_test']);
+                    });
+            });
+            $amountToSend = (clone $periodQuery)->where(function ($query) {
+                $query->whereIn('status', ['pending', 'approved', 'awaiting_payout'])
+                    ->orWhere(function ($legacy) {
+                        $legacy->where('status', 'sent')->whereIn('payout_provider', ['simulation', 'paymongo_wallet_test']);
+                    });
+            });
+            $simulated = (clone $periodQuery)->where('status', 'simulated')->count();
+
+            return [
+                'inspection' => $inspection,
+                'pending' => $pending,
+                'awaiting_payout' => (clone $awaitingPayout)->count(),
+                'simulated' => $simulated,
+                'amount_to_send' => (float) $amountToSend->sum('amount'),
+            ];
+        };
+
+        return response()->json([
+            'data' => $query->latest()->get(),
+            'summary' => [
+                'current' => $summarizePeriod($periodStart, $periodEnd),
+                'previous' => $summarizePeriod($previousStart, $previousEnd),
+                'period' => [
+                    'start' => $periodStart->toDateString(),
+                    'end' => $periodEnd->toDateString(),
+                    'previous_start' => $previousStart->toDateString(),
+                    'previous_end' => $previousEnd->toDateString(),
+                ],
+            ],
+        ]);
     }
 
     public function show(Request $request, FinanceRefund $refund): JsonResponse

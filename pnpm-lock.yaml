@@ -14,18 +14,12 @@ importers:
       '@primeicons/vue':
         specifier: ^8.0.0
         version: 8.0.0(vue@3.5.29)
-      laravel-echo:
-        specifier: ^2.6.3
-        version: 2.6.3(pusher-js@8.6.0)
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
       mapbox-gl:
         specifier: 3.30.0
         version: 3.30.0
-      pusher-js:
-        specifier: ^8.6.0
-        version: 8.6.0
       quill:
         specifier: ^2.0.3
         version: 2.0.3
@@ -1180,18 +1174,6 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  laravel-echo@2.6.3:
-    resolution: {integrity: sha512-I5tIbxIIC0lJMCeAYlo/ywJ2Zacu5uL3iCOOZkbUjT42Tv0LrNXGqMPhENIyJBFJT6C6Xk5jYktSwO6GSINVBQ==}
-    engines: {node: ^20.19.0 || >=22.12.0}
-    peerDependencies:
-      pusher-js: '*'
-      socket.io-client: '*'
-    peerDependenciesMeta:
-      pusher-js:
-        optional: true
-      socket.io-client:
-        optional: true
-
   laravel-precognition@1.0.2:
     resolution: {integrity: sha512-0H08JDdMWONrL/N314fvsO3FATJwGGlFKGkMF3nNmizVFJaWs17816iM+sX7Rp8d5hUjYCx6WLfsehSKfaTxjg==}
 
@@ -1495,9 +1477,6 @@ packages:
 
   proxy-from-env@1.1.0:
     resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
-
-  pusher-js@8.6.0:
-    resolution: {integrity: sha512-wShJPfCS/kYkCBVzVW67wa9cnQIgHTszEK2XHNrFkOgGruuGw081aERAxfRjfdFU+WcIt8x6dvbwkTW4iZuQ8Q==}
 
   qs@6.15.0:
     resolution: {integrity: sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==}
@@ -1818,9 +1797,6 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
-
-  tweetnacl@1.0.3:
-    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
 
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
@@ -2928,10 +2904,6 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  laravel-echo@2.6.3(pusher-js@8.6.0):
-    optionalDependencies:
-      pusher-js: 8.6.0
-
   laravel-precognition@1.0.2:
     dependencies:
       axios: 1.13.6
@@ -3182,10 +3154,6 @@ snapshots:
       sisteransi: 1.0.5
 
   proxy-from-env@1.1.0: {}
-
-  pusher-js@8.6.0:
-    dependencies:
-      tweetnacl: 1.0.3
 
   qs@6.15.0:
     dependencies:
@@ -3541,8 +3509,6 @@ snapshots:
   ts-interface-checker@0.1.13: {}
 
   tslib@2.8.1: {}
-
-  tweetnacl@1.0.3: {}
 
   undici-types@7.18.2: {}
 

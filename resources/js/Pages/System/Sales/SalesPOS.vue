@@ -55,6 +55,7 @@
                   <div class="text-right">
                     <p v-if="hasDiscount(row)" class="text-xs text-slate-400 line-through">{{ money(productBasePrice(row)) }}</p>
                     <p class="font-semibold text-orange-600">{{ money(productSellingPrice(row)) }}</p>
+                  <p v-if="hasDiscount(row)" class="text-[11px] font-medium text-emerald-700">{{ row.discount_percentage }}% off</p>
                   </div>
                   <Button
                     :icon="productIsCustomizable(row) ? 'pi pi-palette' : 'pi pi-plus'"
@@ -89,6 +90,7 @@
                 <div>
                   <p class="font-medium">{{ item.product_name }}</p>
                   <p class="text-sm text-gray-600">{{ money(Number(item.unit_price) + Number(item.customization_fee || 0)) }} / unit</p>
+                  <p v-if="Number(item.regular_unit_price) > Number(item.unit_price)" class="text-xs text-slate-400 line-through">{{ money(item.regular_unit_price) }} regular</p>
                   <p v-if="Number(item.customization_fee || 0) > 0" class="text-xs text-orange-700">Includes {{ money(item.customization_fee) }} customization fee per unit</p>
                   <p class="text-xs text-slate-500">{{ item.stock_available }} in inventory</p>
                 </div>
@@ -141,12 +143,6 @@
           </div>
 
           <Divider />
-
-          <!-- Delivery Option -->
-          <div class="flex items-center gap-2 mb-3">
-            <Checkbox v-model="deliveryRequired" binary inputId="delivery" />
-            <label for="delivery" class="text-sm">For Delivery</label>
-          </div>
 
           <!-- Customer Info Button -->
           <Button 
@@ -205,7 +201,10 @@
           <div class="bg-gray-50 rounded-lg p-3 mb-3">
             <div class="flex justify-between py-1 text-sm">
               <span>Subtotal</span>
-              <span class="font-medium">{{ money(subtotal) }}</span>
+              <span class="font-medium">{{ money(regularSubtotal) }}</span>
+            </div>
+            <div v-if="productDiscount > 0" class="flex justify-between py-1 text-sm text-emerald-700">
+              <span>Product discount</span><span>- {{ money(productDiscount) }}</span>
             </div>
             <div v-if="deliveryRequired" class="flex justify-between py-1 text-sm">
               <span>Shipping fee</span>
@@ -291,13 +290,25 @@
         {{ customerInformationError }}
       </Message>
       <form id="pos-customer-information-form" class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="requestSaveCustomerInformation">
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm font-medium text-gray-700">Fulfillment Method</label>
+          <SelectButton
+            v-model="deliveryRequired"
+            :options="fulfillmentOptions"
+            optionLabel="label"
+            optionValue="value"
+            :allowEmpty="false"
+            aria-label="Fulfillment method"
+            class="w-full"
+          />
+        </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Name <span class="text-red-600">*</span></label>
           <InputText v-model="customerForm.name" :invalid="customerValidationAttempted && !customerForm.name.trim()" fluid placeholder="Customer name" />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Email <span class="text-red-600">*</span></label>
-          <InputText v-model="customerForm.email" type="email" :invalid="customerValidationAttempted && !isValidCustomerEmail" fluid placeholder="Email address" />
+          <label class="text-sm font-medium text-gray-700 block mb-1">Email <span class="text-xs font-normal text-gray-500">(optional)</span></label>
+          <InputText v-model="customerForm.email" type="email" :invalid="customerValidationAttempted && customerForm.email.trim() !== '' && !isValidCustomerEmail" fluid placeholder="Email address" />
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Contact Number <span class="text-red-600">*</span></label>
@@ -310,6 +321,7 @@
             fluid
           />
         </div>
+        <template v-if="deliveryRequired">
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Province <span class="text-red-600">*</span></label>
           <Select 
@@ -354,6 +366,18 @@
           <label class="text-sm font-medium text-gray-700 block mb-1">Address Line <span class="text-red-600">*</span></label>
           <Textarea v-model="customerForm.addressLine" rows="2" auto-resize fluid :invalid="customerValidationAttempted && !customerForm.addressLine.trim()" placeholder="Street, building, landmark" />
         </div>
+        <div v-if="deliveryRequired" class="md:col-span-2">
+          <label class="text-sm font-medium text-gray-700 block mb-1">Preferred Delivery Date <span class="text-red-600">*</span></label>
+          <DatePicker
+            v-model="customerForm.preferredDeliveryDate"
+            :minDate="today"
+            dateFormat="M d, yy"
+            placeholder="Select the customer's preferred delivery date"
+            :invalid="customerValidationAttempted && !customerForm.preferredDeliveryDate"
+            fluid
+            showIcon
+          />
+        </div>
         <div class="md:col-span-2">
           <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location</label>
           <div class="mb-2 flex gap-2">
@@ -374,6 +398,7 @@
           <label class="text-sm font-medium text-gray-700 block mb-1">Delivery Notes</label>
           <Textarea v-model="customerForm.deliveryNotes" rows="2" auto-resize fluid placeholder="Gate, landmark, instructions (optional)" />
         </div>
+        </template>
       </form>
       <template #footer>
         <Button label="Close" severity="secondary" text @click="customerDialog = false" />
@@ -390,7 +415,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import ecommerceService from '@/services/ecommerce.service'
@@ -403,6 +428,8 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Divider from 'primevue/divider'
 import Checkbox from 'primevue/checkbox'
+import SelectButton from 'primevue/selectbutton'
+import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
 import Badge from 'primevue/badge'
@@ -435,6 +462,10 @@ const cart = ref<any[]>([])
 const paymentMethod = ref<'cash' | 'card' | 'gcash' | 'paymaya'>('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
+const fulfillmentOptions = [
+  { label: 'Pickup', value: false },
+  { label: 'Delivery', value: true },
+]
 const shippingFee = ref(0)
 const estimatingShipping = ref(false)
 const shippingEstimateError = ref('')
@@ -450,7 +481,9 @@ const customerForm = ref({
   latitude: null as number | null,
   longitude: null as number | null,
   deliveryNotes: '',
+  preferredDeliveryDate: null as Date | null,
 })
+const today = new Date()
 const addressSearchText = ref('')
 const addressSelection = ref({
   provinceId: null as string | null,
@@ -468,15 +501,15 @@ const isValidCustomerPhone = computed(() => /^09\d{9}$/.test(customerForm.value.
 const customerInformationError = computed(() => {
   const missing = [
     !customerForm.value.name.trim() && 'name',
-    !customerForm.value.email.trim() && 'email',
     !customerForm.value.phone.trim() && 'contact number',
-    !addressSelection.value.provinceId && 'province',
-    !addressSelection.value.cityId && 'city',
-    !addressSelection.value.barangayCode && 'barangay',
-    !customerForm.value.addressLine.trim() && 'address line',
+    deliveryRequired.value && !addressSelection.value.provinceId && 'province',
+    deliveryRequired.value && !addressSelection.value.cityId && 'city',
+    deliveryRequired.value && !addressSelection.value.barangayCode && 'barangay',
+    deliveryRequired.value && !customerForm.value.addressLine.trim() && 'address line',
+    deliveryRequired.value && !customerForm.value.preferredDeliveryDate && 'preferred delivery date',
   ].filter(Boolean)
   if (missing.length) return `Complete the following before checkout: ${missing.join(', ')}.`
-  if (!isValidCustomerEmail.value) return 'Enter a valid customer email address.'
+  if (customerForm.value.email.trim() && !isValidCustomerEmail.value) return 'Enter a valid customer email address.'
   if (!isValidCustomerPhone.value) return 'Enter a valid 11-digit customer contact number.'
   return ''
 })
@@ -500,8 +533,8 @@ const getStockSeverity = (stock: number) => {
   return 'success'
 }
 
-const productBasePrice = (row: any) => Number(row.variation?.base_price ?? row.product?.base_price ?? 0)
-const productSellingPrice = (row: any) => Number(row.variation?.discounted_price ?? row.product?.discounted_price ?? productBasePrice(row))
+const productBasePrice = (row: any) => Number(row.regular_price ?? row.variation?.base_price ?? row.product?.base_price ?? 0)
+const productSellingPrice = (row: any) => Number(row.selling_price ?? row.variation?.discounted_price ?? row.product?.discounted_price ?? productBasePrice(row))
 const hasDiscount = (row: any) => productSellingPrice(row) > 0 && productSellingPrice(row) < productBasePrice(row)
 const productSku = (row: any) => row.variation?.variation_sku || row.product?.sku || '—'
 const productIsCustomizable = (row: any) => Boolean(row?.is_customizable ?? row?.product?.is_customizable)
@@ -585,6 +618,7 @@ const addToCart = (row: any) => {
     product_id: row.product_id,
     product_name: [row.product?.product_name, row.variation?.variation_name].filter(Boolean).join(' - ') || 'Product',
     unit_price: productSellingPrice(row),
+    regular_unit_price: productBasePrice(row),
     quantity: 1,
     stock_available: Number(row.quantity_available || 0),
     is_customizable: productIsCustomizable(row),
@@ -630,6 +664,7 @@ const saveCustomizationToCart = () => {
       product_id: source?.product_id,
       product_name: source?.product_name || [source?.product?.product_name, source?.variation?.variation_name].filter(Boolean).join(' - ') || 'Product',
       unit_price: Number(source?.unit_price ?? productSellingPrice(source)),
+      regular_unit_price: Number(source?.regular_unit_price ?? productBasePrice(source)),
       quantity: 1,
       stock_available: Number(source?.stock_available ?? source?.quantity_available ?? 0),
       ...values,
@@ -661,6 +696,9 @@ const removeCart = (item: any) => {
 
 const subtotal = computed(() => cart.value.reduce((sum, item) =>
   sum + ((Number(item.unit_price || 0) + Number(item.customization_fee || 0)) * Number(item.quantity || 0)), 0))
+const productDiscount = computed(() => cart.value.reduce((sum, item) =>
+  sum + Math.max(0, Number(item.regular_unit_price ?? item.unit_price) - Number(item.unit_price || 0)) * Number(item.quantity || 0), 0))
+const regularSubtotal = computed(() => subtotal.value + productDiscount.value)
 const total = computed(() => subtotal.value + (deliveryRequired.value ? shippingFee.value : 0))
 const tenderedAmountInvalid = computed(() =>
   paymentMethod.value === 'cash'
@@ -741,7 +779,14 @@ const checkout = async () => {
       delivery_address_line: deliveryRequired.value ? customerForm.value.addressLine : undefined,
       delivery_latitude: deliveryRequired.value ? customerForm.value.latitude : undefined,
       delivery_longitude: deliveryRequired.value ? customerForm.value.longitude : undefined,
-      delivery_email: customerForm.value.email,
+      delivery_email: customerForm.value.email.trim() || undefined,
+      preferred_delivery_date: deliveryRequired.value && customerForm.value.preferredDeliveryDate
+        ? [
+            customerForm.value.preferredDeliveryDate.getFullYear(),
+            String(customerForm.value.preferredDeliveryDate.getMonth() + 1).padStart(2, '0'),
+            String(customerForm.value.preferredDeliveryDate.getDate()).padStart(2, '0'),
+          ].join('-')
+        : undefined,
       items: cart.value.map((item) => ({
         branch_inventory_id: item.branch_inventory_id,
         quantity: item.quantity,
@@ -782,7 +827,7 @@ const checkout = async () => {
     cashAmountAttempted.value = false
     customerValidationAttempted.value = false
     deliveryRequired.value = false
-    customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '' }
+    customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '', preferredDeliveryDate: null }
     addressSelection.value = { provinceId: null, cityId: null, barangayCode: null }
     if (orderId) {
       await router.push({ name: 'sales.pos.order-detail', params: { id: orderId } })
@@ -959,6 +1004,16 @@ const destroyMap = () => {
     marker = null
   }
 }
+
+watch([deliveryRequired, customerDialog], async () => {
+  if (deliveryRequired.value && customerDialog.value) {
+    await nextTick()
+    await initMap()
+    return
+  }
+
+  destroyMap()
+})
 
 onBeforeUnmount(destroyMap)
 </script>

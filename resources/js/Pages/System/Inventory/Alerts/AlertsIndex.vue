@@ -189,9 +189,9 @@
             </template>
           </Column>
 
-          <Column field="created_at" header="Created">
+          <Column field="created_at" header="Created At" style="min-width: 190px">
             <template #body="{ data }">
-              {{ formatDate(data.created_at) }}
+              {{ formatDateTime(data.created_at) }}
             </template>
           </Column>
 
@@ -289,8 +289,8 @@ const formatAlertType = (type?: string) => {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const formatDateTime = (date: string) => {
+  return date ? new Date(date).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '—'
 }
 
 const loadAlerts = async () => {

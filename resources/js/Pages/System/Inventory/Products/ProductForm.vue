@@ -78,6 +78,13 @@
                 <small v-if="errors.custom_product_type" class="text-red-500">{{ errors.custom_product_type }}</small>
               </div>
 
+              <div v-if="showFinishedGoodFields && !isEditMode" class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label class="mb-1 block text-sm font-medium text-gray-700">How is this product sold?</label>
+                <Select v-model="form.has_variants" :options="variantModeOptions" optionLabel="label" optionValue="value"
+                  class="w-full text-sm" size="small" />
+                <small class="mt-1 block text-xs text-gray-500">Choose variants when options such as color or material have their own SKU, price, or stock. Variant products get their stock through each variant.</small>
+              </div>
+
 
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Brand</label>
@@ -128,10 +135,11 @@
 
               <p v-if="showFinishedGoodFields" class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Selling</p>
               <div v-if="showFinishedGoodFields">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Selling Price</label>
+                <label class="mb-1 block text-sm font-medium text-gray-700">{{ form.has_variants ? 'Default Variant Selling Price' : 'Selling Price' }}</label>
                 <InputNumber v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
                   class="w-full text-sm" fluid size="small" placeholder="0.00" />
                 <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
+                <small v-else-if="form.has_variants" class="mt-1 block text-xs text-gray-500">Used as the default for variants unless a variant has its own selling price.</small>
               </div>
               <div class="flex items-end gap-2 pb-2">
                 <Checkbox v-model="form.is_active" :binary="true" inputId="product_active" />
@@ -148,9 +156,12 @@
                 <small v-if="errors.unit_of_measurement" class="text-red-500">{{ errors.unit_of_measurement }}</small>
               </div>
 
-              <div v-if="!isEditMode">
+              <div v-if="!isEditMode && !form.has_variants">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Available Stock</label>
                 <InputNumber v-model="form.initial_stock" :min="0" class="w-full text-sm" fluid size="small" placeholder="0"/>
+              </div>
+              <div v-else-if="!isEditMode && form.has_variants" class="md:col-span-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+                Opening stock is entered for each variant through Inventory after you add its options. This prevents parent stock from being mistaken for a sellable variant.
               </div>
 
               <div>
@@ -247,8 +258,9 @@
     </Card>
 
     <Dialog v-model:visible="successVisible" modal :closable="false" header="Item saved" :style="{ width: 'min(92vw, 26rem)' }">
-      <p class="text-sm text-gray-600">{{ isEditMode ? 'Your changes were saved successfully.' : 'The item was created successfully.' }}</p>
+      <p class="text-sm text-gray-600">{{ isEditMode ? 'Your changes were saved successfully.' : createdHasVariants ? 'Product created. Add its first sellable variant next.' : 'The item was created successfully.' }}</p>
       <template #footer>
+        <Button v-if="!isEditMode && createdHasVariants && createdProductId" label="Add First Variant" severity="warn" size="small" @click="router.push({ name: 'inventory.product-variations.create', query: { product_id: createdProductId } })" />
         <Button label="View Products" severity="warn" size="small" @click="router.push({ name: 'inventory.products.index' })" />
       </template>
     </Dialog>
@@ -276,6 +288,8 @@ const authStore = useAuthStore()
 
 const submitting = ref(false)
 const successVisible = ref(false)
+const createdProductId = ref<number | null>(null)
+const createdHasVariants = ref(false)
 const errors = ref<Record<string, string>>({})
 const submitError = ref('')
 const isEditMode = computed(() => Boolean(route.params.id))
@@ -288,6 +302,10 @@ const productTypeOptions = [
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' },
+]
+const variantModeOptions = [
+  { label: 'One SKU (no options)', value: false },
+  { label: 'Multiple variants (options have separate SKUs)', value: true },
 ]
 
 const unitMeasureOptions = [
@@ -313,6 +331,7 @@ const unitMeasureOptions = [
 const form = reactive({
   product_name: '',
   product_type: 'finished_good',
+  has_variants: false,
   custom_product_type: '',
   brand: '',
   description: '',
@@ -577,6 +596,7 @@ const handleSubmit = async () => {
     if (showFinishedGoodFields.value) {
       if (form.base_price != null) payload.append('base_price', String(form.base_price))
       payload.append('is_bulky', form.is_bulky === null ? '' : form.is_bulky ? '1' : '0')
+      if (!isEditMode.value) payload.append('has_variants', form.has_variants ? '1' : '0')
     }
     payload.append('length_cm', form.length_cm == null ? '' : String(form.length_cm))
     payload.append('width_cm', form.width_cm == null ? '' : String(form.width_cm))
@@ -585,7 +605,7 @@ const handleSubmit = async () => {
     payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
     payload.append('supplier_links', JSON.stringify(form.supplier_links))
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
-    if (!isEditMode.value && form.initial_stock != null) {
+    if (!isEditMode.value && !form.has_variants && form.initial_stock != null) {
       payload.append('initial_stock', String(form.initial_stock))
     }
     if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
@@ -601,6 +621,8 @@ const handleSubmit = async () => {
     } else {
       const response = await inventoryService.createProduct(payload, true)
       if (response?.success === false) throw new Error(response.message || 'Unable to create item.')
+      createdProductId.value = Number(response?.data?.id || response?.data?.data?.id) || null
+      createdHasVariants.value = form.has_variants
       successVisible.value = true
     }
   } catch (error: any) {

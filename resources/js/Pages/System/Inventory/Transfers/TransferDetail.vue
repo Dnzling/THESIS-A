@@ -228,7 +228,7 @@ const transferTimeline = computed(() => {
   if (!transfer) return []
 
   const events = [
-    { label: 'Request created', date: transfer.requested_date || transfer.created_at, by: employeeName(transfer.requested_by) },
+    { label: 'Request created', date: transfer.created_at, by: employeeName(transfer.requested_by) },
     { label: 'Transfer approved', date: transfer.sender_approved_date, by: employeeName(transfer.sender_approved_by) },
     { label: 'Receiving branch acknowledged', date: transfer.receiver_acknowledged_date, by: employeeName(transfer.receiver_acknowledged_by) },
     { label: 'Finance approved', date: transfer.finance_approved_date, by: employeeName(transfer.finance_approved_by) },

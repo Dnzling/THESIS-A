@@ -85,7 +85,7 @@
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Created At</label>
-                      <p class="text-gray-900">{{ formatDate(stockIssue.created_at) }}</p>
+                      <p class="text-gray-900">{{ formatDateTime(stockIssue.created_at) }}</p>
                     </div>
                     <div v-if="stockIssue.description && stockIssue.issue_type !== 'other'" class="md:col-span-2">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -226,9 +226,9 @@
                   </template>
                 </Column>
                 <Column field="notes" header="Notes" />
-                <Column field="created_at" header="Date" style="width: 150px">
+                <Column field="created_at" header="Date & Time" style="min-width: 190px">
                   <template #body="slotProps">
-                    {{ formatDate(slotProps.data.created_at) }}
+                    {{ formatDateTime(slotProps.data.created_at) }}
                   </template>
                 </Column>
               </DataTable>
@@ -260,9 +260,9 @@
                   </template>
                 </Column>
                 <Column field="location" header="Location" />
-                <Column field="created_at" header="Created" style="width: 150px">
+                <Column field="created_at" header="Created At" style="min-width: 190px">
                   <template #body="slotProps">
-                    {{ formatDate(slotProps.data.created_at) }}
+                    {{ formatDateTime(slotProps.data.created_at) }}
                   </template>
                 </Column>
               </DataTable>
@@ -327,7 +327,7 @@
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <p><strong>Requested By:</strong> {{ stockIssue.requester?.full_name || 'N/A' }}</p>
-                <p><strong>Created At:</strong> {{ formatDate(stockIssue.created_at) }}</p>
+                <p><strong>Created At:</strong> {{ formatDateTime(stockIssue.created_at) }}</p>
               </div>
               <div>
                 <p v-if="stockIssue.description && stockIssue.issue_type !== 'other'"><strong>Description:</strong> {{ stockIssue.description }}</p>
@@ -822,12 +822,18 @@ const formatStatus = (status: string) => status === 'submitted'
 
 const formatDate = (date: string) => {
   if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-US', {
+  return new Date(date).toLocaleDateString('en-PH', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+  })
+}
+
+const formatDateTime = (date: string) => {
+  if (!date) return 'N/A'
+  const parsed = new Date(date)
+  return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
   })
 }
 

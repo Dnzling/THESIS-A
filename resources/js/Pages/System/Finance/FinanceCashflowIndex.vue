@@ -156,7 +156,7 @@
             sortField="created_at"
             :sortOrder="-1"
           >
-            <Column field="created_at" header="Date" sortable style="width: 190px">
+            <Column field="created_at" header="Date & Time" sortable style="min-width: 190px">
               <template #body="{ data }">
                 <span class="text-md text-slate-600">{{ formatDateTime(data.created_at) }}</span>
               </template>
@@ -450,6 +450,7 @@ const comparisonClass = (key: 'incoming' | 'outgoing' | 'net') => {
 const formatDateTime = (value: string) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
     year: 'numeric',
     month: 'short',
     day: '2-digit',

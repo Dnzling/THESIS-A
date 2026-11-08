@@ -239,7 +239,9 @@
 
             <Divider />
             <div class="flex justify-between"><span>Items</span><span>{{ formatNumber(itemsCount) }}</span></div>
-            <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
+            <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(regularProductSubtotal, 2) }}</span></div>
+            <div v-if="productDiscountAmount > 0" class="flex justify-between text-emerald-700"><span>Product discount</span><span>- ₱ {{ formatNumber(productDiscountAmount, 2) }}</span></div>
+            <div v-if="discountAmount > 0" class="flex justify-between text-emerald-700"><span>Voucher discount</span><span>- ₱ {{ formatNumber(discountAmount, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span>VATable Sales</span><span>₱ {{ formatNumber(vatableSales, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span> (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
             <div class="flex justify-between"><span>{{ serviceMethod === 'pickup' ? 'Pickup' : 'Delivery' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
@@ -255,7 +257,7 @@
               <div v-for="item in checkoutItems" :key="`summary-${item.id}`" class="flex gap-2 py-2 text-xs">
                 <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-11 w-11 rounded-lg border border-slate-200 object-cover" @error="onImageError" />
                 <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-slate-900">{{ item.product_name }}</span><span class="text-slate-500">Qty {{ item.quantity }}</span></span>
-                <span class="font-semibold text-slate-900">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span>
+                <span class="text-right"><span class="block font-semibold text-slate-900">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span><span v-if="regularLineSubtotal(item) > displayLineSubtotal(item)" class="block text-[11px] text-slate-400 line-through">₱ {{ formatNumber(regularLineSubtotal(item), 2) }}</span></span>
               </div>
             </div>
             <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
@@ -317,9 +319,11 @@
         <div v-for="item in checkoutItems" :key="`mobile-summary-${item.id}`" class="flex gap-3 border-b border-slate-100 pb-3">
           <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name" loading="lazy" decoding="async" class="h-14 w-14 rounded-lg object-cover" @error="onImageError" />
           <div class="min-w-0 flex-1"><p class="truncate font-semibold">{{ item.product_name }}</p><p class="text-xs text-slate-500">Qty {{ item.quantity }}</p></div>
-          <span class="font-semibold">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span>
+          <span class="text-right"><span class="block font-semibold">₱ {{ formatNumber(displayLineSubtotal(item), 2) }}</span><span v-if="regularLineSubtotal(item) > displayLineSubtotal(item)" class="block text-xs text-slate-400 line-through">₱ {{ formatNumber(regularLineSubtotal(item), 2) }}</span></span>
         </div>
-        <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
+        <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(regularProductSubtotal, 2) }}</span></div>
+        <div v-if="productDiscountAmount > 0" class="flex justify-between text-emerald-700"><span>Product discount</span><span>- ₱ {{ formatNumber(productDiscountAmount, 2) }}</span></div>
+        <div v-if="discountAmount > 0" class="flex justify-between text-emerald-700"><span>Voucher discount</span><span>- ₱ {{ formatNumber(discountAmount, 2) }}</span></div>
         <div class="flex justify-between"><span>{{ serviceMethod === 'pickup' ? 'Pickup' : 'Delivery' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
         <div v-if="fulfillmentDateString" class="flex justify-between"><span>Preferred date</span><span>{{ fulfillmentDate?.toLocaleDateString('en-PH', { dateStyle: 'medium' }) }}</span></div>
         <div class="flex justify-between border-t border-slate-200 pt-3 text-base font-bold"><span>Total</span><span>₱ {{ formatNumber(totalAmount, 2) }}</span></div>
@@ -553,7 +557,7 @@ const checkoutSteps = ['Address', 'Service', 'Payment']
 const checkoutStep = ref(1)
 const mobileSummaryVisible = ref(false)
 const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
-const branchItemPrices = ref<Record<number, { unit_price: number; line_subtotal: number }>>({})
+const branchItemPrices = ref<Record<number, { unit_price: number; regular_unit_price: number; line_subtotal: number }>>({})
 const branchPricedSubtotal = ref<number | null>(null)
 const fulfillmentDates = ref<string[]>([])
 const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
@@ -895,6 +899,12 @@ const subtotal = computed(() => branchPricedSubtotal.value ?? checkoutItems.valu
 function displayLineSubtotal(item: any): number {
   return branchItemPrices.value[Number(item.id)]?.line_subtotal ?? Number(item.line_subtotal || 0)
 }
+function regularLineSubtotal(item: any): number {
+  const unitPrice = branchItemPrices.value[Number(item.id)]?.regular_unit_price ?? Number(item.regular_unit_price ?? item.unit_price ?? 0)
+  return unitPrice * Number(item.quantity || 0)
+}
+const regularProductSubtotal = computed(() => checkoutItems.value.reduce((sum, item) => sum + regularLineSubtotal(item), 0))
+const productDiscountAmount = computed(() => Math.max(0, regularProductSubtotal.value - subtotal.value))
 function setBranchPricing(data: any) {
   const prices = Array.isArray(data?.item_prices) ? data.item_prices : []
   if (!Number.isFinite(Number(data?.product_subtotal)) || prices.length === 0) {
@@ -906,7 +916,7 @@ function setBranchPricing(data: any) {
   branchPricedSubtotal.value = Number(data.product_subtotal)
   branchItemPrices.value = Object.fromEntries(prices.map((price: any) => [
     Number(price.id),
-    { unit_price: Number(price.unit_price), line_subtotal: Number(price.line_subtotal) },
+    { unit_price: Number(price.unit_price), regular_unit_price: Number(price.regular_unit_price ?? price.unit_price), line_subtotal: Number(price.line_subtotal) },
   ]))
 }
 const shippingFeePerItem = computed(() => {

@@ -101,7 +101,8 @@
                 <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async"
                   class="h-44 w-full rounded-lg border border-slate-100 object-cover" @error="onImageError" />
                 <p class="line-clamp-2 text-base font-semibold text-slate-900">{{ product.product_name }}</p>
-                <p class="text-sm font-bold text-slate-800">PHP {{ Number(product.price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
+                <p class="text-sm font-bold text-slate-800">PHP {{ Number(product.price ?? product.discounted_price ?? product.base_price ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
+                <p v-if="Number(product.base_price) > Number(product.price ?? product.discounted_price ?? product.base_price)" class="text-xs text-slate-400 line-through">PHP {{ Number(product.base_price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
                 <div class="flex items-center justify-between text-xs text-slate-500">
                   <span class="flex items-center gap-1"><i class="pi pi-star-fill text-amber-500" /> {{ Number(product.rating_avg || 0).toFixed(1) }}</span>
                   <span>{{ product.rating_count || 0 }} reviews</span>

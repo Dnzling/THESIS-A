@@ -199,9 +199,8 @@
                         >
                             {{ product.product_name }}
                         </h3>
-                        <p class="mt-2 text-sm font-bold text-slate-950">
-                            ₱{{ formatMoney(product.price || 0) }}
-                        </p>
+                        <p class="mt-2 text-sm font-bold text-slate-950">₱{{ formatMoney(product.price || 0) }}</p>
+                        <p v-if="Number(product.base_price) > Number(product.price)" class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</p>
                     </div>
                 </article>
             </div>

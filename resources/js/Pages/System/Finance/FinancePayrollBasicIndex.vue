@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Basic Payroll</h1>
+        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Basic Payroll</h1>
         <p class="mt-1 text-sm text-slate-500">Review each pay period, complete calculations, and record payouts.</p>
       </div>
       <div class="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -13,34 +13,7 @@
 
     <SimplePayrollRunDialog v-model:visible="generateDialogVisible" @generated="onPayrollGenerated" />
 
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Card class="border border-slate-200 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Payroll Entries</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{{ summary.totalEntries }}</p></div>
-            <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><i class="pi pi-file-edit" /></span>
-          </div>
-        </template>
-      </Card>
-      <Card class="border border-slate-200 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Paid</p><p class="mt-1 text-xl font-semibold tabular-nums text-emerald-700">{{ formatCurrency(summary.totalPaid) }}</p></div>
-            <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><i class="pi pi-check-circle" /></span>
-          </div>
-        </template>
-      </Card>
-      <Card class="border border-slate-200 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Unpaid</p><p class="mt-1 text-xl font-semibold tabular-nums text-orange-700">{{ formatCurrency(summary.totalPending) }}</p></div>
-            <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-orange-700"><i class="pi pi-clock" /></span>
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <Card class="border border-slate-200 shadow-sm">
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #content>
         <div class="space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -52,7 +25,7 @@
                   <InputText v-model="filters.search" fluid size="small" placeholder="Search pay period" />
                 </IconField>
               </div>
-              <Button v-if="filters.search" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" @click="filters.search = ''" />
+              <Button v-if="filters.search" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="filters.search = ''" />
             </div>
           </div>
           <DataTable
@@ -60,7 +33,7 @@
             :loading="loading"
             rowHover
             size="small"
-            class="text-sm"
+            class="text-xs"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
@@ -80,7 +53,7 @@
             <Column header="Actions" style="width: 130px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button icon="pi pi-eye" label="View" size="small" severity="secondary" outlined @click="openPeriod(data)" />
+                  <Button icon="pi pi-eye" label="View" size="small" severity="secondary" outlined rounded @click="openPeriod(data)" />
                 </div>
               </template>
             </Column>
@@ -202,15 +175,6 @@ const formatMoney = (value: number | string) => {
   return new Intl.NumberFormat('en-PH').format(amount)
 }
 const formatCurrency = (value: number | string) => `PHP ${formatMoney(value)}`
-
-const summary = computed(() => {
-  return payrolls.value.reduce((totals, period) => {
-    totals.totalEntries += Number(period.employee_count || 0)
-    totals.totalPaid += Number(period.paid_total || 0)
-    totals.totalPending += Number(period.pending_total || 0)
-    return totals
-  }, { totalEntries: 0, totalPaid: 0, totalPending: 0 })
-})
 
 const filteredPayrolls = computed(() => {
   if (!filters.search) return payrolls.value

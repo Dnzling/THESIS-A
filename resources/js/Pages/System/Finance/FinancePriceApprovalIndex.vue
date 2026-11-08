@@ -78,8 +78,8 @@
           <Skeleton v-for="i in 4" :key="i" height="56px" />
         </div>
         <DataTable v-else :value="rows" rowHover paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]" responsiveLayout="scroll" class="p-datatable-sm text-xs">
-          <Column field="price_proposed_at" header="Date" sortable style="min-width: 150px">
-            <template #body="{ data }">{{ formatDate(data.price_proposed_at || data.updated_at) }}</template>
+          <Column field="price_proposed_at" header="Date & Time" sortable style="min-width: 190px">
+            <template #body="{ data }">{{ formatDateTime(data.price_proposed_at || data.updated_at) }}</template>
           </Column>
           <Column field="sku" header="SKU" style="min-width: 130px" />
           <Column field="product_name" header="Product" style="min-width: 220px" />
@@ -187,9 +187,12 @@ const severityStatus = (status?: string): 'success' | 'warn' | 'danger' | 'info'
   return 'success'
 }
 
-const formatDate = (date?: string) => {
+const formatDateTime = (date?: string) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(date).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
 }
 
 const formatNumber = (value: number) => {

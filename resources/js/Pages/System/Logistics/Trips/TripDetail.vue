@@ -70,15 +70,23 @@
 
     <ConfirmDialog />
 
-    <Dialog v-model:visible="editTripVisible" modal header="Edit Planned Trip" class="w-full max-w-2xl">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <Dialog v-model:visible="editTripVisible" modal header="Edit Planned Trip" class="w-full max-w-3xl">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-sm text-slate-600">Driver *</label>
           <Select v-model="editTripForm.driver_user_id" :options="editTripDrivers" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" :loading="loadingEditTripOptions" />
+          <div v-if="selectedEditTripDriver" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-sm font-semibold text-orange-700">{{ tripInitials(selectedEditTripDriver.name) }}</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedEditTripDriver.name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedEditTripDriver.role || 'Delivery Driver' }}<span v-if="selectedEditTripDriver.employee_number"> ({{ selectedEditTripDriver.employee_number }})</span></p></div></div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2"><div><span class="text-slate-500">Contact</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedEditTripDriver.contact || 'Not provided' }}</p></div><div><span class="text-slate-500">Email</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedEditTripDriver.email || 'Not provided' }}</p></div><div class="sm:col-span-2"><span class="text-slate-500">Branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedEditTripDriver.branch || 'No branch assigned' }}</p></div></div>
+          </div>
         </div>
         <div>
           <label class="mb-1 block text-sm text-slate-600">Vehicle *</label>
           <Select v-model="editTripForm.vehicle_id" :options="editTripVehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" :loading="loadingEditTripOptions" />
+          <div v-if="selectedEditTripVehicle" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedEditTripVehicle.vehicle_name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedEditTripVehicle.vehicle_type || 'Vehicle' }}<span v-if="selectedEditTripVehicle.plate_number"> ({{ selectedEditTripVehicle.plate_number }})</span></p></div><Badge :value="selectedEditTripVehicle.status || 'Active'" :severity="selectedEditTripVehicle.status === 'active' ? 'success' : 'secondary'" /></div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2"><div><span class="text-slate-500">Make / model</span><p class="mt-0.5 font-medium text-slate-800">{{ [selectedEditTripVehicle.brand, selectedEditTripVehicle.model].filter(Boolean).join(' ') || 'Not provided' }}</p></div><div><span class="text-slate-500">Color</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedEditTripVehicle.color || 'Not provided' }}</p></div><div><span class="text-slate-500">Load capacity</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedEditTripVehicle.capacity_kg ? `${Number(selectedEditTripVehicle.capacity_kg).toLocaleString()} kg` : 'Not set' }}</p></div><div><span class="text-slate-500">Stops per trip</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedEditTripVehicle.max_orders_per_trip ?? 'Not set' }}</p></div><div class="sm:col-span-2"><span class="text-slate-500">Assigned branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedEditTripVehicle.branch?.name || 'Branch not specified' }}</p></div><div v-if="selectedEditTripVehicle.notes" class="sm:col-span-2"><span class="text-slate-500">Vehicle notes</span><p class="mt-0.5 whitespace-pre-line text-slate-700">{{ selectedEditTripVehicle.notes }}</p></div></div>
+          </div>
         </div>
         <div class="md:col-span-2">
           <label class="mb-1 block text-sm text-slate-600">Employees Accompanying the Driver</label>
@@ -292,6 +300,7 @@ import Column from 'primevue/column'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import DatePicker from 'primevue/datepicker'
+import Badge from 'primevue/badge'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
 import Dialog from 'primevue/dialog'
@@ -324,6 +333,9 @@ const editTripVehicles = ref<any[]>([])
 const editTripUnavailableDates = ref<Date[]>([])
 const editTripForm = reactive({ driver_user_id: null as number | null, assistant_user_ids: [] as number[], vehicle_id: null as number | null, scheduled_departure_at: null as Date | null, notes: '' })
 const editableAssistants = computed(() => editTripEmployees.value.filter(employee => Number(employee.id) !== Number(editTripForm.driver_user_id)))
+const selectedEditTripDriver = computed(() => editTripDrivers.value.find(driver => Number(driver.id) === Number(editTripForm.driver_user_id)) || null)
+const selectedEditTripVehicle = computed(() => editTripVehicles.value.find(vehicle => Number(vehicle.id) === Number(editTripForm.vehicle_id)) || null)
+const tripInitials = (name?: string) => String(name || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('')
 watch(() => editTripForm.driver_user_id, driverId => {
   editTripForm.assistant_user_ids = editTripForm.assistant_user_ids.filter(id => Number(id) !== Number(driverId))
 })

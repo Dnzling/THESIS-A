@@ -101,8 +101,8 @@
               <div v-if="loading" class="space-y-3 pb-4"><div v-for="row in 6" :key="`payable-${row}`" class="grid grid-cols-6 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 6" :key="cell" height="1.25rem" /></div></div>
               <DataTable v-else :value="filteredPayables" rowHover responsiveLayout="scroll"
                 class="p-datatable-sm text-xs" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
-                <Column field="invoice_created_at" header="Date" sortable style="width: 150px">
-                  <template #body="{ data }">{{ formatDate(data.invoice_created_at) }}</template>
+                <Column field="invoice_created_at" header="Date & Time" sortable style="min-width: 190px">
+                  <template #body="{ data }">{{ formatDateTime(data.invoice_created_at) }}</template>
                 </Column>
                 <Column field="reference" header="Invoice #" style="min-width: 130px">
                   <template #body="{ data }">
@@ -230,9 +230,19 @@ const formatMoney = (value: number | string) => {
   return new Intl.NumberFormat('en-PH').format(amount)
 }
 
+const formatDateTime = (date: string) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
 const formatDate = (date: string) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(date).toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+  })
 }
 
 const normalize = (value: unknown) => String(value || '').toLowerCase()

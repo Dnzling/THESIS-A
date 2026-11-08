@@ -29,10 +29,14 @@
           <Select v-model="filters.product_type" :options="productTypeOptions" optionLabel="label" optionValue="value"
             placeholder="Type" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
 
+          <Select v-model="filters.branch_id" :options="branches" optionLabel="name" optionValue="id"
+            placeholder="All branches" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
+
           <div v-if="hasActiveFilters" class="flex justify-end">
             <Button @click="resetFilters" label="Clear All" severity="danger" size="small" class="text-sm" />
           </div>
         </div>
+        <p class="mb-3 text-xs text-slate-500">Select a branch to see promotions limited to that branch. All branches shows store-wide offers only.</p>
   
         <div v-if="selectedProducts.length" class="m-4 flex flex-wrap gap-2 border-t border-gray-100 p-4">
           <Button v-if="selectedProducts.length > 0" @click="bulkActivate" icon="pi pi-check" label="Activate"
@@ -106,9 +110,9 @@
           <Column field="base_price" header="Price/Unit" sortable>
             <template #body="{ data }">
               <div>
-                <p v-if="data.discounted_price" class="text-xs font-semibold text-red-600">₱{{ formatPrice(data.discounted_price) }}</p>
-                <p class="text-xs" :class="data.discounted_price ? 'text-gray-500 line-through' : 'text-gray-900'">
-                  ₱{{ formatPrice(data.base_price) }}/<b>{{ data.unit_of_measurement || 'unit' }}</b>
+                <p v-if="Number(data.effective_price) < Number(data.regular_price)" class="text-xs font-semibold text-orange-700">₱{{ formatPrice(data.effective_price) }} <span class="text-[11px]">({{ data.discount_percentage }}% off)</span></p>
+                <p class="text-xs" :class="Number(data.effective_price) < Number(data.regular_price) ? 'text-gray-500 line-through' : 'text-gray-900'">
+                  ₱{{ formatPrice(data.regular_price ?? data.base_price) }}/<b>{{ data.unit_of_measurement || 'unit' }}</b>
                 </p>
               </div>
             </template>
@@ -165,6 +169,7 @@ const toast = useToast()
 // State
 const products = ref([])
 const categories = ref([])
+const branches = ref<{ id: number; name: string }[]>([])
 const tags = ref([])
 const attributes = ref([])
 const selectedProducts = ref([])
@@ -180,6 +185,7 @@ const actionProduct = ref<any>(null)
 const filters = reactive({
   search: '',
   category_id: null,
+  branch_id: null as number | null,
   product_type: 'finished_good',
   is_active: null,
   page: 1,
@@ -198,6 +204,7 @@ const productTypeOptions = [
 const hasActiveFilters = computed(() => Boolean(
   filters.search.trim()
   || filters.category_id
+  || filters.branch_id
   || filters.is_active !== null
   || filters.product_type !== 'finished_good'
 ))
@@ -209,6 +216,7 @@ const loadProducts = async () => {
     const response = await merchandisingService.getProducts(filters)
     products.value = response.data?.data || response.data?.data?.data || []
     totalRecords.value = response.data?.total || response.data?.data?.total || products.value.length
+    branches.value = response.branches || []
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load products', life: 3000 })
   } finally {
@@ -263,6 +271,7 @@ const onFilterChange = () => {
 const resetFilters = () => {
   filters.search = ''
   filters.category_id = null
+  filters.branch_id = null
   filters.product_type = 'finished_good'
   filters.is_active = null
   loadProducts()

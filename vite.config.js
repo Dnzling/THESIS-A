@@ -3,6 +3,9 @@ import laravel from 'laravel-vite-plugin';
 import vue from '@vitejs/plugin-vue';
 import path from 'path'; // Add this import!
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const frontendDebugLogPlugin = () => ({
     name: 'frontend-debug-log',
@@ -44,7 +47,7 @@ const frontendDebugLogPlugin = () => ({
                         .replace(/(auth(?:entication)? token initialized:\s*)[^\s"']+/gi, '$1[REDACTED]')
                         .replace(/\b\d+\|[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TOKEN]');
                     const line = `${new Date().toISOString()} [${String(entry.level || 'log').toUpperCase()}] ${message}\n`;
-                    const logPath = path.resolve(process.cwd(), 'storage/logs/frontend-debug.log');
+                    const logPath = path.resolve(projectRoot, 'storage/logs/frontend-debug.log');
                     await fs.mkdir(path.dirname(logPath), { recursive: true });
                     await fs.appendFile(logPath, line, 'utf8');
                     res.statusCode = 204;
@@ -76,8 +79,8 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
-            '@': path.resolve(__dirname, 'resources/js'), // Point to your actual JS source
-            'vue-router': path.resolve(__dirname, 'resources/js/router-compat.ts'),
+            '@': path.resolve(projectRoot, 'resources/js'),
+            'vue-router': path.resolve(projectRoot, 'resources/js/router-compat.ts'),
         }
     }
 });

@@ -97,6 +97,11 @@ class SalesOrderDelivery extends Model
         return $this->hasMany(SalesOrderDeliveryLog::class, 'delivery_id');
     }
 
+    public function readyForDispatchLogs(): HasMany
+    {
+        return $this->logs()->where('status_to', 'ready_for_dispatch')->orderByDesc('id');
+    }
+
     public function trip(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Logistics\DeliveryTrip::class, 'trip_id');

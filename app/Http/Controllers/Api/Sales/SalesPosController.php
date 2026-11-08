@@ -9,12 +9,12 @@ use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
 use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
-use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
 use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Store\Store;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
+use App\Services\Ecommerce\PromotionPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +26,8 @@ class SalesPosController extends Controller
 {
     public function __construct(
         private readonly SalesOrderSettlementService $settlementService,
-        private readonly PaymongoService $paymongoService
+        private readonly PaymongoService $paymongoService,
+        private readonly PromotionPricingService $promotionPricing
     ) {
     }
 
@@ -60,6 +61,16 @@ class SalesPosController extends Controller
 
         $rows = $query->orderByDesc('quantity_available')
             ->paginate((int) $request->input('per_page', 20));
+
+        $rows->getCollection()->each(function (BranchInventory $inventory): void {
+            $pricing = $this->promotionPricing->price($inventory->product, $inventory->variation, 0, (int) $inventory->branch_id);
+            $inventory->setAttribute('selling_price', $pricing['price']);
+            $inventory->setAttribute('regular_price', $pricing['regular_price']);
+            $inventory->setAttribute('discount_amount', round($pricing['regular_price'] - $pricing['price'], 2));
+            $inventory->setAttribute('discount_percentage', $pricing['regular_price'] > 0
+                ? (int) round(($pricing['regular_price'] - $pricing['price']) / $pricing['regular_price'] * 100)
+                : 0);
+        });
 
         return response()->json(['success' => true, 'data' => $rows]);
     }
@@ -224,6 +235,7 @@ class SalesPosController extends Controller
             'delivery_latitude' => 'nullable|numeric',
             'delivery_longitude' => 'nullable|numeric',
             'delivery_email' => 'nullable|email|max:150',
+            'preferred_delivery_date' => 'required_if:delivery_required,true|nullable|date_format:Y-m-d|after_or_equal:today',
             'items' => 'required|array|min:1',
             'items.*.branch_inventory_id' => 'required|exists:branch_inventory,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -237,6 +249,9 @@ class SalesPosController extends Controller
         $branchId = (int) ($validated['branch_id'] ?? $user->branch_id ?? 0);
         if (!$storeId) {
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
+        }
+        if ($branchId < 1 || !Branch::query()->where('store_id', $storeId)->whereKey($branchId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a valid store branch for this POS order.'], 422);
         }
 
         $store = Store::query()->find($storeId);
@@ -256,23 +271,33 @@ class SalesPosController extends Controller
             ], 422);
         }
 
-        // Resolve employee id for created_by (InventoryTransaction.created_by references employees.id)
-        $creatorEmployeeId = $user->employee?->id
-            ?? Employee::where('user_id', $user->id)->value('id')
-            ?? config('app.system_employee_id', 1);
         $commissionRate = (float) (Store::query()
             ->with('subscriptionPlan:id,commission_rate')
             ->find($storeId)?->subscriptionPlan?->commission_rate ?? 0);
 
-        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId, $commissionRate, $deliveryRequired) {
+        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $commissionRate, $deliveryRequired) {
             $subtotal = 0.0;
             $tax = 0.0;
-            $discount = (float) ($validated['discount_amount'] ?? 0);
-
-            // Resolve employee id for created_by (InventoryTransaction.created_by references employees.id)
-            $creatorEmployeeId = $user->employee?->id
-                ?? Employee::where('user_id', $user->id)->value('id')
-                ?? config('app.system_employee_id', 1);
+            $manualDiscount = (float) ($validated['discount_amount'] ?? 0);
+            $productDiscount = 0.0;
+            $regularSubtotal = 0.0;
+            $inventoryRows = BranchInventory::query()
+                ->with(['product', 'variation'])
+                ->where('store_id', $storeId)
+                ->where('branch_id', $branchId)
+                ->whereIn('id', collect($validated['items'])->pluck('branch_inventory_id')->unique())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            foreach ($validated['items'] as $itemRow) {
+                $inventory = $inventoryRows->get((int) $itemRow['branch_inventory_id']);
+                if (!$inventory || !$inventory->product || $inventory->product->product_type !== 'finished_good'
+                    || !$inventory->product->is_active || $inventory->product->deleted_at) {
+                    abort(response()->json(['success' => false, 'message' => 'An item is no longer available in this branch.'], 422));
+                }
+                $regularSubtotal += $this->promotionPricing->price($inventory->product, $inventory->variation)['regular_price']
+                    * (int) $itemRow['quantity'];
+            }
 
             $order = SalesOrder::create([
                 'store_id' => $storeId,
@@ -284,7 +309,7 @@ class SalesPosController extends Controller
                 'payment_method' => $validated['payment_method'],
                 'payment_status' => 'pending',
                 'subtotal' => 0,
-                'discount_amount' => $discount,
+                'discount_amount' => $manualDiscount,
                 'tax_amount' => 0,
                 'shipping_fee' => 0,
                 'commission_rate' => $commissionRate > 0 ? $commissionRate : null,
@@ -303,7 +328,7 @@ class SalesPosController extends Controller
                 'delivery_latitude' => $validated['delivery_latitude'] ?? null,
                 'delivery_longitude' => $validated['delivery_longitude'] ?? null,
                 'delivery_email' => $validated['delivery_email'] ?? null,
-                'created_by' => $creatorEmployeeId,
+                'created_by' => $user->id,
             ]);
 
             if ($deliveryRequired) {
@@ -312,6 +337,7 @@ class SalesPosController extends Controller
                     'store_id' => $storeId,
                     'branch_id' => $branchId,
                     'status' => 'pending',
+                    'scheduled_delivery_at' => $validated['preferred_delivery_date'] ?? null,
                     'notes' => 'Awaiting Sales approval for dispatch.',
                     'created_by' => $user->id,
                     'updated_by' => $user->id,
@@ -330,10 +356,7 @@ class SalesPosController extends Controller
 
             $requestedByInventory = [];
             foreach ($validated['items'] as $itemRow) {
-                $inv = BranchInventory::query()
-                    ->with(['product:id,product_name,sku,base_price,discounted_price,product_type,is_customizable'])
-                    ->lockForUpdate()
-                    ->findOrFail((int) $itemRow['branch_inventory_id']);
+                $inv = $inventoryRows->get((int) $itemRow['branch_inventory_id']);
 
                 if ((int) $inv->store_id !== $storeId) {
                     abort(response()->json(['success' => false, 'message' => 'Invalid inventory item for this store.'], 422));
@@ -349,7 +372,9 @@ class SalesPosController extends Controller
                     abort(response()->json(['success' => false, 'message' => "Insufficient stock for {$inv->product?->product_name}."], 422));
                 }
 
-                $unitPrice = (float) ($inv->product?->discounted_price ?? $inv->product?->base_price ?? 0);
+                $pricing = $this->promotionPricing->price($inv->product, $inv->variation, $regularSubtotal, $branchId);
+                $unitPrice = (float) $pricing['price'];
+                $lineDiscount = round(((float) $pricing['regular_price'] - $unitPrice) * $qty, 2);
                 $customizationRequest = trim((string) ($itemRow['customization_request'] ?? ''));
                 $customizationFee = round((float) ($itemRow['customization_fee'] ?? 0), 2);
                 $customizationLeadTime = isset($itemRow['customization_lead_time_days'])
@@ -380,12 +405,13 @@ class SalesPosController extends Controller
                     'customization_lead_time_days' => $hasCustomization ? $customizationLeadTime : null,
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
-                    'line_discount' => 0,
+                    'line_discount' => $lineDiscount,
                     'line_tax' => $lineTax,
                     'line_total' => $lineTotal,
                 ]);
 
                 $subtotal += $lineSubtotal;
+                $productDiscount += $lineDiscount;
                 $tax += $lineTax;
             }
 
@@ -398,7 +424,7 @@ class SalesPosController extends Controller
                     isset($validated['delivery_longitude']) ? (float) $validated['delivery_longitude'] : null,
                 )['shipping_fee']
                 : 0.0;
-            $total = max(0, $subtotal + $tax + $shipping - $discount);
+            $total = max(0, $subtotal + $tax + $shipping - $manualDiscount);
             $commissionAmount = $commissionRate > 0 ? round($subtotal * ($commissionRate / 100), 2) : 0.0;
             $tendered = (float) ($order->amount_tendered ?? 0);
             if ($validated['payment_method'] === 'cash' && $tendered < $total) {
@@ -407,7 +433,8 @@ class SalesPosController extends Controller
             $change = max(0, $tendered - $total);
 
             $order->update([
-                'subtotal' => $subtotal,
+                'subtotal' => round($subtotal + $productDiscount, 2),
+                'discount_amount' => round($manualDiscount + $productDiscount, 2),
                 'tax_amount' => $tax,
                 'shipping_fee' => $shipping,
                 'commission_amount' => $commissionAmount,
@@ -455,7 +482,7 @@ class SalesPosController extends Controller
                 'provider_reference' => 'MANUAL-' . strtoupper($validated['payment_method']) . '-' . now()->format('YmdHis'),
                 'paid_at' => now(),
                 'metadata' => ['source' => 'sales_pos'],
-                'created_by' => $creatorEmployeeId,
+                'created_by' => $user->id,
             ]);
 
             $settled = $this->settlementService->settlePaid(
@@ -482,7 +509,7 @@ class SalesPosController extends Controller
             'amount' => (float) ($order->total_amount ?? 0),
             'status' => 'pending',
             'metadata' => ['source' => 'sales_pos'],
-            'created_by' => $creatorEmployeeId,
+            'created_by' => $user->id,
         ]);
 
         return response()->json([

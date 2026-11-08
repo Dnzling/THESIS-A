@@ -28,6 +28,11 @@ class FinanceExpenseService
 
         if (!$expense) {
             $expense = FinanceExpense::create($data);
+            if (!$expense->reference_number) {
+                $expense->update([
+                    'reference_number' => sprintf('EXP-%s-%06d', now()->format('Ymd-His'), $expense->id),
+                ]);
+            }
         } else {
             $expense->update([
                 'amount' => $data['amount'],

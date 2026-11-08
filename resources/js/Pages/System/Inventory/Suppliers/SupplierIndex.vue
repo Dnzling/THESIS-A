@@ -1,32 +1,18 @@
 <template>
-  <div class="min-h-screen space-y-6 p-6">
-    <div class="flex items-center justify-between gap-3">
+  <div class="min-h-screen p-6">
+    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-lg font-bold text-gray-800">Suppliers</h1>
-        <p class="mt-1 text-xs text-gray-600">View the suppliers connected to your store and inventory products.</p>
+        <p class="mt-1 text-xs text-gray-600">Manage supplier relationships and purchasing partners.</p>
       </div>
       <Button label="Add Supplier" icon="pi pi-plus" size="small"
         @click="router.push({ name: 'inventory.suppliers.create' })" />
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <Card v-for="metric in summaryCards" :key="metric.label">
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold uppercase tracking-wide text-gray-500">{{ metric.label }}</p>
-              <p class="text-xl font-bold text-gray-900">{{ metric.value }}</p>
-            </div>
-            <i :class="[metric.icon, metric.color, 'text-3xl']" aria-hidden="true" />
-          </div>
-        </template>
-      </Card>
-    </div>
-
     <Card>
       <template #header>
-        <div class="grid grid-cols-1 items-end gap-4 m-4 mt-6 md:grid-cols-4">
-          <IconField>
+        <div class="m-4 mt-6 flex flex-wrap items-end gap-3">
+          <IconField class="w-full sm:w-56">
             <InputIcon class="pi pi-search" />
             <InputText
               v-model="filters.search"
@@ -37,14 +23,14 @@
             />
           </IconField>
           <Select
-            v-model="filters.status"
-            :options="statuses"
+            v-model="filters.contract_status"
+            :options="contractStatuses"
             optionLabel="label"
             optionValue="value"
-            placeholder="Status"
+            placeholder="Contract Status"
             size="small"
             showClear
-            class="w-full"
+            class="w-full sm:w-44"
             @change="onFilterChange"
           />
           <Select
@@ -55,10 +41,10 @@
             placeholder="Supplier Type"
             size="small"
             showClear
-            class="w-full"
+            class="w-full sm:w-44"
             @change="onFilterChange"
           />
-          <Button label="Clear Filters" size="small" severity="secondary" outlined @click="resetFilters" />
+          <Button v-if="hasActiveFilters" label="Clear Filters" size="small" severity="danger" outlined @click="resetFilters" />
         </div>
       </template>
 
@@ -79,9 +65,9 @@
         >
           <template #empty>
             <div class="py-12 text-center">
-              <i class="pi pi-truck mb-4 text-5xl text-gray-300" />
+              <i class="pi pi-users mb-4 text-5xl text-gray-300" />
               <p class="text-lg text-gray-600">No suppliers found</p>
-              <p class="mt-1 text-sm text-gray-500">Suppliers linked to this store will appear here.</p>
+              <p class="mt-1 text-sm text-gray-500">Try adjusting your search or filters.</p>
             </div>
           </template>
 
@@ -93,7 +79,7 @@
                 <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-400">
                   <i class="pi pi-building" />
                 </div>
-                <div>
+                <div class="min-w-0">
                   <p class="font-semibold text-gray-900">{{ data.supplier_name || data.company_name || '-' }}</p>
                 </div>
               </div>
@@ -115,18 +101,13 @@
               <span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span>
             </template>
           </Column>
-          <Column field="contract_status" header="Contract" style="min-width: 140px">
+          <Column field="contract_status" header="Contract Status" style="min-width: 150px">
             <template #body="{ data }">
-              <Tag :value="humanize(data.contract_status || 'no_contract')"
+              <Badge :value="humanize(data.contract_status || 'no_contract')"
                 :severity="contractStatusSeverity(data.contract_status)" />
             </template>
           </Column>
-          <Column field="status" header="Status" style="min-width: 110px">
-            <template #body="{ data }">
-              <Tag :value="humanize(data.status)" :severity="statusSeverity(data.status)" />
-            </template>
-          </Column>
-          <Column header="Actions" style="width: 90px">
+          <Column header="Actions" :frozen="true" alignFrozen="right" style="width: 90px">
             <template #body="{ data }">
               <Button icon="pi pi-eye" label="View" outlined rounded size="small" v-tooltip="'View Supplier'"
                 @click="router.push({ name: 'inventory.suppliers.detail', params: { id: data.id } })" />
@@ -158,7 +139,6 @@ type Supplier = {
   email?: string
   supplier_type?: string
   rating?: number | string | null
-  status?: string
   contract_status?: string | null
   logo_url?: string | null
 }
@@ -171,16 +151,20 @@ const currentPage = ref(1)
 
 const filters = reactive({
   search: '',
-  status: null as string | null,
+  contract_status: null as string | null,
   supplier_type: null as string | null,
   page: 1,
   per_page: 15,
 })
 
-const statuses = [
+const contractStatuses = [
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-  { label: 'Blacklisted', value: 'blacklisted' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Rejected', value: 'rejected' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Terminated', value: 'terminated' },
+  { label: 'No Contract', value: 'no_contract' },
 ]
 
 const supplierTypes = [
@@ -188,14 +172,10 @@ const supplierTypes = [
   { label: 'Wholesaler', value: 'wholesaler' },
   { label: 'Distributor', value: 'distributor' },
   { label: 'Importer', value: 'importer' },
-  { label: 'Local Artisan', value: 'local_artisan' },
+  { label: 'Service Provider', value: 'service_provider' },
 ]
 
-const summaryCards = computed(() => [
-  { label: 'Total Suppliers', value: total.value, icon: 'pi pi-users', color: 'text-blue-500' },
-  { label: 'Active on Page', value: suppliers.value.filter(supplier => supplier.status === 'active').length, icon: 'pi pi-check-circle', color: 'text-green-500' },
-  { label: 'Inactive on Page', value: suppliers.value.filter(supplier => supplier.status !== 'active').length, icon: 'pi pi-pause-circle', color: 'text-gray-500' },
-])
+const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.contract_status || filters.supplier_type))
 
 const loadSuppliers = async () => {
   loading.value = true
@@ -222,7 +202,7 @@ const onFilterChange = () => {
 
 const resetFilters = () => {
   filters.search = ''
-  filters.status = null
+  filters.contract_status = null
   filters.supplier_type = null
   filters.page = 1
   currentPage.value = 1
@@ -239,17 +219,6 @@ const onPageChange = (event: any) => {
 const humanize = (value?: string | null) => {
   if (!value) return 'N/A'
   return value.replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
-}
-
-const formatRating = (rating?: number | string | null) => {
-  const value = Number(rating)
-  return Number.isFinite(value) ? `${value.toFixed(1)} / 5` : 'N/A'
-}
-
-const statusSeverity = (status?: string) => {
-  if (status === 'active') return 'success'
-  if (status === 'blacklisted') return 'danger'
-  return 'secondary'
 }
 
 const contractStatusSeverity = (status?: string | null) => {

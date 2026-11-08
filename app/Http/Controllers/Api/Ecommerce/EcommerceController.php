@@ -316,6 +316,11 @@ class EcommerceController extends Controller
                 $ratingCount = (int) ($ratingStats?->total_reviews ?? 0);
             }
 
+            $pricing = $this->promotionPricing->price($product, null, 0, $inventory?->branch_id);
+            $regularPrice = $pricing['regular_price'];
+            $price = $pricing['price'];
+            $hasDiscount = $price < $regularPrice;
+
             return [
                 'id' => $product->id,
                 'sku' => $product->sku,
@@ -323,7 +328,13 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
-                'price' => $this->promotionPricing->price($product)['price'],
+                'price' => $price,
+                'base_price' => $regularPrice,
+                'discounted_price' => $hasDiscount ? $price : null,
+                'has_discount' => $hasDiscount,
+                'discount_percentage' => $hasDiscount && $regularPrice > 0
+                    ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                    : 0,
                 'tax_rate' => self::VAT_RATE,
                 // Prefer served asset URL (avoids relying on public /storage symlink in production).
                 'image' => $this->selectBestProductImage($product)?->url,
@@ -508,7 +519,10 @@ class EcommerceController extends Controller
         $products->getCollection()->transform(function (Product $product) use ($storeId, $inventories, $productImages, $product3dModels, $productRatings) {
             $inventory = $inventories[$product->id] ?? null;
             $rating = $productRatings[$product->id] ?? ['rating_avg' => 0.0, 'rating_count' => 0];
-            $price = $this->promotionPricing->price($product)['price'];
+            $pricing = $this->promotionPricing->price($product, null, 0, $inventory['branch_id'] ?? null);
+            $price = $pricing['price'];
+            $regularPrice = $pricing['regular_price'];
+            $hasDiscount = $price < $regularPrice;
 
             return [
                 'id' => $product->id,
@@ -517,11 +531,13 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
-                'base_price' => round((float) ($product->base_price ?? 0), 2),
-                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
                 'price' => round($price, 2),
-                'base_price' => round((float) ($product->base_price ?? 0), 2),
-                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
+                'base_price' => round($regularPrice, 2),
+                'discounted_price' => $hasDiscount ? round($price, 2) : null,
+                'has_discount' => $hasDiscount,
+                'discount_percentage' => $hasDiscount && $regularPrice > 0
+                    ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                    : 0,
                 'image' => $this->toAssetUrl($productImages[$product->id] ?? null),
                 'has_3d_model' => isset($product3dModels[$product->id]),
                 'rating_avg' => $rating['rating_avg'],
@@ -592,7 +608,7 @@ class EcommerceController extends Controller
         // DB-portable approach (no window functions): order by qty desc and pick first per product in PHP.
         $inventories = BranchInventory::query()
             ->sellableInEcommerce()
-            ->select(['product_id', 'quantity_available', 'stock_status'])
+            ->select(['product_id', 'branch_id', 'quantity_available', 'stock_status'])
             ->where('store_id', $storeId)
             ->whereIn('product_id', $productIds)
             ->where('quantity_available', '>', 0)
@@ -606,6 +622,7 @@ class EcommerceController extends Controller
                 $result[$inventory->product_id] = [
                     'quantity_available' => $inventory->quantity_available,
                     'stock_status' => $inventory->stock_status,
+                    'branch_id' => (int) $inventory->branch_id,
                 ];
             }
         }
@@ -735,12 +752,15 @@ class EcommerceController extends Controller
             ->orderByDesc('quantity_available')
             ->first();
 
-        $price = $this->promotionPricing->price($product)['price'];
+        $pricing = $this->promotionPricing->price($product, null, 0, $inventory?->branch_id);
+        $price = $pricing['price'];
+        $regularPrice = $pricing['regular_price'];
+        $hasDiscount = $price < $regularPrice;
 
         // Variation-level availability across branches (best available row per variation).
         $variationInventories = BranchInventory::query()
             ->sellableInEcommerce()
-            ->select(['variation_id', 'quantity_available', 'stock_status'])
+            ->select(['variation_id', 'branch_id', 'quantity_available', 'stock_status'])
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
             ->whereNotNull('variation_id')
@@ -758,6 +778,7 @@ class EcommerceController extends Controller
                 $variationInventoryMap[$variationId] = [
                     'quantity_available' => (int) ($row->quantity_available ?? 0),
                     'stock_status' => (string) ($row->stock_status ?? 'out_of_stock'),
+                    'branch_id' => (int) $row->branch_id,
                 ];
             }
         }
@@ -856,8 +877,12 @@ class EcommerceController extends Controller
                 'store_logo' => $this->toAssetUrl($storeLogo),
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
-                'base_price' => round((float) ($product->base_price ?? 0), 2),
-                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
+                'base_price' => round($regularPrice, 2),
+                'discounted_price' => $hasDiscount ? round($price, 2) : null,
+                'has_discount' => $hasDiscount,
+                'discount_percentage' => $hasDiscount && $regularPrice > 0
+                    ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                    : 0,
                 'tax_rate' => self::VAT_RATE,
                 'assembly_required' => (bool) ($product->assembly_required ?? false),
                 'is_featured' => (bool) ($product->is_featured ?? false),
@@ -896,7 +921,10 @@ class EcommerceController extends Controller
                     ];
                     $isSelectable = ((int) $variationInventory['quantity_available']) > 0
                         && ((string) $variationInventory['stock_status']) !== 'out_of_stock';
-                    $variationPrice = $this->promotionPricing->price($product, $variation)['price'];
+                    $variationPricing = $this->promotionPricing->price($product, $variation, 0, $variationInventory['branch_id'] ?? null);
+                    $variationPrice = $variationPricing['price'];
+                    $variationRegularPrice = $variationPricing['regular_price'];
+                    $variationHasDiscount = $variationPrice < $variationRegularPrice;
 
                     return [
                         'id' => (int) $variation->id,
@@ -906,8 +934,12 @@ class EcommerceController extends Controller
                         'size' => $variation->size,
                         'material' => $variation->material,
                         'price_adjustment' => (float) ($variation->price_adjustment ?? 0),
-                        'base_price' => $this->promotionPricing->price($product, $variation)['regular_price'],
-                        'discounted_price' => $variationPrice < $this->promotionPricing->price($product, $variation)['regular_price'] ? $variationPrice : null,
+                        'base_price' => $variationRegularPrice,
+                        'discounted_price' => $variationHasDiscount ? $variationPrice : null,
+                        'has_discount' => $variationHasDiscount,
+                        'discount_percentage' => $variationHasDiscount && $variationRegularPrice > 0
+                            ? (int) round((($variationRegularPrice - $variationPrice) / $variationRegularPrice) * 100)
+                            : 0,
                         'final_price' => round($variationPrice, 2),
                         'quantity_available' => (int) ($variationInventory['quantity_available'] ?? 0),
                         'stock_status' => (string) ($variationInventory['stock_status'] ?? 'out_of_stock'),
@@ -1439,6 +1471,7 @@ class EcommerceController extends Controller
                     'item_prices' => $itemsForCheckout->map(fn ($item) => [
                         'id' => (int) $item->id,
                         'unit_price' => round((float) $item->unit_price, 2),
+                        'regular_unit_price' => $this->promotionPricing->price($item->product, $item->variation)['regular_price'],
                         'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
                     ])->values(),
                     'bulk_trip_allowed' => false,
@@ -1551,6 +1584,7 @@ class EcommerceController extends Controller
                 'item_prices' => $itemsForCheckout->map(fn ($item) => [
                     'id' => (int) $item->id,
                     'unit_price' => round((float) $item->unit_price, 2),
+                    'regular_unit_price' => $this->promotionPricing->price($item->product, $item->variation)['regular_price'],
                     'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
                 ])->values(),
                 'bulk_trip_allowed' => true,
@@ -1618,6 +1652,7 @@ class EcommerceController extends Controller
             $data['item_prices'] = $items->map(fn ($item) => [
                 'id' => (int) $item->id,
                 'unit_price' => round((float) $item->unit_price, 2),
+                'regular_unit_price' => $this->promotionPricing->price($item->product, $item->variation)['regular_price'],
                 'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
             ])->values();
         }
@@ -1937,7 +1972,7 @@ class EcommerceController extends Controller
                         'quantity' => (int) $item->quantity,
                         'unit_price' => (float) $item->unit_price,
                         'original_unit_price' => (float) $this->promotionPricing
-                            ->price($item->product, $item->variation)['regular_price'],
+                            ->price($item->product, $item->variation, 0, (int) $fulfillmentBranch->id)['regular_price'],
                         'tax_rate' => self::VAT_RATE,
                         'customization_request' => $item->product?->is_customizable
                             ? ($customizationRequests->get((int) $item->id) ?: null)
@@ -2007,7 +2042,7 @@ class EcommerceController extends Controller
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
                     'original_unit_price' => (float) $this->promotionPricing
-                        ->price($item->product, $item->variation)['regular_price'],
+                        ->price($item->product, $item->variation, 0, (int) $fulfillmentBranch->id)['regular_price'],
                     'tax_rate' => self::VAT_RATE,
                     'line_subtotal' => round($lineSubtotal, 2),
                     'line_tax' => $lineTax,
@@ -2909,13 +2944,6 @@ class EcommerceController extends Controller
         }
 
         $scored = $products->map(function (Product $product) use ($budgetMin, $budgetMax, $targetDimensions, $storeId) {
-            $price = $this->promotionPricing->price($product)['price'];
-            $budgetScore = $this->calculateBudgetScore($price, $budgetMin, $budgetMax);
-            $dimensionScore = $this->calculateDimensionScore($product, $targetDimensions);
-            $categoryScore = 1.0; // category filter is exact when provided.
-
-            $weightedScore = round(($budgetScore * 0.45) + ($dimensionScore * 0.40) + ($categoryScore * 0.15), 4);
-
             $inventory = BranchInventory::query()
                 ->sellableInEcommerce()
                 ->where('store_id', $storeId)
@@ -2923,12 +2951,28 @@ class EcommerceController extends Controller
                 ->orderByDesc('quantity_available')
                 ->first();
 
+            $pricing = $this->promotionPricing->price($product, null, 0, $inventory?->branch_id);
+            $price = $pricing['price'];
+            $regularPrice = $pricing['regular_price'];
+            $hasDiscount = $price < $regularPrice;
+            $budgetScore = $this->calculateBudgetScore($price, $budgetMin, $budgetMax);
+            $dimensionScore = $this->calculateDimensionScore($product, $targetDimensions);
+            $categoryScore = 1.0; // category filter is exact when provided.
+
+            $weightedScore = round(($budgetScore * 0.45) + ($dimensionScore * 0.40) + ($categoryScore * 0.15), 4);
+
             return [
                 'id' => $product->id,
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
+                'base_price' => round($regularPrice, 2),
+                'discounted_price' => $hasDiscount ? round($price, 2) : null,
+                'has_discount' => $hasDiscount,
+                'discount_percentage' => $hasDiscount && $regularPrice > 0
+                    ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                    : 0,
                 'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'score' => $weightedScore,
@@ -3043,12 +3087,23 @@ class EcommerceController extends Controller
                 2
             );
 
+            $pricing = $this->promotionPricing->price($product, null, 0, $inventory?->branch_id);
+            $regularPrice = $pricing['regular_price'];
+            $price = $pricing['price'];
+            $hasDiscount = $price < $regularPrice;
+
             return [
                 'id' => $product->id,
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
                 'category' => $product->category?->category_name,
-                'price' => $this->promotionPricing->price($product)['price'],
+                'price' => $price,
+                'base_price' => $regularPrice,
+                'discounted_price' => $hasDiscount ? $price : null,
+                'has_discount' => $hasDiscount,
+                'discount_percentage' => $hasDiscount && $regularPrice > 0
+                    ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                    : 0,
                 'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'movement_score' => $movementScore,
@@ -3458,7 +3513,8 @@ class EcommerceController extends Controller
 
     private function formatCart(EcommerceCart $cart, array $favoriteMap = []): array
     {
-        $this->applyCurrentCartPrices($cart->items);
+        $cartBranch = $this->resolveFulfillmentBranch((int) $cart->store_id, $cart->items);
+        $this->applyCurrentCartPrices($cart->items, $cartBranch?->id);
         $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap, $cart) {
             $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
             // Unit price is VAT-inclusive, so expose the included VAT without
@@ -3485,6 +3541,9 @@ class EcommerceController extends Controller
                 'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
+                'regular_unit_price' => $item->product
+                    ? $this->promotionPricing->price($item->product, $item->variation)['regular_price']
+                    : (float) $item->unit_price,
                 'tax_rate' => self::VAT_RATE,
                 'line_subtotal' => round($lineSubtotal, 2),
                 'line_tax' => $lineTax,

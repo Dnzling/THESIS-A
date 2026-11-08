@@ -155,8 +155,8 @@
           @page="onPage"
         >
           <Column v-if="(reorderDestination === 'warehouse' && canCreateTransfer) || (reorderDestination === 'pr' && canManagePr)" selectionMode="multiple" headerStyle="width: 3rem" />
-          <Column field="suggested_at" header="Date" style="width: 140px">
-            <template #body="{ data }">{{ formatDate(data.suggested_at || data.created_at) }}</template>
+          <Column field="suggested_at" header="Created At" style="min-width: 190px">
+            <template #body="{ data }">{{ formatDateTime(data.suggested_at || data.created_at) }}</template>
           </Column>
           <Column header="Product" style="min-width: 220px">
             <template #body="{ data }">
@@ -357,11 +357,11 @@ const capitalize = (value: string) => {
   return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : '-'
 }
 
-const formatDate = (value?: string | null) => {
+const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
-  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: '2-digit' })
+  return d.toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 const formatCurrency = (amount: number) => {

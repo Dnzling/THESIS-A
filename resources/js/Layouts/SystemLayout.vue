@@ -339,7 +339,6 @@ import AccordionContent from 'primevue/accordioncontent'
 import Popover from 'primevue/popover'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
-import type Echo from 'laravel-echo'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
 import UserDialog from '@/Components/dialogs/UserDialog.vue'
@@ -375,7 +374,6 @@ const staffChatUnread = computed(() => staffChatConversations.value.reduce((sum,
 const notificationPoller = ref<number | null>(null)
 let knownNotificationIds = new Set<string>()
 let notificationBaselineLoaded = false
-let notificationEcho: Echo<'reverb'> | null = null
 const responseDialog = ref({
   visible: false,
   severity: 'success' as 'success' | 'error' | 'warn' | 'info',
@@ -466,12 +464,12 @@ onMounted(async () => {
 
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
-  void loadNotifications().then(connectNotificationStream)
+  void loadNotifications()
   if (canManageStaffChats.value) loadStaffChats()
   if (!notificationPoller.value) {
     notificationPoller.value = window.setInterval(() => {
-      loadNotifications()
-    }, 45000)
+      if (document.visibilityState === 'visible') void loadNotifications()
+    }, 30000)
   }
   responseDialogUnsub = onResponseDialog((payload) => {
     // Allow pages to temporarily suppress global error dialogs by setting
@@ -506,7 +504,6 @@ onUnmounted(() => {
     clearInterval(notificationPoller.value)
     notificationPoller.value = null
   }
-  disconnectNotificationStream()
   if (responseDialogUnsub) {
     responseDialogUnsub()
     responseDialogUnsub = null
@@ -514,9 +511,9 @@ onUnmounted(() => {
 })
 
 const refreshNavigationWhenVisible = () => {
-  if (document.visibilityState === 'visible' && authStore.isAuthenticated && authStore.permissionsLoaded) {
-    void authStore.fetchNavigation()
-  }
+  if (document.visibilityState !== 'visible' || !authStore.isAuthenticated) return
+  if (authStore.permissionsLoaded) void authStore.fetchNavigation()
+  void loadNotifications()
 }
 
 const toggleSidebar = () => {
@@ -894,81 +891,6 @@ const loadNotifications = async () => {
   }
 }
 
-const handleIncomingNotification = (notification: any) => {
-  if (!notification?.id) return
-  const id = String(notification.id)
-  if (knownNotificationIds.has(id)) return
-  knownNotificationIds.add(id)
-
-  const requiredPermission = notification.data?.required_permission
-  if (requiredPermission && !authStore.hasPermission(requiredPermission)) return
-
-  notifications.value = [notification, ...notifications.value].slice(0, 20)
-  if (!notification.is_read) {
-    unreadCount.value += 1
-    toast.add({
-      group: 'system-notifications',
-      severity: 'info',
-      summary: notification.title || 'New notification',
-      detail: notification.message || 'You have a new notification.',
-      life: 5000,
-    })
-  }
-}
-
-const connectNotificationStream = async () => {
-  const key = import.meta.env.VITE_REVERB_APP_KEY
-  const token = localStorage.getItem('auth_token') || localStorage.getItem('access_token')
-  const userId = authStore.user?.id
-  if (!key || !token || !userId || notificationEcho) return
-
-  const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || window.location.origin)
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '')
-  const scheme = import.meta.env.VITE_REVERB_SCHEME || window.location.protocol.replace(':', '')
-
-  try {
-    const [{ default: EchoClient }, { default: PusherClient }] = await Promise.all([
-      import('laravel-echo'),
-      import('pusher-js'),
-    ])
-
-    notificationEcho = new EchoClient({
-      broadcaster: 'reverb',
-      key,
-      Pusher: PusherClient,
-      wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
-      wsPort: Number(import.meta.env.VITE_REVERB_PORT || 8080),
-      wssPort: Number(import.meta.env.VITE_REVERB_PORT || 443),
-      forceTLS: scheme === 'https',
-      enabledTransports: ['ws', 'wss'],
-      authEndpoint: `${apiBaseUrl}/api/broadcasting/auth`,
-      auth: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      },
-    })
-
-    notificationEcho
-      .private(`users.${userId}.notifications`)
-      .listen('.system.notification.created', (event: any) => {
-        handleIncomingNotification(event?.notification || event)
-      })
-  } catch (error) {
-    console.warn('Real-time notifications unavailable; notification polling remains active.', error)
-  }
-}
-
-const disconnectNotificationStream = () => {
-  if (!notificationEcho) return
-  const userId = authStore.user?.id
-  if (userId) notificationEcho.leave(`users.${userId}.notifications`)
-  notificationEcho.disconnect()
-  notificationEcho = null
-}
-
 const markAllNotificationsRead = async () => {
   if (!isAuthenticated.value) return
   if (notificationsLoading.value) return
@@ -1077,7 +999,6 @@ watch(isAuthenticated, (value) => {
   unreadCount.value = 0
   knownNotificationIds = new Set<string>()
   notificationBaselineLoaded = false
-  disconnectNotificationStream()
   router.visit('/login')
 })
 

@@ -117,7 +117,7 @@
         </div>
       </template>
       <template #content>
-        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`receivable-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="cell" height="1.25rem" /></div></div>
+        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-10 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 10" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`receivable-${row}`" class="grid grid-cols-10 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 10" :key="cell" height="1.25rem" /></div></div>
         <div v-else>
           <DataTable
             :value="receivables"
@@ -129,9 +129,9 @@
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
 
-           <Column field="created_at" header="Date" sortable style="width: 140px">
+           <Column field="created_at" header="Date & Time" sortable style="min-width: 190px">
               <template #body="{ data }">
-                <span class="text-sm">{{ formatDate(data.created_at) }}</span>
+                <span class="text-sm">{{ formatDateTime(data.created_at) }}</span>
               </template>
             </Column>
 
@@ -151,6 +151,24 @@
             </Column>
 
             <Column field="customer" header="Customer" style="min-width: 180px" />
+
+            <Column field="branch" header="Branch" style="min-width: 150px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.branch || '—' }}</span>
+              </template>
+            </Column>
+
+            <Column field="processed_by" header="POS Created By" style="min-width: 160px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.processed_by || '—' }}</span>
+              </template>
+            </Column>
+
+            <Column field="marked_for_dispatch_by" header="Marked for Dispatch By" style="min-width: 190px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.marked_for_dispatch_by || '—' }}</span>
+              </template>
+            </Column>
 
             <Column field="amount" header="Amount" style="width: 140px">
               <template #body="{ data }">
@@ -224,9 +242,12 @@ const formatMoney = (value: number | string) => {
   return new Intl.NumberFormat('en-PH').format(amount)
 }
 
-const formatDate = (date: string) => {
+const formatDateTime = (date: string) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(date).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
 }
 
 const formatStatus = (status: string) => {

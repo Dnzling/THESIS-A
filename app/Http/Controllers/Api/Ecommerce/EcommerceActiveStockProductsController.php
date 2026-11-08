@@ -53,13 +53,30 @@ class EcommerceActiveStockProductsController extends Controller
             ->get()
             ->map(function (Product $product) {
                 $imageAsset = $this->selectBestImage($product);
+                $branchId = BranchInventory::query()
+                    ->sellableInEcommerce()
+                    ->where('product_id', $product->id)
+                    ->where('store_id', $product->store_id)
+                    ->where('quantity_available', '>', 0)
+                    ->orderByDesc('quantity_available')
+                    ->value('branch_id');
+                $pricing = $this->promotionPricing->price($product, null, 0, $branchId ? (int) $branchId : null);
+                $regularPrice = $pricing['regular_price'];
+                $price = $pricing['price'];
+                $hasDiscount = $price < $regularPrice;
 
                 return [
                     'id' => $product->id,
                     'product_name' => $product->product_name,
                     'category' => $product->category?->category_name,
                     'image' => $imageAsset?->url ? (string) $imageAsset->url : $this->toAssetUrl($imageAsset?->file_path),
-                    'price' => $this->promotionPricing->price($product)['price'],
+                    'price' => $price,
+                    'base_price' => $regularPrice,
+                    'discounted_price' => $hasDiscount ? $price : null,
+                    'has_discount' => $hasDiscount,
+                    'discount_percentage' => $hasDiscount && $regularPrice > 0
+                        ? (int) round((($regularPrice - $price) / $regularPrice) * 100)
+                        : 0,
                 ];
             });
 
@@ -218,7 +235,7 @@ class EcommerceActiveStockProductsController extends Controller
 
         $inventoryMap = BranchInventory::query()
             ->sellableInEcommerce()
-            ->select(['product_id', 'quantity_available', 'stock_status'])
+            ->select(['product_id', 'branch_id', 'quantity_available', 'stock_status'])
             ->whereIn('product_id', $productIds)
             ->where('quantity_available', '>', 0)
             ->whereIn('stock_status', ['in_stock', 'low_stock'])
@@ -240,9 +257,9 @@ class EcommerceActiveStockProductsController extends Controller
             $rating = $ratingMap->get($product->id);
             $imageAsset = $this->selectBestImage($product);
             $basePrice = round((float) ($product->base_price ?? 0), 2);
-            $effectivePrice = $this->promotionPricing->price($product)['price'];
+            $effectivePrice = $this->promotionPricing->price($product, null, 0, $inventory?->branch_id)['price'];
             $discountedPrice = $effectivePrice < $basePrice ? $effectivePrice : null;
-            $hasDiscount = $basePrice > 0 && !is_null($discountedPrice) && $discountedPrice > 0 && $discountedPrice < $basePrice;
+            $hasDiscount = $basePrice > 0 && !is_null($discountedPrice) && $discountedPrice < $basePrice;
             $discountPercentage = $hasDiscount
                 ? (int) round((($basePrice - $discountedPrice) / $basePrice) * 100)
                 : 0;

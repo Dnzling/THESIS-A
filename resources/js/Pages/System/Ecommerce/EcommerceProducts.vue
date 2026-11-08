@@ -196,7 +196,7 @@
             <div class="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6 lg:block lg:flex-1">
               <button type="button" class="relative aspect-square overflow-hidden rounded-xl bg-slate-50 lg:block lg:w-full" @click="goProduct(product.id)">
                 <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async" class="h-full w-full object-contain" @error="onImageError" />
-                <Badge v-if="product.discounted_price && Number(product.discounted_price) < Number(product.base_price)" :value="`${Math.round((1 - Number(product.discounted_price) / Number(product.base_price)) * 100)}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
+                <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
               </button>
               <div class="flex min-w-0 flex-col items-start lg:mt-3">
                 <span v-if="product.is_new_arrival || pageMode === 'new'" class="text-[11px] font-semibold text-orange-600">New</span>
@@ -204,7 +204,7 @@
                 <p v-if="plainDescription(product.description)" class="mt-1 line-clamp-3 text-xs leading-5 text-slate-600 sm:text-sm">{{ plainDescription(product.description) }}</p>
                 <div class="mt-3 flex flex-wrap items-baseline gap-2">
                   <span class="text-lg font-bold text-slate-900 sm:text-xl">₱{{ formatMoney(product.price ?? product.discounted_price ?? product.base_price) }}</span>
-                  <span v-if="product.discounted_price && Number(product.discounted_price) < Number(product.base_price)" class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
+                  <span v-if="product.has_discount" class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
                 </div>
                 <div class="mt-2 flex items-center gap-2">
                   <Button icon="pi pi-shopping-cart" severity="warn" rounded class="!h-9 !w-9" :loading="addingCartProductId === Number(product.id)" aria-label="Add to cart" @click="addListingProductToCart(product)" />

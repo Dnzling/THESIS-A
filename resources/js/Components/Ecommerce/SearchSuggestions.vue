@@ -12,7 +12,10 @@
           <span class="block truncate text-sm font-medium text-slate-900">{{ item.product_name }}</span>
           <span class="block truncate text-xs text-slate-500">{{ item.category || 'Furniture' }}</span>
         </span>
-        <span class="shrink-0 text-xs font-semibold text-orange-700">{{ formatPrice(item.price) }}</span>
+        <span class="shrink-0 text-right">
+          <span class="block text-xs font-semibold text-orange-700">{{ formatPrice(item.price ?? item.discounted_price ?? item.base_price) }}</span>
+          <span v-if="Number(item.base_price) > Number(item.price ?? item.discounted_price ?? item.base_price)" class="block text-[10px] text-slate-400 line-through">{{ formatPrice(item.base_price) }}</span>
+        </span>
       </button>
     </div>
     <button v-if="items.length" type="button" class="mt-2 w-full border-t border-slate-100 px-3 py-3 text-left text-xs font-semibold text-orange-600 hover:bg-orange-50"

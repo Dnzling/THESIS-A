@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-export type RecentlyViewedProduct = { id: number; product_name: string; image?: string | null; price?: number | null; category?: string | null; viewed_at: string }
+export type RecentlyViewedProduct = { id: number; product_name: string; image?: string | null; price?: number | null; base_price?: number | null; discounted_price?: number | null; category?: string | null; viewed_at: string }
 const key = 'ecommerce_recently_viewed_products'
 const items = ref<RecentlyViewedProduct[]>([])
 let initialized = false
@@ -15,7 +15,7 @@ function save() { if (typeof window !== 'undefined') localStorage.setItem(key, J
 export function useRecentlyViewedProducts() {
   load()
   function add(product: Partial<RecentlyViewedProduct> & { id: number; product_name: string }) {
-    const next = { id: Number(product.id), product_name: product.product_name, image: product.image || null, price: Number(product.price || 0), category: product.category || null, viewed_at: new Date().toISOString() }
+    const next = { id: Number(product.id), product_name: product.product_name, image: product.image || null, price: Number(product.price || 0), base_price: product.base_price == null ? null : Number(product.base_price), discounted_price: product.discounted_price == null ? null : Number(product.discounted_price), category: product.category || null, viewed_at: new Date().toISOString() }
     items.value = [next, ...items.value.filter(item => item.id !== next.id)].slice(0, 12); save()
   }
   function clear() { items.value = []; save() }

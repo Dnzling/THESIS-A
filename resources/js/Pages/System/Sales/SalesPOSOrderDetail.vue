@@ -55,7 +55,7 @@
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Tracking Number</p><p class="mt-1 font-medium text-slate-900">{{ order.delivery.tracking_number || 'Not assigned' }}</p></div>
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Courier</p><p class="mt-1 font-medium text-slate-900">{{ order.delivery.courier_name || 'Not assigned' }}</p></div>
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Courier Contact</p><p class="mt-1 font-medium text-slate-900">{{ order.delivery.courier_contact || '-' }}</p></div>
-            <div v-if="order.delivery.scheduled_delivery_at"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Scheduled Delivery</p><p class="mt-1 font-medium text-slate-900">{{ formatDateTime(order.delivery.scheduled_delivery_at) }}</p></div>
+            <div v-if="order.delivery.scheduled_delivery_at"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Preferred Delivery Date</p><p class="mt-1 font-medium text-slate-900">{{ formatDate(order.delivery.scheduled_delivery_at) }}</p></div>
             <div v-if="order.delivery_notes" class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivery Notes</p><p class="mt-1 whitespace-pre-line font-medium text-slate-900">{{ order.delivery_notes }}</p></div>
           </div>
         </template>
@@ -366,6 +366,9 @@ const formatLabel = (value: string) => {
 }
 const formatDateTime = (value: string | null) => value
   ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  : '-'
+const formatDate = (value: string | null) => value
+  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(value))
   : '-'
 const paymentStatusSeverity = (value: string) => {
   if (value === 'paid') return 'success'

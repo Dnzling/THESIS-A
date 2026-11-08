@@ -524,13 +524,11 @@ class ProductController extends Controller
                 'supplier_links.*.minimum_order_quantity' => 'nullable|integer|min:1',
                 'supplier_links.*.lead_time_days' => 'nullable|integer|min:0',
                 'supplier_links.*.is_preferred_supplier' => 'nullable|boolean',
+                'has_variants' => 'sometimes|boolean',
                 'initial_stock' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
-                'variations' => 'nullable|array',
-                'variations.*.variation_name' => 'required|string|max:255',
-                'variations.*.sku' => 'required|string|max:100',
-                'variations.*.price_modifier' => 'numeric',
+                'variations' => 'prohibited',
                 'product_image' => 'nullable|image|max:5120',
             ]);
 
@@ -546,7 +544,8 @@ class ProductController extends Controller
                 ], 422);
             }
 
-            $initialStock = (int) ($validated['initial_stock'] ?? 0);
+            $hasVariants = (bool) ($validated['has_variants'] ?? false);
+            $initialStock = $hasVariants ? 0 : (int) ($validated['initial_stock'] ?? 0);
             $branchId = (int) $context['branch_id'];
             $employeeId = Employee::query()
                 ->where('user_id', auth()->id())
@@ -661,19 +660,6 @@ class ProductController extends Controller
                     'display_order' => 0,
                     'alt_text' => $validated['product_name'] ?? null,
                 ]);
-            }
-
-            // Create variations if provided
-            if (!empty($validated['variations'])) {
-                foreach ($validated['variations'] as $variationData) {
-                    ProductVariation::create([
-                        'product_id' => $product->id,
-                        'variation_name' => $variationData['variation_name'],
-                        'sku' => $variationData['sku'],
-                        'price_modifier' => $variationData['price_modifier'] ?? 0,
-                        'is_active' => true,
-                    ]);
-                }
             }
 
             DB::commit();

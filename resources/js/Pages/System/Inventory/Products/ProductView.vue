@@ -128,7 +128,7 @@
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Created</p>
-                <p class="text-lg font-semibold text-gray-900">{{ formatDate(displayItem?.created_at || product.created_at) }}</p>
+                <p class="text-lg font-semibold text-gray-900">{{ formatDateTime(displayItem?.created_at || product.created_at) }}</p>
               </div>
               <!-- <div>
                 <p class="text-xs text-gray-600 mb-1">Created By</p>
@@ -227,10 +227,20 @@
 
       <Card v-if="product?.product_type === 'finished_good'" class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
-          <span class="text-sm font-semibold text-gray-800">Product Variations</span>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-sm font-semibold text-gray-800">Product Variations</span>
+            <Button
+              v-if="!selectedVariation && canManageProducts"
+              label="Add Variant"
+              icon="pi pi-plus"
+              severity="warn"
+              size="small"
+              @click="goToAddVariant"
+            />
+          </div>
         </template>
         <template #content>
-          <DataTable :value="variations" class="p-datatable-sm text-xs">
+          <DataTable :value="visibleVariations" class="p-datatable-sm text-xs">
             <template #empty>
               <div class="py-8 text-center text-xs text-gray-500">
                 No variants yet. This product currently uses its own SKU and stock.
@@ -330,7 +340,7 @@
             </div>
             <div>
               <p class="text-xs text-gray-600 mb-1">Uploaded</p>
-              <p class="text-sm font-semibold">{{ formatDate(primary3DModel.created_at) }}</p>
+              <p class="text-sm font-semibold">{{ formatDateTime(primary3DModel.created_at) }}</p>
             </div>
           </div>
         </div>
@@ -440,7 +450,24 @@ const selectedVariation = computed(() => {
   if (!selectedVariationId.value) return null
   return variations.value.find((variation: any) => Number(variation.id) === selectedVariationId.value) || null
 })
-const displayItem = computed(() => selectedVariation.value || product.value)
+const visibleVariations = computed(() => variations.value.length === 1
+  && String(variations.value[0]?.variation_name || '').trim().toLowerCase() === 'standard'
+  ? []
+  : variations.value)
+const displayItem = computed(() => {
+  if (!selectedVariation.value) return product.value
+  const variation = selectedVariation.value
+  const parent = product.value || {}
+  return {
+    ...parent,
+    ...variation,
+    length_cm: variation.length_cm ?? parent.length_cm,
+    width_cm: variation.width_cm ?? parent.width_cm,
+    height_cm: variation.height_cm ?? parent.height_cm,
+    depth_cm: variation.depth_cm ?? parent.depth_cm,
+    weight_kg: variation.weight_kg ?? parent.weight_kg,
+  }
+})
 const detailTitle = computed(() => {
   if (!product.value) return 'Product Details'
   if (!selectedVariation.value) return product.value.product_name
@@ -636,8 +663,7 @@ const goToEdit = () => {
 
 const goToAddVariant = () => {
   router.push({
-    name: 'inventory.products.variants.create',
-    params: { productId: productId.value },
+    name: 'inventory.product-variations.create',
     query: { product_id: productId.value },
   })
 }
@@ -749,12 +775,11 @@ const formatFileSize = (bytes: number) => {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
-const formatDate = (date: string) => {
+const formatDateTime = (date: string) => {
   if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+  const parsed = new Date(date)
+  return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
   })
 }
 

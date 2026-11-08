@@ -9,22 +9,6 @@
       <!-- <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push(isProcurement ? '/procurement/goods-receipts/create' : '/inventory/goods-receipts/create')" /> -->
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Card v-for="metric in summaryCards" :key="metric.key" class="border border-slate-200 shadow-sm">
-        <template #content>
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ metric.label }}</p>
-          <div class="mt-2 flex items-end justify-between gap-3">
-            <p class="text-2xl font-bold text-slate-900">{{ metric.value }}</p>
-            <div class="flex items-center gap-1 text-xs font-semibold" :class="metric.trend.tone">
-              <i :class="`pi ${metric.trend.icon}`" />
-              <span>{{ metric.trend.text }}</span>
-            </div>
-          </div>
-          <p class="mt-2 text-[11px] text-slate-500">vs previous {{ comparisonDays }}-day period</p>
-        </template>
-      </Card>
-    </div>
-
     <Card>
       <template #header>
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end m-4 mt-6">
@@ -98,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import procurementService from '../../../../services/procurement.service'
 import WarehouseService from '../../../../services/warehouse.service'
@@ -119,8 +103,6 @@ const dateRange = ref<Date[] | null>(null)
 const currentPage = ref(1)
 const perPage = ref(15)
 const total = ref(0)
-const summaryPeriods = ref({ current: {} as Record<string, number>, previous: {} as Record<string, number> })
-const comparisonDays = ref(30)
 
 const statusOptions = [
   { label: 'Full', value: 'full' },
@@ -129,79 +111,11 @@ const statusOptions = [
   { label: 'Rejected', value: 'rejected' },
 ]
 
-const summaryCards = computed(() => [
-  { key: 'total', label: 'Total Receipts', value: Number(summaryPeriods.value.current.total_receipts || 0), trend: trendFor('total_receipts') },
-  { key: 'full', label: 'Full Receipts', value: Number(summaryPeriods.value.current.full_receipts || 0), trend: trendFor('full_receipts') },
-  { key: 'partial', label: 'Partial', value: Number(summaryPeriods.value.current.partial_receipts || 0), trend: trendFor('partial_receipts', true) },
-  { key: 'damaged', label: 'Damaged / Rejected', value: Number(summaryPeriods.value.current.damaged_receipts || 0) + Number(summaryPeriods.value.current.rejected_receipts || 0), trend: trendFor(['damaged_receipts', 'rejected_receipts'], true) },
-])
-
 const formatFilterDate = (date: Date): string => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-const comparisonRange = () => {
-  const selectedStart = dateRange.value?.[0]
-  const selectedEnd = dateRange.value?.[1]
-  const end = selectedStart && selectedEnd ? new Date(selectedEnd) : new Date()
-  const start = selectedStart && selectedEnd ? new Date(selectedStart) : new Date(end)
-  if (!(selectedStart && selectedEnd)) start.setDate(start.getDate() - 29)
-
-  const days = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1)
-  const previousEnd = new Date(start)
-  previousEnd.setDate(previousEnd.getDate() - 1)
-  const previousStart = new Date(previousEnd)
-  previousStart.setDate(previousStart.getDate() - days + 1)
-
-  return { start, end, previousStart, previousEnd, days }
-}
-
-function trendFor(keys: string | string[], adverse = false) {
-  const keyList = Array.isArray(keys) ? keys : [keys]
-  const current = keyList.reduce((sum, key) => sum + Number(summaryPeriods.value.current[key] || 0), 0)
-  const previous = keyList.reduce((sum, key) => sum + Number(summaryPeriods.value.previous[key] || 0), 0)
-  if (current === previous) return { text: 'No change', icon: 'pi-minus', tone: 'text-slate-500' }
-  if (previous === 0) {
-    const tone = current > 0 ? (adverse ? 'text-red-600' : 'text-emerald-600') : 'text-slate-500'
-    return { text: current > 0 ? 'New' : 'No change', icon: current > 0 ? 'pi-arrow-up' : 'pi-minus', tone }
-  }
-
-  const increase = current > previous
-  const percentage = Math.abs(((current - previous) / previous) * 100)
-  const isPositive = increase !== adverse
-  return {
-    text: `${percentage.toFixed(1)}% ${increase ? 'up' : 'down'}`,
-    icon: increase ? 'pi-arrow-up' : 'pi-arrow-down',
-    tone: isPositive ? 'text-emerald-600' : 'text-red-600',
-  }
-}
-
-const loadSummaryComparison = async () => {
-  if (isWarehouse) return
-  const range = comparisonRange()
-  comparisonDays.value = range.days
-  const scope = isProcurement ? 'procurement' : 'inventory'
-  try {
-    const [currentResponse, previousResponse] = await Promise.all([
-      procurementService.getGoodsReceiptSummary({
-        start_date: formatFilterDate(range.start),
-        end_date: formatFilterDate(range.end),
-      }, scope),
-      procurementService.getGoodsReceiptSummary({
-        start_date: formatFilterDate(range.previousStart),
-        end_date: formatFilterDate(range.previousEnd),
-      }, scope),
-    ])
-    summaryPeriods.value = {
-      current: currentResponse?.data || {},
-      previous: previousResponse?.data || {},
-    }
-  } catch (error) {
-    console.error('Failed to load goods receipt period summary', error)
-  }
 }
 
 const formatStatus = (status: string | null | undefined): string => {
@@ -234,7 +148,6 @@ const loadReceipts = async (page = 1) => {
     receipts.value = Array.isArray(paginator?.data) ? paginator.data : []
     total.value = Number(paginator?.total || 0)
     currentPage.value = page
-    await loadSummaryComparison()
   } catch (error) {
     console.error('Failed to load goods receipts', error)
     receipts.value = []

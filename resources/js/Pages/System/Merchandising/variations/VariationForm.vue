@@ -185,10 +185,10 @@
         <template #content>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
-              <label for="base_price" class="text-sm font-semibold text-gray-700">Selling Price <span class="text-red-500">*</span></label>
+              <label for="base_price" class="text-sm font-semibold text-gray-700">Selling Price Override</label>
               <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" :class="{ 'p-invalid': errors.base_price }" />
               <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
-              <small class="text-slate-500">Defaults to the parent product selling price.</small>
+              <small class="text-slate-500">Leave blank to inherit the parent selling price ({{ formatMoney(selectedProduct?.discounted_price ?? selectedProduct?.base_price) }}).</small>
             </div>
             <div class="flex flex-col gap-2">
               <label for="discounted_price" class="text-sm font-semibold text-gray-700">Discounted Price</label>
@@ -199,7 +199,7 @@
             <div class="flex flex-col gap-2">
               <label for="cost_price" class="text-sm font-semibold text-gray-700">Unit Cost Price</label>
               <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" />
-              <small class="text-slate-500">Used for purchase and inventory cost estimates; hidden from suppliers and customers.</small>
+              <small class="text-slate-500">Leave blank to use the parent cost. A value here overrides it for this variant.</small>
             </div>
             <div class="flex flex-col gap-2">
               <label for="unit_of_measurement" class="text-sm font-semibold text-gray-700">Unit of Measurement</label>
@@ -427,7 +427,7 @@
               <InputNumber v-model="form.weight_kg" :minFractionDigits="2" suffix=" kg" :min="0" fluid />
             </div>
           </div>
-          <p class="mt-3 text-xs text-slate-500">Specifications start from the standard product and remain editable for this variant.</p>
+          <p class="mt-3 text-xs text-slate-500">Leave dimensions blank to use the parent product's shipping dimensions. Enter only values that differ for this variant.</p>
         </template>
       </Card>
 
@@ -549,6 +549,8 @@ const form = reactive({
   is_active: true
 })
 
+const formatMoney = (value: any) => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
 const fallbackUnits = ['pcs', 'set', 'piece', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
 const unitOptions = computed(() => {
   const source = units.value.length
@@ -592,14 +594,15 @@ watch(() => form.product_id, (newVal) => {
     selectedProduct.value = products.value.find((p: any) => p.id === newVal)
       || (Number(embeddedProduct.value?.id) === Number(newVal) ? embeddedProduct.value : null)
     if (!isEditMode.value && selectedProduct.value) {
-      form.base_price = Number(selectedProduct.value.base_price ?? 0)
-      form.discounted_price = selectedProduct.value.discounted_price == null ? null : Number(selectedProduct.value.discounted_price)
+      form.base_price = null
+      form.discounted_price = null
       form.unit_of_measurement = selectedProduct.value.unit_of_measurement || ''
-      form.length_cm = selectedProduct.value.length_cm == null ? null : Number(selectedProduct.value.length_cm)
-      form.width_cm = selectedProduct.value.width_cm == null ? null : Number(selectedProduct.value.width_cm)
-      form.height_cm = selectedProduct.value.height_cm == null ? null : Number(selectedProduct.value.height_cm)
-      form.depth_cm = selectedProduct.value.depth_cm == null ? null : Number(selectedProduct.value.depth_cm)
-      form.weight_kg = selectedProduct.value.weight_kg == null ? null : Number(selectedProduct.value.weight_kg)
+      form.cost_price = null
+      form.length_cm = null
+      form.width_cm = null
+      form.height_cm = null
+      form.depth_cm = null
+      form.weight_kg = null
     }
     generateSKU()
     loadProductModels(newVal)
@@ -688,7 +691,7 @@ const loadVariation = async () => {
       material: variation.material || '',
       texture: variation.texture || '',
       finish: variation.finish || '',
-      base_price: Number(variation.base_price ?? variation.product?.base_price ?? 0),
+      base_price: variation.base_price == null ? null : Number(variation.base_price),
       discounted_price: variation.discounted_price == null ? null : Number(variation.discounted_price),
       cost_price: variation.cost_price == null ? null : Number(variation.cost_price),
       unit_of_measurement: variation.unit_of_measurement || variation.product?.unit_of_measurement || '',
@@ -697,11 +700,11 @@ const loadVariation = async () => {
       default_camera_angle_x: Number(variation?.custom_3d_model?.default_camera_angle_x ?? 0),
       default_camera_angle_y: Number(variation?.custom_3d_model?.default_camera_angle_y ?? 15),
       default_zoom_level: Number(variation?.custom_3d_model?.default_zoom_level ?? 1.5),
-      length_cm: variation.length_cm ?? variation.product?.length_cm ?? null,
-      width_cm: variation.width_cm ?? variation.product?.width_cm ?? null,
-      height_cm: variation.height_cm ?? variation.product?.height_cm ?? null,
-      depth_cm: variation.depth_cm ?? variation.product?.depth_cm ?? null,
-      weight_kg: variation.weight_kg ?? variation.product?.weight_kg ?? null,
+      length_cm: variation.length_cm == null ? null : Number(variation.length_cm),
+      width_cm: variation.width_cm == null ? null : Number(variation.width_cm),
+      height_cm: variation.height_cm == null ? null : Number(variation.height_cm),
+      depth_cm: variation.depth_cm == null ? null : Number(variation.depth_cm),
+      weight_kg: variation.weight_kg == null ? null : Number(variation.weight_kg),
       is_active: variation.is_active
     })
 
@@ -937,11 +940,13 @@ const validateForm = () => {
     errors.value.variation_sku = 'Variation SKU is required'
   }
 
-  if (form.base_price == null || Number(form.base_price) < 0) {
-    errors.value.base_price = 'Selling price is required'
+  if (form.base_price != null && Number(form.base_price) < 0) {
+    errors.value.base_price = 'Selling price cannot be negative'
   }
 
-  if (form.discounted_price != null && Number(form.discounted_price) >= Number(form.base_price || 0)) {
+  const inheritedPrice = Number(selectedProduct.value?.discounted_price ?? selectedProduct.value?.base_price ?? 0)
+  const effectiveBasePrice = Number(form.base_price ?? inheritedPrice)
+  if (form.discounted_price != null && Number(form.discounted_price) >= effectiveBasePrice) {
     errors.value.discounted_price = 'Discounted price must be lower than the selling price'
   }
 
@@ -1072,7 +1077,7 @@ onMounted(() => {
         form.material = p.variant_material || ''
         form.texture = p.variant_texture || ''
         form.finish = p.variant_finish || ''
-        form.base_price = Number(selectedProduct.value?.base_price || 0)
+        form.base_price = null
         form.unit_of_measurement = p.unit_of_measurement || ''
         form.length_cm = Number(p.length_cm || 0) || null
         form.width_cm = Number(p.width_cm || 0) || null

@@ -1,6 +1,6 @@
 <template>
-  <div class="space-y-6 p-4 text-sm md:p-6">
-    <div class="flex items-center justify-between">
+  <div class="mx-auto space-y-5 p-4 text-sm md:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-gray-900">Expenses</h1>
         <p class="mt-0.5 text-sm text-gray-500">Submit, approve, and pay operational expenses.</p>
@@ -8,63 +8,77 @@
       <Button label="New Expense" icon="pi pi-plus" severity="warn" size="small" @click="showCreate = true" />
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+    <Message v-if="loadError" severity="error" :closable="false">{{ loadError }}</Message>
+
+    <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Card class="rounded-xl border border-slate-200 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Pending</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Pending · 28 days</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
                 <i class="pi pi-clock text-sm text-orange-600"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
+            <template v-else>
+              <p class="text-2xl font-semibold text-gray-900">{{ summary.current.pending }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px]" :class="comparisonClass('pending')"><i :class="comparisonIcon('pending')" />{{ comparisonLabel('pending') }} vs previous 28 days</p>
+            </template>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+      <Card class="rounded-xl border border-slate-200 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Approved</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Approved · 28 days</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
                 <i class="pi pi-check-circle text-sm text-green-600"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
+            <template v-else>
+              <p class="text-2xl font-semibold text-gray-900">{{ summary.current.approved }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px]" :class="comparisonClass('approved')"><i :class="comparisonIcon('approved')" />{{ comparisonLabel('approved') }} vs previous 28 days</p>
+            </template>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+      <Card class="rounded-xl border border-slate-200 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Paid</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Paid · 28 days</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
                 <i class="pi pi-wallet text-sm text-blue-600"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.paid }}</p>
+            <template v-else>
+              <p class="text-2xl font-semibold text-gray-900">{{ summary.current.paid }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px]" :class="comparisonClass('paid')"><i :class="comparisonIcon('paid')" />{{ comparisonLabel('paid') }} vs previous 28 days</p>
+            </template>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
+      <Card class="rounded-xl border border-orange-200 bg-orange-50/60 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider">Total Amount</span>
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+              <span class="text-xs font-medium uppercase tracking-wider text-orange-800">Total Amount · 28 days</span>
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white">
                 <i class="pi pi-credit-card text-sm"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="7rem" height="1.75rem" />
-            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.totalAmount) }}</p>
+            <template v-else>
+              <p class="text-xl font-semibold text-slate-900">{{ formatMoney(summary.current.total_amount) }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px]" :class="comparisonClass('total_amount')"><i :class="comparisonIcon('total_amount')" />{{ comparisonLabel('total_amount') }} vs previous 28 days</p>
+            </template>
           </div>
         </template>
       </Card>
@@ -72,20 +86,19 @@
 
     <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
       <template #header>
-        <div class="m-4 mt-6">
-          <h2 class="mb-3 text-sm font-semibold text-gray-900">Expense Records</h2>
-          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
-            <div class="space-y-2 md:w-80">
-              <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
+        <div class="m-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-gray-900">Expense Records</h2>
+          <Button icon="pi pi-refresh" aria-label="Refresh expenses" severity="secondary" outlined rounded size="small" :loading="loading" @click="loadExpenses" />
+          <div class="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:max-w-sm">
               <InputText
                 v-model="filters.search"
-                placeholder="Search category or description"
+                placeholder="Search reference, category, or description"
                 class="w-full" size="small"
                 @keyup.enter="loadExpenses"
               />
             </div>
-            <div class="space-y-2 md:w-44">
-              <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
+            <div class="w-full sm:w-48">
               <Select
                 v-model="filters.status"
                 :options="statusOptions"
@@ -93,41 +106,60 @@
                 optionValue="value"
                 class="w-full"
                 fluid size="small"
+                aria-label="Filter by status"
+                @change="loadExpenses"
               />
             </div>
             <div class="flex items-end gap-2">
               <Button v-if="filters.search || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
-              <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadExpenses" />
             </div>
           </div>
         </div>
       </template>
       <template #content>
-        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-5 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 5" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`expense-${row}`" class="grid grid-cols-5 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 5" :key="cell" height="1.25rem" /></div></div>
+        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`expense-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="cell" height="1.25rem" /></div></div>
         <div v-else>
           <DataTable
             :value="expenses"
             rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm text-xs"
+            class="p-datatable-sm expense-table text-xs"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
-            <Column field="expense_date" header="Date" sortable style="width: 140px">
-              <template #body="{ data }">{{ formatDate(data.expense_date) }}</template>
+            <Column field="created_at" header="Created Date & Time" sortable style="width: 180px">
+              <template #body="{ data }">
+                <div class="whitespace-nowrap">
+                  <p class="font-medium text-slate-800">{{ formatDate(data.created_at) }}</p>
+                  <p class="mt-0.5 text-[11px] text-slate-500">{{ formatTime(data.created_at) }}</p>
+                </div>
+              </template>
             </Column>
-            <Column field="category" header="Category" style="min-width: 180px">
+            <Column header="Reference" style="min-width: 190px">
+              <template #body="{ data }">
+                <div class="min-w-0">
+                  <p class="truncate font-mono text-xs font-semibold text-slate-800" :title="expenseReference(data)">{{ expenseReference(data) }}</p>
+                  <p v-if="data.payment_reference || (data.reference_number && data.reference_number !== data.branch_expense_request?.reference_number)" class="mt-1 truncate text-[11px] text-slate-500">
+                    Payment: {{ data.payment_reference || data.reference_number }}
+                  </p>
+                </div>
+              </template>
+            </Column>
+            <Column field="branch.name" header="Branch" style="min-width: 150px">
+              <template #body="{ data }">{{ data.branch?.name || 'Store-wide' }}</template>
+            </Column>
+            <Column field="category" header="Expense" style="min-width: 180px">
               <template #body="{ data }">
                 <div>
-                  <p class="text-sm font-medium text-gray-900">{{ data.category || '-' }}</p>
+                  <p class="text-sm font-medium text-gray-900 capitalize">{{ data.category || '-' }}</p>
                   <p class="text-xs text-gray-500">{{ data.description || 'No description' }}</p>
                 </div>
               </template>
             </Column>
-            <Column field="amount" header="Amount" style="width: 140px">
+            <Column field="amount" header="Amount" style="width: 150px" headerStyle="text-align:right">
               <template #body="{ data }">
-                <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.amount) }}</span>
+                <span class="block text-right text-sm font-semibold tabular-nums text-slate-900">{{ formatMoney(data.amount) }}</span>
               </template>
             </Column>
             <Column field="status" header="Status" style="width: 150px">
@@ -135,39 +167,19 @@
                 <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
-            <Column header="Actions" style="width: 190px" headerStyle="text-align:center">
+            <Column header="Actions" style="width: 110px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center gap-1">
                   <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewExpense(data)" />
-                  <Button
-                    v-if="data.status === 'pending_approval'"
-                    icon="pi pi-check"
-                    text
-                    rounded
-                    severity="success"
-                    @click="approveExpense(data.id)"
-                  />
-                  <Button
-                    v-if="data.status === 'pending_approval'"
-                    icon="pi pi-times"
-                    text
-                    rounded
-                    severity="danger"
-                    @click="openReject(data)"
-                  />
-                  <!-- <Button
-                    v-if="data.status === 'approved'"
-                    icon="pi pi-credit-card"
-                    text
-                    rounded
-                    severity="info"
-                    @click="openMarkPaid(data)"
-                  /> -->
                 </div>
               </template>
             </Column>
             <template #empty>
-              <div class="py-12 text-center text-gray-500">No expenses found</div>
+              <div class="px-4 py-12 text-center">
+                <i class="pi pi-receipt mb-3 block text-2xl text-slate-300"></i>
+                <p class="font-medium text-slate-700">No expenses found</p>
+                <p class="mt-1 text-xs text-slate-500">Try changing the filters or create a new expense.</p>
+              </div>
             </template>
           </DataTable>
         </div>
@@ -199,16 +211,6 @@
       </form>
     </Dialog>
 
-    <Dialog v-model:visible="showReject" header="Reject Expense" modal :style="{ width: '440px' }">
-      <form class="space-y-4" @submit.prevent="rejectExpense">
-        <Textarea v-model="rejectNotes" rows="3" class="w-full" placeholder="Reason for rejection" />
-        <div class="flex justify-end gap-2">
-          <Button label="Cancel" severity="secondary" outlined @click="showReject = false" />
-          <Button label="Reject" severity="danger" type="submit" />
-        </div>
-      </form>
-    </Dialog>
-
     <Dialog v-model:visible="showPaid" header="Mark Expense as Paid" modal :style="{ width: '440px' }">
       <form class="space-y-4" @submit.prevent="markPaid">
         <div>
@@ -220,8 +222,8 @@
           <DatePicker v-model="paidForm.payment_date" class="w-full" fluid />
         </div>
         <div>
-          <label class="text-sm font-semibold">Reference</label>
-          <InputText v-model="paidForm.reference_number" class="w-full" />
+          <label class="text-sm font-semibold">Payment Reference</label>
+          <InputText v-model="paidForm.payment_reference" class="w-full" />
         </div>
         <div class="flex justify-end gap-2">
           <Button label="Cancel" severity="secondary" outlined @click="showPaid = false" />
@@ -233,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
@@ -247,15 +249,15 @@ import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
+import Message from 'primevue/message'
 import financeService from '../../../services/finance.service'
 
 const loading = ref(true)
+const loadError = ref('')
 const expenses = ref<any[]>([])
 const showCreate = ref(false)
-const showReject = ref(false)
 const showPaid = ref(false)
 const currentExpenseId = ref<number | null>(null)
-const rejectNotes = ref('')
 
 const form = ref({
   category: '',
@@ -267,7 +269,7 @@ const form = ref({
 const paidForm = ref({
   payment_method: '',
   payment_date: new Date(),
-  reference_number: '',
+  payment_reference: '',
 })
 
 const paymentMethods = ['cash', 'bank_transfer', 'check', 'card']
@@ -286,31 +288,59 @@ const statusOptions = [
   { label: 'Rejected', value: 'rejected' },
 ]
 
-const stats = computed(() => {
-  const rows = expenses.value
-  return {
-    pending: rows.filter((item: any) => item.status === 'pending_approval').length,
-    approved: rows.filter((item: any) => item.status === 'approved').length,
-    paid: rows.filter((item: any) => item.status === 'paid').length,
-    totalAmount: rows.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0),
-  }
-})
+const emptySummary = () => ({ pending: 0, approved: 0, paid: 0, total_amount: 0 })
+const summary = ref({ current: emptySummary(), previous: emptySummary() })
 
 const formatMoney = (value: number | string) => {
   const amount = typeof value === 'string' ? parseFloat(value) : value || 0
-  return new Intl.NumberFormat('en-PH').format(amount)
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+type SummaryMetric = 'pending' | 'approved' | 'paid' | 'total_amount'
+
+const comparisonLabel = (key: SummaryMetric) => {
+  const current = Number(summary.value.current[key] || 0)
+  const previous = Number(summary.value.previous[key] || 0)
+  if (previous === 0) return current === 0 ? '0.0%' : 'New'
+  const percent = ((current - previous) / Math.abs(previous)) * 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`
+}
+
+const comparisonIcon = (key: SummaryMetric) => {
+  const current = Number(summary.value.current[key] || 0)
+  const previous = Number(summary.value.previous[key] || 0)
+  if (current === previous) return 'pi pi-minus'
+  return current > previous ? 'pi pi-arrow-up' : 'pi pi-arrow-down'
+}
+
+const comparisonClass = (key: SummaryMetric) => {
+  const current = Number(summary.value.current[key] || 0)
+  const previous = Number(summary.value.previous[key] || 0)
+  if (current === previous) return 'text-slate-500'
+  const higherIsGood = key === 'approved' || key === 'paid'
+  const favorable = higherIsGood ? current > previous : current < previous
+  return favorable ? 'text-emerald-700' : 'text-rose-700'
 }
 
 const formatDate = (date: string) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(date).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+const formatTime = (date: string) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+const expenseReference = (expense: any) => expense.branch_expense_request?.reference_number || expense.reference_number || `EXP-${expense.id}`
 
 const statusSeverity = (status: string) => {
   if (status === 'approved') return 'success'
-  if (status === 'paid') return 'info'
+  if (status === 'paid') return 'success'
   if (status === 'rejected') return 'danger'
-  return 'warning'
+  if (status === 'pending_approval') return 'warn'
+  if (status === 'cancelled' || status === 'draft') return 'secondary'
+  return 'info'
 }
 
 const formatStatus = (status: string) => {
@@ -320,6 +350,7 @@ const formatStatus = (status: string) => {
 
 const loadExpenses = async () => {
   loading.value = true
+  loadError.value = ''
   try {
     const params: any = {}
     if (route.query.reference_type) params.reference_type = route.query.reference_type
@@ -330,6 +361,12 @@ const loadExpenses = async () => {
 
     const res = await financeService.getExpenses(params)
     expenses.value = res.data?.data || res.data || []
+    summary.value = {
+      current: { ...emptySummary(), ...(res.summary?.current || {}) },
+      previous: { ...emptySummary(), ...(res.summary?.previous || {}) },
+    }
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load expenses. Please try again.'
   } finally {
     loading.value = false
   }
@@ -347,27 +384,9 @@ const createExpense = async () => {
   loadExpenses()
 }
 
-const approveExpense = async (id: number) => {
-  await financeService.approveExpense(id)
-  loadExpenses()
-}
-
-const openReject = (expense: any) => {
-  currentExpenseId.value = expense.id
-  rejectNotes.value = ''
-  showReject.value = true
-}
-
-const rejectExpense = async () => {
-  if (!currentExpenseId.value) return
-  await financeService.rejectExpense(currentExpenseId.value, { notes: rejectNotes.value })
-  showReject.value = false
-  loadExpenses()
-}
-
 const openMarkPaid = (expense: any) => {
   currentExpenseId.value = expense.id
-  paidForm.value = { payment_method: '', payment_date: new Date(), reference_number: '' }
+  paidForm.value = { payment_method: '', payment_date: new Date(), payment_reference: '' }
   showPaid.value = true
 }
 
@@ -381,7 +400,7 @@ const markPaid = async () => {
   await financeService.markExpensePaid(currentExpenseId.value, {
     payment_method: paidForm.value.payment_method,
     payment_date: paidForm.value.payment_date,
-    reference_number: paidForm.value.reference_number,
+    payment_reference: paidForm.value.payment_reference,
   })
   showPaid.value = false
   loadExpenses()
@@ -413,18 +432,18 @@ onMounted(loadExpenses)
 }
 
 :deep(.p-datatable .p-datatable-thead > tr > th) {
-  background-color: #f9fafb;
+  background-color: #f8fafc;
   color: #6b7280;
   font-weight: 500;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 1rem 1rem;
+  padding: 0.75rem 0.875rem;
   border-bottom: 1px solid #f3f4f6;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  padding: 1rem 1rem;
+  padding: 0.75rem 0.875rem;
   border-bottom: 1px solid #f3f4f6;
 }
 

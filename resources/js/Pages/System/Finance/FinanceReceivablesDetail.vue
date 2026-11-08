@@ -54,7 +54,7 @@
         </div>
       </section>
 
-      <div class="grid gap-4 lg:grid-cols-3">
+      <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card class="rounded-2xl border border-slate-200 shadow-sm">
           <template #title><span class="text-base">Customer</span></template>
           <template #content>
@@ -83,6 +83,16 @@
             <div class="space-y-3 text-sm">
               <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Created</span><span class="font-medium text-slate-800">{{ formatDate(detail.dates?.created_at) }}</span></div>
               <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Due date</span><span class="font-medium text-slate-800">{{ formatDate(detail.dates?.due_date) }}</span></div>
+            </div>
+          </template>
+        </Card>
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Order processing</span></template>
+          <template #content>
+            <div class="space-y-3 text-sm">
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Branch</span><span class="text-right font-medium text-slate-800">{{ detail.branch?.name || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">POS created by</span><span class="text-right font-medium text-slate-800">{{ detail.processed_by || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-slate-500">Marked for dispatch by</span><span class="text-right font-medium text-slate-800">{{ detail.marked_for_dispatch_by || '-' }}</span></div>
             </div>
           </template>
         </Card>
@@ -116,10 +126,6 @@
             <p class="text-xs uppercase tracking-wide text-gray-500">Per KM Charge</p>
             <p class="mt-1 text-sm font-semibold text-gray-900">₱ {{ formatMoney(detail?.delivery?.per_km_charge || 0) }}</p>
           </div>
-          <div class="rounded-xl border border-orange-200 bg-orange-50 p-3">
-            <p class="text-xs font-medium uppercase tracking-wide text-orange-700">Delivery fee</p>
-            <p class="mt-1 text-base font-semibold text-orange-900">₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</p>
-          </div>
         </div>
       </template>
     </Card>
@@ -151,11 +157,10 @@
             <div class="flex items-center justify-between"><span class="text-gray-500">Subtotal</span><span>₱ {{ formatMoney(detail.amounts?.subtotal) }}</span></div>
             <div v-if="Number(detail.amounts?.discount || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">Discount</span><span class="text-rose-600">- ₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">VATable Sales</span><span>₱ {{ formatMoney(vatableSales) }}</span></div>
-            <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (Included)</span><span>₱ {{ formatMoney(detail.amounts?.tax) }}</span></div>
-            <div v-if="detail.source_type !== 'ecommerce'" class="flex items-center justify-between"><span class="text-gray-500">Platform Commission ({{ formatDecimal(detail.amounts?.commission_percentage) }}%)</span><span>- ₱ {{ formatMoney(detail.amounts?.commission) }}</span></div>
+            <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (12%, included)</span><span>₱ {{ formatMoney(outputVat) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Order Total</span><span>₱ {{ formatMoney(detail.amounts?.total) }}</span></div>
             <div class="flex items-center justify-between font-medium"><span class="text-gray-600">Store Net Proceeds</span><span>₱ {{ formatMoney(detail.amounts?.store_net) }}</span></div>
-            <div v-if="Number(detail.delivery?.estimated_fee || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">Delivery fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
+            <div class="flex items-center justify-between"><span class="text-slate-500">Delivery fee</span><span>₱ {{ formatMoney(detail.delivery?.estimated_fee || 0) }}</span></div>
             <div class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-3 text-base font-semibold text-white"><span>Grand total</span><span>₱ {{ formatMoney(grandTotal) }}</span></div>
           </div>
         </div>
@@ -181,11 +186,22 @@ const router = useRouter()
 const loading = ref(false)
 const detail = ref<any>(null)
 
+const outputVat = computed(() => {
+  const recordedTax = Number(detail.value?.amounts?.tax || 0)
+  if (recordedTax > 0) return recordedTax
+
+  const taxableGross = Math.max(
+    0,
+    Number(detail.value?.amounts?.subtotal || 0) - Number(detail.value?.amounts?.discount || 0),
+  )
+  return taxableGross - taxableGross / 1.12
+})
+
 const vatableSales = computed(() => Math.max(
   0,
   Number(detail.value?.amounts?.subtotal || 0)
     - Number(detail.value?.amounts?.discount || 0)
-    - Number(detail.value?.amounts?.tax || 0),
+    - outputVat.value,
 ))
 
 const displayDistanceKm = computed(() => {
@@ -256,6 +272,9 @@ const printInvoice = () => {
   const deliveryFee = Number(d.delivery?.estimated_fee || 0)
   const orderTotal = Number(d.amounts?.total || 0)
   const printGrandTotal = orderTotal + deliveryFee
+  const productGross = Math.max(0, Number(d.amounts?.subtotal || 0) - Number(d.amounts?.discount || 0))
+  const printOutputVat = Number(d.amounts?.tax || 0) > 0 ? Number(d.amounts.tax) : productGross - productGross / 1.12
+  const printVatableSales = Math.max(0, productGross - printOutputVat)
   const rows = (d.items || [])
     .map((item: any) => `
       <tr>
@@ -344,9 +363,8 @@ const printInvoice = () => {
           <div class="totals">
             <div class="row"><span>Subtotal</span><strong>PHP ${formatMoney(d.amounts?.subtotal || 0)}</strong></div>
             <div class="row"><span>Discount</span><strong>PHP ${formatMoney(d.amounts?.discount || 0)}</strong></div>
-            <div class="row"><span>VATable Sales</span><strong>PHP ${formatMoney(Math.max(0, Number(d.amounts?.subtotal || 0) - Number(d.amounts?.discount || 0) - Number(d.amounts?.tax || 0)))}</strong></div>
-            <div class="row"><span>Output VAT (Included)</span><strong>PHP ${formatMoney(d.amounts?.tax || 0)}</strong></div>
-            ${d.source_type === 'ecommerce' ? '' : `<div class="row"><span>Platform Commission (${formatDecimal(d.amounts?.commission_percentage || 0)}%)</span><strong>- PHP ${formatMoney(d.amounts?.commission || 0)}</strong></div>`}
+            <div class="row"><span>VATable Sales</span><strong>PHP ${formatMoney(printVatableSales)}</strong></div>
+            <div class="row"><span>Output VAT (12%, included)</span><strong>PHP ${formatMoney(printOutputVat)}</strong></div>
             <div class="row"><span>Shipping Fee</span><strong>PHP ${formatMoney(d.amounts?.shipping_fee || 0)}</strong></div>
             <div class="row"><span>Delivery Fee</span><strong>PHP ${formatMoney(deliveryFee)}</strong></div>
             <div class="row"><span>Order Total</span><strong>PHP ${formatMoney(orderTotal)}</strong></div>

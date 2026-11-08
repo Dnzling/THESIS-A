@@ -172,7 +172,8 @@
                   </span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm font-semibold text-slate-900">{{ variationLabel(variation) }}</span>
-                    <span class="mt-0.5 block text-xs font-medium text-orange-600">{{ formatCurrency(variation.final_price || product.price) }}</span>
+                    <span class="mt-0.5 block text-xs font-medium text-orange-600">{{ formatCurrency(variation.final_price ?? variation.discounted_price ?? product.price) }}</span>
+                    <span v-if="Number(variation.base_price) > Number(variation.final_price ?? variation.discounted_price ?? variation.base_price)" class="block text-[11px] text-slate-400 line-through">{{ formatCurrency(variation.base_price) }}</span>
                     <Tag class="mt-1 !text-[10px]" :value="variationStockLabel(variation)"
                       :severity="variationStockSeverity(variation)" />
                   </span>
@@ -305,7 +306,8 @@
               </div>
             </div>
             <p class="mt-2 line-clamp-2 text-xs font-medium text-slate-800">{{ item.product_name }}</p>
-            <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatCurrency(item.price) }}</p>
+            <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatCurrency(item.price ?? item.discounted_price ?? item.base_price) }}</p>
+            <p v-if="Number(item.base_price) > Number(item.price ?? item.discounted_price ?? item.base_price)" class="text-xs text-slate-400 line-through">{{ formatCurrency(item.base_price) }}</p>
           </button>
         </div>
         <p v-else class="text-sm text-slate-500">No recommended products yet.</p>
@@ -347,7 +349,8 @@
               <span class="min-w-0 flex-1">
                 <span class="block truncate font-medium text-slate-900">{{ item.product_name }}</span>
                 <span class="block text-xs text-slate-500">{{ Number(item.store_id) === Number(addedItem.storeId) ? 'From this store' : 'From another store' }}</span>
-                <span class="block font-semibold text-orange-600">{{ formatCurrency(item.price) }}</span>
+                <span class="block font-semibold text-orange-600">{{ formatCurrency(item.price ?? item.discounted_price ?? item.base_price) }}</span>
+                <span v-if="Number(item.base_price) > Number(item.price ?? item.discounted_price ?? item.base_price)" class="block text-[11px] text-slate-400 line-through">{{ formatCurrency(item.base_price) }}</span>
               </span>
               <i class="pi pi-chevron-right text-xs text-slate-400" />
             </button>
@@ -873,7 +876,7 @@ async function loadProduct() {
   try {
     const response = await ecommerceService.getProduct(String(route.params.id))
     product.value = response.data?.data || response.data
-    if (product.value?.id) addRecentlyViewed({ id: Number(product.value.id), product_name: String(product.value.product_name || 'Product'), image: product.value.image || product.value.images?.[0] || null, price: Number(product.value.discounted_price ?? product.value.price ?? product.value.base_price ?? 0), category: product.value.category || null })
+    if (product.value?.id) addRecentlyViewed({ id: Number(product.value.id), product_name: String(product.value.product_name || 'Product'), image: product.value.image || product.value.images?.[0] || null, price: Number(product.value.price ?? product.value.discounted_price ?? product.value.base_price ?? 0), base_price: Number(product.value.base_price ?? 0), discounted_price: product.value.discounted_price == null ? null : Number(product.value.discounted_price), category: product.value.category || null })
     selectedImage.value = null
     selectedVariationId.value = null
   } catch {

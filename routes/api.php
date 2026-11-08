@@ -259,6 +259,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::match(['put', 'post'], '/settings', 'updateSettings');
         Route::get('/ecommerce', 'ecommerce');
     });
+    require __DIR__ . '/store_routes.php';
 
     Route::prefix('payments')->group(function () {
         Route::post('paymongo/create', [PaymongoController::class, 'create']);
