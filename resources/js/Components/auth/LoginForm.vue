@@ -52,12 +52,9 @@
               <label for="password" class="block text-sm font-medium text-gray-700">
                 Password <span class="text-red-500">*</span>
               </label>
-              <!-- <router-link 
-                      to="/forgot-password" 
-                      class="text-sm text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      Forgot password?
-                    </router-link> -->
+              <Link href="/forgot-password" class="text-sm font-medium text-orange-600 hover:text-orange-700 hover:underline">
+                Forgot password?
+              </Link>
             </div>
             <div class="p-inputgroup">
               <Password id="password" v-model="formData.password" :feedback="false" toggleMask
@@ -94,8 +91,8 @@
           </p> -->
           <p class="text-sm text-gray-500">
             By signing in, you agree to our
-            <a href="#" class="text-blue-600 hover:underline">Terms</a> and
-            <a href="#" class="text-blue-600 hover:underline">Privacy Policy</a>
+            <Link href="/legal/terms-and-conditions" class="text-orange-600 hover:underline">Terms &amp; Conditions</Link> and
+            <Link href="/legal/privacy-policy" class="text-orange-600 hover:underline">Privacy Policy</Link>
           </p>
         </div>
         </div>
@@ -115,7 +112,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { usePage } from '@inertiajs/vue3'
+import { Link, usePage } from '@inertiajs/vue3'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'

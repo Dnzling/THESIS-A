@@ -145,7 +145,7 @@
               <p class="mt-1 text-xs text-slate-500">
                 {{ trip.assigned_stops }}{{ trip.max_stops ? ` / ${trip.max_stops}` : '' }} stops
                 <span v-if="trip.remaining_capacity_kg !== null"> - {{ trip.remaining_capacity_kg }} kg remaining</span>
-                <span v-if="trip.scheduled_departure_at"> - Departs {{ formatDateTime(trip.scheduled_departure_at) }}</span>
+                <span v-if="trip.scheduled_departure_at"> - Departs {{ formatDateOnly(trip.scheduled_departure_at) }}</span>
               </p>
             </div>
             <Button label="Add to Trip" icon="pi pi-plus" size="small" severity="warn"
@@ -224,7 +224,6 @@ const sourceOptions = [
 
 const statusOptions = [
   { label: 'All Delivery Statuses', value: '' },
-  { label: 'Pending', value: 'pending' },
   { label: 'For Dispatch', value: 'ready_for_dispatch' },
   { label: 'Assigned', value: 'assigned' },
   { label: 'Packed', value: 'packed' },
@@ -396,6 +395,12 @@ const formatDateTime = (value?: string) => {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+const formatDateOnly = (value?: string) => {
+  if (!value) return '-'
+  const raw = String(value)
+  const date = /^\d{4}-\d{2}-\d{2}/.test(raw) ? new Date(`${raw.slice(0, 10)}T00:00:00`) : new Date(raw)
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit' }).format(date)
 }
 
 const sourceLabel = (source: string) => ({

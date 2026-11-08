@@ -212,8 +212,18 @@ class InventoryService {
     return response.data
   }
 
-  async createAdjustment(data: StockAdjustment) {
-    const response = await axiosClient.post(`${this.baseUrl}/adjustments`, data)
+  async createAdjustment(data: Record<string, any>, photos: File[] = []) {
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'items') {
+        formData.append('items', JSON.stringify(value))
+      } else if (value !== null && value !== undefined) {
+        formData.append(key, String(value))
+      }
+    })
+    photos.forEach(photo => formData.append('photos[]', photo))
+
+    const response = await axiosClient.post(`${this.baseUrl}/adjustments`, formData)
     return response.data
   }
 
@@ -709,13 +719,18 @@ class InventoryService {
     return response.data
   }
 
+  async shipStockReturn(id: number, payload: { tracking_number?: string; vehicle_type?: string; driver_name?: string; driver_contact?: string } = {}) {
+    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/ship`, payload)
+    return response.data
+  }
+
   async rejectStockReturn(id: number, notes?: string) {
     const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/reject`, { notes })
     return response.data
   }
 
-  async receiveStockReturn(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/receive`, { notes })
+  async receiveStockReturn(id: number, payload: { supplier_resolution?: string; supplier_resolution_notes?: string } = {}) {
+    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/receive`, payload)
     return response.data
   }
 

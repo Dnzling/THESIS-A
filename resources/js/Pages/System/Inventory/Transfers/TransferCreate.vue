@@ -4,8 +4,8 @@
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">{{ reorderSuggestionId ? 'Request Restock from Warehouse' : 'Create Stock Transfer' }}</h2>
-        <p class="text-sm text-gray-500 mt-1">{{ reorderSuggestionId ? 'This grouped request is linked to reorder suggestions. The warehouse can replenish any shortage before approving dispatch.' : 'Request available stock from a warehouse or another branch.' }}</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ damagedPullout ? 'Pull Damaged Stock to Warehouse' : reorderSuggestionId ? 'Request Restock from Warehouse' : 'Create Stock Transfer' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">{{ damagedPullout ? 'Move quarantined units to an active warehouse. They remain unavailable for sale after receipt.' : reorderSuggestionId ? 'This grouped request is linked to reorder suggestions. The warehouse can replenish any shortage before approving dispatch.' : 'Request available stock from a warehouse or another branch.' }}</p>
       </div>
     </div>
 
@@ -28,7 +28,7 @@
                   optionValue="id" 
                   placeholder="Select warehouse or branch"
                   :loading="loadingBranches"
-                  :disabled="Boolean(reorderSuggestionId)"
+                  :disabled="Boolean(reorderSuggestionId) || damagedPullout"
                   fluid
                   @change="onFromBranchChange"
                   :class="{ 'p-invalid': errors.from_branch_id }"
@@ -43,9 +43,10 @@
                 Receiving Location
               </label>
               <div class="flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">
-                {{ receivingLocation?.name || 'No assigned branch' }}
+                <Select v-if="damagedPullout" v-model="form.to_branch_id" :options="warehouseOptions" optionLabel="name" optionValue="id" placeholder="Select active warehouse" fluid :loading="loadingBranches" />
+                <span v-else>{{ receivingLocation?.name || 'No assigned branch' }}</span>
               </div>
-              <small class="text-gray-500">Your assigned inventory branch receives this request.</small>
+              <small class="text-gray-500">{{ damagedPullout ? 'Damaged units are quarantined at this warehouse.' : 'Your assigned inventory branch receives this request.' }}</small>
               <small v-if="errors.to_branch_id" class="text-red-500">{{ errors.to_branch_id }}</small>
             </div>
 
@@ -66,7 +67,7 @@
 
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">
-              Transfer Reason <span class="text-red-500">*</span>
+              {{ damagedPullout ? 'Pull-out Reason' : 'Transfer Reason' }} <span class="text-red-500">*</span>
             </label>
             <InputText
               v-model="form.reason"
@@ -115,7 +116,7 @@
                     <div class="flex flex-col">
                       <span class="font-medium">{{ option.product?.product_name || 'Unknown' }}</span>
                       <span class="text-xs text-gray-500">
-                        {{ option.product?.sku || 'No SKU' }} · Stock: {{ Number(option.quantity_available || 0).toLocaleString() }} {{ getProductUnit(option.id) }}
+                        {{ option.product?.sku || 'No SKU' }} · {{ damagedPullout ? 'Damaged' : 'Available' }}: {{ sourceQuantity(option).toLocaleString() }} {{ getProductUnit(option.id) }}
                       </span>
                     </div>
                   </template>
@@ -123,11 +124,11 @@
               </div>
 
               <div class="flex flex-col gap-2 md:col-span-3">
-                <label class="text-sm text-gray-600">Quantity <span class="text-red-500">*</span></label>
+              <label class="text-sm text-gray-600">{{ damagedPullout ? 'Damaged quantity' : 'Quantity' }} <span class="text-red-500">*</span></label>
                 <InputNumber 
                   v-model="newItem.quantity" 
                   :min="1" 
-                  :max="selectedProduct?.quantity_available || 999999"
+                  :max="selectedProduct ? sourceQuantity(selectedProduct) : 999999"
                   showButtons
                   buttonLayout="horizontal"
                  fluid
@@ -160,13 +161,13 @@
                   <span class="text-xs text-gray-500 ml-2">SKU: {{ selectedProduct.product?.sku }}</span>
                 </div>
                 <span :class="{
-                  'text-green-600 font-medium': selectedProduct.quantity_available > 0,
-                  'text-red-600 font-medium': selectedProduct.quantity_available === 0
+                  'text-green-600 font-medium': sourceQuantity(selectedProduct) > 0,
+                  'text-red-600 font-medium': sourceQuantity(selectedProduct) === 0
                 }">
-                  Available: {{ Number(selectedProduct.quantity_available || 0).toLocaleString() }} {{ getProductUnit(selectedProduct.id) }}
+                  {{ damagedPullout ? 'Damaged' : 'Available' }}: {{ sourceQuantity(selectedProduct).toLocaleString() }} {{ getProductUnit(selectedProduct.id) }}
                 </span>
               </div>
-              <div v-if="newItem.quantity > (selectedProduct?.quantity_available || 0)" 
+              <div v-if="newItem.quantity > (selectedProduct ? sourceQuantity(selectedProduct) : 0)"
                    class="mt-2 text-amber-600 text-xs">
                 <i class="pi pi-exclamation-triangle mr-1"></i>
                 Warning: Requested quantity exceeds available stock
@@ -222,11 +223,13 @@
             <h3 class="mb-3 text-sm font-semibold text-slate-800">Transfer Rundown</h3>
             <div class="space-y-2 text-sm">
               <div class="flex justify-between"><span class="text-slate-500">Items</span><span>{{ form.items.length }}</span></div>
-              <div class="flex justify-between"><span class="text-slate-500">Total quantity</span><span>{{ totalQuantity.toLocaleString() }}</span></div>
-              <div class="flex justify-between"><span class="text-slate-500">Goods value</span><span>{{ money(estimate.goods_value) }}</span></div>
-              <div class="flex justify-between"><span class="text-slate-500">Route distance</span><span>{{ formatNumber(estimate.distance_km) }} km</span></div>
-              <div class="flex justify-between"><span class="text-slate-500">Estimated shipping fee</span><span class="font-medium">{{ money(estimate.shipping_fee) }}</span></div>
-              <div class="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900"><span>Estimated total transfer value</span><span>{{ money(estimate.total_value) }}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">{{ damagedPullout ? 'Damaged units to pull out' : 'Total quantity' }}</span><span>{{ totalQuantity.toLocaleString() }}</span></div>
+              <template v-if="!damagedPullout">
+                <div class="flex justify-between"><span class="text-slate-500">Goods value</span><span>{{ money(estimate.goods_value) }}</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Route distance</span><span>{{ formatNumber(estimate.distance_km) }} km</span></div>
+              </template>
+              <div v-if="!damagedPullout" class="flex justify-between"><span class="text-slate-500">Estimated shipping fee</span><span class="font-medium">{{ money(estimate.shipping_fee) }}</span></div>
+              <div v-if="!damagedPullout" class="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900"><span>Estimated total transfer value</span><span>{{ money(estimate.total_value) }}</span></div>
               <small v-if="estimating" class="block text-right text-slate-400">Calculating fee…</small>
             </div>
           </div>
@@ -284,6 +287,7 @@ const reorderSuggestionIds = computed(() => {
   return [...new Set(values.flatMap(item => String(item || '').split(',')).map(Number).filter(id => Number.isInteger(id) && id > 0))]
 })
 const reorderSuggestionId = computed(() => reorderSuggestionIds.value[0] || 0)
+const damagedPullout = computed(() => String(route.query.damaged_pullout || '') === '1')
 const authStore = useAuthStore()
 
 // Form state
@@ -325,8 +329,15 @@ const estimate = reactive({ goods_value: 0, distance_km: 0, shipping_fee: 0, tot
 const receivingLocation = computed(() => branches.value.find(branch => Number(branch.id) === Number(form.to_branch_id)) || null)
 const sourceLocationOptions = computed(() => branches.value.filter(branch =>
   Number(branch.id) !== Number(form.to_branch_id)
+  && (!damagedPullout.value || Number(branch.id) === Number(form.from_branch_id))
   && (!reorderSuggestionId.value || (String(branch.branch_type || '').toLowerCase() === 'warehouse' && String(branch.status || '').toLowerCase() === 'active'))
 ))
+const warehouseOptions = computed(() => branches.value.filter((branch: any) =>
+  String(branch.branch_type || '').toLowerCase() === 'warehouse'
+  && String(branch.status || '').toLowerCase() === 'active'
+  && Number(branch.id) !== Number(form.from_branch_id)
+))
+const sourceQuantity = (inventory: any) => Number(damagedPullout.value ? inventory?.quantity_damaged || 0 : inventory?.quantity_available || 0)
 
 const availableProducts = computed(() => {
   if (!form.from_branch_id) return []
@@ -343,7 +354,7 @@ const selectedProduct = computed(() => {
 const canAddItem = computed(() => {
   if (!newItem.inventory_item_id || newItem.quantity <= 0) return false
   if (!selectedProduct.value) return false
-  return newItem.quantity <= Number(selectedProduct.value.quantity_available || 0)
+  return newItem.quantity <= sourceQuantity(selectedProduct.value)
 })
 
 const isFormValid = computed(() => {
@@ -535,6 +546,48 @@ const prefillFromStockView = async () => {
     : `Prefilled the exact product/variant from ${match.branch.name}. Available stock: ${match.available}.`
 }
 
+const prefillDamagedPullout = async () => {
+  if (!damagedPullout.value) return
+  const inventoryId = Number(route.query.branch_inventory_id || 0)
+  if (!inventoryId) {
+    reorderRequestNotice.value = 'Open this action from an inventory item that has damaged units recorded.'
+    return
+  }
+
+  try {
+    const response = await inventoryService.getInventoryItem(inventoryId)
+    const inventory = response?.data ?? response
+    const sourceBranchId = Number(inventory?.branch_id || route.query.branch_id || 0)
+    if (!inventory?.id || !sourceBranchId) {
+      reorderRequestNotice.value = 'The source stock record could not be matched to a branch.'
+      return
+    }
+    form.from_branch_id = sourceBranchId
+    form.to_branch_id = null
+    const destinationId = Number(route.query.to_branch_id || warehouseOptions.value[0]?.id || 0)
+    if (!destinationId) {
+      reorderRequestNotice.value = 'No active warehouse is available in this store. Use the supplier-return option or activate a warehouse first.'
+      return
+    }
+    form.to_branch_id = destinationId
+    await loadInventoryForBranch(sourceBranchId)
+    const sourceItem = inventoryItems.value.find((row: any) => Number(row.id) === inventoryId)
+    if (!sourceItem || Number(sourceItem.quantity_damaged || 0) < 1) {
+      reorderRequestNotice.value = 'This item no longer has damaged units available to pull out.'
+      return
+    }
+
+    const requested = Number(route.query.requested_quantity || sourceItem.quantity_damaged)
+    const quantity = Math.min(Number(sourceItem.quantity_damaged), Math.max(1, Math.floor(requested)))
+    form.items = [{ inventory_item_id: inventoryId, quantity }]
+    form.reason = 'Damaged stock pull-out to warehouse'
+    form.remarks = 'Keep received units quarantined; do not make them available for sale.'
+    reorderRequestNotice.value = `Prefilled ${quantity} damaged unit(s) from ${sourceItem.branch?.name || 'the source branch'}. The warehouse will receive them as quarantined stock.`
+  } catch (error: any) {
+    reorderRequestNotice.value = error?.response?.data?.message || 'Unable to load this damaged inventory record.'
+  }
+}
+
 const onFromBranchChange = async () => {
   form.items = [] // Clear items when source branch changes
   inventoryItems.value = []
@@ -600,6 +653,10 @@ const estimatePayloadItems = () => form.items.map(item => {
 })
 
 const loadEstimate = async () => {
+  if (damagedPullout.value) {
+    Object.assign(estimate, { goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
+    return
+  }
   if (!form.from_branch_id || !form.to_branch_id || !form.items.length) {
     Object.assign(estimate, { goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
     return
@@ -698,6 +755,7 @@ const doCreateTransfer = async () => {
     const payload = {
       from_branch_id: form.from_branch_id,
       to_branch_id: form.to_branch_id,
+      transfer_kind: damagedPullout.value ? 'damaged_pullout' : 'standard',
       expected_delivery_date: form.expected_receive_date?.toISOString().split('T')[0],
       reason: form.reason,
       remarks: form.remarks || undefined,
@@ -772,8 +830,10 @@ const submitTransfer = async () => {
   }
 
   confirm.require({
-    message: `Submit this request from ${branches.value.find(branch => branch.id === form.from_branch_id)?.name || 'the selected location'} to ${receivingLocation.value?.name || 'your branch'} with a ${money(estimate.shipping_fee)} shipping fee?`,
-    header: 'Confirm Transfer Request',
+    message: damagedPullout.value
+      ? `Move ${totalQuantity.value} damaged unit(s) from ${branches.value.find(branch => Number(branch.id) === Number(form.from_branch_id))?.name || 'the selected branch'} to ${receivingLocation.value?.name || 'the selected warehouse'}? They will remain unavailable for sale.`
+      : `Submit this request from ${branches.value.find(branch => branch.id === form.from_branch_id)?.name || 'the selected location'} to ${receivingLocation.value?.name || 'your branch'} with a ${money(estimate.shipping_fee)} shipping fee?`,
+    header: damagedPullout.value ? 'Confirm Damaged Stock Pull-out' : 'Confirm Transfer Request',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'No',
     acceptLabel: 'Confirm',
@@ -790,7 +850,7 @@ const cancel = () => {
 
 // Watch for quantity validation
 watch(() => newItem.quantity, (newVal) => {
-  if (selectedProduct.value && newVal > selectedProduct.value.quantity_available) {
+  if (selectedProduct.value && newVal > sourceQuantity(selectedProduct.value)) {
     toast.add({
       severity: 'warn',
       summary: 'Warning',
@@ -837,8 +897,12 @@ onMounted(async () => {
         life: 4000
       })
     }
-    await prefillFromReorderSuggestion()
-    if (!reorderSuggestionIds.value.length) await prefillFromStockView()
+    if (damagedPullout.value) {
+      await prefillDamagedPullout()
+    } else {
+      await prefillFromReorderSuggestion()
+      if (!reorderSuggestionIds.value.length) await prefillFromStockView()
+    }
   } finally {
     autoFillBranchLoading.value = false
   }

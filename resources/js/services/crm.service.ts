@@ -132,6 +132,18 @@ class CrmService {
     return res.data
   }
 
+  async getPosReturnOrders(params?: { search?: string }) {
+    const res = await axiosClient.get('/api/crm/returns/pos-orders', { params })
+    return res.data
+  }
+
+  async createPosReturn(payload: FormData) {
+    const res = await axiosClient.post('/api/crm/returns/pos', payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  }
+
   async getReturn(id: number | string) {
     const res = await axiosClient.get(`/api/crm/returns/${id}`)
     return res.data
@@ -159,7 +171,7 @@ class CrmService {
     return res.data
   }
 
-  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected'; return_type?: 'refund' | 'replacement'; charge_responsibility?: 'store' | 'customer'; refund_exception_reason?: string; review_notes?: string }) {
+  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected'; return_type?: 'refund' | 'replacement'; charge_responsibility?: 'store' | 'customer'; refund_exception_reason?: string; pickup_scheduled_at?: string; review_notes?: string }) {
     const res = await axiosClient.put(`/api/crm/returns/${id}/status`, payload)
     return res.data
   }

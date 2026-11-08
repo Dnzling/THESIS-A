@@ -344,6 +344,7 @@ class StockTransferController extends Controller
         $validated = $request->validate([
             'from_branch_id' => 'required|exists:branches,id|different:to_branch_id',
             'to_branch_id' => 'required|exists:branches,id',
+            'transfer_kind' => 'nullable|in:standard,damaged_pullout',
             'reason' => 'required|string',
             'remarks' => 'nullable|string|max:2000',
             'expected_delivery_date' => 'required|date|after:today',
@@ -362,6 +363,15 @@ class StockTransferController extends Controller
             ->whereIn('id', [$validated['from_branch_id'], $validated['to_branch_id']])
             ->count();
         abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
+
+        $transferKind = $validated['transfer_kind'] ?? 'standard';
+        if ($transferKind === 'damaged_pullout') {
+            abort_if(!empty($validated['reorder_suggestion_id']) || !empty($validated['reorder_suggestion_ids']), 422, 'Damaged stock pull-outs cannot be linked to reorder suggestions.');
+            $source = Branch::query()->where('store_id', $storeId)->findOrFail($validated['from_branch_id']);
+            $destination = Branch::query()->where('store_id', $storeId)->findOrFail($validated['to_branch_id']);
+            abort_if(strtolower((string) $source->branch_type) === 'warehouse', 422, 'Damaged stock must be pulled out from a store branch.');
+            abort_unless(strtolower((string) $destination->branch_type) === 'warehouse' && strtolower((string) $destination->status) === 'active', 422, 'Choose an active warehouse as the destination for damaged stock.');
+        }
 
         $suggestionIds = $validated['reorder_suggestion_ids']
             ?? (empty($validated['reorder_suggestion_id']) ? [] : [(int) $validated['reorder_suggestion_id']]);
@@ -399,9 +409,14 @@ class StockTransferController extends Controller
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
 
-                if (! $inventory || ($linkedSuggestions->isEmpty() && (int) $item['requested_quantity'] > (int) $inventory->quantity_available)) {
+                $sourceQuantity = $transferKind === 'damaged_pullout'
+                    ? (int) ($inventory?->quantity_damaged ?? 0)
+                    : (int) ($inventory?->quantity_available ?? 0);
+                if (! $inventory || ($linkedSuggestions->isEmpty() && (int) $item['requested_quantity'] > $sourceQuantity)) {
                     throw ValidationException::withMessages([
-                        'items' => "Requested quantity exceeds the stock available at the selected source location for product #{$item['product_id']}.",
+                        'items' => $transferKind === 'damaged_pullout'
+                            ? "Requested quantity exceeds the damaged quantity recorded for product #{$item['product_id']}."
+                            : "Requested quantity exceeds the stock available at the selected source location for product #{$item['product_id']}.",
                     ]);
                 }
 
@@ -420,6 +435,7 @@ class StockTransferController extends Controller
                 'store_id' => $storeId,
                 'from_branch_id' => $validated['from_branch_id'],
                 'to_branch_id' => $validated['to_branch_id'],
+                'transfer_kind' => $transferKind,
                 // Keep persisted status compatible with existing enum/schema.
                 // UI/UX treats this as "Pending Approval".
                 'status' => 'requested',
@@ -476,7 +492,10 @@ class StockTransferController extends Controller
                         ->where('product_id', $item->product_id)
                         ->where('variation_id', $item->variation_id)
                         ->first();
-                    if (!$inventory || (int) $inventory->quantity_available < (int) $item->requested_quantity) {
+                    $approvableQuantity = $transferKind === 'damaged_pullout'
+                        ? (int) ($inventory?->quantity_damaged ?? 0)
+                        : (int) ($inventory?->quantity_available ?? 0);
+                    if (!$inventory || $approvableQuantity < (int) $item->requested_quantity) {
                         $canAutoApprove = false;
                         break;
                     }
@@ -492,7 +511,10 @@ class StockTransferController extends Controller
                         ->where('variation_id', $item->variation_id)
                         ->first();
 
-                    if (!$inventory || $inventory->quantity_available < $item->requested_quantity) {
+                    $approvableQuantity = $transferKind === 'damaged_pullout'
+                        ? (int) ($inventory?->quantity_damaged ?? 0)
+                        : (int) ($inventory?->quantity_available ?? 0);
+                    if (!$inventory || $approvableQuantity < $item->requested_quantity) {
                         throw new \Exception("Insufficient stock for {$item->product->product_name}");
                     }
 
@@ -579,8 +601,12 @@ class StockTransferController extends Controller
                     ->where('variation_id', $item->variation_id)
                     ->first();
 
-                if (!$inventory || $inventory->quantity_available < $item->requested_quantity) {
-                    throw new \Exception("Insufficient stock for {$item->product->product_name}");
+                $approvableQuantity = $transfer->transfer_kind === 'damaged_pullout'
+                    ? (int) ($inventory?->quantity_damaged ?? 0)
+                    : (int) ($inventory?->quantity_available ?? 0);
+                if (!$inventory || $approvableQuantity < $item->requested_quantity) {
+                    $stockLabel = $transfer->transfer_kind === 'damaged_pullout' ? 'damaged stock' : 'available stock';
+                    throw new \Exception("Insufficient {$stockLabel} for {$item->product->product_name}");
                 }
 
                 // Update approved quantity
@@ -827,17 +853,29 @@ class StockTransferController extends Controller
         try {
             // Deduct from source branch
             foreach ($transfer->items as $item) {
+                if ((int) $item->shipped_quantity >= (int) ($item->approved_quantity ?? $item->requested_quantity)) {
+                    continue;
+                }
                 $inventory = BranchInventory::where('branch_id', $transfer->from_branch_id)
                     ->where('product_id', $item->product_id)
                     ->where('variation_id', $item->variation_id)
                     ->firstOrFail();
 
-                $quantityBefore = $inventory->quantity_available;
+                $quantityBefore = $transfer->transfer_kind === 'damaged_pullout'
+                    ? (int) $inventory->quantity_on_hand
+                    : (int) $inventory->quantity_available;
 
-                // Deduct stock
-                $inventory->quantity_available -= $item->approved_quantity;
-                // Keep on-hand synchronized to available as single operational stock value.
-                $inventory->quantity_on_hand = $inventory->quantity_available;
+                if ($transfer->transfer_kind === 'damaged_pullout') {
+                    if ((int) $inventory->quantity_damaged < (int) $item->approved_quantity
+                        || (int) $inventory->quantity_on_hand < (int) $item->approved_quantity) {
+                        throw new \InvalidArgumentException("Damaged stock for {$item->product?->product_name} changed before dispatch.");
+                    }
+                    $inventory->quantity_damaged -= (int) $item->approved_quantity;
+                    $inventory->quantity_on_hand -= (int) $item->approved_quantity;
+                } else {
+                    $inventory->quantity_available -= $item->approved_quantity;
+                    $inventory->quantity_on_hand = $inventory->quantity_available;
+                }
                 $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
                 $inventory->updateStockStatus();
@@ -854,7 +892,9 @@ class StockTransferController extends Controller
                     'transaction_type' => 'transfer_out',
                     'quantity_before' => $quantityBefore,
                     'quantity_change' => -$item->approved_quantity,
-                    'quantity_after' => $inventory->quantity_available,
+                    'quantity_after' => $transfer->transfer_kind === 'damaged_pullout'
+                        ? $inventory->quantity_on_hand
+                        : $inventory->quantity_available,
                     'related_branch_id' => $transfer->to_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
@@ -975,13 +1015,21 @@ class StockTransferController extends Controller
                     ]
                 );
 
-                $quantityBefore = $inventory->quantity_available;
+                $quantityBefore = $transfer->transfer_kind === 'damaged_pullout'
+                    ? (int) $inventory->quantity_on_hand
+                    : (int) $inventory->quantity_available;
+                $movementQuantity = (int) $itemData['received_quantity'];
 
-                // Add received stock
-                $inventory->quantity_available += $itemData['received_quantity'];
-                // Keep on-hand synchronized to available as single operational stock value.
-                $inventory->quantity_on_hand = $inventory->quantity_available;
-                $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
+                if ($transfer->transfer_kind === 'damaged_pullout') {
+                    $arrivedQuantity = (int) $itemData['received_quantity'] + (int) ($itemData['damaged_quantity'] ?? 0);
+                    $movementQuantity = $arrivedQuantity;
+                    $inventory->quantity_on_hand += $arrivedQuantity;
+                    $inventory->quantity_damaged += $arrivedQuantity;
+                } else {
+                    $inventory->quantity_available += $itemData['received_quantity'];
+                    $inventory->quantity_on_hand = $inventory->quantity_available;
+                    $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
+                }
                 $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
                 $inventory->updateStockStatus();
@@ -997,13 +1045,18 @@ class StockTransferController extends Controller
                     'variation_id' => $item->variation_id,
                     'transaction_type' => 'transfer_in',
                     'quantity_before' => $quantityBefore,
-                    'quantity_change' => $itemData['received_quantity'],
-                    'quantity_after' => $inventory->quantity_available,
+                    'quantity_change' => $movementQuantity,
+                    'quantity_after' => $transfer->transfer_kind === 'damaged_pullout'
+                        ? $inventory->quantity_on_hand
+                        : $inventory->quantity_available,
                     'related_branch_id' => $transfer->from_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
                     'created_by' => EmployeeContext::currentEmployeeId(),
                     'transaction_date' => now(),
+                    'notes' => $transfer->transfer_kind === 'damaged_pullout'
+                        ? 'Damaged stock received into warehouse quarantine; not available for sale.'
+                        : null,
                 ]);
             }
 

@@ -79,7 +79,7 @@ const handleLogin = async (formData: LoginFormData) => {
     const isSupplierRole = String(authStore.user?.role || '').toLowerCase() === 'supplier'
     const isDriverRole = String(authStore.user?.role || '').toLowerCase() === 'driver'
     if (isDriverRole) {
-      router.visit('/driver/deliveries')
+      router.visit('/logistics/trips')
       return
     }
     if (isSupplierRole) {

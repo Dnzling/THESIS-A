@@ -137,6 +137,40 @@
         </template>
       </Card>
 
+      <Card v-if="order?.return_requests?.length" class="rounded-2xl border border-orange-200 shadow-sm">
+        <template #title><span class="text-base font-semibold text-slate-900">Returns, Refunds &amp; Replacements</span></template>
+        <template #content>
+          <div class="space-y-3">
+            <article v-for="item in order.return_requests" :key="item.id" class="rounded-xl border border-slate-200 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div><p class="font-semibold text-slate-900">{{ item.return_number || `Return #${item.id}` }} <span class="font-normal text-slate-500">· {{ item.item_name || 'Order item' }}</span></p><p class="mt-1 text-xs text-slate-500">{{ formatStatus(item.return_type || 'return') }} · {{ item.reason || 'No reason provided' }}</p></div>
+                <Tag :value="formatStatus(item.status)" :severity="statusSeverity(item.status)" />
+              </div>
+              <p v-if="item.pickup" class="mt-1 text-xs text-slate-500">Return pickup: {{ item.pickup.branch_name || 'Branch not assigned' }}<span v-if="item.pickup.scheduled_at"> · {{ formatDateTime(item.pickup.scheduled_at) }}</span><span v-if="item.pickup.trip_reference"> · {{ item.pickup.trip_reference }}</span></p>
+              <div v-if="item.return_type === 'refund'" class="mt-3 grid gap-3 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-3">
+                <div><p class="text-xs text-slate-500">Refund amount</p><p class="font-semibold text-slate-900">{{ formatMoney(item.refund?.amount) }}</p></div>
+                <div><p class="text-xs text-slate-500">Finance status</p><Tag v-if="item.refund?.status" class="mt-1" :value="formatStatus(item.refund.status)" :severity="statusSeverity(item.refund.status)" /><p v-else class="mt-1 font-medium text-slate-700">Awaiting Finance</p></div>
+                <div><p class="text-xs text-slate-500">Payout</p><p class="font-medium text-slate-900">{{ item.refund?.method ? formatStatus(item.refund.method) : 'Not set' }}<span v-if="item.refund?.account_name"> · {{ item.refund.account_name }}</span><span v-if="item.refund?.account_number"> · {{ item.refund.account_number }}</span><span v-if="item.refund?.payout_reference"> · Ref {{ item.refund.payout_reference }}</span></p></div>
+              </div>
+              <div v-if="item.return_type === 'replacement'" class="mt-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-semibold text-slate-900">Replacement Fulfillment Information</p><Tag :value="formatStatus(item.replacement?.status || 'awaiting_stock')" :severity="statusSeverity(item.replacement?.status || 'awaiting_stock')" /></div>
+                <div class="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2">
+                  <p><span class="text-slate-500">Replacement item:</span> <span class="font-medium text-slate-900">{{ item.replacement?.item_name || 'Not reserved' }}<span v-if="item.replacement?.sku"> · {{ item.replacement.sku }}</span></span></p>
+                  <p><span class="text-slate-500">Fulfillment branch:</span> <span class="font-medium text-slate-900">{{ item.replacement?.branch_name || 'Not assigned' }}</span></p>
+                  <p><span class="text-slate-500">Trip:</span> <span class="font-medium text-slate-900">{{ item.replacement?.trip_reference || 'Not assigned' }}</span></p>
+                  <p><span class="text-slate-500">Driver / vehicle:</span> <span class="font-medium text-slate-900">{{ [item.replacement?.driver_name, item.replacement?.vehicle].filter(Boolean).join(' · ') || 'Not assigned' }}</span></p>
+                  <p v-if="Number(item.replacement?.price_difference || 0) > 0"><span class="text-slate-500">Price difference:</span> <span class="font-medium text-slate-900">{{ formatMoney(item.replacement.price_difference) }} · {{ formatStatus(item.replacement.payment_status || 'pending') }}</span></p>
+                  <p v-if="item.replacement?.delivered_at"><span class="text-slate-500">Delivered:</span> <span class="font-medium text-slate-900">{{ formatDateTime(item.replacement.delivered_at) }}<span v-if="item.replacement.received_by"> · {{ item.replacement.received_by }}</span></span></p>
+                  <p v-if="item.replacement?.failure_reason" class="text-red-700 sm:col-span-2">Delivery issue: {{ item.replacement.failure_reason }}</p>
+                </div>
+                <p v-if="item.replacement?.status === 'awaiting_stock'" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Sales follow-up is needed while replacement stock is unavailable. Keep the returned unit quarantined and do not assign a delivery trip until replacement inventory is reserved.</p>
+                <a v-if="item.replacement?.proof_url" :href="item.replacement.proof_url" target="_blank" rel="noopener" class="mt-3 inline-flex text-xs font-medium text-orange-700 hover:underline">View replacement delivery proof</a>
+              </div>
+            </article>
+          </div>
+        </template>
+      </Card>
+
 
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:col-span-2">

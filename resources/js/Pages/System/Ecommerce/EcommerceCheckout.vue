@@ -1400,7 +1400,7 @@ async function placeOrder() {
       const sessionResponse = await paymongoService.createCheckoutSession({
         amount: Math.max(Math.round(Number(order.total_amount) * 100), 1),
         currency: 'PHP',
-        description: `Order #${orderId}`,
+        description: String(order.order_number || `Order #${orderId}`),
         store_id: Number(order.store_id),
         payable_type: 'ecommerce_order',
         payable_id: orderId,
@@ -1513,7 +1513,7 @@ async function placeOrder() {
       const sessionResponse = await paymongoService.createCheckoutSession({
         amount: Math.round(orderTotal * 100),
         currency: 'PHP',
-        description: `Order #${orderId}`,
+        description: String(response.data?.data?.order_number || `Order #${orderId}`),
         store_id: orderStoreId,
         payable_type: 'ecommerce_order',
         payable_id: Number(orderId),

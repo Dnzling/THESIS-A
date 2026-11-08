@@ -6,7 +6,7 @@
         <p class="mt-1 text-sm text-slate-500">Keep a staff directory and a simple daily attendance record.</p>
       </div>
       <div class="flex gap-2">
-        <Button label="Add Employee" icon="pi pi-plus" @click="showAdd = true" size="small"/>
+        <Button label="Add Employee" icon="pi pi-plus" @click="openAddEmployee" size="small"/>
       </div>
     </div>
 
@@ -93,9 +93,9 @@
           <InputMask v-model="form.phone_number" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" fluid />
           <small v-if="form.phone_number && !isValidPhone(form.phone_number)" class="text-red-600">Enter a complete Philippine mobile number starting with 09.</small>
         </div>
-        <div><label class="field-label">Position</label><Select v-model="form.role_id" :options="roles"
+        <div><label class="field-label">Position</label><Select v-model="form.role_id" :options="roles" :loading="loadingEmployeeOptions"
             optionLabel="display_name" optionValue="id" placeholder="Select position" fluid /></div>
-        <div><label class="field-label">Branch</label><Select v-model="form.branch_id" :options="branches"
+        <div><label class="field-label">Branch</label><Select v-model="form.branch_id" :options="branches" :loading="loadingEmployeeOptions"
             optionLabel="name" optionValue="id" placeholder="Select branch" fluid /></div>
         <div><label class="field-label">Hire date</label>
           <DatePicker v-model="form.hire_date" dateFormat="MM d, yy" showIcon fluid />
@@ -113,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from '@/axios'
@@ -137,10 +137,13 @@ import Tabs from 'primevue/tabs'
 
 const router = useRouter()
 const toast = useToast()
-const tab = ref<'directory' | 'attendance'>('attendance')
+const tab = ref<'directory' | 'attendance'>('directory')
 const search = ref('')
 const loading = ref(false)
 const savingEmployee = ref(false)
+const loadingEmployeeOptions = ref(false)
+const employeeOptionsLoaded = ref(false)
+const attendanceLoaded = ref(false)
 const showAdd = ref(false)
 const employees = ref<any[]>([])
 const roles = ref<any[]>([])
@@ -163,10 +166,12 @@ const statusLabel = (value: string) => ({ present: 'Present', absent: 'Absent', 
 const isValidPhone = (value?: string | null) => !value || /^09\d{2}-\d{3}-\d{4}$/.test(value)
 
 async function loadAttendanceRows() {
+  if (loadingAttendanceRows.value) return
   loadingAttendanceRows.value = true
   try {
     const [start, end] = attendanceRange.value || []
     attendanceRows.value = (await axios.get('/api/store/simple-staff/attendances', { params: { start_date: start ? dateString(start) : undefined, end_date: end ? dateString(end) : undefined, search: attendanceSearch.value || undefined } })).data.data || []
+    attendanceLoaded.value = true
   } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load attendance', detail: String(errorText(error)), life: 3500 }) }
   finally { loadingAttendanceRows.value = false }
 }
@@ -176,6 +181,22 @@ async function loadEmployees() {
   try { employees.value = (await axios.get('/api/store/simple-staff/employees')).data.data || [] }
   catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load employees', detail: String(errorText(error)), life: 3500 }) }
   finally { loading.value = false }
+}
+
+async function openAddEmployee() {
+  showAdd.value = true
+  if (employeeOptionsLoaded.value || loadingEmployeeOptions.value) return
+
+  loadingEmployeeOptions.value = true
+  const results = await Promise.allSettled([
+    axios.get('/api/store/roles/scoped').then(response => { roles.value = response.data.data || response.data || [] }),
+    axios.get('/api/branches').then(response => { branches.value = response.data.data || [] }),
+  ])
+  employeeOptionsLoaded.value = results.every(result => result.status === 'fulfilled')
+  if (!employeeOptionsLoaded.value) {
+    toast.add({ severity: 'warn', summary: 'Employee form options unavailable', detail: 'Close and reopen the form to try loading positions and branches again.', life: 3500 })
+  }
+  loadingEmployeeOptions.value = false
 }
 
 
@@ -195,16 +216,12 @@ async function addEmployee() {
   finally { savingEmployee.value = false }
 }
 
-onMounted(async () => {
-  const results = await Promise.allSettled([
-    loadEmployees(),
-    axios.get('/api/store/roles/scoped').then(r => { roles.value = r.data.data || r.data || [] }),
-    axios.get('/api/branches').then(r => { branches.value = r.data.data || [] }),
-  ])
-  if (results[1].status === 'rejected' || results[2].status === 'rejected') {
-    toast.add({ severity: 'warn', summary: 'Employee form options unavailable', detail: 'Refresh the page before adding an employee.', life: 3500 })
-  }
-  await loadAttendanceRows()
+onMounted(() => {
+  void loadEmployees()
+})
+
+watch(tab, (value) => {
+  if (value === 'attendance' && !attendanceLoaded.value) void loadAttendanceRows()
 })
 </script>
 

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
-use App\Models\Procurement\Supplier;
+use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Hr\Employee;
 
 class StockReturn extends Model
@@ -45,6 +45,8 @@ class StockReturn extends Model
         'reason_details',
         'notes',
         'rejection_reason',
+        'supplier_resolution',
+        'supplier_resolution_notes',
     ];
 
     protected $casts = [

@@ -57,7 +57,7 @@
             <div class="absolute right-8 top-0 h-36 w-36 rounded-full bg-amber-200/20 blur-3xl"></div>
 
             <div class="absolute inset-0 z-0 flex items-center justify-center opacity-90">
-              <Model3DPreview model-url="/storage/platform/sofa.glb" model-format="glb" :camera-y="12" :zoom="1.72" :screen-offset-x="0.28"
+              <Model3DPreview model-url="/storage/platform/sofa.glb" model-format="glb" :camera-x="-90" :camera-y="-10" :zoom="1.72" :screen-offset-x="0.28"
                 height="100%" transparent-background />
             </div>
             <div class="pointer-events-none absolute inset-0 z-10 bg-gradient-to-r from-orange-600/90 via-orange-500/45 to-transparent"></div>

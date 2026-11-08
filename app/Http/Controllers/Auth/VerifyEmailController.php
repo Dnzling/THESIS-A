@@ -175,6 +175,7 @@ class VerifyEmailController extends Controller
                 'display_role' => $user->role?->display_name ?? $user->role?->name,
                 'store_id' => $user->store_id,
                 'branch_id' => $user->branch_id,
+                'is_employee' => $user->isEmployee(),
                 'is_active' => (bool) $user->is_active,
                 'avatar_url' => $user->avatar_url,
             ],

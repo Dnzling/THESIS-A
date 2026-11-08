@@ -22,6 +22,7 @@ class StockTransfer extends Model
         'store_id',
         'from_branch_id',
         'to_branch_id',
+        'transfer_kind',
         'status',
         'approval_policy_used',
         'cost_method',

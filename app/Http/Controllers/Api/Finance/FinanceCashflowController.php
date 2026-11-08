@@ -222,7 +222,66 @@ class FinanceCashflowController extends Controller
                     'notes' => 'Payroll notes',
                 ]);
             }
-        } elseif ($sourceId && isset($tables[$sourceType])) {
+        } elseif ($sourceType === 'ecommerce_return_replacement' && $sourceId && Schema::hasTable('ecommerce_order_returns')) {
+            $return = DB::table('ecommerce_order_returns')
+                ->where('store_id', $transaction->store_id)
+                ->where('id', $sourceId)
+                ->first();
+            if ($return) {
+                $source['label'] = 'Higher-value replacement';
+                $source['reference_number'] = $return->return_number ?: 'Return #' . $return->id;
+                $replacementItemName = null;
+                $replacementBranchName = null;
+                if (!empty($return->replacement_inventory_id) && Schema::hasTable('branch_inventory')) {
+                    $inventory = DB::table('branch_inventory')->where('store_id', $transaction->store_id)
+                        ->where('id', $return->replacement_inventory_id)->first(['product_id', 'variation_id', 'branch_id']);
+                    if ($inventory) {
+                        $product = DB::table('products')->where('store_id', $transaction->store_id)
+                            ->where('id', $inventory->product_id)->first(['product_name']);
+                        $replacementItemName = $product?->product_name;
+                        if ($inventory->variation_id && Schema::hasTable('product_variations')) {
+                            $variation = DB::table('product_variations')->where('store_id', $transaction->store_id)
+                                ->where('product_id', $inventory->product_id)->where('id', $inventory->variation_id)
+                                ->first(['variation_name']);
+                            if ($variation?->variation_name) {
+                                $replacementItemName = trim(($replacementItemName ?? '') . ' - ' . $variation->variation_name, ' -');
+                            }
+                        }
+                        if ($inventory->branch_id && Schema::hasTable('branches')) {
+                            $replacementBranchName = DB::table('branches')->where('store_id', $transaction->store_id)
+                                ->where('id', $inventory->branch_id)->value('name');
+                        }
+                    }
+                }
+                $source['fields'] = $this->presentFields([
+                    'return_number' => $return->return_number,
+                    'replacement_item' => $replacementItemName,
+                    'replacement_branch' => $replacementBranchName,
+                    'replacement_quantity' => $return->received_quantity,
+                    'replacement_product_id' => $return->replacement_product_id,
+                    'replacement_variation_id' => $return->replacement_variation_id,
+                    'replacement_unit_price' => $return->replacement_unit_price,
+                    'replacement_price_difference' => $return->replacement_price_difference,
+                    'replacement_payment_status' => $return->replacement_payment_status,
+                    'replacement_payment_method' => $return->replacement_payment_method,
+                    'replacement_payment_reference' => $return->replacement_payment_reference,
+                    'replacement_paid_at' => $return->replacement_paid_at,
+                ], [
+                    'return_number' => 'Return number',
+                    'replacement_item' => 'Replacement item',
+                    'replacement_branch' => 'Fulfillment branch',
+                    'replacement_quantity' => 'Quantity',
+                    'replacement_product_id' => 'Replacement product ID',
+                    'replacement_variation_id' => 'Replacement variation ID',
+                    'replacement_unit_price' => 'Replacement unit price',
+                    'replacement_price_difference' => 'Additional amount collected',
+                    'replacement_payment_status' => 'Payment status',
+                    'replacement_payment_method' => 'Payment method',
+                    'replacement_payment_reference' => 'Payment reference',
+                    'replacement_paid_at' => 'Collected at',
+                ]);
+            }
+        } elseif ($sourceId && isset($tables[$sourceType]) && $tables[$sourceType][0] !== null) {
             [$table, $itemsTable] = $tables[$sourceType];
             if (Schema::hasTable($table)) {
                 $query = DB::table($table)->where('id', $sourceId);

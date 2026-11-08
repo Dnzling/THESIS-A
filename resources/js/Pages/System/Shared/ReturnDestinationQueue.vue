@@ -63,7 +63,16 @@
                         <template #body="{ data }">{{ [data.driver?.fname, data.driver?.lname].filter(Boolean).join(' ') || 'Unassigned' }}</template>
                     </Column>
                     <Column header="Status" style="min-width: 130px">
-                        <template #body="{ data }"><Badge :value="label(data.status)" :severity="severity(data.status)" /></template>
+                        <template #body="{ data }">
+                            <div class="flex flex-col items-start gap-1">
+                                <Badge :value="label(data.return_request?.status || data.status)" :severity="returnCaseSeverity(data.return_request?.status || data.status)" />
+                                <Badge
+                                    v-if="data.return_request?.return_type === 'replacement' && data.return_request?.replacement_status"
+                                    :value="`Replacement: ${label(data.return_request.replacement_status)}`"
+                                    :severity="returnCaseSeverity(data.return_request.replacement_status)"
+                                />
+                            </div>
+                        </template>
                     </Column>
                     <Column header="Actions" style="min-width: 120px">
                         <template #body="{ data }">
@@ -75,6 +84,51 @@
                         </template>
                     </Column>
                 </DataTable>
+            </template>
+        </Card>
+
+        <Card v-if="!isWarehouse" class="border border-slate-200 shadow-sm">
+            <template #title>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-base font-semibold text-slate-900">Supplier Return Requests</span>
+                    <Badge :value="supplierReturns.length" severity="warn" />
+                </div>
+            </template>
+            <template #content>
+                <DataTable v-if="!loading" :value="supplierReturns" rowHover paginator :rows="10" :rowsPerPageOptions="[10, 15, 25]" class="p-datatable-sm text-xs" responsiveLayout="scroll">
+                    <template #empty>
+                        <div class="py-8 text-center text-sm text-slate-500">No supplier return requests found.</div>
+                    </template>
+                    <Column field="requested_date" header="Date" sortable style="min-width: 130px">
+                        <template #body="{ data }"><span class="text-slate-600">{{ date(data.requested_date) }}</span></template>
+                    </Column>
+                    <Column header="Reference" style="min-width: 190px">
+                        <template #body="{ data }"><span class="font-semibold text-slate-900">{{ data.return_number }}</span></template>
+                    </Column>
+                    <Column header="Supplier" style="min-width: 180px">
+                        <template #body="{ data }">{{ data.supplier?.supplier_name || 'Supplier unavailable' }}</template>
+                    </Column>
+                    <Column header="Branch" style="min-width: 160px">
+                        <template #body="{ data }">{{ data.from_branch?.name || '-' }}</template>
+                    </Column>
+                    <Column header="Items" style="min-width: 180px">
+                        <template #body="{ data }">
+                            <span>{{ data.items?.[0]?.product?.product_name || 'Item' }}</span>
+                            <small class="block text-slate-500">{{ data.items?.length || 0 }} line(s) · {{ returnedQuantity(data.items || []) }} unit(s)</small>
+                        </template>
+                    </Column>
+                    <Column header="Status" style="min-width: 130px">
+                        <template #body="{ data }"><Badge :value="label(data.status)" :severity="returnSeverity(data.status)" /></template>
+                    </Column>
+                    <Column header="Action" style="min-width: 100px">
+                        <template #body="{ data }">
+                            <Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" @click="openSupplierReturn(data)" />
+                        </template>
+                    </Column>
+                </DataTable>
+                <div v-else class="space-y-2">
+                    <Skeleton v-for="row in 3" :key="row" height="2.75rem" />
+                </div>
             </template>
         </Card>
 
@@ -130,6 +184,7 @@ const isWarehouse = computed(() => props.mode === 'warehouse')
 const loading = ref(true)
 const submitting = ref(false)
 const rows = ref<any[]>([])
+const supplierReturns = ref<any[]>([])
 const search = ref('')
 const status = ref('')
 const dateRange = ref<Date[] | null>(null)
@@ -141,6 +196,11 @@ const condition = ref('good')
 const notes = ref('')
 const statuses = [
     { label: 'All Statuses', value: '' },
+    { label: 'Requested', value: 'requested' },
+    { label: 'Approved', value: 'approved' },
+    { label: 'In Transit', value: 'in_transit' },
+    { label: 'Received', value: 'received' },
+    { label: 'Rejected', value: 'rejected' },
     { label: 'Assigned', value: 'assigned' },
     { label: 'Picked Up', value: 'picked_up' },
     { label: 'Out for Delivery', value: 'out_for_delivery' },
@@ -152,6 +212,16 @@ const conditions = [
 ]
 const label = (value: any) => String(value || '-').replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 const severity = (value: string) => value === 'delivered' ? 'success' : value === 'out_for_delivery' || value === 'assigned' ? 'info' : value === 'picked_up' ? 'warn' : 'secondary'
+const returnCaseSeverity = (value: string) => {
+    const status = String(value || '').toLowerCase()
+    if (['received', 'replaced', 'delivered', 'completed', 'refunded', 'approved'].includes(status)) return 'success'
+    if (['pending_verification', 'awaiting_stock', 'requested', 'pending', 'refund_pending'].includes(status)) return 'warn'
+    if (['assigned', 'picked_up', 'in_transit', 'out_for_delivery'].includes(status)) return 'info'
+    if (['rejected', 'cancelled', 'delivery_failed'].includes(status)) return 'danger'
+    return 'secondary'
+}
+const returnSeverity = (value: string) => ['received', 'completed'].includes(value) ? 'success' : ['requested', 'approved'].includes(value) ? 'warn' : ['in_transit', 'dispatched'].includes(value) ? 'info' : ['rejected', 'cancelled'].includes(value) ? 'danger' : 'secondary'
+const returnedQuantity = (items: any[] = []) => items.reduce((sum, item) => sum + Number(item.quantity_returned || 0), 0)
 const date = (value: string) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(value)) : '-'
 const canInspect = (row: any) => row.status === 'delivered' && row.return_request?.status === 'approved' && ['refund', 'replacement'].includes(row.return_request?.return_type)
 const validInspection = computed(() => selected.value && Number.isInteger(receivedQuantity.value) && receivedQuantity.value >= 1 && receivedQuantity.value <= Number(selected.value.return_request?.requested_quantity || 1) && ['good', 'bad'].includes(condition.value))
@@ -159,11 +229,23 @@ const validInspection = computed(() => selected.value && Number.isInteger(receiv
 const load = async () => {
     loading.value = true
     try {
-        const url = isWarehouse.value ? '/api/warehouse/returns' : '/api/inventory/returns/customer/destinations'
         const [start, end] = dateRange.value || []
-        const response = await axiosClient.get(url, { params: { search: search.value || undefined, status: status.value || undefined, start_date: start ? isoDate(start) : undefined, end_date: end ? isoDate(end) : undefined } })
-        rows.value = response.data?.data || []
+        const params = { search: search.value || undefined, status: status.value || undefined, start_date: start ? isoDate(start) : undefined, end_date: end ? isoDate(end) : undefined }
+        const deliveryUrl = isWarehouse.value ? '/api/warehouse/returns' : '/api/inventory/returns/customer/destinations'
+        const [deliveryResponse, supplierResponse] = await Promise.all([
+            axiosClient.get(deliveryUrl, { params }),
+            isWarehouse.value
+                ? Promise.resolve(null)
+                : axiosClient.get('/api/inventory/returns', { params: { ...params, return_type: 'supplier_return' } }).catch((error) => {
+                    console.error('Unable to load supplier return requests:', error)
+                    return null
+                }),
+        ])
+        rows.value = deliveryResponse.data?.data || []
+        supplierReturns.value = supplierResponse?.data?.data || []
     } catch (error: any) {
+        rows.value = []
+        supplierReturns.value = []
         toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Unable to load destination returns.', life: 3000 })
     } finally {
         loading.value = false
@@ -171,6 +253,7 @@ const load = async () => {
 }
 const clear = () => { search.value = ''; status.value = ''; dateRange.value = null; void load() }
 const open = (row: any) => router.push({ name: isWarehouse.value ? 'warehouse.returns.view' : 'logistics.return-pickups.detail', params: { id: isWarehouse.value ? row.id : row.id } })
+const openSupplierReturn = (row: any) => router.push({ name: 'inventory.stock-returns.detail', params: { id: row.id } })
 const isoDate = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 const openReplacement = (row: any) => router.push({ name: isWarehouse.value ? 'warehouse.replacements.detail' : 'inventory.replacements.detail', params: { id: row.return_id } })
 const openInspection = (row: any) => {

@@ -31,6 +31,20 @@ class DistanceService
         );
     }
 
+    public function getDistanceKmBetweenCoordinates(
+        float $originLatitude,
+        float $originLongitude,
+        float $destinationLatitude,
+        float $destinationLongitude,
+    ): float {
+        return $this->routeDistanceKm(
+            $originLatitude,
+            $originLongitude,
+            $destinationLatitude,
+            $destinationLongitude,
+        );
+    }
+
     protected function geocode(string $query): array
     {
         $token = $this->accessToken();

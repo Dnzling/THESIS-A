@@ -112,7 +112,7 @@
           <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</p><Tag class="mt-1" :value="prettyStatus(returnRequest.pickup.status)" severity="info" /></div>
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Driver</p><p class="mt-1 font-semibold text-slate-900">{{ [returnRequest.pickup.driver?.fname, returnRequest.pickup.driver?.lname].filter(Boolean).join(' ') || 'Unassigned' }}</p></div>
-            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Scheduled</p><p class="mt-1 font-semibold text-slate-900">{{ returnRequest.pickup.scheduled_at ? formatDateTime(returnRequest.pickup.scheduled_at) : '—' }}</p></div>
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Pickup Date</p><p class="mt-1 font-semibold text-slate-900">{{ returnRequest.pickup.scheduled_at ? formatDateOnly(returnRequest.pickup.scheduled_at) : '—' }}</p></div>
             <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivered</p><p class="mt-1 font-semibold text-slate-900">{{ returnRequest.pickup.delivered_at ? formatDateTime(returnRequest.pickup.delivered_at) : 'Pending' }}</p></div>
             <div class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer Pickup Address</p><p class="mt-1 font-medium text-slate-800">{{ returnRequest.pickup.pickup_address || '—' }}</p></div>
             <div class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivery Destination</p><p class="mt-1 font-medium text-slate-800">{{ returnRequest.pickup.destination_branch ? `${returnRequest.pickup.destination_branch.name} - ${returnRequest.pickup.destination_branch.address || ''}` : 'Not assigned' }}</p></div>
@@ -381,9 +381,9 @@
       <div class="space-y-3">
         <p class="text-sm text-gray-600">Create a Logistics pickup job for this approved return.</p>
         <div>
-          <label class="mb-1 block text-sm text-gray-600">Scheduled At</label>
-          <DatePicker v-model="pickupForm.scheduled_at" :minDate="getTodayDate()" showIcon showTime hourFormat="12"
-            class="w-full" />
+          <label class="mb-1 block text-sm text-gray-600">Pickup Date</label>
+          <DatePicker v-model="pickupForm.scheduled_at" :minDate="getTodayDate()" dateFormat="M d, yy" showIcon
+            class="w-full" placeholder="Select a pickup date" />
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -525,6 +525,12 @@
             optionValue="value" class="w-full" />
           <small class="text-slate-500">Store fault waives the fee. Customer responsibility uses distance, weight, and bulky-item settings.</small>
         </div>
+        <div v-if="pendingStatus === 'approved'" class="space-y-2">
+          <label class="block text-sm text-gray-600">Pickup Date <span class="text-red-500">*</span></label>
+          <DatePicker v-model="pendingPickupDate" :minDate="getTodayDate()" dateFormat="M d, yy" showIcon
+            fluid size="small" placeholder="Choose a date confirmed with the customer" />
+          <small class="text-slate-500">Choose today or a future date agreed with the customer. Logistics can adjust it later if needed.</small>
+        </div>
         <div v-if="pendingStatus === 'rejected'" class="space-y-2">
           <label class="block text-sm text-gray-600">Reject Reason</label>
           <Select v-model="pendingRejectReason" :options="rejectReasonOptions" optionLabel="label" optionValue="value"
@@ -557,6 +563,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Skeleton from 'primevue/skeleton'
+import DatePicker from 'primevue/datepicker'
 import { useAuthStore } from '@/stores/auth'
 import crmService from '@/services/crm.service'
 
@@ -849,23 +856,12 @@ const pickupForm = reactive({
 
 const getTodayDate = () => new Date()
 
-const toIsoDateTime = (date: Date) => {
-  const d = new Date(date)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mi = String(d.getMinutes()).padStart(2, '0')
-  const ss = String(d.getSeconds()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
-}
-
 const schedulePickup = async () => {
   if (!pickupForm.scheduled_at) return
   pickupScheduling.value = true
   try {
     const payload = {
-      scheduled_at: toIsoDateTime(pickupForm.scheduled_at),
+      scheduled_at: dateForApi(pickupForm.scheduled_at),
       pickup_name: pickupForm.pickup_name || undefined,
       pickup_phone: pickupForm.pickup_phone || undefined,
       pickup_address: pickupForm.pickup_address || undefined,
@@ -887,7 +883,7 @@ watch(
   (visible) => {
     if (!visible) return
     const order = returnRequest.value?.order || {}
-    pickupForm.scheduled_at = null
+  pickupForm.scheduled_at = null
     pickupForm.pickup_name = order.shipping_name || returnRequest.value?.user?.name || ''
     pickupForm.pickup_phone = order.shipping_phone || ''
     pickupForm.pickup_address = order.shipping_address || ''
@@ -898,6 +894,7 @@ watch(
 const notesDialogVisible = ref(false)
 const pendingStatus = ref<'approved' | 'rejected'>('approved')
 const pendingReviewNotes = ref('')
+const pendingPickupDate = ref<Date | null>(null)
 const pendingReturnType = ref<'refund' | 'replacement' | null>(null)
 const returnTypeOptions = [
   { label: 'Replacement (recommended)', value: 'replacement' },
@@ -928,6 +925,7 @@ const rejectReasonOptions = [
 const notesContinueDisabled = computed(() => {
   if (pendingStatus.value === 'approved') return !pendingReturnType.value
     || !pendingChargeResponsibility.value
+    || !pendingPickupDate.value
     || (pendingReturnType.value === 'refund' && !pendingRefundExceptionReason.value)
   if (pendingStatus.value !== 'rejected') return false
   const hasReason = !!String(pendingRejectReason.value || '').trim().length
@@ -950,6 +948,8 @@ const openApproval = () => {
   pendingChargeResponsibility.value = returnRequest.value?.charge_responsibility || 'store'
   pendingRefundExceptionReason.value = returnRequest.value?.refund_exception_reason || null
   pendingReviewNotes.value = returnRequest.value?.review_notes || ''
+  const pickupDate = String(returnRequest.value?.pickup?.scheduled_at || '').slice(0, 10)
+  pendingPickupDate.value = /^\d{4}-\d{2}-\d{2}$/.test(pickupDate) ? new Date(`${pickupDate}T00:00:00`) : null
   notesDialogVisible.value = true
 }
 
@@ -960,6 +960,10 @@ const closeNotesDialog = () => {
 const confirmUpdate = (nextStatus: 'approved' | 'rejected') => {
   if (nextStatus === 'approved' && !pendingReturnType.value) {
     toast.add({ severity: 'warn', summary: 'Required', detail: 'Select Refund or Replacement.', life: 2500 })
+    return
+  }
+  if (nextStatus === 'approved' && !pendingPickupDate.value) {
+    toast.add({ severity: 'warn', summary: 'Pickup date required', detail: 'Choose a pickup date and time confirmed with the customer.', life: 2500 })
     return
   }
   if (nextStatus === 'rejected') {
@@ -976,7 +980,7 @@ const confirmUpdate = (nextStatus: 'approved' | 'rejected') => {
     rejected: 'Reject this return?',
   }
   const messages: Record<string, string> = {
-    approved: 'This will set the return request to Approved.',
+    approved: 'This will approve the return and create a pickup scheduled for the selected date.',
     rejected: 'This will set the return request to Rejected.',
   }
 
@@ -1008,6 +1012,7 @@ const updateStatus = async (nextStatus: 'approved' | 'rejected') => {
       return_type: nextStatus === 'approved' ? pendingReturnType.value || undefined : undefined,
       charge_responsibility: nextStatus === 'approved' ? pendingChargeResponsibility.value : undefined,
       refund_exception_reason: nextStatus === 'approved' && pendingReturnType.value === 'refund' ? pendingRefundExceptionReason.value || undefined : undefined,
+      pickup_scheduled_at: nextStatus === 'approved' && pendingPickupDate.value ? dateForApi(pendingPickupDate.value) : undefined,
       review_notes: nextStatus === 'rejected' ? combinedRejectNotes : (pendingReviewNotes.value || undefined),
     })
     returnRequest.value = res?.data || returnRequest.value

@@ -86,8 +86,12 @@
           </div>
 
           <div v-if="source === 'return_pickup'">
-            <label class="mb-1 block text-sm text-slate-600">Deliver Return To *</label>
-            <Select v-model="form.destination_branch_id" :options="branches" optionLabel="label" optionValue="id" fluid filter placeholder="Select destination branch" />
+            <label class="mb-1 block text-sm text-slate-600">Return To</label>
+            <div class="rounded-xl border border-orange-200 bg-orange-50 p-3">
+              <p class="text-sm font-semibold text-slate-900">{{ returnDestinationBranch?.name || 'Originating branch unavailable' }}</p>
+              <p class="text-xs text-slate-600">{{ returnDestinationBranch?.address || [returnDestinationBranch?.city, returnDestinationBranch?.province].filter(Boolean).join(', ') || 'The branch that fulfilled the original order' }}</p>
+              <p class="mt-1 text-xs text-slate-500">The return must go back to the branch it was pulled from.</p>
+            </div>
           </div>
   
           <div v-if="selectedVehicle" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
@@ -171,13 +175,13 @@ const order = ref<any>(null)
 const drivers = ref<any[]>([])
 const assistants = ref<any[]>([])
 const vehicles = ref<any[]>([])
-const branches = ref<any[]>([])
 const zones = ref<any[]>([])
 const selectedZone = ref<any>(null)
 const selectedRate = ref<any>(null)
 const selectedEmployee = computed(() => drivers.value.find((employee: any) => Number(employee.id) === Number(form.driver_user_id)))
 const availableAssistants = computed(() => assistants.value.filter((employee: any) => Number(employee.id) !== Number(form.driver_user_id)))
 const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Number(vehicle.id) === Number(form.vehicle_id)))
+const returnDestinationBranch = computed(() => order.value?.destination_branch || null)
 
 const form = reactive({
   driver_user_id: null as number | null,
@@ -246,10 +250,6 @@ const loadOptions = async () => {
   }))
 
   zones.value = zoneRes?.data?.data || []
-  if (source.value === 'return_pickup') {
-    const branchRes = await logisticsService.getReturnPickupBranches()
-    branches.value = (branchRes?.data || []).map((branch: any) => ({ ...branch, label: `${branch.name} (${branch.branch_type === 'warehouse' ? 'Warehouse' : 'Store'}) - ${branch.address || branch.city || 'No address'}` }))
-  }
 }
 
 const loadOrderDetail = async () => {
@@ -260,8 +260,14 @@ const loadOrderDetail = async () => {
     const pickup = response?.data || null
     const returnRequest = pickup?.return_request || null
     const orderItem = returnRequest?.order_item || null
+    const destinationBranch = pickup?.destination_branch
+      || orderItem?.branch_inventory?.branch
+      || returnRequest?.order?.assigned_branch
+      || null
+    form.destination_branch_id = destinationBranch?.id ? Number(destinationBranch.id) : null
     order.value = pickup ? {
       ...pickup,
+      destination_branch: destinationBranch,
       order_number: returnRequest?.return_number || `Return #${returnRequest?.id || pickup.id}`,
       status: pickup.status,
       total_amount: Number(orderItem?.unit_price || 0) * Number(returnRequest?.requested_quantity || 1),
@@ -305,8 +311,9 @@ const loadOrderDetail = async () => {
 
 const calculateDistance = async () => {
   const returnOrder = order.value?.return_request?.order
-  const originLatitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.latitude : source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
-  const originLongitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.longitude : source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
+  const returnOriginBranch = order.value?.destination_branch || returnOrder?.assigned_branch
+  const originLatitude = Number(source.value === 'return_pickup' ? returnOriginBranch?.latitude : source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
+  const originLongitude = Number(source.value === 'return_pickup' ? returnOriginBranch?.longitude : source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
   const destinationLatitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_latitude : source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
   const destinationLongitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_longitude : source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
 

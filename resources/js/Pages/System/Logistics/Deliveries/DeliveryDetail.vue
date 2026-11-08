@@ -116,6 +116,12 @@
               />
 
               <Info
+                v-if="source === 'replacement' && replacementCase?.original_order_number"
+                label="Original Order"
+                :value="replacementCase.original_order_number"
+              />
+
+              <Info
                 v-if="source === 'ecommerce'"
                 label="Payment Method"
                 :value="formatPaymentMethod(order.payment_method || order.payment?.payment_method)"
@@ -270,6 +276,25 @@
           </template>
         </Card>
       </section>
+
+      <Card
+        v-if="source === 'replacement' && replacementCase"
+        class="rounded-2xl border border-orange-200 bg-orange-50/40 shadow-sm"
+      >
+        <template #title>
+          <span class="text-base">Replacement Case</span>
+        </template>
+        <template #content>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Return Reference" :value="replacementCase.return_number || order.order_number || '-'" />
+            <Info label="Resolution" :value="formatStatus(replacementCase.replacement_status || 'pending')" />
+            <Info label="Replacement Branch" :value="replacementCase.replacement_branch?.name || '-'" />
+            <Info v-if="replacementCase.replacement_received_by" label="Received By" :value="replacementCase.replacement_received_by" />
+            <Info label="Reason" :value="replacementCase.reason || '-'" class="sm:col-span-2" />
+            <Info v-if="replacementCase.details" label="Case Notes" :value="replacementCase.details" class="sm:col-span-2" />
+          </div>
+        </template>
+      </Card>
 
       <!-- Live Delivery Tracking -->
       <Card
@@ -520,7 +545,7 @@
           <div>
             <p class="font-semibold text-slate-900">{{ tripReference(trip) }}</p>
             <p class="mt-1 text-xs text-slate-600">{{ trip.driver?.name || trip.driver_name || 'Driver not set' }} · {{ trip.vehicle?.vehicle_name || trip.vehicle_name || 'Vehicle not set' }}</p>
-            <p class="mt-1 text-xs text-slate-500">{{ trip.scheduled_departure_at ? formatDateTime(trip.scheduled_departure_at) : 'No departure time set' }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ trip.scheduled_departure_at ? formatDateOnly(trip.scheduled_departure_at) : 'No departure date set' }}</p>
           </div>
           <Button label="Add to Trip" size="small" severity="warn" :loading="assigningTripId === Number(trip.id)" :disabled="Boolean(assigningTripId)" @click="addDeliveryToTrip(trip.id)" />
         </article>
@@ -534,21 +559,50 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="createTripVisible" modal header="Create Trip" class="w-full max-w-2xl">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <Dialog v-model:visible="createTripVisible" modal header="Create Trip" class="w-full max-w-3xl">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-sm text-slate-600">Driver</label>
           <Select v-model="tripForm.driver_user_id" :options="tripDrivers" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" :loading="loadingTripOptions" />
           <p v-if="!loadingTripOptions && !tripDrivers.length" class="mt-1 text-xs text-amber-700">No active driver is available for this store.</p>
+          <div v-if="selectedTripDriver" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-sm font-semibold text-orange-700">{{ tripInitials(selectedTripDriver.name) }}</div>
+              <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedTripDriver.name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedTripDriver.role || 'Delivery Driver' }}<span v-if="selectedTripDriver.employee_number"> ({{ selectedTripDriver.employee_number }})</span></p></div>
+            </div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+              <div><span class="text-slate-500">Contact</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedTripDriver.contact || 'Not provided' }}</p></div>
+              <div><span class="text-slate-500">Email</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedTripDriver.email || 'Not provided' }}</p></div>
+              <div class="sm:col-span-2"><span class="text-slate-500">Branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripDriver.branch || 'No branch assigned' }}</p></div>
+            </div>
+          </div>
         </div>
         <div>
           <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
           <Select v-model="tripForm.vehicle_id" :options="tripVehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" :loading="loadingTripOptions" />
           <p v-if="!loadingTripOptions && !tripVehicles.length" class="mt-1 text-xs text-amber-700">No active vehicle is available for this store.</p>
+          <div v-if="selectedTripVehicle" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedTripVehicle.vehicle_name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedTripVehicle.vehicle_type || 'Vehicle' }}<span v-if="selectedTripVehicle.plate_number"> ({{ selectedTripVehicle.plate_number }})</span></p></div><Badge :value="selectedTripVehicle.status || 'Active'" :severity="selectedTripVehicle.status === 'active' ? 'success' : 'secondary'" /></div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+              <div><span class="text-slate-500">Make / model</span><p class="mt-0.5 font-medium text-slate-800">{{ [selectedTripVehicle.brand, selectedTripVehicle.model].filter(Boolean).join(' ') || 'Not provided' }}</p></div>
+              <div><span class="text-slate-500">Color</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.color || 'Not provided' }}</p></div>
+              <div><span class="text-slate-500">Load capacity</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.capacity_kg ? `${Number(selectedTripVehicle.capacity_kg).toLocaleString()} kg` : 'Not set' }}</p></div>
+              <div><span class="text-slate-500">Stops per trip</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.max_orders_per_trip ?? 'Not set' }}</p></div>
+              <div class="sm:col-span-2"><span class="text-slate-500">Assigned branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.branch?.name || 'Branch not specified' }}</p></div>
+              <div v-if="selectedTripVehicle.notes" class="sm:col-span-2"><span class="text-slate-500">Vehicle notes</span><p class="mt-0.5 whitespace-pre-line text-slate-700">{{ selectedTripVehicle.notes }}</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Employees Accompanying the Driver</label>
+          <MultiSelect v-model="tripForm.assistant_user_ids" :options="availableTripAssistants" optionLabel="name" optionValue="id" filter display="chip" fluid placeholder="Select employees (optional)" :loading="loadingTripOptions" />
         </div>
         <div class="md:col-span-2">
           <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
-          <DatePicker v-model="tripForm.scheduled_departure_at" :minDate="new Date()" fluid />
+          <DatePicker v-model="tripForm.scheduled_departure_at" :minDate="new Date()" :disabledDates="tripUnavailableDepartureDates" fluid>
+            <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isTripDateUnavailable(date) }">{{ date.day }}</span></template>
+          </DatePicker>
+          <p v-if="tripForm.vehicle_id" class="mt-1 text-xs text-slate-500">Crossed-out dates already have a planned trip for this vehicle.</p>
         </div>
         <div class="md:col-span-2">
           <label class="mb-1 block text-sm text-slate-600">Notes</label>
@@ -557,7 +611,7 @@
       </div>
       <template #footer>
         <Button label="Back to Trips" severity="secondary" outlined @click="createTripVisible = false" />
-        <Button label="Create and Add Delivery" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id" @click="createTripAndAddDelivery" />
+        <Button label="Create and Add Delivery" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id || hasTripDateConflict(tripForm.scheduled_departure_at)" @click="createTripAndAddDelivery" />
       </template>
     </Dialog>
 
@@ -681,7 +735,9 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
+import Badge from 'primevue/badge'
 import Message from 'primevue/message'
+import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
@@ -733,6 +789,7 @@ const loading = ref(false)
 const order = ref<any>(null)
 const delivery = ref<any>(null)
 const logs = ref<any[]>([])
+const replacementCase = ref<any>(null)
 const lalamoveDialogVisible = ref(false)
 const loadingLalamoveServices = ref(false)
 const quotingLalamove = ref(false)
@@ -757,13 +814,40 @@ const creatingTrip = ref(false)
 const assigningTripId = ref<number | null>(null)
 const compatibleTrips = ref<any[]>([])
 const tripDrivers = ref<any[]>([])
+const tripAssistants = ref<any[]>([])
 const tripVehicles = ref<any[]>([])
+const tripUnavailableDepartureDates = ref<Date[]>([])
 const tripForm = reactive({
   driver_user_id: null as number | null,
+  assistant_user_ids: [] as number[],
   vehicle_id: null as number | null,
   scheduled_departure_at: null as Date | null,
   notes: '',
 })
+const availableTripAssistants = computed(() => tripAssistants.value.filter(employee => Number(employee.id) !== Number(tripForm.driver_user_id)))
+const selectedTripDriver = computed(() => tripDrivers.value.find(driver => Number(driver.id) === Number(tripForm.driver_user_id)) || null)
+const selectedTripVehicle = computed(() => tripVehicles.value.find(vehicle => Number(vehicle.id) === Number(tripForm.vehicle_id)) || null)
+const tripInitials = (name?: string) => String(name || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('')
+watch(() => tripForm.driver_user_id, driverId => {
+  tripForm.assistant_user_ids = tripForm.assistant_user_ids.filter(id => Number(id) !== Number(driverId))
+})
+watch(() => tripForm.vehicle_id, vehicleId => { void loadTripUnavailableDepartureDates(vehicleId) })
+
+const loadTripUnavailableDepartureDates = async (vehicleId: number | null) => {
+  tripUnavailableDepartureDates.value = []
+  if (!vehicleId) return
+  try {
+    const response = await logisticsService.getVehicleUnavailableDepartureDates(vehicleId)
+    tripUnavailableDepartureDates.value = (response?.data || []).map((value: string) => new Date(`${value}T00:00:00`))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Schedule Check Failed', detail: error?.response?.data?.message || 'Unable to check this vehicle’s planned trips.', life: 3500 })
+  }
+}
+
+const isTripDateUnavailable = (date: any) => tripUnavailableDepartureDates.value.some(item =>
+  item.getFullYear() === date.year && item.getMonth() === date.month && item.getDate() === date.day,
+)
+const hasTripDateConflict = (value: Date | null) => Boolean(value && isTripDateUnavailable({ year: value.getFullYear(), month: value.getMonth(), day: value.getDate() }))
 
 const routeUnavailable = ref(false)
 
@@ -771,16 +855,14 @@ let trackingMap: MapboxMap | null = null
 let mapboxgl: typeof import('mapbox-gl').default | null = null
 let mapRenderId = 0
 
-const source = computed<'ecommerce' | 'sales' | 'pickup'>(() => {
+const source = computed<'ecommerce' | 'sales' | 'pickup' | 'replacement'>(() => {
   const value = String(route.params.source || '').toLowerCase()
-
-  return value === 'sales' || value === 'pickup'
-    ? value
-    : 'ecommerce'
+  if (['sales', 'pickup', 'replacement'].includes(value)) return value as 'sales' | 'pickup' | 'replacement'
+  return route.name === 'logistics.replacements.detail' ? 'replacement' : 'ecommerce'
 })
 
 const orderId = computed(() =>
-  Number(route.params.orderId || 0),
+  Number(route.params.orderId || route.params.id || 0),
 )
 
 const sourceLabel = computed(() => {
@@ -792,11 +874,13 @@ const sourceLabel = computed(() => {
     return 'Sales'
   }
 
+  if (source.value === 'replacement') return 'Replacement'
+
   return 'Ecommerce'
 })
 
 const canAssignDelivery = computed(() => {
-  if (!authStore.hasPermission('logistics.deliveries.manage') || source.value === 'pickup') {
+  if (!authStore.hasPermission('logistics.deliveries.manage') || ['pickup', 'replacement'].includes(source.value)) {
     return false
   }
 
@@ -810,8 +894,14 @@ const canAssignDelivery = computed(() => {
 
   return dispatchApproved && deliveryNotAssigned
 })
-const canAddToTrip = computed(() => canAssignDelivery.value
-  && (!delivery.value || ['pending', 'ready_for_dispatch'].includes(String(delivery.value.status || '').toLowerCase())))
+const canAddToTrip = computed(() => {
+  if (!authStore.hasPermission('logistics.deliveries.manage')) return false
+  if (source.value === 'replacement') {
+    return order.value?.replacement_status === 'reserved' && !delivery.value?.trip_id
+  }
+  return canAssignDelivery.value
+    && (!delivery.value || ['pending', 'ready_for_dispatch'].includes(String(delivery.value.status || '').toLowerCase()))
+})
 const canManageLalamove = computed(() => authStore.hasPermission('logistics.deliveries.manage'))
 const canAssignSupplierPickup = computed(() =>
   source.value === 'pickup'
@@ -859,7 +949,7 @@ const showLiveTracking = computed(
     !!delivery.value &&
     delivery.value.courier_provider !== 'lalamove' &&
     !(
-      source.value === 'ecommerce' &&
+      ['ecommerce', 'replacement'].includes(source.value) &&
       String(delivery.value.status || '').toLowerCase() === 'delivered'
     ),
 )
@@ -974,6 +1064,13 @@ const destinationPoint = computed<
     )
   }
 
+  if (source.value === 'replacement') {
+    return point(
+      order.value?.customer_latitude,
+      order.value?.customer_longitude,
+    )
+  }
+
   return point(
     order.value?.branch?.latitude,
     order.value?.branch?.longitude,
@@ -1024,6 +1121,17 @@ const formatDateTime = (value: any) =>
         timeStyle: 'short',
       })
     : '-'
+
+const formatDateOnly = (value: any) => {
+  if (!value) return '-'
+  const raw = String(value)
+  const date = /^\d{4}-\d{2}-\d{2}/.test(raw) ? new Date(`${raw.slice(0, 10)}T00:00:00`) : new Date(raw)
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit' }).format(date)
+}
+
+const toDateOnly = (value: Date | null) => value
+  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  : null
 
 const formatCurrency = (value: any) =>
   new Intl.NumberFormat('en-PH', {
@@ -1222,11 +1330,12 @@ const loadAll = async () => {
         orderId.value,
       )
 
-    const payload = response?.data || {}
+    const payload = response?.data?.data || response?.data || {}
 
     order.value = payload.order || null
     delivery.value = payload.delivery || null
     logs.value = payload.logs || []
+    replacementCase.value = payload.replacement_case || null
 
   } catch (error: any) {
     toast.add({
@@ -1321,7 +1430,7 @@ const openAssign = async () => {
   tripChoiceVisible.value = true
   loadingCompatibleTrips.value = true
   try {
-    const response = await logisticsService.getCompatibleTripsForOrder(source.value as 'ecommerce' | 'sales', orderId.value)
+    const response = await logisticsService.getCompatibleTripsForOrder(source.value as 'ecommerce' | 'sales' | 'replacement', orderId.value)
     compatibleTrips.value = response?.data || []
   } catch (error: any) {
     tripChoiceVisible.value = false
@@ -1358,6 +1467,7 @@ const addDeliveryToTrip = async (tripId: number | string) => {
 
 const openCreateTrip = async () => {
   tripForm.driver_user_id = null
+  tripForm.assistant_user_ids = []
   tripForm.vehicle_id = null
   tripForm.scheduled_departure_at = null
   tripForm.notes = ''
@@ -1371,6 +1481,7 @@ const openCreateTrip = async () => {
       logisticsService.getVehicles({ per_page: 100, status: 'active' }),
     ])
     tripDrivers.value = employeeResponse?.data?.drivers || []
+    tripAssistants.value = employeeResponse?.data?.employees || []
     tripVehicles.value = (vehicleResponse?.data?.data || []).map((vehicle: any) => ({
       ...vehicle,
       label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
@@ -1384,12 +1495,17 @@ const openCreateTrip = async () => {
 
 const createTripAndAddDelivery = async () => {
   if (!tripForm.driver_user_id || !tripForm.vehicle_id || creatingTrip.value) return
+  if (hasTripDateConflict(tripForm.scheduled_departure_at)) {
+    toast.add({ severity: 'warn', summary: 'Vehicle Already Booked', detail: 'Choose another vehicle or departure date.', life: 3000 })
+    return
+  }
   creatingTrip.value = true
   try {
     const response = await logisticsService.createTrip({
       driver_user_id: tripForm.driver_user_id,
+      assistant_user_ids: tripForm.assistant_user_ids,
       vehicle_id: tripForm.vehicle_id,
-      scheduled_departure_at: tripForm.scheduled_departure_at ? new Date(tripForm.scheduled_departure_at).toISOString() : null,
+      scheduled_departure_at: toDateOnly(tripForm.scheduled_departure_at),
       notes: tripForm.notes || null,
     })
     const tripId = Number(response?.data?.id)

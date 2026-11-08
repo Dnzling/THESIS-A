@@ -62,7 +62,7 @@ const financeService = {
     return response.data
   },
 
-  async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string }) {
+  async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string; amount?: number; adjustment_reason?: string }) {
     const response = await axiosClient.put(`${baseUrl}/refunds/${id}/status`, payload)
     return response.data
   },
@@ -72,13 +72,8 @@ const financeService = {
     return response.data
   },
 
-  async startRefundTestWalletTransfer(id: number | string) {
-    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/test-wallet-transfer`)
-    return response.data
-  },
-
-  async checkRefundTestWalletTransfer(id: number | string) {
-    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/test-wallet-transfer/check`)
+  async checkPaymongoRefund(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/paymongo/check`)
     return response.data
   },
 

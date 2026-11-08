@@ -5,7 +5,7 @@
       <Button v-if="canManage" label="Create Refund" icon="pi pi-plus" severity="warn" size="small" @click="router.push({ name: 'finance.refunds.create' })" />
     </header>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
       <Card v-for="item in summary" :key="item.label" class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ item.label }}</p>
@@ -72,12 +72,12 @@ const loading = ref(true)
 const refunds = ref<any[]>([])
 const filters = reactive({ search: '', source: 'all', status: '' })
 const sources = [{ label: 'All Sources', value: 'all' }, { label: 'Ecommerce Returns', value: 'ecommerce_return' }, { label: 'Ecommerce', value: 'ecommerce' }, { label: 'In Store', value: 'sales' }, { label: 'Manual', value: 'manual' }]
-const statuses = [{ label: 'All Statuses', value: '' }, { label: 'For Inspection', value: 'pending_inspection' }, { label: 'Pending Finance Approval', value: 'pending' }, { label: 'Approved - Awaiting Send', value: 'approved' }, { label: 'Awaiting Payout', value: 'awaiting_payout' }, { label: 'Transfer Processing', value: 'processing' }, { label: 'Transfer Failed', value: 'transfer_failed' }, { label: 'Refunded', value: 'sent' }, { label: 'Rejected', value: 'rejected' }]
+const statuses = [{ label: 'All Statuses', value: '' }, { label: 'For Inspection', value: 'pending_inspection' }, { label: 'Pending Finance Approval', value: 'pending' }, { label: 'Approved - Awaiting Send', value: 'approved' }, { label: 'Awaiting Payout', value: 'awaiting_payout' }, { label: 'Transfer Processing', value: 'processing' }, { label: 'Transfer Failed', value: 'transfer_failed' }, { label: 'Refunded', value: 'sent' }, { label: 'Sandbox Simulated', value: 'simulated' }, { label: 'Rejected', value: 'rejected' }]
 const currency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const date = (value: any) => value ? new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'
-const label = (value: any) => value === 'pending_inspection' ? 'For Inspection' : value === 'awaiting_payout' ? 'Awaiting Payout' : value === 'sent' ? 'Refunded' : String(value || 'pending').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
+const label = (value: any) => value === 'pending_inspection' ? 'For Inspection' : value === 'awaiting_payout' ? 'Awaiting Payout' : value === 'sent' ? 'Refunded' : value === 'simulated' ? 'Sandbox Simulated' : String(value || 'pending').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 const sourceLabel = (value: string) => ({ ecommerce_return: 'Ecommerce Return', ecommerce: 'Ecommerce', sales: 'In Store', manual: 'Manual' } as any)[value] || label(value)
-const severity = (value: string) => ['approved', 'sent'].includes(value) ? 'success' : ['rejected', 'transfer_failed'].includes(value) ? 'danger' : value === 'processing' ? 'info' : 'warn'
+const severity = (value: string) => ['approved', 'sent'].includes(value) ? 'success' : ['rejected', 'transfer_failed'].includes(value) ? 'danger' : ['processing', 'simulated'].includes(value) ? 'info' : 'warn'
 const isLegacyUnpaid = (item: any) => ['simulation', 'paymongo_wallet_test'].includes(item.payout_provider) && item.status === 'sent'
 const displayStatusValue = (item: any) => isLegacyUnpaid(item) ? 'awaiting_payout' : item.status
 const displayStatus = (item: any) => label(displayStatusValue(item))
@@ -85,6 +85,7 @@ const summary = computed(() => [
   { label: 'For Inspection', value: refunds.value.filter(item => item.status === 'pending_inspection').length },
   { label: 'Pending Approval', value: refunds.value.filter(item => item.status === 'pending').length },
   { label: 'Awaiting Payout', value: refunds.value.filter(item => ['approved', 'awaiting_payout'].includes(item.status) || isLegacyUnpaid(item)).length },
+  { label: 'Sandbox Simulated', value: refunds.value.filter(item => item.status === 'simulated').length },
   { label: 'Amount To Send', value: refunds.value.filter(item => ['pending', 'approved', 'awaiting_payout'].includes(item.status) || isLegacyUnpaid(item)).reduce((sum, item) => sum + Number(item.amount || 0), 0), money: true },
 ])
 const load = async () => { loading.value = true; try { const response = await financeService.getRefunds({ ...filters }); refunds.value = response?.data || [] } catch (error: any) { toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Unable to load refunds.', life: 3000 }) } finally { loading.value = false } }

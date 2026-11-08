@@ -4148,7 +4148,7 @@
     },
     {
       "navigation_name": "Delivery History",
-      "permission_name": "logistics.driver.deliveries"
+      "permission_name": "logistics.driver.history"
     },
     {
       "navigation_name": "Vehicles",
@@ -9094,11 +9094,13 @@
     }
   ],
   "retired_permissions": [
+    "logistics.driver.deliveries",
     "driver.deliveries.view",
     "driver.history.view",
     "driver.trips.view"
   ],
   "retired_navigation_items": [
+    "My Deliveries",
     "merchandising.assets",
     "merchandising.pricing",
     "Inventory",

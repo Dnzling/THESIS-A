@@ -10,12 +10,17 @@ use App\Models\Logistics\ReturnPickup;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Finance\FinanceRefund;
+use App\Models\Store\Branch;
+use App\Models\Sales\SalesOrder;
+use App\Models\Sales\SalesOrderItem;
 use App\Services\Logistics\ReturnChargeService;
 use App\Services\Payment\EcommerceRefundRoutingService;
+use App\Services\Finance\ReturnRefundAmountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ReturnController extends Controller
 {
@@ -120,7 +125,8 @@ class ReturnController extends Controller
         });
 
         $ticket->load(['assignees.user:id,fname,lname,email', 'creator:id,fname,lname']);
-        $return->load('order:id,order_number');
+        $return->load(['order:id,order_number', 'salesOrder:id,order_number']);
+        $sourceOrder = $return->sourceOrder();
         $returnNumber = $return->return_number ?: 'Return #' . $return->id;
         $link = '/crm/returns/' . (int) $return->id;
         $notificationData = [
@@ -262,6 +268,12 @@ class ReturnController extends Controller
                 'order:id,order_number,status,store_id,user_id,shipping_name,shipping_phone,shipping_address,created_at',
                 'orderItem:id,order_id,product_id,product_name,sku,quantity,unit_price',
                 'orderItem.product:id,product_name,sku',
+                'salesOrder:id,store_id,branch_id,order_number,status,customer_name,customer_phone,delivery_email,delivery_address,created_at,paid_at',
+                'salesOrderItem:id,order_id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+                'salesOrderItem.product:id,product_name,sku',
+                'salesOrderItem.variation:id,variation_name,variation_sku',
+                'salesOrderItem.branchInventory:id,branch_id,variation_id',
+                'salesOrderItem.branchInventory.variation:id,variation_name,variation_sku,color,size,material,texture,finish,base_price',
                 'user:id,fname,lname,email',
                 'pickup:id,store_id,return_id,status,scheduled_at,driver_user_id,picked_up_at,created_at',
                 'pickup.driver:id,fname,lname,email',
@@ -334,7 +346,13 @@ class ReturnController extends Controller
                     ->orWhereHas('orderItem', function ($iq) use ($search) {
                         $iq->where('product_name', 'like', "%{$search}%")
                             ->orWhere('sku', 'like', "%{$search}%");
-                    });
+                    })
+                    ->orWhereHas('salesOrder', fn ($sq) => $sq->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%"))
+                    ->orWhereHas('salesOrderItem', fn ($iq) => $iq->where('product_name', 'like', "%{$search}%")
+                        ->orWhere('sku', 'like', "%{$search}%"))
+                    ->orWhereHas('salesOrderItem.product', fn ($pq) => $pq->where('product_name', 'like', "%{$search}%")
+                        ->orWhere('sku', 'like', "%{$search}%"));
             });
         }
 
@@ -350,6 +368,7 @@ class ReturnController extends Controller
 
         $perPage = (int) $request->input('per_page', 15);
         $returns = $query->paginate(max(1, min(100, $perPage)));
+        $returns->getCollection()->each(fn (EcommerceOrderReturn $return) => $this->normalizePosReturnForDisplay($return));
 
         return response()->json([
             'success' => true,
@@ -361,6 +380,188 @@ class ReturnController extends Controller
                 'last_page' => $returns->lastPage(),
             ],
         ]);
+    }
+
+    public function posOrders(Request $request): JsonResponse
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        abort_unless($storeId > 0, 422, 'A store context is required.');
+
+        $activeReturnStatuses = ['pending_verification', 'approved', 'received', 'refund_pending', 'refunded', 'replaced'];
+        $returnedItemIds = EcommerceOrderReturn::query()
+            ->where('store_id', $storeId)
+            ->whereNotNull('sales_order_item_id')
+            ->whereIn('status', $activeReturnStatuses)
+            ->pluck('sales_order_item_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $orders = SalesOrder::query()
+            ->with([
+                'branch:id,name',
+                'delivery:id,sales_order_id,delivered_at',
+                'items.product:id,product_name,sku',
+                'items.variation:id,variation_name,variation_sku',
+                'items.branchInventory:id,branch_id,variation_id',
+                'items.branchInventory.variation:id,variation_name,variation_sku',
+            ])
+            ->where('store_id', $storeId)
+            ->where(function ($query): void {
+                $query->where('status', 'completed')
+                    ->orWhereHas('delivery', fn ($delivery) => $delivery->where('status', 'delivered'));
+            })
+            ->where(function ($query): void {
+                $query->whereIn('payment_status', ['paid', 'succeeded', 'completed'])
+                    ->orWhereHas('payment', fn ($payment) => $payment->whereIn('status', ['paid', 'succeeded', 'completed']));
+            })
+            ->when($request->filled('search'), function ($query) use ($request): void {
+                $search = trim((string) $request->query('search'));
+                $query->where(function ($nested) use ($search): void {
+                    $nested->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%");
+                });
+            })
+            ->latest('created_at')
+            ->limit(100)
+            ->get()
+            ->filter(function (SalesOrder $order): bool {
+                $purchasedAt = $order->delivery?->delivered_at ?? $order->paid_at ?? $order->created_at;
+                return $purchasedAt && Carbon::parse($purchasedAt)->gte(now()->subDays(7));
+            })
+            ->map(function (SalesOrder $order) use ($returnedItemIds): array {
+                $items = $order->items
+                    ->reject(fn (SalesOrderItem $item) => in_array((int) $item->id, $returnedItemIds, true))
+                    ->map(fn (SalesOrderItem $item): array => [
+                        'id' => (int) $item->id,
+                        'product_id' => (int) $item->product_id,
+                        'product_name' => $item->product?->product_name ?: $item->product_name,
+                        'sku' => $item->variation?->variation_sku ?: $item->product?->sku ?: $item->sku,
+                        'variant_name' => $item->variation?->variation_name,
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (float) $item->unit_price,
+                    ])
+                    ->values();
+
+                return [
+                    'id' => (int) $order->id,
+                    'order_number' => $order->order_number,
+                    'status' => $order->status,
+                    'branch_id' => $order->branch_id,
+                    'branch_name' => $order->branch?->name,
+                    'customer_name' => $order->customer_name,
+                    'customer_phone' => $order->customer_phone,
+                    'customer_email' => $order->delivery_email,
+                    'delivery_address' => $order->delivery_address,
+                    'purchased_at' => ($order->delivery?->delivered_at ?? $order->paid_at ?? $order->created_at)?->toISOString(),
+                    'items' => $items,
+                ];
+            })
+            ->filter(fn (array $order) => count($order['items']) > 0)
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $orders]);
+    }
+
+    public function createPosReturn(Request $request): JsonResponse
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        abort_unless($storeId > 0, 422, 'A store context is required.');
+
+        $validated = $request->validate([
+            'sales_order_item_id' => ['required', 'integer', 'exists:sales_pos_order_items,id'],
+            'return_contact_name' => ['required', 'string', 'max:255'],
+            'return_contact_phone' => ['required', 'string', 'max:50'],
+            'return_pickup_address' => ['required', 'string', 'max:2000'],
+            'requested_quantity' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'details' => ['nullable', 'string', 'max:2000'],
+            'evidence_images' => ['required', 'array', 'min:1', 'max:5'],
+            'evidence_images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+        ]);
+
+        $item = SalesOrderItem::query()
+            ->with(['order.delivery', 'product', 'variation', 'branchInventory'])
+            ->whereKey($validated['sales_order_item_id'])
+            ->whereHas('order', fn ($query) => $query->where('store_id', $storeId)
+                ->where(fn ($eligible) => $eligible->where('status', 'completed')
+                    ->orWhereHas('delivery', fn ($delivery) => $delivery->where('store_id', $storeId)->where('status', 'delivered')))
+                ->where(fn ($paid) => $paid->whereIn('payment_status', ['paid', 'succeeded', 'completed'])
+                    ->orWhereHas('payment', fn ($payment) => $payment->whereIn('status', ['paid', 'succeeded', 'completed']))))
+            ->firstOrFail();
+        $order = $item->order;
+        $purchaseDate = $order->delivery?->delivered_at ?? $order->paid_at ?? $order->created_at;
+        if (!$purchaseDate || Carbon::parse($purchaseDate)->lt(now()->subDays(7))) {
+            return response()->json(['success' => false, 'message' => 'The 7-day return window for this POS sale has ended.'], 422);
+        }
+        if ((int) $validated['requested_quantity'] > (int) $item->quantity) {
+            return response()->json(['success' => false, 'message' => 'Return quantity cannot exceed the quantity sold.'], 422);
+        }
+
+        $hasActiveReturn = EcommerceOrderReturn::query()
+            ->where('store_id', $storeId)
+            ->where('sales_order_item_id', $item->id)
+            ->whereIn('status', ['pending_verification', 'approved', 'received', 'refund_pending', 'refunded', 'replaced'])
+            ->exists();
+        if ($hasActiveReturn) {
+            return response()->json(['success' => false, 'message' => 'A return request already exists for this POS sale item.'], 422);
+        }
+
+        $branchId = (int) ($item->branchInventory?->branch_id ?? $order->branch_id ?? 0);
+        if ($branchId <= 0 || !Branch::query()->where('id', $branchId)->where('store_id', $storeId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'The original POS sale branch could not be determined.'], 422);
+        }
+
+        $evidenceUrls = [];
+        $storedPaths = [];
+        try {
+            foreach ($request->file('evidence_images', []) as $file) {
+                $path = $file->store("crm/returns/pos/{$storeId}/orders/{$order->id}", 'public');
+                $storedPaths[] = $path;
+                $evidenceUrls[] = Storage::disk('public')->url($path);
+            }
+
+            $return = DB::transaction(fn () => EcommerceOrderReturn::query()->create([
+                'source_type' => 'pos',
+                'sales_order_id' => (int) $order->id,
+                'sales_order_item_id' => (int) $item->id,
+                'return_contact_name' => trim($validated['return_contact_name']),
+                'return_contact_phone' => trim($validated['return_contact_phone']),
+                'return_pickup_address' => trim($validated['return_pickup_address']),
+                'order_id' => null,
+                'order_item_id' => null,
+                'store_id' => $storeId,
+                'user_id' => null,
+                'requested_quantity' => (int) $validated['requested_quantity'],
+                'reason' => trim($validated['reason']),
+                'details' => $validated['details'] ?? null,
+                'evidence_urls' => $evidenceUrls,
+                'status' => 'pending_verification',
+            ]));
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($storedPaths);
+            throw $exception;
+        }
+
+        $recipientIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']);
+        $this->notifyMany($recipientIds, [
+            'store_id' => $storeId,
+            'module' => 'crm',
+            'entity_type' => 'ecommerce_order_return',
+            'entity_id' => (int) $return->id,
+            'action' => 'requested',
+            'title' => 'POS return request created',
+            'message' => "POS sale {$order->order_number} has a return request pending investigation.",
+            'data' => ['required_permission' => 'crm.returns.view', 'source_type' => 'pos'],
+            'link' => '/crm/returns/' . (int) $return->id,
+            'severity' => 'warn',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'POS return request created and sent for investigation.',
+            'data' => $return->load(['salesOrder', 'salesOrderItem.product']),
+        ], 201);
     }
 
     public function show(Request $request, int $id): JsonResponse
@@ -397,7 +598,15 @@ class ReturnController extends Controller
             'investigationTicket.assignees.user:id,fname,lname,email',
             'investigationTicket.creator:id,fname,lname',
             'investigationTicket.completer:id,fname,lname',
+            'salesOrder:id,store_id,branch_id,order_number,status,customer_name,customer_phone,delivery_email,delivery_address,created_at,paid_at',
+            'salesOrderItem:id,order_id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'salesOrderItem.product:id,product_name,sku,base_price,unit_of_measurement',
+            'salesOrderItem.variation:id,variation_name,variation_sku,color,size,material,texture,finish,base_price',
+            'salesOrderItem.branchInventory:id,branch_id,variation_id',
+            'salesOrderItem.branchInventory.variation:id,variation_name,variation_sku,color,size,material,texture,finish,base_price',
         ]);
+
+        $this->normalizePosReturnForDisplay($return);
 
         return response()->json([
             'success' => true,
@@ -420,11 +629,23 @@ class ReturnController extends Controller
             'return_type' => ['nullable', 'required_if:status,approved', 'in:refund,replacement'],
             'charge_responsibility' => ['nullable', 'required_if:status,approved', 'in:store,customer'],
             'refund_exception_reason' => ['nullable', 'required_if:return_type,refund', 'string', 'max:255'],
+            'pickup_scheduled_at' => ['required_if:status,approved', 'nullable', 'date', 'after_or_equal:today'],
             'review_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $newStatus = $validated['status'];
         $currentStatus = (string) $return->status;
+        $originBranchId = null;
+
+        if ($newStatus === 'approved') {
+            $originBranchId = $this->resolveReturnSourceBranchId($return);
+            if (!$originBranchId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The original fulfillment branch could not be determined. Check the order item stock record before approving this return.',
+                ], 422);
+            }
+        }
 
         if ($currentStatus === 'pending_verification') {
             $return->loadMissing('investigationTicket');
@@ -485,7 +706,10 @@ class ReturnController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($return, $newStatus, $validated): void {
+        $pickupId = null;
+        $pickupScheduledAt = $newStatus === 'approved' ? Carbon::parse($validated['pickup_scheduled_at'])->startOfDay() : null;
+
+        DB::transaction(function () use ($return, $newStatus, $validated, $originBranchId, $pickupScheduledAt, &$pickupId): void {
             $return->status = $newStatus;
             if (array_key_exists('review_notes', $validated)) {
                 $return->review_notes = $validated['review_notes'];
@@ -507,16 +731,21 @@ class ReturnController extends Controller
 
             // Approved returns enter Logistics as ready for dispatch.
             if ($newStatus === 'approved') {
-                $return->loadMissing(['order', 'orderItem']);
-                ReturnPickup::query()->firstOrCreate(
+                $return->loadMissing(['order', 'orderItem', 'salesOrder', 'salesOrderItem']);
+                $sourceOrder = $return->sourceOrder();
+                $sourceItem = $return->sourceOrderItem();
+                $pickup = ReturnPickup::query()->firstOrCreate(
                     ['return_id' => (int) $return->id],
                     [
                         'store_id' => (int) $return->store_id,
+                        'destination_branch_id' => $originBranchId,
                         'status' => 'ready_for_dispatch',
-                        'scheduled_at' => null,
-                        'pickup_name' => $return->order?->shipping_name,
-                        'pickup_phone' => $return->order?->shipping_phone,
-                        'pickup_address' => $return->order?->shipping_address,
+                        'scheduled_at' => $pickupScheduledAt,
+                        'pickup_name' => $return->return_contact_name ?: ($sourceOrder?->shipping_name ?? $sourceOrder?->customer_name),
+                        'pickup_phone' => $return->return_contact_phone ?: ($sourceOrder?->shipping_phone ?? $sourceOrder?->customer_phone),
+                        'pickup_address' => $return->return_pickup_address ?: ($sourceOrder?->shipping_address ?? $sourceOrder?->delivery_address),
+                        'pickup_latitude' => $sourceOrder?->customer_latitude ?? $sourceOrder?->delivery_latitude,
+                        'pickup_longitude' => $sourceOrder?->customer_longitude ?? $sourceOrder?->delivery_longitude,
                         'notes' => 'Created from approved return.',
                         'distance_km' => data_get($return->return_fee_breakdown, 'distance_km'),
                         'estimated_fee' => (float) $return->return_fee,
@@ -524,20 +753,28 @@ class ReturnController extends Controller
                         'updated_by' => auth()->id(),
                     ]
                 );
+                $pickup->scheduled_at = $pickupScheduledAt;
+                $pickup->updated_by = auth()->id();
+                $pickup->save();
+                $pickupId = (int) $pickup->id;
+                if ((int) $pickup->destination_branch_id !== (int) $originBranchId) {
+                    $pickup->destination_branch_id = $originBranchId;
+                    $pickup->save();
+                }
 
                 if ($return->return_type === 'refund') {
                     $refundRouting = app(EcommerceRefundRoutingService::class);
-                    $refundMethod = $return->order && $refundRouting->canRefundToOriginal($return->order)
-                        ? $refundRouting->originalMethod($return->order)
+                    $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
+                        ? $refundRouting->originalMethod($sourceOrder)
                         : null;
                     FinanceRefund::query()->updateOrCreate(
                         ['store_id' => (int) $return->store_id, 'order_type' => 'ecommerce_return', 'order_id' => (int) $return->id],
                         [
-                            'branch_id' => $return->order?->assigned_branch_id,
-                            'order_number' => $return->order?->order_number,
-                            'customer_name' => $return->order?->shipping_name,
+                            'branch_id' => $originBranchId,
+                            'order_number' => $sourceOrder?->order_number,
+                            'customer_name' => $return->return_contact_name ?: ($sourceOrder?->shipping_name ?? $sourceOrder?->customer_name),
                             'reason' => 'Approved customer return ' . ($return->return_number ?: ('#' . $return->id)),
-                            'amount' => max(0, round((float) ($return->orderItem?->unit_price ?? 0) * (int) ($return->requested_quantity ?: 1) - (float) $return->return_fee, 2)),
+                            'amount' => app(ReturnRefundAmountService::class)->calculate($return, (int) ($return->requested_quantity ?: 1))['amount'],
                             'status' => 'pending_inspection',
                             'requested_by' => auth()->id(),
                             'refund_method' => $refundMethod,
@@ -563,17 +800,51 @@ class ReturnController extends Controller
             }
         });
 
-        if ($return->user_id) {
+        if ($newStatus === 'approved' && $currentStatus !== 'approved' && $pickupId) {
+            try {
+                $return->loadMissing(['order:id,order_number', 'salesOrder:id,order_number']);
+                $orderNumber = $return->sourceOrder()?->order_number ?: ('Return #' . (int) $return->id);
+                $this->notifyUsersByPermissions(
+                    (int) $return->store_id,
+                    ['logistics.return-pickups.view'],
+                    [
+                        'store_id' => (int) $return->store_id,
+                        'module' => 'logistics',
+                        'entity_type' => 'return_pickup',
+                        'entity_id' => $pickupId,
+                        'action' => 'return_pickup_created',
+                        'title' => 'Return Pickup Ready for Dispatch',
+                        'message' => "Return for order {$orderNumber} is scheduled for pickup on " . $pickupScheduledAt?->format('M d, Y') . '.',
+                        'severity' => 'warn',
+                        'link' => '/logistics/return-pickups/' . $pickupId,
+                        'data' => [
+                            'required_permission' => 'logistics.return-pickups.view',
+                            'return_id' => (int) $return->id,
+                            'return_number' => $return->return_number,
+                            'order_number' => $orderNumber,
+                        ],
+                    ],
+                    [(int) $request->user()->id]
+                );
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        if ($return->user_id && $return->source_type !== 'pos' && $currentStatus !== $newStatus) {
             $this->notify((int) $return->user_id, [
                 'module' => 'ecommerce',
                 'entity_type' => 'ecommerce_order_return',
                 'entity_id' => (int) $return->id,
+                'action' => 'return_' . $newStatus,
                 'title' => $newStatus === 'approved' ? 'Return request approved' : 'Return request rejected',
                 'message' => $newStatus === 'approved'
-                    ? 'Your ' . $return->return_type . ' return was approved. Logistics will arrange the pickup.'
+                    ? 'Your ' . $return->return_type . ' return was approved. Pickup is scheduled for ' . $pickupScheduledAt?->format('M d, Y') . '.'
                     : 'Your return request was rejected. Please review the store notes.',
                 'severity' => $newStatus === 'approved' ? 'success' : 'warn',
                 'store_id' => (int) $return->store_id,
+                'link' => '/orders/' . (int) $return->order_id,
+                'data' => ['status' => $newStatus],
             ]);
         }
 
@@ -584,13 +855,20 @@ class ReturnController extends Controller
             'user:id,fname,lname,email',
             'reviewer:id,fname,lname,email',
             'inspector:id,fname,lname,email',
-            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup:id,store_id,return_id,destination_branch_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup.destinationBranch:id,name,branch_type,address,city,province,latitude,longitude',
             'pickup.driver:id,fname,lname,email',
             'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
             'investigationTicket.assignees.user:id,fname,lname,email',
             'investigationTicket.creator:id,fname,lname',
             'investigationTicket.completer:id,fname,lname',
+            'salesOrder:id,store_id,branch_id,order_number,status,customer_name,customer_phone,delivery_email,delivery_address,created_at,paid_at',
+            'salesOrderItem:id,order_id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'salesOrderItem.product:id,product_name,sku',
+            'salesOrderItem.variation:id,variation_name,variation_sku',
+            'salesOrderItem.branchInventory:id,branch_id,variation_id',
         ]);
+        $this->normalizePosReturnForDisplay($return);
 
         return response()->json([
             'success' => true,
@@ -610,7 +888,7 @@ class ReturnController extends Controller
         }
 
         $validated = $request->validate([
-            'scheduled_at' => ['required', 'date'],
+            'scheduled_at' => ['required', 'date', 'after_or_equal:today'],
             'pickup_name' => ['nullable', 'string', 'max:255'],
             'pickup_phone' => ['nullable', 'string', 'max:255'],
             'pickup_address' => ['nullable', 'string', 'max:2000'],
@@ -623,12 +901,20 @@ class ReturnController extends Controller
                 'message' => 'Pickup can only be scheduled for approved returns.',
             ], 422);
         }
+        $originBranchId = $this->resolveReturnSourceBranchId($return);
+        if (!$originBranchId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The original fulfillment branch could not be determined for this return.',
+            ], 422);
+        }
         $pickup = null;
-        DB::transaction(function () use (&$pickup, $return, $validated): void {
+        DB::transaction(function () use (&$pickup, $return, $validated, $originBranchId): void {
             $pickup = ReturnPickup::query()->firstOrCreate(
                 ['return_id' => (int) $return->id],
                 [
                     'store_id' => (int) $return->store_id,
+                    'destination_branch_id' => $originBranchId,
                     'status' => 'ready_for_dispatch',
                     'scheduled_at' => null,
                     'created_by' => auth()->id(),
@@ -636,7 +922,8 @@ class ReturnController extends Controller
                 ]
             );
 
-            $pickup->scheduled_at = Carbon::parse($validated['scheduled_at']);
+            $pickup->destination_branch_id = $originBranchId;
+            $pickup->scheduled_at = Carbon::parse($validated['scheduled_at'])->startOfDay();
             $pickup->pickup_name = $validated['pickup_name'] ?? $pickup->pickup_name;
             $pickup->pickup_phone = $validated['pickup_phone'] ?? $pickup->pickup_phone;
             $pickup->pickup_address = $validated['pickup_address'] ?? $pickup->pickup_address;
@@ -646,22 +933,30 @@ class ReturnController extends Controller
         });
 
         $return->load([
-            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup:id,store_id,return_id,destination_branch_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup.destinationBranch:id,name,branch_type,address,city,province,latitude,longitude',
             'pickup.driver:id,fname,lname,email',
+            'salesOrder:id,store_id,branch_id,order_number,status,customer_name,customer_phone,delivery_email,delivery_address,created_at,paid_at',
+            'salesOrderItem:id,order_id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'salesOrderItem.product:id,product_name,sku',
         ]);
+        $this->normalizePosReturnForDisplay($return);
 
         // Notify customer that pickup is scheduled.
         if ($pickup && $return->user_id) {
-            $return->loadMissing(['order:id,order_number', 'user:id,email']);
-            $orderNumber = $return->order?->order_number ?? ('Order #' . (int) $return->order_id);
+            $return->loadMissing(['order:id,order_number', 'salesOrder:id,order_number', 'user:id,email']);
+            $orderNumber = $return->sourceOrder()?->order_number ?? ('Return #' . (int) $return->id);
             $this->notify((int) $return->user_id, [
                 'module' => 'ecommerce',
                 'entity_type' => 'return_pickup',
                 'entity_id' => (int) $pickup->id,
+                'action' => 'return_pickup_scheduled',
                 'title' => 'Return pickup scheduled',
-                'message' => "Your return pickup for {$orderNumber} has been scheduled on " . $pickup->scheduled_at?->format('M d, Y h:i A') . '.',
+                'message' => "Your return pickup for {$orderNumber} has been scheduled on " . $pickup->scheduled_at?->format('M d, Y') . '.',
                 'severity' => 'info',
                 'store_id' => (int) $return->store_id,
+                'link' => '/orders/' . (int) $return->order_id,
+                'data' => ['status' => 'scheduled'],
             ]);
         }
 
@@ -724,14 +1019,16 @@ class ReturnController extends Controller
             return response()->json(['success' => false, 'message' => "Receive this return at {$destinationName}, or ask the store owner to complete the inspection."], 422);
         }
 
-        $return->loadMissing([
-            'order:id,order_number,shipping_name,payment_method,payment_status,store_id',
-            'orderItem:id,order_id,product_id,branch_inventory_id,unit_price',
-            'orderItem.branchInventory:id,variation_id',
-        ]);
-        $productId = (int) ($return->orderItem?->product_id ?? 0);
-        $variationId = $return->orderItem?->branchInventory?->variation_id;
-        if ($return->return_type === 'replacement' && $return->orderItem?->branch_inventory_id && !$return->orderItem?->branchInventory) {
+        if ($return->source_type === 'pos') {
+            $return->loadMissing(['salesOrder', 'salesOrderItem.branchInventory']);
+        } else {
+            $return->loadMissing(['order', 'orderItem.branchInventory']);
+        }
+        $sourceOrder = $return->sourceOrder();
+        $sourceItem = $return->sourceOrderItem();
+        $productId = (int) ($sourceItem?->product_id ?? 0);
+        $variationId = $sourceItem?->variation_id ?? $sourceItem?->branchInventory?->variation_id;
+        if ($return->return_type === 'replacement' && $sourceItem?->branch_inventory_id && !$sourceItem?->branchInventory) {
             return response()->json(['success' => false, 'message' => 'The original item SKU is unavailable. Restore its inventory record before processing a replacement.'], 422);
         }
         if ($productId <= 0) {
@@ -739,7 +1036,7 @@ class ReturnController extends Controller
         }
 
         $refund = null;
-        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $variationId, $branchId, $employeeId, $user, &$refund): void {
+        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $variationId, $branchId, $employeeId, $user, $sourceOrder, $sourceItem, &$refund): void {
             $lockedReturn = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
             if ($lockedReturn->status !== 'approved') {
                 throw \Illuminate\Validation\ValidationException::withMessages(['return' => 'This return has already been received.']);
@@ -794,8 +1091,8 @@ class ReturnController extends Controller
                 'reference_type' => 'ecommerce_order_return',
                 'reference_id' => (int) $return->id,
                 'notes' => $validated['notes'] ?? ($return->return_type === 'replacement' ? 'Returned unit received into quarantine; not sellable.' : ($validated['condition'] === 'good' ? 'Returned item approved for resale.' : 'Returned item discarded after quality inspection.')),
-                'unit_cost' => $return->orderItem?->unit_price,
-                'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
+                'unit_cost' => $sourceItem?->unit_price,
+                'total_value' => (float) ($sourceItem?->unit_price ?? 0) * $receivedQty,
                 'created_by' => $employeeId,
                 'transaction_date' => now(),
             ]);
@@ -808,10 +1105,11 @@ class ReturnController extends Controller
 
             if ($return->return_type === 'refund') {
                 $refundRouting = app(EcommerceRefundRoutingService::class);
-                $refundMethod = $return->order && $refundRouting->canRefundToOriginal($return->order)
-                    ? $refundRouting->originalMethod($return->order)
+                $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
+                    ? $refundRouting->originalMethod($sourceOrder)
                     : null;
-                $amount = max(0, round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty - (float) $return->return_fee, 2));
+                $amountCalculation = app(ReturnRefundAmountService::class)->calculate($return, $receivedQty);
+                $amount = $amountCalculation['amount'];
                 $refund = FinanceRefund::query()->updateOrCreate(
                     [
                         'store_id' => (int) $return->store_id,
@@ -820,16 +1118,20 @@ class ReturnController extends Controller
                     ],
                     [
                         'branch_id' => $branchId,
-                        'order_number' => $return->order?->order_number,
-                        'customer_name' => $return->order?->shipping_name,
+                        'order_number' => $sourceOrder?->order_number,
+                        'customer_name' => $return->return_contact_name ?: ($sourceOrder?->shipping_name ?? $sourceOrder?->customer_name),
                         'reason' => 'Approved customer return #' . (int) $return->id,
                         'amount' => $amount,
                         'status' => 'pending',
                         'requested_by' => (int) ($user?->id ?? 0) ?: null,
                         'refund_method' => $refundMethod,
-                        'notes' => $refundMethod
+                        'notes' => trim(($refundMethod
                             ? 'Inventory inspection complete. Ready for refund to the original payment method.'
-                            : 'Inventory inspection complete. Awaiting customer payout details for Finance.',
+                            : 'Inventory inspection complete. Awaiting customer payout details for Finance.')
+                            . "\nCalculated from {$amountCalculation['quantity']} inspected unit(s) at PHP "
+                            . number_format($amountCalculation['unit_price'], 2) . ' each, less PHP '
+                            . number_format($amountCalculation['return_fee'], 2) . ' return fee. Paid order balance before this refund: PHP '
+                            . number_format($amountCalculation['available_paid_balance'], 2) . '.'),
                     ]
                 );
                 $return->status = 'refund_pending';
@@ -846,17 +1148,21 @@ class ReturnController extends Controller
             $return->save();
         });
 
-        if ($return->user_id) {
+        if ($return->user_id && $return->source_type !== 'pos') {
+            $inspectionStatus = (string) $return->status;
             $this->notify((int) $return->user_id, [
                 'module' => 'ecommerce',
                 'entity_type' => 'ecommerce_order_return',
                 'entity_id' => (int) $return->id,
+                'action' => $return->return_type === 'refund' ? 'refund_pending' : 'return_received',
                 'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Return received for replacement',
                 'message' => $return->return_type === 'refund'
                     ? 'Inventory inspected your item. Your refund request was sent to Finance.'
                     : 'Inventory inspected your item. Your replacement is being prepared.',
                 'severity' => 'success',
                 'store_id' => (int) $return->store_id,
+                'link' => '/orders/' . (int) $return->order_id,
+                'data' => ['status' => $inspectionStatus],
             ]);
         }
 
@@ -867,6 +1173,41 @@ class ReturnController extends Controller
                 : 'Inspection complete. Returned item quarantined; replacement awaits stock reservation.',
             'data' => $return->fresh()->load(['inspector:id,fname,lname,email']),
         ]);
+    }
+
+    private function normalizePosReturnForDisplay(EcommerceOrderReturn $return): void
+    {
+        $return->normalizeSourceRelationsForDisplay();
+    }
+
+    private function resolveReturnSourceBranchId(EcommerceOrderReturn $return): ?int
+    {
+        if ($return->source_type === 'pos') {
+            $return->loadMissing(['salesOrder', 'salesOrderItem.branchInventory']);
+        } else {
+            $return->loadMissing(['order', 'orderItem.branchInventory']);
+        }
+        $sourceOrder = $return->sourceOrder();
+        $sourceItem = $return->sourceOrderItem();
+
+        $branchId = null;
+        $inventoryId = (int) ($sourceItem?->branch_inventory_id ?? 0);
+        if ($inventoryId > 0) {
+            $branchId = BranchInventory::withTrashed()
+                ->where('store_id', (int) $return->store_id)
+                ->whereKey($inventoryId)
+                ->value('branch_id');
+        }
+
+        $branchId = (int) ($branchId ?: $sourceOrder?->assigned_branch_id ?: $sourceOrder?->branch_id);
+        if ($branchId <= 0) {
+            return null;
+        }
+
+        return Branch::query()
+            ->whereKey($branchId)
+            ->where('store_id', (int) $return->store_id)
+            ->value('id');
     }
 
 }

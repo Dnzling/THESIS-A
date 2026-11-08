@@ -10,12 +10,12 @@ class CompleteDeliveryTrip
 {
     public function afterDeliveryUpdate(Model $delivery): void
     {
-        if (! $delivery->wasChanged('status') && ! $delivery->wasChanged('delivery_status')) {
+        if (! $delivery->wasChanged('status') && ! $delivery->wasChanged('delivery_status') && ! $delivery->wasChanged('replacement_status')) {
             return;
         }
 
-        $status = strtolower((string) ($delivery->delivery_status ?? $delivery->status));
-        $tripId = (int) ($delivery->trip_id ?? 0);
+        $status = strtolower((string) ($delivery->replacement_status ?? $delivery->delivery_status ?? $delivery->status));
+        $tripId = (int) ($delivery->replacement_trip_id ?? $delivery->trip_id ?? 0);
         if ($status !== 'delivered' || $tripId === 0) {
             return;
         }
@@ -30,7 +30,8 @@ class CompleteDeliveryTrip
             $total = $trip->ecommerceDeliveries()->count()
                 + $trip->salesDeliveries()->count()
                 + $trip->returnPickups()->count()
-                + $trip->stockTransfers()->count();
+                + $trip->stockTransfers()->count()
+                + $trip->replacementReturns()->count();
             if ($total === 0) {
                 return;
             }
@@ -38,6 +39,7 @@ class CompleteDeliveryTrip
             $remaining = $trip->ecommerceDeliveries()->where('status', '!=', 'delivered')->exists()
                 || $trip->salesDeliveries()->where('status', '!=', 'delivered')->exists()
                 || $trip->returnPickups()->where('status', '!=', 'delivered')->exists()
+                || $trip->replacementReturns()->where('replacement_status', '!=', 'delivered')->exists()
                 || $trip->stockTransfers()->where(function ($query) {
                     $query->whereNull('delivery_status')->orWhere('delivery_status', '!=', 'delivered');
                 })->exists();

@@ -29,6 +29,8 @@ class ReturnPickup extends Model
         'assistant_user_ids',
         'distance_km',
         'estimated_fee',
+        'pickup_latitude',
+        'pickup_longitude',
         'notes',
         'proof_photo_path',
         'proof_signature_path',
@@ -47,6 +49,8 @@ class ReturnPickup extends Model
         'assistant_user_ids' => 'array',
         'distance_km' => 'decimal:2',
         'estimated_fee' => 'decimal:2',
+        'pickup_latitude' => 'decimal:7',
+        'pickup_longitude' => 'decimal:7',
     ];
 
     public function returnRequest(): BelongsTo

@@ -356,15 +356,15 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
 
     // Logistics
     Route::redirect('/logistics', '/logistics/deliveries')->name('logistics');
-    $inertia('/driver/deliveries', 'System/Logistics/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
-    $inertia('/driver/replacements/{id}', 'System/Shared/ReplacementDetail', 'driver.replacements.detail', 'Replacement Delivery');
+    Route::redirect('/driver/deliveries', '/logistics/trips')->name('driver.deliveries');
+    $inertia('/driver/replacements/{id}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.replacements.detail', 'Replacement Delivery');
     $inertia('/driver/delivery-history', 'System/Logistics/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
     $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
     $inertia('/logistics/return-pickups', 'System/Logistics/ReturnPickups/ReturnPickupIndex', 'logistics.return-pickups', 'Return Pickups');
-    $inertia('/logistics/replacements/{id}', 'System/Shared/ReplacementDetail', 'logistics.replacements.detail', 'Replacement Delivery');
+    $inertia('/logistics/replacements/{id}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.replacements.detail', 'Replacement Delivery');
     $inertia('/logistics/return-pickups/{id}', 'System/Logistics/ReturnPickups/ReturnPickupDetail', 'logistics.return-pickups.detail', 'Return Pickup Detail');
     $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
@@ -385,7 +385,10 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/sales/transactions', 'System/Sales/Transactions', 'sales.transactions', 'Sales Transactions');
     $inertia('/sales/transactions/{type}/{id}', 'System/Sales/TransactionShow', 'sales.transactions.show', 'Transaction Details');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
-    $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
+    $inertia('/pos-orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
+    Route::get('/sales/pos/orders/{id}', fn (int $id) => redirect("/pos-orders/{$id}"))
+        ->whereNumber('id')
+        ->name('sales.pos.order-detail.legacy');
     // $inertia('/sales/ecommerce-orders', 'System/Sales/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
     $inertia('/sales/ecommerce-orders/{id}', 'System/Sales/SalesEcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
@@ -404,6 +407,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/crm/vouchers/create', 'System/CRM/Vouchers/VoucherCreate', 'crm.vouchers.create', 'Create Voucher');
     $inertia('/crm/vouchers/{id}', 'System/CRM/Vouchers/VoucherView', 'crm.vouchers.view', 'Voucher Details');
     $inertia('/crm/returns', 'System/CRM/Return/ReturnIndex', 'crm.returns', 'Returns');
+    $inertia('/crm/returns/create', 'System/CRM/Return/ReturnCreate', 'crm.returns.create', 'Create Return');
     $inertia('/crm/returns/{id}', 'System/CRM/Return/ReturnDetail', 'crm.returns.view', 'Return Detail');
 
     // Merchandising

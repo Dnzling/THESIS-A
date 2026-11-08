@@ -38,6 +38,10 @@
             <Select v-model="form.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" />
             <small v-if="!loadingOptions && !vehicles.length" class="text-amber-700">No active vehicle is available.</small>
           </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm text-slate-600">Employees Accompanying the Driver</label>
+            <MultiSelect v-model="form.assistant_user_ids" :options="availableAssistants" optionLabel="name" optionValue="id" filter display="chip" fluid placeholder="Select employees (optional)" />
+          </div>
           <div v-if="selectedDriver" class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-sm">
             <h3 class="mb-2 font-semibold">Driver Information</h3>
             <p>{{ selectedDriver.name }}</p>
@@ -51,7 +55,10 @@
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
-            <DatePicker v-model="form.scheduled_departure_at" showTime hourFormat="12" :minDate="new Date()" dateFormat="MM d, yy" showIcon fluid />
+            <DatePicker v-model="form.scheduled_departure_at" :minDate="new Date()" :disabledDates="unavailableDepartureDates" dateFormat="M d, yy" showIcon fluid>
+              <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isUnavailableCalendarDate(date) }">{{ date.day }}</span></template>
+            </DatePicker>
+            <p v-if="form.vehicle_id" class="mt-1 text-xs text-slate-500">Crossed-out dates already have a planned trip for this vehicle.</p>
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Notes</label>
@@ -59,7 +66,7 @@
           </div>
           <div class="md:col-span-2 flex gap-2">
             <Button type="button" label="Cancel" outlined @click="router.push({ name: 'logistics.trips' })" />
-            <Button type="submit" label="Create Trip Assignment" icon="pi pi-check" severity="success" :loading="submitting" :disabled="!canManage || !order || !form.driver_user_id || !form.vehicle_id || loadingOptions" />
+            <Button type="submit" label="Create Trip Assignment" icon="pi pi-check" rounded :loading="submitting" :disabled="!canManage || !order || !form.driver_user_id || !form.vehicle_id || loadingOptions || isDepartureDateUnavailable(form.scheduled_departure_at)" />
           </div>
         </form>
       </template>
@@ -68,12 +75,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
 import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
@@ -96,7 +104,35 @@ const submitting = ref(false)
 const order = ref<any>(null)
 const drivers = ref<any[]>([])
 const vehicles = ref<any[]>([])
-const form = reactive({ driver_user_id: null as number | null, vehicle_id: null as number | null, scheduled_departure_at: null as Date | null, notes: '' })
+const assistants = ref<any[]>([])
+const unavailableDepartureDates = ref<Date[]>([])
+const form = reactive({ driver_user_id: null as number | null, assistant_user_ids: [] as number[], vehicle_id: null as number | null, scheduled_departure_at: null as Date | null, notes: '' })
+const toDateOnly = (value: Date | null) => value
+  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  : null
+const availableAssistants = computed(() => assistants.value.filter(employee => Number(employee.id) !== Number(form.driver_user_id)))
+watch(() => form.driver_user_id, driverId => {
+  form.assistant_user_ids = form.assistant_user_ids.filter(id => Number(id) !== Number(driverId))
+})
+watch(() => form.vehicle_id, vehicleId => { void loadUnavailableDepartureDates(vehicleId) })
+
+const loadUnavailableDepartureDates = async (vehicleId: number | null) => {
+  unavailableDepartureDates.value = []
+  if (!vehicleId) return
+  try {
+    const response = await logisticsService.getVehicleUnavailableDepartureDates(vehicleId)
+    unavailableDepartureDates.value = (response?.data || []).map((value: string) => new Date(`${value}T00:00:00`))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Schedule Check Failed', detail: error?.response?.data?.message || 'Unable to check this vehicle’s planned trips.', life: 3500 })
+  }
+}
+
+const isUnavailableCalendarDate = (date: any) => unavailableDepartureDates.value.some(item =>
+  item.getFullYear() === date.year && item.getMonth() === date.month && item.getDate() === date.day,
+)
+const isDepartureDateUnavailable = (value: Date | null) => Boolean(value && isUnavailableCalendarDate({
+  year: value.getFullYear(), month: value.getMonth(), day: value.getDate(),
+}))
 const selectedDriver = computed(() => drivers.value.find(driver => Number(driver.id) === Number(form.driver_user_id)))
 const selectedVehicle = computed(() => vehicles.value.find(vehicle => Number(vehicle.id) === Number(form.vehicle_id)))
 const customerName = computed(() => (source.value === 'return_pickup' ? order.value?.pickup_name : source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
@@ -131,6 +167,7 @@ const loadOptions = async () => {
       logisticsService.getVehicles({ per_page: 100, status: 'active' }),
     ])
     drivers.value = employeeResponse?.data?.drivers || []
+    assistants.value = employeeResponse?.data?.employees || []
     vehicles.value = (vehicleResponse?.data?.data || []).map((vehicle: any) => ({ ...vehicle, label: `${vehicle.vehicle_name} (${vehicle.plate_number})` }))
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Options Load Failed', detail: error?.response?.data?.message || 'Unable to load drivers and vehicles.', life: 3500 })
@@ -141,13 +178,18 @@ const loadOptions = async () => {
 
 const submit = async () => {
   if (!canManage || !order.value || !form.driver_user_id || !form.vehicle_id || submitting.value) return
+  if (isDepartureDateUnavailable(form.scheduled_departure_at)) {
+    toast.add({ severity: 'warn', summary: 'Vehicle Already Booked', detail: 'Choose another vehicle or departure date.', life: 3000 })
+    return
+  }
   submitting.value = true
   let tripId: number | null = null
   try {
     const created = await logisticsService.createTrip({
       driver_user_id: form.driver_user_id,
+      assistant_user_ids: form.assistant_user_ids,
       vehicle_id: form.vehicle_id,
-      scheduled_departure_at: form.scheduled_departure_at?.toISOString() || null,
+      scheduled_departure_at: toDateOnly(form.scheduled_departure_at),
       notes: form.notes || null,
     })
     tripId = Number(created?.data?.id) || null

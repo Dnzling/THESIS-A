@@ -55,6 +55,8 @@ Route::prefix('crm')->group(function () {
 
     Route::prefix('returns')->group(function () {
         Route::get('/', [ReturnController::class, 'index'])->middleware('can:crm.returns.view');
+        Route::get('/pos-orders', [ReturnController::class, 'posOrders'])->middleware('can:crm.returns.manage');
+        Route::post('/pos', [ReturnController::class, 'createPosReturn'])->middleware('can:crm.returns.manage');
         Route::get('/investigation-assignees', [ReturnController::class, 'investigationAssignees'])->middleware('can:crm.returns.manage');
         Route::post('/{id}/investigation-ticket', [ReturnController::class, 'createInvestigationTicket'])->middleware('can:crm.returns.manage');
         Route::put('/{id}/investigation-ticket/complete', [ReturnController::class, 'completeInvestigationTicket'])->middleware('can:crm.returns.manage');

@@ -11,6 +11,7 @@
             <i class="pi pi-arrow-right text-xs text-orange-500" />
             <span>{{ detail?.to_branch?.name || detail?.toBranch?.name || 'Receiving branch' }}</span>
           </p>
+          <Tag v-if="detail?.transfer_kind === 'damaged_pullout'" value="Damaged stock pull-out" severity="danger" class="mt-2" />
         </div>
       </div>
       <div v-if="detail" class="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -135,11 +136,11 @@
       </div>
     </template>
     <Dialog v-model:visible="receiptVisible" modal header="Receive Delivered Transfer" :style="{ width: 'min(92vw, 680px)' }">
-      <p class="mb-4 text-sm text-slate-600">Confirm the quantities physically received at the destination branch. Stock updates only after you submit.</p>
+      <p class="mb-4 text-sm text-slate-600">{{ detail?.transfer_kind === 'damaged_pullout' ? 'Confirm damaged units physically received into warehouse quarantine. They will not become available for sale.' : 'Confirm the quantities physically received at the destination branch. Stock updates only after you submit.' }}</p>
       <div class="space-y-3">
         <div v-for="item in receiptItems" :key="item.id" class="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_110px_110px] sm:items-end">
           <div><p class="text-sm font-medium text-slate-900">{{ item.name }}</p><p class="text-xs text-slate-500">Approved: {{ item.approved }}</p></div>
-          <div><label class="mb-1 block text-xs text-slate-600">Good</label><InputNumber v-model="item.received_quantity" :min="0" :max="item.approved" size="small" fluid /></div>
+          <div><label class="mb-1 block text-xs text-slate-600">{{ detail?.transfer_kind === 'damaged_pullout' ? 'Received into quarantine' : 'Good' }}</label><InputNumber v-model="item.received_quantity" :min="0" :max="item.approved" size="small" fluid /></div>
           <div><label class="mb-1 block text-xs text-slate-600">Damaged</label><InputNumber v-model="item.damaged_quantity" :min="0" :max="item.approved" size="small" fluid /></div>
         </div>
       </div>
@@ -153,6 +154,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Tag from 'primevue/tag'
 import axiosClient from '@/axios'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'

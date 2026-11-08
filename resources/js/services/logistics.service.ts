@@ -23,7 +23,7 @@ class LogisticsService {
     return response.data
   }
 
-  async getDeliveryOrderDetail(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer', orderId: string | number) {
+  async getDeliveryOrderDetail(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer' | 'replacement', orderId: string | number) {
     const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/${source}/${orderId}`)
     return response.data
   }
@@ -87,7 +87,7 @@ class LogisticsService {
     return response.data
   }
 
-  async updateUnifiedDeliveryLocation(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer', orderId: string | number, payload: {
+  async updateUnifiedDeliveryLocation(source: 'ecommerce' | 'sales' | 'pickup' | 'stock_transfer' | 'replacement', orderId: string | number, payload: {
     latitude: number
     longitude: number
     location_address?: string
@@ -98,18 +98,25 @@ class LogisticsService {
     return response.data
   }
 
-  async getUnifiedDeliveryLogs(source: 'ecommerce' | 'sales' | 'pickup', orderId: string | number) {
+  async getUnifiedDeliveryLogs(source: 'ecommerce' | 'sales' | 'pickup' | 'replacement', orderId: string | number) {
     const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/${source}/${orderId}/logs`)
     return response.data
   }
 
-  async addUnifiedDeliveryLog(source: 'ecommerce' | 'sales' | 'pickup', orderId: string | number, payload: any) {
+  async addUnifiedDeliveryLog(source: 'ecommerce' | 'sales' | 'pickup' | 'replacement', orderId: string | number, payload: any) {
     const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/logs`, payload)
     return response.data
   }
 
   async markUnifiedDelivered(source: 'ecommerce' | 'sales', orderId: string | number, payload: FormData) {
     const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/delivered`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async completeReplacementDelivery(returnId: string | number, payload: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/replacements/${returnId}/deliver`, payload, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data
@@ -217,7 +224,14 @@ class LogisticsService {
     return response.data
   }
 
-  async getCompatibleTripsForOrder(sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer', orderId: string | number) {
+  async getVehicleUnavailableDepartureDates(vehicleId: string | number, excludeTripId?: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/trips/vehicle-unavailable-dates`, {
+      params: { vehicle_id: vehicleId, exclude_trip_id: excludeTripId },
+    })
+    return response.data
+  }
+
+  async getCompatibleTripsForOrder(sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement', orderId: string | number) {
     const response = await axiosClient.get(`${this.baseUrl}/trips/compatible`, {
       params: { source_type: sourceType, order_id: orderId },
     })
@@ -229,7 +243,12 @@ class LogisticsService {
     return response.data
   }
 
-  async getTripSuggestions(id: string | number, sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer') {
+  async getTripManifestPdf(id: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/trips/${id}/print`, { responseType: 'blob' })
+    return response.data as Blob
+  }
+
+  async getTripSuggestions(id: string | number, sourceType: 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement') {
     const response = await axiosClient.get(`${this.baseUrl}/trips/${id}/suggestions`, {
       params: { source_type: sourceType },
     })
@@ -238,6 +257,11 @@ class LogisticsService {
 
   async createTrip(payload: any) {
     const response = await axiosClient.post(`${this.baseUrl}/trips`, payload)
+    return response.data
+  }
+
+  async updateTrip(id: string | number, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/trips/${id}`, payload)
     return response.data
   }
 
@@ -271,12 +295,21 @@ class LogisticsService {
     return response.data
   }
 
+  async estimateReturnPickup(id: string | number, payload: { pickup_latitude: number; pickup_longitude: number }) {
+    const response = await axiosClient.post(`${this.baseUrl}/return-pickups/${id}/estimate`, payload, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    return response.data
+  }
+
   async updateReturnPickup(id: string | number, payload: {
     status?: 'scheduled' | 'assigned' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'cancelled'
     scheduled_at?: string | null
     pickup_name?: string
     pickup_phone?: string
     pickup_address?: string
+    pickup_latitude?: number
+    pickup_longitude?: number
     notes?: string
   }) {
     const response = await axiosClient.put(`${this.baseUrl}/return-pickups/${id}`, payload)

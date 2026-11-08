@@ -24,8 +24,7 @@ Route::prefix('logistics')->group(function () {
         Route::get('/', [ReplacementController::class, 'index']);
         Route::get('/{id}', [ReplacementController::class, 'show']);
         Route::post('/{id}/reserve', [ReplacementController::class, 'reserve']);
-        Route::post('/{id}/assign', [ReplacementController::class, 'assign']);
-        Route::post('/{id}/dispatch', [ReplacementController::class, 'dispatch']);
+        Route::post('/{id}/alternative', [ReplacementController::class, 'reserveAlternative']);
         Route::post('/{id}/deliver', [ReplacementController::class, 'deliver']);
         Route::post('/{id}/fail', [ReplacementController::class, 'fail']);
         Route::post('/{id}/reattempt', [ReplacementController::class, 'reattempt']);
@@ -94,9 +93,12 @@ Route::prefix('logistics')->group(function () {
     Route::prefix('trips')->group(function () {
         Route::get('/', [DeliveryTripController::class, 'index']);
         Route::get('/compatible', [DeliveryTripController::class, 'compatibleForOrder']);
+        Route::get('/vehicle-unavailable-dates', [DeliveryTripController::class, 'unavailableDepartureDates']);
         Route::post('/', [DeliveryTripController::class, 'store']);
         Route::get('/{id}/suggestions', [DeliveryTripController::class, 'suggestions']);
+        Route::get('/{id}/print', [DeliveryTripController::class, 'printManifest']);
         Route::get('/{id}', [DeliveryTripController::class, 'show']);
+        Route::put('/{id}', [DeliveryTripController::class, 'update']);
         Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus']);
         Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders']);
         Route::post('/{id}/orders/remove', [DeliveryTripController::class, 'removeOrders']);
@@ -105,6 +107,7 @@ Route::prefix('logistics')->group(function () {
     // Return Pickups (Customer Returns)
     Route::prefix('return-pickups')->group(function () {
         Route::get('/options/branches', [ReturnPickupController::class, 'branches']);
+        Route::post('/{pickup}/estimate', [ReturnPickupController::class, 'estimate']);
         Route::get('/', [ReturnPickupController::class, 'index']);
         Route::get('/{pickup}', [ReturnPickupController::class, 'show']);
         Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus']);

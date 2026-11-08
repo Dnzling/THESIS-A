@@ -1,18 +1,17 @@
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
-          <div>
-            <h1 class="text-xl font-semibold text-slate-900">{{ returnIdLabel }}</h1>
-            <p class="mt-1 text-sm text-slate-600">
-              Customer Return Pickup
-            </p>
-          </div>
+  <div class="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+    <header class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex min-w-0 items-center gap-3">
+        <Button icon="pi pi-chevron-left" rounded aria-label="Go back" v-tooltip.bottom="'Go back'"
+          class="!h-10 !w-10 !border-slate-200 !bg-white !text-slate-600 !shadow-sm" @click="goBack" />
+        <div class="min-w-0">
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Return Pickup</p>
+          <h1 class="truncate text-xl font-semibold tracking-tight text-slate-900">{{ returnIdLabel }}</h1>
+          <p class="mt-1 truncate text-sm text-slate-600">Order {{ sourceOrderReference }}</p>
         </div>
-        <div class="flex items-center gap-2">
-          <Tag :value="formatStatus(pickup?.status || 'ready_for_dispatch')" :severity="pickup?.status === 'picked_up' ? 'success' : 'warning'" />
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+          <Badge :value="formatStatus(pickup?.status || 'ready_for_dispatch')" :severity="statusSeverity(pickup?.status)" />
           <Button
             v-if="pickup && ['ready_for_dispatch', 'scheduled'].includes(pickup.status)"
             icon="pi pi-calendar"
@@ -29,26 +28,27 @@
             size="small"
             @click="openAssignment"
           />
-        </div>
       </div>
     </header>
 
     <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
-      <template #title><span class="text-base">Pickup & Courier Overview</span></template>
+      <template #title><span class="text-base">Pickup Overview</span></template>
       <template #content>
-        <div v-if="loading" class="text-sm text-slate-500">Loading...</div>
+        <div v-if="loading" class="space-y-3">
+          <Skeleton height="1.25rem" width="45%" />
+          <Skeleton height="4.5rem" />
+        </div>
         <div v-else-if="!pickup" class="text-sm text-slate-500">No pickup data found.</div>
-        <div v-else class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <div><span class="text-slate-500">Scheduled:</span> <strong>{{ pickup.scheduled_at ? formatDateTime(pickup.scheduled_at) : '-' }}</strong></div>
-          <div><span class="text-slate-500">Driver:</span> <strong>{{ driverLabel }}</strong></div>
-          <div><span class="text-slate-500">Vehicle:</span> <strong>{{ vehicleLabel }}</strong></div>
-          <div><span class="text-slate-500">Plate Number:</span> <strong>{{ pickup.vehicle?.plate_number || '-' }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Pickup Address:</span> <strong>{{ pickup.pickup_address || '-' }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Delivery Destination:</span> <strong>{{ pickup.destination_branch ? `${pickup.destination_branch.name} - ${pickup.destination_branch.address || ''}` : '-' }}</strong></div>
-          <div><span class="text-slate-500">Contact:</span> <strong>{{ pickup.pickup_name || '-' }}</strong></div>
-          <div><span class="text-slate-500">Phone:</span> <strong>{{ pickup.pickup_phone || '-' }}</strong></div>
-          <div><span class="text-slate-500">Picked Up At:</span> <strong>{{ pickup.picked_up_at ? formatDateTime(pickup.picked_up_at) : '-' }}</strong></div>
-          <div><span class="text-slate-500">Distance:</span> <strong>{{ pickup.distance_km != null ? `${pickup.distance_km} km` : '-' }}</strong></div>
+        <div v-else class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <div class="rounded-xl border border-orange-200 bg-orange-50/60 p-3"><span class="text-xs font-medium text-slate-500">Pickup Date</span><strong class="mt-1 block text-slate-900">{{ pickup.scheduled_at ? formatDateOnly(pickup.scheduled_at) : 'Not scheduled' }}</strong></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Driver</span><strong class="mt-1 block text-slate-900">{{ driverLabel }}</strong></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Vehicle</span><strong class="mt-1 block text-slate-900">{{ vehicleLabel }}</strong><small v-if="pickup.vehicle?.plate_number" class="mt-0.5 block text-slate-500">{{ pickup.vehicle.plate_number }}</small></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Trip</span><strong class="mt-1 block text-slate-900">{{ pickup.trip_reference || 'Not assigned' }}</strong></div>
+          <div class="rounded-xl border border-slate-200 p-3 sm:col-span-2"><span class="text-xs font-medium text-slate-500">Customer Pickup Address</span><strong class="mt-1 block whitespace-pre-line text-slate-900">{{ pickup.pickup_address || '-' }}</strong></div>
+          <div class="rounded-xl border border-slate-200 p-3 sm:col-span-2"><span class="text-xs font-medium text-slate-500">Return Destination</span><strong class="mt-1 block text-slate-900">{{ pickup.destination_branch?.name || 'Branch not assigned' }}</strong><small class="mt-0.5 block whitespace-pre-line text-slate-600">{{ pickup.destination_branch?.address || '-' }}</small></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Pickup Contact</span><strong class="mt-1 block text-slate-900">{{ pickup.pickup_name || '-' }}</strong><small v-if="pickup.pickup_phone" class="mt-0.5 block text-slate-600">{{ pickup.pickup_phone }}</small></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Picked Up At</span><strong class="mt-1 block text-slate-900">{{ pickup.picked_up_at ? formatDateTime(pickup.picked_up_at) : 'Not picked up' }}</strong></div>
+          <div class="rounded-xl border border-slate-200 p-3"><span class="text-xs font-medium text-slate-500">Distance</span><strong class="mt-1 block text-slate-900">{{ pickup.distance_km != null ? `${pickup.distance_km} km` : '-' }}</strong></div>
           <div><span class="text-slate-500">Estimated Fee:</span> <strong>₱ {{ formatMoney(pickup.estimated_fee) }}</strong></div>
           <div v-if="pickup.assistants?.length" class="md:col-span-2">
             <span class="text-slate-500">Delivery Assistants:</span>
@@ -81,6 +81,7 @@
       <template #content>
         <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
           <div><span class="text-slate-500">Return Number:</span> <strong>{{ pickup.return_request?.return_number || '-' }}</strong></div>
+          <div><span class="text-slate-500">Order Reference:</span> <strong>{{ sourceOrderReference }}</strong></div>
           <div><span class="text-slate-500">Customer:</span> <strong>{{ pickup.return_request?.user?.full_name || pickup.return_request?.user?.email || '-' }}</strong></div>
           <div><span class="text-slate-500">Email:</span> <strong>{{ pickup.return_request?.user?.email || '-' }}</strong></div>
           <div><span class="text-slate-500">Reason:</span> <strong>{{ pickup.return_request?.reason || '-' }}</strong></div>
@@ -110,14 +111,6 @@
                 @click="openOrder(pickup.return_request.order_id)"
               />
             </div>
-            <!-- <Button
-              v-if="pickup.return_id"
-              icon="pi pi-external-link"
-              label="Open Sales Return"
-              outlined
-              severity="secondary"
-              @click="openSalesReturn(pickup.return_id)"
-            /> -->
           </div>
         </div>
       </template>
@@ -126,7 +119,7 @@
     <Card v-if="pickup?.return_request" class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Returned Items</template>
       <template #content>
-        <DataTable :value="returnItems" size="small" stripedRows responsiveLayout="scroll">
+        <DataTable :value="returnItems" size="small" rowHover responsiveLayout="scroll">
           <Column field="product_name" header="Product" style="min-width: 14rem" />
           <Column field="sku" header="SKU" style="min-width: 10rem" />
           <Column field="quantity" header="Qty" style="width: 6rem" />
@@ -166,11 +159,11 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="scheduleDialogVisible" modal header="Edit Pickup Schedule" class="w-full max-w-3xl">
+    <Dialog v-model:visible="scheduleDialogVisible" modal header="Edit Pickup Schedule" class="w-full max-w-3xl" @show="onScheduleDialogShow">
       <div class="space-y-3">
         <div>
           <label class="mb-1 block text-sm text-slate-600">Scheduled At</label>
-          <DatePicker v-model="scheduleForm.scheduled_at" :minDate="getTodayDate()" showIcon showTime hourFormat="12" class="w-full" />
+          <DatePicker v-model="scheduleForm.scheduled_at" :minDate="getTodayDate()" dateFormat="M d, yy" showIcon class="w-full" />
           <small class="text-xs text-slate-500">Schedule can be set to today.</small>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -196,9 +189,30 @@
             </div>
             <Button icon="pi pi-search" label="Search" :loading="mapState.searching" @click="searchLocation" />
           </div>
-          <div class="text-xs text-slate-500">Customer coords: {{ customerCoordsLabel }}</div>
-          <div id="return-pickup-map" class="h-64 w-full rounded-xl border border-slate-200" />
-          <div class="text-xs text-slate-500">Tip: Click the map to reposition the marker.</div>
+          <div ref="returnPickupMapContainer" class="h-64 w-full rounded-xl border border-slate-200" />
+          <p class="text-xs text-slate-500">Set the customer's pickup point. The return destination is the branch that fulfilled the original order.</p>
+          <div class="rounded-xl border border-orange-200 bg-orange-50/70 p-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Return route estimate</p>
+                <p class="mt-1 text-sm text-slate-700">To {{ pickup?.destination_branch?.name || pickup?.return_request?.sales_order?.branch?.name || pickup?.return_request?.order?.assigned_branch?.name || 'Original fulfillment branch' }}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-slate-500">Estimated shipping fee</p>
+                <strong v-if="routeEstimate" class="text-lg text-slate-900">₱ {{ formatMoney(routeEstimate.estimated_fee) }}</strong>
+                <span v-else-if="estimateLoading" class="text-sm text-slate-500">Calculating…</span>
+                <span v-else class="text-sm text-slate-500">Not calculated</span>
+              </div>
+            </div>
+            <p v-if="routeEstimate" class="mt-2 text-xs text-slate-600">{{ Number(routeEstimate.distance_km).toFixed(2) }} km route distance<span v-if="routeEstimate.breakdown?.responsibility === 'store'"> · Fee covered by the store</span></p>
+            <div v-if="routeEstimate?.breakdown" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-orange-200 pt-2 text-xs text-slate-600">
+              <span>Base ₱{{ formatMoney(routeEstimate.breakdown.base_fee) }}</span>
+              <span>Distance ₱{{ formatMoney(routeEstimate.breakdown.distance_fee) }}</span>
+              <span>Weight ₱{{ formatMoney(routeEstimate.breakdown.weight_fee) }}</span>
+              <span v-if="Number(routeEstimate.breakdown.minimum_fee_adjustment || 0) > 0">Minimum fee adjustment ₱{{ formatMoney(routeEstimate.breakdown.minimum_fee_adjustment) }}</span>
+            </div>
+            <p v-if="estimateError" class="mt-2 text-xs text-red-700">{{ estimateError }}</p>
+          </div>
         </div>
 
         <div>
@@ -208,7 +222,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" outlined @click="scheduleDialogVisible = false" />
-        <Button icon="pi pi-save" label="Save" :loading="savingSchedule" @click="saveSchedule" />
+        <Button icon="pi pi-save" label="Save" :loading="savingSchedule" :disabled="!routeEstimate || estimateLoading" @click="saveSchedule" />
       </template>
     </Dialog>
 
@@ -229,12 +243,12 @@
           <p class="text-sm font-medium text-slate-700">Select a compatible planned trip</p>
           <article v-for="trip in compatibleTrips" :key="trip.id" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
             <div class="min-w-0 flex-1">
-              <p class="font-semibold text-slate-900">Trip #{{ trip.id }} · {{ trip.driver_name }}</p>
+              <p class="font-semibold text-slate-900">{{ trip.trip_reference }} · {{ trip.driver_name }}</p>
               <p class="mt-1 text-sm text-slate-600">{{ trip.vehicle_name }}<span v-if="trip.plate_number"> · {{ trip.plate_number }}</span></p>
               <p class="mt-1 text-xs text-slate-500">
                 {{ trip.assigned_stops }}{{ trip.max_stops ? ` / ${trip.max_stops}` : '' }} stops
                 <span v-if="trip.remaining_capacity_after_kg !== null"> · {{ trip.remaining_capacity_after_kg }} kg remaining after adding</span>
-                <span v-if="trip.scheduled_departure_at"> · Departs {{ formatDateTime(trip.scheduled_departure_at) }}</span>
+                <span v-if="trip.scheduled_departure_at"> · Departs {{ formatDateOnly(trip.scheduled_departure_at) }}</span>
               </p>
             </div>
             <Button label="Select Trip" icon="pi pi-plus" size="small" severity="warn"
@@ -253,6 +267,46 @@
         <Button label="Create New Trip" icon="pi pi-plus" severity="warn" :disabled="Boolean(assigningTripId) || !pickup" @click="createTripForPickup" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="createTripVisible" modal header="Create Trip for Return Pickup" class="w-full max-w-3xl">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Driver *</label>
+          <Select v-model="tripForm.driver_user_id" :options="tripDrivers" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" :loading="loadingTripOptions" />
+          <div v-if="selectedTripDriver" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-sm font-semibold text-orange-700">{{ tripInitials(selectedTripDriver.name) }}</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedTripDriver.name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedTripDriver.role || 'Delivery Driver' }}<span v-if="selectedTripDriver.employee_number"> ({{ selectedTripDriver.employee_number }})</span></p></div></div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2"><div><span class="text-slate-500">Contact</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedTripDriver.contact || 'Not provided' }}</p></div><div><span class="text-slate-500">Email</span><p class="mt-0.5 break-all font-medium text-slate-800">{{ selectedTripDriver.email || 'Not provided' }}</p></div><div class="sm:col-span-2"><span class="text-slate-500">Branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripDriver.branch || 'No branch assigned' }}</p></div></div>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-600">Vehicle *</label>
+          <Select v-model="tripForm.vehicle_id" :options="tripVehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" :loading="loadingTripOptions" />
+          <div v-if="selectedTripVehicle" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-sm font-semibold text-slate-900">{{ selectedTripVehicle.vehicle_name }}</p><p class="mt-0.5 text-xs text-slate-500">{{ selectedTripVehicle.vehicle_type || 'Vehicle' }}<span v-if="selectedTripVehicle.plate_number"> ({{ selectedTripVehicle.plate_number }})</span></p></div><Badge :value="selectedTripVehicle.status || 'Active'" :severity="selectedTripVehicle.status === 'active' ? 'success' : 'secondary'" /></div>
+            <div class="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2"><div><span class="text-slate-500">Make / model</span><p class="mt-0.5 font-medium text-slate-800">{{ [selectedTripVehicle.brand, selectedTripVehicle.model].filter(Boolean).join(' ') || 'Not provided' }}</p></div><div><span class="text-slate-500">Color</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.color || 'Not provided' }}</p></div><div><span class="text-slate-500">Load capacity</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.capacity_kg ? `${Number(selectedTripVehicle.capacity_kg).toLocaleString()} kg` : 'Not set' }}</p></div><div><span class="text-slate-500">Stops per trip</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.max_orders_per_trip ?? 'Not set' }}</p></div><div class="sm:col-span-2"><span class="text-slate-500">Assigned branch</span><p class="mt-0.5 font-medium text-slate-800">{{ selectedTripVehicle.branch?.name || 'Branch not specified' }}</p></div><div v-if="selectedTripVehicle.notes" class="sm:col-span-2"><span class="text-slate-500">Vehicle notes</span><p class="mt-0.5 whitespace-pre-line text-slate-700">{{ selectedTripVehicle.notes }}</p></div></div>
+          </div>
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Employees Accompanying the Driver</label>
+          <MultiSelect v-model="tripForm.assistant_user_ids" :options="availableAssistants" optionLabel="name" optionValue="id" filter display="chip" fluid placeholder="Select employees (optional)" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
+          <DatePicker v-model="tripForm.scheduled_departure_at" :minDate="new Date()" :disabledDates="tripUnavailableDepartureDates" fluid>
+            <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isTripDateUnavailable(date) }">{{ date.day }}</span></template>
+          </DatePicker>
+          <p v-if="tripForm.vehicle_id" class="mt-1 text-xs text-slate-500">Crossed-out dates already have a planned trip for this vehicle.</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm text-slate-600">Notes</label>
+          <Textarea v-model="tripForm.notes" rows="3" fluid placeholder="Optional notes" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Back" severity="secondary" outlined :disabled="creatingTrip" @click="createTripVisible = false; tripChoiceVisible = true" />
+        <Button label="Create and Add Pickup" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id || hasTripDateConflict(tripForm.scheduled_departure_at)" @click="createTripAndAddPickup" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -267,6 +321,15 @@ import Chip from 'primevue/chip'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import Skeleton from 'primevue/skeleton'
+import Button from 'primevue/button'
+import Badge from 'primevue/badge'
+import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
+import Textarea from 'primevue/textarea'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 
 const route = useRoute()
 const router = useRouter()
@@ -279,8 +342,41 @@ const tripChoiceVisible = ref(false)
 const loadingCompatibleTrips = ref(false)
 const compatibleTrips = ref<any[]>([])
 const assigningTripId = ref<number | null>(null)
+const createTripVisible = ref(false)
+const loadingTripOptions = ref(false)
+const creatingTrip = ref(false)
+const tripDrivers = ref<any[]>([])
+const tripAssistants = ref<any[]>([])
+const tripVehicles = ref<any[]>([])
+const tripUnavailableDepartureDates = ref<Date[]>([])
+const tripForm = reactive({ driver_user_id: null as number | null, assistant_user_ids: [] as number[], vehicle_id: null as number | null, scheduled_departure_at: null as Date | null, notes: '' })
+const availableAssistants = computed(() => tripAssistants.value.filter(employee => Number(employee.id) !== Number(tripForm.driver_user_id)))
+const selectedTripDriver = computed(() => tripDrivers.value.find(driver => Number(driver.id) === Number(tripForm.driver_user_id)) || null)
+const selectedTripVehicle = computed(() => tripVehicles.value.find(vehicle => Number(vehicle.id) === Number(tripForm.vehicle_id)) || null)
+const tripInitials = (name?: string) => String(name || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('')
+watch(() => tripForm.driver_user_id, driverId => {
+  tripForm.assistant_user_ids = tripForm.assistant_user_ids.filter(id => Number(id) !== Number(driverId))
+})
+watch(() => tripForm.vehicle_id, vehicleId => { void loadTripUnavailableDepartureDates(vehicleId) })
+
+const loadTripUnavailableDepartureDates = async (vehicleId: number | null) => {
+  tripUnavailableDepartureDates.value = []
+  if (!vehicleId) return
+  try {
+    const response = await logisticsService.getVehicleUnavailableDepartureDates(vehicleId)
+    tripUnavailableDepartureDates.value = (response?.data || []).map((value: string) => new Date(`${value}T00:00:00`))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Schedule Check Failed', detail: error?.response?.data?.message || 'Unable to check this vehicle’s planned trips.', life: 3500 })
+  }
+}
+
+const isTripDateUnavailable = (date: any) => tripUnavailableDepartureDates.value.some(item =>
+  item.getFullYear() === date.year && item.getMonth() === date.month && item.getDate() === date.day,
+)
+const hasTripDateConflict = (value: Date | null) => Boolean(value && isTripDateUnavailable({ year: value.getFullYear(), month: value.getMonth(), day: value.getDate() }))
 
 const returnIdLabel = computed(() => pickup.value?.return_request?.return_number || 'Return number unavailable')
+const sourceOrderReference = computed(() => pickup.value?.return_request?.order?.order_number || 'Order reference unavailable')
 
 const driverLabel = computed(() => {
   const d = pickup.value?.driver
@@ -294,7 +390,13 @@ const vehicleLabel = computed(() => {
   return [vehicle.vehicle_name, [vehicle.brand, vehicle.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
 })
 
-const goBack = () => router.push({ name: 'logistics.deliveries' })
+const goBack = () => {
+  if ((window.history.state as any)?.back) {
+    router.back()
+    return
+  }
+  router.push('/logistics/return-pickups')
+}
 
 const loadPickup = async () => {
   loading.value = true
@@ -313,11 +415,24 @@ const formatStatus = (status?: string) => {
   if (status === 'ready_for_dispatch') return 'For Dispatch'
   return String(status).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
+const statusSeverity = (status?: string) => {
+  if (['picked_up', 'delivered'].includes(String(status))) return 'success'
+  if (['assigned', 'out_for_delivery'].includes(String(status))) return 'info'
+  if (['ready_for_dispatch', 'scheduled'].includes(String(status))) return 'warn'
+  if (status === 'cancelled') return 'secondary'
+  return 'secondary'
+}
 const formatLogMessage = (message?: string) => String(message || '').replace(/\b(ready_for_dispatch|out_for_delivery|in_transit|assigned|delivered)\b/g, value => formatStatus(value))
 
 const formatDateTime = (value: any) => {
   const date = new Date(value)
   return new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)
+}
+
+const formatDateOnly = (value: any) => {
+  const raw = String(value || '')
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00`) : new Date(raw)
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit' }).format(date)
 }
 
 const openOrder = (orderId: number) => router.push({ name: 'logistics.deliveries.detail', params: { source: 'ecommerce', orderId } })
@@ -391,7 +506,58 @@ const addPickupToTrip = async (trip: any) => {
 const createTripForPickup = () => {
   if (!pickup.value) return
   tripChoiceVisible.value = false
-  router.push({ name: 'logistics.trips.create', query: { source: 'return_pickup', order_id: String(id.value) } })
+  tripForm.driver_user_id = null
+  tripForm.assistant_user_ids = []
+  tripForm.vehicle_id = null
+  tripForm.scheduled_departure_at = null
+  tripForm.notes = ''
+  createTripVisible.value = true
+  void loadTripOptions()
+}
+
+const loadTripOptions = async () => {
+  if (tripDrivers.value.length && tripAssistants.value.length && tripVehicles.value.length) return
+  loadingTripOptions.value = true
+  try {
+    const [employeeResponse, vehicleResponse] = await Promise.all([
+      logisticsService.getLogisticsEmployees(),
+      logisticsService.getVehicles({ per_page: 100, status: 'active' }),
+    ])
+    tripDrivers.value = employeeResponse?.data?.drivers || []
+    tripAssistants.value = employeeResponse?.data?.employees || []
+    tripVehicles.value = (vehicleResponse?.data?.data || []).map((vehicle: any) => ({ ...vehicle, label: `${vehicle.vehicle_name} (${vehicle.plate_number})` }))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Options Failed', detail: error?.response?.data?.message || 'Unable to load employees and vehicles.', life: 3500 })
+  } finally {
+    loadingTripOptions.value = false
+  }
+}
+
+const createTripAndAddPickup = async () => {
+  if (!pickup.value || !tripForm.driver_user_id || !tripForm.vehicle_id || creatingTrip.value) return
+  if (hasTripDateConflict(tripForm.scheduled_departure_at)) {
+    toast.add({ severity: 'warn', summary: 'Vehicle Already Booked', detail: 'Choose another vehicle or departure date.', life: 3000 })
+    return
+  }
+  creatingTrip.value = true
+  let tripId: number | null = null
+  try {
+    const response = await logisticsService.createTrip({
+      driver_user_id: tripForm.driver_user_id,
+      assistant_user_ids: tripForm.assistant_user_ids,
+      vehicle_id: tripForm.vehicle_id,
+      scheduled_departure_at: toDateOnly(tripForm.scheduled_departure_at),
+      notes: tripForm.notes || null,
+    })
+    tripId = Number(response?.data?.id) || null
+    if (!tripId) throw new Error('The trip was created but no trip ID was returned.')
+    createTripVisible.value = false
+    await addPickupToTrip({ id: tripId })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Create Failed', detail: `${error?.response?.data?.message || error?.message || 'Unable to create a trip.'}${tripId ? ' The trip was created, but the pickup could not be linked. Open Trips to finish assigning it.' : ''}`, life: 5000 })
+  } finally {
+    creatingTrip.value = false
+  }
 }
 
 const evidenceDialogVisible = ref(false)
@@ -406,6 +572,7 @@ const openEvidence = (index: number) => {
 }
 
 const scheduleDialogVisible = ref(false)
+const returnPickupMapContainer = ref<HTMLElement | null>(null)
 const savingSchedule = ref(false)
 const scheduleForm = reactive({
   scheduled_at: null as any,
@@ -414,20 +581,33 @@ const scheduleForm = reactive({
   pickup_address: '',
   notes: '',
 })
+const routeEstimate = ref<any>(null)
+const estimateLoading = ref(false)
+const estimateError = ref('')
+let estimateTimer: ReturnType<typeof setTimeout> | null = null
+let estimateRequestId = 0
 
 const getTodayDate = () => new Date()
+const toDateOnly = (value: Date | null) => value
+  ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  : null
 
 const openScheduleDialog = async () => {
   if (!pickup.value) return
-  scheduleForm.scheduled_at = pickup.value.scheduled_at ? new Date(pickup.value.scheduled_at) : null
+  const scheduledDate = pickup.value.scheduled_at ? new Date(pickup.value.scheduled_at) : null
+  scheduleForm.scheduled_at = scheduledDate && !Number.isNaN(scheduledDate.getTime())
+    ? new Date(scheduledDate.getFullYear(), scheduledDate.getMonth(), scheduledDate.getDate())
+    : null
   scheduleForm.pickup_name = pickup.value.pickup_name || pickup.value.return_request?.order?.shipping_name || ''
   scheduleForm.pickup_phone = pickup.value.pickup_phone || pickup.value.return_request?.order?.shipping_phone || ''
   scheduleForm.pickup_address = pickup.value.pickup_address || pickup.value.return_request?.order?.shipping_address || ''
   scheduleForm.notes = pickup.value.notes || ''
+  mapState.latitude = Number(pickup.value.pickup_latitude ?? pickup.value.return_request?.order?.customer_latitude ?? pickup.value.return_request?.sales_order?.delivery_latitude ?? 14.3294)
+  mapState.longitude = Number(pickup.value.pickup_longitude ?? pickup.value.return_request?.order?.customer_longitude ?? pickup.value.return_request?.sales_order?.delivery_longitude ?? 120.9367)
+  routeEstimate.value = null
+  estimateError.value = ''
   mapState.searchQuery = scheduleForm.pickup_address || pickup.value.return_request?.order?.shipping_address || mapState.searchQuery
   scheduleDialogVisible.value = true
-  await nextTick()
-  initMap()
 }
 
 const toIsoDateTime = (date: Date) => {
@@ -451,6 +631,8 @@ const saveSchedule = async () => {
       pickup_name: scheduleForm.pickup_name || undefined,
       pickup_phone: scheduleForm.pickup_phone || undefined,
       pickup_address: scheduleForm.pickup_address || undefined,
+      pickup_latitude: mapState.latitude ?? undefined,
+      pickup_longitude: mapState.longitude ?? undefined,
       notes: scheduleForm.notes || undefined,
     }
     await logisticsService.updateReturnPickup(id.value, payload)
@@ -464,10 +646,9 @@ const saveSchedule = async () => {
   }
 }
 
-declare const L: any
-let leafletMap: any = null
-let leafletMarker: any = null
-let mapReady = false
+let pickupMap: MapboxMap | null = null
+let pickupMarker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const mapState = reactive({
   searching: false,
   searchQuery: 'Dasmariñas City, Cavite',
@@ -475,94 +656,118 @@ const mapState = reactive({
   longitude: null as number | null,
 })
 
-const customerCoordsLabel = computed(() => {
-  const lat = pickup.value?.return_request?.order?.customer_latitude
-  const lng = pickup.value?.return_request?.order?.customer_longitude
-  if (!lat || !lng) return '-'
-  return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`
-})
+const requestRouteEstimate = async () => {
+  if (!scheduleDialogVisible.value || !pickup.value || mapState.latitude === null || mapState.longitude === null) return
+  const requestId = ++estimateRequestId
+  estimateLoading.value = true
+  estimateError.value = ''
+  try {
+    const response = await logisticsService.estimateReturnPickup(id.value, {
+      pickup_latitude: mapState.latitude,
+      pickup_longitude: mapState.longitude,
+    })
+    if (requestId === estimateRequestId) routeEstimate.value = response?.data || null
+  } catch (error: any) {
+    if (requestId === estimateRequestId) {
+      routeEstimate.value = null
+      estimateError.value = error?.response?.data?.message || 'Unable to calculate distance and shipping fee for this pin.'
+    }
+  } finally {
+    if (requestId === estimateRequestId) estimateLoading.value = false
+  }
+}
 
-const initMap = () => {
-  const container = document.getElementById('return-pickup-map')
-  if (!container || typeof L === 'undefined') return
+watch(
+  () => [mapState.latitude, mapState.longitude, scheduleDialogVisible.value] as const,
+  ([latitude, longitude, visible]) => {
+    if (estimateTimer) clearTimeout(estimateTimer)
+    if (!visible || latitude === null || longitude === null) return
+    estimateTimer = setTimeout(() => void requestRouteEstimate(), 400)
+  },
+)
+
+const setPickupMapPoint = (longitude: number, latitude: number) => {
+  const normalizedLatitude = Number(latitude.toFixed(6))
+  const normalizedLongitude = Number(longitude.toFixed(6))
+  mapState.latitude = normalizedLatitude
+  mapState.longitude = normalizedLongitude
+  if (!pickupMap || !mapboxgl) return
+  const point: [number, number] = [normalizedLongitude, normalizedLatitude]
+  if (pickupMarker) pickupMarker.setLngLat(point)
+  else pickupMarker = new mapboxgl.Marker({ color: '#f97316', draggable: true }).setLngLat(point).addTo(pickupMap)
+  pickupMap.flyTo({ center: point, zoom: Math.max(pickupMap.getZoom(), 14) })
+}
+
+const initMap = async () => {
+  const container = returnPickupMapContainer.value
+  if (!container) return
 
   const lat = Number(mapState.latitude ?? pickup.value?.return_request?.order?.customer_latitude ?? 14.3294) || 14.3294
   const lng = Number(mapState.longitude ?? pickup.value?.return_request?.order?.customer_longitude ?? 120.9367) || 120.9367
   mapState.latitude = Number(lat.toFixed(6))
   mapState.longitude = Number(lng.toFixed(6))
 
-  if (!mapReady) {
-    leafletMap = L.map(container).setView([lat, lng], 14)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(leafletMap)
-
-    leafletMap.on('click', (e: any) => {
-      mapState.latitude = Number(e.latlng.lat.toFixed(6))
-      mapState.longitude = Number(e.latlng.lng.toFixed(6))
-      redrawMarker()
-    })
-
-    mapReady = true
+  if (!mapboxgl) {
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
   }
 
-  redrawMarker()
-  setTimeout(() => leafletMap?.invalidateSize(), 150)
+  if (!pickupMap) {
+    pickupMap = new mapboxgl.Map({
+      container,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [lng, lat],
+      zoom: 14,
+    })
+    pickupMarker = new mapboxgl.Marker({ color: '#f97316', draggable: true })
+      .setLngLat([lng, lat])
+      .addTo(pickupMap)
+    pickupMarker.on('dragend', () => {
+      const point = pickupMarker?.getLngLat()
+      if (point) {
+        mapState.latitude = Number(point.lat.toFixed(6))
+        mapState.longitude = Number(point.lng.toFixed(6))
+      }
+    })
+    pickupMap.on('click', (event) => setPickupMapPoint(event.lngLat.lng, event.lngLat.lat))
+    pickupMap.once('load', () => pickupMap?.resize())
+  } else {
+    pickupMarker?.setLngLat([lng, lat])
+    pickupMap.setCenter([lng, lat])
+    pickupMap.resize()
+  }
 }
 
-const redrawMarker = () => {
-  if (!leafletMap) return
-  const lat = Number(mapState.latitude ?? 14.3294) || 14.3294
-  const lng = Number(mapState.longitude ?? 120.9367) || 120.9367
-
-  if (leafletMarker) leafletMarker.remove()
-  leafletMarker = L.marker([lat, lng], { draggable: true }).addTo(leafletMap)
-  leafletMarker.on('dragend', () => {
-    const pos = leafletMarker.getLatLng()
-    mapState.latitude = Number(pos.lat.toFixed(6))
-    mapState.longitude = Number(pos.lng.toFixed(6))
+const onScheduleDialogShow = async () => {
+  await nextTick()
+  requestAnimationFrame(() => {
+    void initMap().catch((error: any) => {
+      toast.add({ severity: 'error', summary: 'Map unavailable', detail: error?.message || 'Unable to load the pickup map.', life: 3500 })
+    })
   })
-
-  leafletMap.setView([lat, lng], 14)
 }
 
 async function searchLocation() {
   if (!mapState.searchQuery.trim()) return
   mapState.searching = true
   try {
-    const q = encodeURIComponent(mapState.searchQuery.trim())
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
-    const results = await res.json()
-    if (results && results.length > 0) {
-      const first = results[0]
-      mapState.latitude = Number(Number(first.lat).toFixed(6))
-      mapState.longitude = Number(Number(first.lon).toFixed(6))
-      redrawMarker()
-    }
-  } catch (e) {
-    console.warn('Search failed', e)
+    const result = await forwardGeocodeMapbox(mapState.searchQuery.trim())
+    if (result) setPickupMapPoint(result.longitude, result.latitude)
+    else toast.add({ severity: 'warn', summary: 'Location not found', detail: 'Try a more specific pickup address.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Map search failed', detail: error?.message || 'Unable to search this address.', life: 3500 })
   } finally {
     mapState.searching = false
   }
 }
 
-watch(
-  () => scheduleDialogVisible.value,
-  async (visible) => {
-    if (visible) {
-      await nextTick()
-      initMap()
-    }
-  },
-)
-
 onBeforeUnmount(() => {
-  if (leafletMap) {
-    leafletMap.remove()
-    leafletMap = null
-    leafletMarker = null
-    mapReady = false
+  if (estimateTimer) clearTimeout(estimateTimer)
+  if (pickupMap) {
+    pickupMap.remove()
+    pickupMap = null
+    pickupMarker = null
+    mapboxgl = null
   }
 })
 

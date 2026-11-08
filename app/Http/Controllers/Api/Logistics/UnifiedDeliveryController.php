@@ -10,11 +10,14 @@ use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Inventory\StockTransfer;
+use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\InventoryTransaction;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
 use App\Services\Logistics\DriverPermissionEligibility;
+use App\Support\EmployeeContext;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
@@ -83,6 +86,12 @@ class UnifiedDeliveryController extends Controller
         if (in_array($source, ['all', 'stock_transfer'], true)) {
             $rows = $rows->merge($this->getStockTransferRows($request));
         }
+
+        // Keep unpaid or otherwise unapproved customer orders out of the dispatch queue.
+        $rows = $rows->reject(fn (array $row): bool =>
+            in_array((string) ($row['source_type'] ?? ''), ['ecommerce', 'sales'], true)
+            && strtolower((string) ($row['delivery_status'] ?? '')) === 'pending'
+        )->values();
 
         if ($assignedDriverOnly) {
             $driverId = (int) $request->user()->id;
@@ -247,28 +256,43 @@ class UnifiedDeliveryController extends Controller
             ->where('return_type', 'replacement')
             ->where('status', 'received')
             ->whereIn('replacement_status', ['reserved', 'assigned', 'out_for_delivery', 'delivery_failed'])
-            ->with(['order:id,order_number,shipping_name,shipping_phone,shipping_address', 'orderItem:id,product_name,sku', 'replacementBranch:id,name', 'replacementVehicle:id,vehicle_name,plate_number'])
+            ->with([
+                'order:id,order_number,shipping_name,shipping_phone,shipping_address',
+                'salesOrder:id,order_number,customer_name,customer_phone,delivery_email,delivery_address',
+                'orderItem:id,product_name,sku',
+                'salesOrderItem:id,product_name,sku',
+                'replacementBranch:id,name',
+                'replacementVehicle:id,vehicle_name,plate_number',
+                'replacementTrip:id,created_at,status',
+            ])
             ->get()
-            ->map(fn (EcommerceOrderReturn $case): array => [
+            ->map(function (EcommerceOrderReturn $case): array {
+                $order = $case->source_type === 'pos' ? $case->salesOrder : $case->order;
+                return [
                 'id' => 'replacement-' . $case->id,
                 'source_type' => 'replacement',
                 'order_id' => $case->id,
                 'order_number' => $case->return_number,
                 'branch_name' => $case->replacementBranch?->name,
-                'customer_name' => $case->order?->shipping_name,
-                'customer_contact' => $case->order?->shipping_phone,
-                'delivery_address' => $case->order?->shipping_address,
+                'customer_name' => $case->source_type === 'pos' ? ($case->return_contact_name ?: $order?->customer_name) : ($order?->shipping_name ?: $case->return_contact_name),
+                'customer_contact' => $case->source_type === 'pos' ? ($case->return_contact_phone ?: $order?->customer_phone) : ($order?->shipping_phone ?: $case->return_contact_phone),
+                'delivery_address' => $case->source_type === 'pos' ? ($order?->delivery_address ?: $case->return_pickup_address) : ($order?->shipping_address ?: $case->return_pickup_address),
                 'order_status' => $case->status,
                 'delivery_status' => $case->replacement_status === 'reserved' ? 'ready_for_dispatch' : $case->replacement_status,
                 'total_amount' => 0,
                 'shipping_fee' => 0,
                 'created_at' => $case->created_at,
                 'quantity_items' => $case->received_quantity,
-                'can_create_delivery' => $case->replacement_status === 'reserved',
+                'can_create_delivery' => false,
                 'driver_user_id' => $case->replacement_driver_id,
                 'vehicle_id' => $case->replacement_vehicle_id,
                 'vehicle' => $case->replacementVehicle,
-            ]);
+                'trip_id' => $case->replacement_trip_id,
+                'trip_reference' => $case->replacementTrip?->id
+                    ? sprintf('TRIP-%s-%06d', $case->replacementTrip->created_at?->format('Y') ?: now()->format('Y'), (int) $case->replacementTrip->id)
+                    : null,
+                ];
+            });
     }
 
     private function getReturnPickupRows(Request $request): Collection
@@ -283,17 +307,22 @@ class UnifiedDeliveryController extends Controller
                 'driver:id,fname,lname,phone_number',
                 'vehicle:id,vehicle_name,plate_number,vehicle_type',
                 'destinationBranch:id,name,address,latitude,longitude,contact_number',
-                'returnRequest:id,return_number,order_id,order_item_id,store_id,user_id,requested_quantity,status,created_at',
+                'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,status,created_at',
                 'returnRequest.order:id,order_number,assigned_branch_id,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude,created_at',
                 'returnRequest.order.assignedBranch:id,name,latitude,longitude',
                 'returnRequest.orderItem:id,order_id,product_id,quantity,unit_price',
                 'returnRequest.orderItem.product:id,weight_kg',
+                'returnRequest.salesOrder:id,order_number,branch_id,customer_name,customer_phone,delivery_email,delivery_address,delivery_latitude,delivery_longitude,created_at',
+                'returnRequest.salesOrder.branch:id,name,address,latitude,longitude',
+                'returnRequest.salesOrderItem:id,product_id,variation_id,branch_inventory_id,quantity,unit_price',
+                'returnRequest.salesOrderItem.product:id,weight_kg',
                 'returnRequest.user:id,fname,lname,email',
             ])
             ->where('store_id', $storeId)
             ->get()
             ->map(function (ReturnPickup $pickup): array {
                 $return = $pickup->returnRequest;
+                $return?->normalizeSourceRelationsForDisplay();
                 $order = $return?->order;
                 $orderItem = $return?->orderItem;
                 $branch = $pickup->destinationBranch;
@@ -411,6 +440,143 @@ class UnifiedDeliveryController extends Controller
     public function orderDetail(Request $request, string $source, int $orderId): JsonResponse
     {
         $source = strtolower($source);
+        if ($source === 'replacement') {
+            $replacement = EcommerceOrderReturn::query()
+                ->with([
+                    'order:id,order_number,shipping_name,shipping_phone,shipping_email,shipping_address,customer_latitude,customer_longitude',
+                    'salesOrder:id,order_number,customer_name,customer_phone,delivery_email,delivery_address,delivery_latitude,delivery_longitude',
+                    'replacementInventory.product:id,product_name,sku,unit_of_measurement,weight_kg',
+                    'replacementInventory.variation:id,variation_name,variation_sku,weight_kg',
+                    'replacementBranch:id,name,address,latitude,longitude',
+                    'replacementTrip:id,created_at,status,scheduled_departure_at,driver_user_id,vehicle_id',
+                    'replacementTrip.driver:id,fname,lname,email,phone_number',
+                    'replacementTrip.vehicle:id,vehicle_name,plate_number,vehicle_type,brand,model',
+                    'user:id,email',
+                    'replacementProduct:id,product_name,sku,unit_of_measurement,weight_kg',
+                    'replacementVariation:id,variation_name,variation_sku,weight_kg',
+                ])
+                ->where('store_id', $this->resolveStoreId($request))
+                ->where('return_type', 'replacement')
+                ->findOrFail($orderId);
+
+            if ($request->user()->hasRole('driver') && (int) $replacement->replacement_driver_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This replacement delivery is not assigned to you.'], 403);
+            }
+
+            $sourceOrder = $replacement->source_type === 'pos' ? $replacement->salesOrder : $replacement->order;
+            $inventory = $replacement->replacementInventory;
+            $product = $inventory?->product;
+            $variation = $inventory?->variation;
+            $quantity = (int) ($replacement->received_quantity ?: $replacement->requested_quantity ?: 1);
+            $unitPrice = (float) ($replacement->replacement_unit_price ?? 0);
+            $destinationAddress = $replacement->source_type === 'pos'
+                ? (string) ($replacement->salesOrder?->delivery_address ?: $replacement->return_pickup_address)
+                : (string) ($replacement->order?->shipping_address ?: $replacement->return_pickup_address);
+            $destinationLatitude = $replacement->source_type === 'pos'
+                ? $replacement->salesOrder?->delivery_latitude
+                : $replacement->order?->customer_latitude;
+            $destinationLongitude = $replacement->source_type === 'pos'
+                ? $replacement->salesOrder?->delivery_longitude
+                : $replacement->order?->customer_longitude;
+            $rawStatus = strtolower((string) $replacement->replacement_status);
+            $deliveryStatus = match ($rawStatus) {
+                'reserved' => 'ready_for_dispatch',
+                'delivery_failed' => 'failed_delivery',
+                default => $rawStatus ?: 'pending',
+            };
+            $trip = $replacement->replacementTrip;
+            $tripReference = $trip?->id
+                ? sprintf('TRIP-%s-%06d', $trip->created_at?->format('Y') ?: now()->format('Y'), (int) $trip->id)
+                : null;
+            $itemName = $variation?->variation_name
+                ? trim((string) ($product?->product_name . ' - ' . $variation->variation_name))
+                : ($product?->product_name ?: $replacement->replacementProduct?->product_name);
+            $itemSku = $variation?->variation_sku ?: $product?->sku ?: $replacement->replacementVariation?->variation_sku;
+            $itemWeight = $variation?->weight_kg ?? $product?->weight_kg;
+            $replacementOrder = [
+                'id' => (int) $replacement->id,
+                'order_number' => $replacement->return_number ?: 'RET-' . $replacement->id,
+                'status' => match ($rawStatus) {
+                    'delivered' => 'delivered',
+                    'delivery_failed' => 'delivery_failed',
+                    'out_for_delivery' => 'out_for_delivery',
+                    'assigned' => 'assigned',
+                    default => 'ready_for_dispatch',
+                },
+                'replacement_status' => $rawStatus,
+                'shipping_name' => $replacement->source_type === 'pos'
+                    ? ($sourceOrder?->customer_name ?: $replacement->return_contact_name)
+                    : ($sourceOrder?->shipping_name ?: $replacement->return_contact_name),
+                'customer_name' => $sourceOrder?->customer_name,
+                'shipping_phone' => $replacement->source_type === 'pos'
+                    ? ($sourceOrder?->customer_phone ?: $replacement->return_contact_phone)
+                    : ($sourceOrder?->shipping_phone ?: $replacement->return_contact_phone),
+                'customer_phone' => $sourceOrder?->customer_phone,
+                'shipping_email' => ($replacement->source_type === 'pos' ? $sourceOrder?->delivery_email : $sourceOrder?->shipping_email) ?? $replacement->user?->email,
+                'shipping_address' => $destinationAddress,
+                'delivery_address' => $destinationAddress,
+                'customer_latitude' => $destinationLatitude,
+                'customer_longitude' => $destinationLongitude,
+                'total_amount' => round($unitPrice * $quantity, 2),
+                'items' => $inventory ? [[
+                    'product_name' => $itemName ?: 'Replacement item',
+                    'sku' => $itemSku,
+                    'quantity' => $quantity,
+                    'unit_of_measurement' => $variation?->unit_of_measurement ?: $product?->unit_of_measurement ?: 'unit',
+                    'unit_price' => $unitPrice,
+                    'line_total' => round($unitPrice * $quantity, 2),
+                    'weight_kg' => $itemWeight,
+                    'variation' => $variation,
+                    'product' => $product,
+                ]] : [],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'source_type' => 'replacement',
+                    'order' => $replacementOrder,
+                    'delivery' => [
+                        'id' => (int) $replacement->id,
+                        'status' => $deliveryStatus,
+                        'tracking_number' => $replacement->return_number,
+                        'driver_user_id' => $replacement->replacement_driver_id,
+                        'driver' => $trip?->driver,
+                        'driver_user' => $trip?->driver,
+                        'driver_name' => trim((string) ($trip?->driver?->fname . ' ' . $trip?->driver?->lname)) ?: null,
+                        'courier_name' => trim((string) ($trip?->driver?->fname . ' ' . $trip?->driver?->lname)) ?: null,
+                        'courier_contact' => $trip?->driver?->phone_number,
+                        'vehicle_id' => $replacement->replacement_vehicle_id ?: $trip?->vehicle_id,
+                        'vehicle' => $trip?->vehicle,
+                        'trip_id' => $replacement->replacement_trip_id,
+                        'trip_reference' => $tripReference,
+                        'expected_delivery_date' => $trip?->scheduled_departure_at,
+                        'estimated_delivery_at' => $trip?->scheduled_departure_at,
+                        'destination_address' => $destinationAddress,
+                        'destination_latitude' => $destinationLatitude,
+                        'destination_longitude' => $destinationLongitude,
+                        'current_latitude' => $replacement->current_latitude,
+                        'current_longitude' => $replacement->current_longitude,
+                        'current_address' => $replacement->current_address,
+                        'delivered_at' => $replacement->replacement_delivered_at,
+                        'proof_of_delivery_path' => $replacement->replacement_proof_path,
+                        'courier_provider' => 'in_house',
+                    ],
+                    'logs' => $this->replacementDeliveryTimeline($replacement),
+                    'replacement_case' => [
+                        'return_number' => $replacement->return_number,
+                        'source_type' => $replacement->source_type,
+                        'original_order_number' => $sourceOrder?->order_number,
+                        'replacement_status' => $rawStatus,
+                        'reason' => $replacement->reason,
+                        'details' => $replacement->details,
+                        'replacement_received_by' => $replacement->replacement_received_by,
+                        'replacement_branch' => $replacement->replacementBranch,
+                    ],
+                ],
+            ]);
+        }
+
         if ($source === 'stock_transfer') {
             $storeId = $this->resolveStoreId($request);
             $transfer = StockTransfer::query()
@@ -628,6 +794,7 @@ class UnifiedDeliveryController extends Controller
         return response()->json(['success' => true, 'data' => [
             'drivers' => $employees->where('is_driver', true)->values(),
             'assistants' => $employees->where('is_driver', true)->values(),
+            'employees' => $employees->values(),
         ]]);
     }
 
@@ -984,7 +1151,7 @@ class UnifiedDeliveryController extends Controller
             }
 
             $pickup = $this->resolvePickupShipment($request, $orderId);
-            if ($request->user()->hasRole('driver') && (int) $pickup->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $pickup->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
             $from = (string) $pickup->status;
@@ -1062,7 +1229,7 @@ class UnifiedDeliveryController extends Controller
             $transfer = StockTransfer::query()
                 ->where('store_id', $this->resolveStoreId($request))
                 ->findOrFail($orderId);
-            if ($request->user()->hasRole('driver') && (int) $transfer->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $transfer->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
 
@@ -1086,6 +1253,66 @@ class UnifiedDeliveryController extends Controller
             }
 
             DB::transaction(function () use ($transfer, $validated, $locationAddress, $request) {
+                if ($validated['status'] === 'in_transit') {
+                    $transfer->loadMissing('items');
+                    foreach ($transfer->items as $transferItem) {
+                        if ((int) $transferItem->shipped_quantity >= (int) ($transferItem->approved_quantity ?? $transferItem->requested_quantity)) {
+                            continue;
+                        }
+
+                        $inventory = BranchInventory::query()
+                            ->where('store_id', $transfer->store_id)
+                            ->where('branch_id', $transfer->from_branch_id)
+                            ->where('product_id', $transferItem->product_id)
+                            ->where('variation_id', $transferItem->variation_id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+                        $quantity = (int) ($transferItem->approved_quantity ?? $transferItem->requested_quantity);
+
+                        if ($transfer->transfer_kind === 'damaged_pullout') {
+                            if ((int) $inventory->quantity_damaged < $quantity || (int) $inventory->quantity_on_hand < $quantity) {
+                                abort(422, 'Damaged on-hand stock changed before dispatch. Refresh the transfer and review its quantities.');
+                            }
+                            $before = (int) $inventory->quantity_on_hand;
+                            $inventory->quantity_damaged -= $quantity;
+                            $inventory->quantity_on_hand -= $quantity;
+                            $after = (int) $inventory->quantity_on_hand;
+                        } else {
+                            if ((int) $inventory->quantity_available < $quantity) {
+                                abort(422, 'Available stock changed before dispatch. Refresh the transfer and review its quantities.');
+                            }
+                            $before = (int) $inventory->quantity_available;
+                            $inventory->quantity_available -= $quantity;
+                            $inventory->quantity_on_hand = $inventory->quantity_available;
+                            $after = (int) $inventory->quantity_available;
+                        }
+
+                        $inventory->suppressAutomaticTransactionLog();
+                        $inventory->save();
+                        $inventory->updateStockStatus();
+                        InventoryTransaction::create([
+                            'transaction_number' => 'TXN-' . now()->format('YmdHis') . '-' . random_int(10000, 99999),
+                            'store_id' => $transfer->store_id,
+                            'branch_id' => $transfer->from_branch_id,
+                            'product_id' => $transferItem->product_id,
+                            'variation_id' => $transferItem->variation_id,
+                            'transaction_type' => 'transfer_out',
+                            'quantity_before' => $before,
+                            'quantity_change' => -$quantity,
+                            'quantity_after' => $after,
+                            'related_branch_id' => $transfer->to_branch_id,
+                            'reference_type' => 'stock_transfer',
+                            'reference_id' => $transfer->id,
+                            'notes' => $transfer->transfer_kind === 'damaged_pullout'
+                                ? 'Damaged stock pull-out dispatched to warehouse quarantine.'
+                                : 'Stock transfer dispatched from source branch.',
+                            'created_by' => EmployeeContext::currentEmployeeId(),
+                            'transaction_date' => now(),
+                        ]);
+                        $transferItem->update(['shipped_quantity' => $quantity]);
+                    }
+                }
+
                 $transfer->delivery_status = $validated['status'];
                 $transfer->current_latitude = $validated['latitude'] ?? $transfer->current_latitude;
                 $transfer->current_longitude = $validated['longitude'] ?? $transfer->current_longitude;
@@ -1122,7 +1349,7 @@ class UnifiedDeliveryController extends Controller
             if (!$delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
             }
-            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
 
@@ -1233,7 +1460,7 @@ class UnifiedDeliveryController extends Controller
         if (!$delivery) {
             return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
         }
-        if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+        if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
         }
 
@@ -1298,6 +1525,28 @@ class UnifiedDeliveryController extends Controller
         ]);
 
         $source = strtolower($source);
+
+        if ($source === 'replacement') {
+            $replacement = EcommerceOrderReturn::query()
+                ->where('store_id', $this->resolveStoreId($request))
+                ->where('return_type', 'replacement')
+                ->findOrFail($orderId);
+            if ((int) $replacement->replacement_driver_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This replacement delivery is not assigned to you.'], 403);
+            }
+            if (strtolower((string) $replacement->replacement_status) !== 'out_for_delivery') {
+                return response()->json(['success' => false, 'message' => 'Live tracking is available only while the replacement is out for delivery.'], 422);
+            }
+            abort_unless(Schema::hasColumn('ecommerce_order_returns', 'current_latitude'), 503, 'Replacement delivery tracking is not enabled in the database yet. Apply the replacement tracking migration.');
+
+            $replacement->update([
+                'current_latitude' => $validated['latitude'],
+                'current_longitude' => $validated['longitude'],
+                'current_address' => trim((string) ($validated['location_address'] ?? '')) ?: $replacement->current_address,
+            ]);
+
+            return response()->json(['success' => true, 'message' => 'Live location updated.', 'data' => $replacement->fresh()]);
+        }
 
         if ($source === 'ecommerce') {
             $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
@@ -1432,6 +1681,9 @@ class UnifiedDeliveryController extends Controller
             if (!$delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
             }
+            if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
+            }
 
             $previousStatus = (string) $delivery->status;
             $delivery->proof_of_delivery_path = $request->file('photo')->store('logistics/pod/photos', 'public');
@@ -1473,6 +1725,9 @@ class UnifiedDeliveryController extends Controller
         if (!$delivery) {
             return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
         }
+        if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
+        }
 
         $previousStatus = (string) $delivery->status;
         $delivery->proof_of_delivery_path = $request->file('photo')->store('logistics/pod/photos', 'public');
@@ -1507,6 +1762,18 @@ class UnifiedDeliveryController extends Controller
     {
         $source = strtolower($source);
 
+        if ($source === 'replacement') {
+            $replacement = EcommerceOrderReturn::query()
+                ->where('store_id', $this->resolveStoreId($request))
+                ->where('return_type', 'replacement')
+                ->findOrFail($orderId);
+            if ($request->user()->hasRole('driver') && (int) $replacement->replacement_driver_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This replacement delivery is not assigned to you.'], 403);
+            }
+
+            return response()->json(['success' => true, 'data' => $this->replacementDeliveryTimeline($replacement)]);
+        }
+
         if ($source === 'pickup') {
             $pickup = $this->resolvePickupShipment($request, $orderId);
             return response()->json(['success' => true, 'data' => $pickup->logs]);
@@ -1539,6 +1806,41 @@ class UnifiedDeliveryController extends Controller
             ->get();
 
         return response()->json(['success' => true, 'data' => $logs]);
+    }
+
+    private function replacementDeliveryTimeline(EcommerceOrderReturn $replacement): Collection
+    {
+        $events = collect();
+        $add = function (string $key, ?\Illuminate\Support\Carbon $at, string $type, string $message, array $extra = []) use (&$events): void {
+            if (!$at) return;
+            $events->push(array_merge([
+                'id' => 'replacement-' . $key,
+                'event_type' => $type,
+                'message' => $message,
+                'notes' => $message,
+                'logged_at' => $at->toISOString(),
+                'created_at' => $at->toISOString(),
+            ], $extra));
+        };
+
+        $add('created', $replacement->created_at, 'replacement_created', 'Replacement case created.');
+        $add('assigned', $replacement->replacement_assigned_at, 'trip_assigned', 'Replacement delivery assigned to a trip.');
+        $add('dispatched', $replacement->replacement_dispatched_at, 'out_for_delivery', 'Replacement trip dispatched; reserved stock issued.');
+        if ($replacement->replacement_status === 'delivery_failed') {
+            $add('failed', $replacement->updated_at, 'failed_delivery', $replacement->replacement_failure_reason ?: 'Delivery attempt failed.');
+        }
+        $add('delivered', $replacement->replacement_delivered_at, 'delivered', 'Replacement delivered to the customer.', [
+            'created_by' => $replacement->replacement_driver_id,
+            'latitude' => $replacement->current_latitude,
+            'longitude' => $replacement->current_longitude,
+            'location_address' => $replacement->current_address,
+            'attachments' => $replacement->replacement_proof_path ? [[
+                'id' => 'replacement-proof-' . $replacement->id,
+                'public_url' => $this->publicUrl($replacement->replacement_proof_path),
+            ]] : [],
+        ]);
+
+        return $events->sortByDesc(fn (array $event) => $event['logged_at'])->values();
     }
 
     public function addLog(Request $request, string $source, int $orderId): JsonResponse
@@ -1661,6 +1963,8 @@ class UnifiedDeliveryController extends Controller
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
                 'order_status' => $order->status,
+                'requested_fulfillment_date' => $order->requested_fulfillment_date?->toDateString(),
+                'requested_fulfillment_window' => $order->requested_fulfillment_window,
                 'customer_name' => $order->shipping_name,
                 'customer_contact' => $order->shipping_phone,
                 'delivery_address' => $order->shipping_address,

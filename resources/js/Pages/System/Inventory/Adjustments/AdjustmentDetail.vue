@@ -86,6 +86,23 @@
         </DataTable>
       </section>
 
+      <section v-if="detail.attachments?.length" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="font-medium text-gray-900">Supporting Photos</h2>
+            <p class="mt-1 text-xs text-gray-500">{{ detail.attachments.length }} attached {{ detail.attachments.length === 1 ? 'photo' : 'photos' }}</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+          <button v-for="attachment in detail.attachments" :key="attachment.id" type="button"
+            class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-left transition hover:border-orange-300 hover:shadow-sm"
+            @click="openAttachment(attachment)">
+            <img :src="attachment.url" :alt="attachment.file_name || 'Adjustment photo'" loading="lazy" class="h-32 w-full object-cover" />
+            <span class="block truncate px-2 py-1.5 text-xs text-gray-600">{{ attachment.file_name || 'Attachment' }}</span>
+          </button>
+        </div>
+      </section>
+
       <div class="grid gap-4 md:grid-cols-3">
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><p class="text-xs font-medium uppercase tracking-wider text-gray-500">Total Items</p><p class="mt-2 text-2xl font-semibold text-gray-900">{{ detail.items?.length || 0 }}</p></div>
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><p class="text-xs font-medium uppercase tracking-wider text-gray-500">Quantity Difference</p><p class="mt-2 text-2xl font-semibold" :class="totalDifference < 0 ? 'text-red-600' : totalDifference > 0 ? 'text-green-600' : 'text-gray-900'">{{ signedQuantity(totalDifference) }}</p></div>
@@ -97,6 +114,9 @@
     <Dialog v-model:visible="showRejectDialog" header="Reject Adjustment" :style="{ width: 'min(520px, 95vw)' }" modal>
       <div class="space-y-4"><p class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800">Please provide a reason for rejection. It will be recorded in the review notes.</p><div><label class="mb-1 block text-sm font-medium text-gray-700">Reason *</label><Select v-model="rejectReason" :options="rejectReasonOptions" optionLabel="label" optionValue="value" placeholder="Select a reason" class="w-full" /></div><div><label class="mb-1 block text-sm font-medium text-gray-700">Additional notes</label><Textarea v-model="rejectNotes" rows="3" class="w-full" placeholder="Optional details" /></div></div>
       <template #footer><Button label="Cancel" text severity="secondary" @click="showRejectDialog = false" /><Button label="Reject Adjustment" icon="pi pi-times" severity="danger" :loading="processing" :disabled="!rejectReason" @click="confirmReject" /></template>
+    </Dialog>
+    <Dialog v-model:visible="showAttachmentDialog" :header="selectedAttachment?.file_name || 'Adjustment Photo'" :style="{ width: 'min(900px, 95vw)' }" modal dismissableMask>
+      <img v-if="selectedAttachment" :src="selectedAttachment.url" :alt="selectedAttachment.file_name || 'Adjustment photo'" class="mx-auto max-h-[75vh] max-w-full rounded-lg object-contain" />
     </Dialog>
   </div>
 </template>
@@ -130,6 +150,8 @@ const processing = ref(false)
 const error = ref('')
 const detail = ref<any>(null)
 const showRejectDialog = ref(false)
+const showAttachmentDialog = ref(false)
+const selectedAttachment = ref<any>(null)
 const rejectReason = ref<string | null>(null)
 const rejectNotes = ref('')
 const rejectReasonOptions = [
@@ -157,6 +179,7 @@ function money(value: any) { return new Intl.NumberFormat('en-PH', { style: 'cur
 function signedMoney(value: any) { const number = Number(value || 0); return `${number > 0 ? '+' : number < 0 ? '−' : ''}${money(Math.abs(number))}` }
 function quantity(value: any) { return Number(value || 0).toLocaleString('en-PH') }
 function signedQuantity(value: any) { const number = Number(value || 0); return `${number > 0 ? '+' : ''}${quantity(number)}` }
+function openAttachment(attachment: any) { selectedAttachment.value = attachment; showAttachmentDialog.value = true }
 async function loadDetail() {
   loading.value = true; error.value = ''
   try { const response = await axiosClient.get(`/api/inventory/adjustments/${adjustmentId.value}`); detail.value = response.data?.data || null }

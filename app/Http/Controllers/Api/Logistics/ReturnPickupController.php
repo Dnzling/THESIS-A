@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api\Logistics;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
+use App\Models\Inventory\BranchInventory;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Logistics\ReturnPickupLog;
 use App\Models\Store\Branch;
 use App\Services\Logistics\DriverPermissionEligibility;
+use App\Services\Logistics\DistanceService;
+use App\Services\Logistics\ReturnChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -25,6 +28,54 @@ class ReturnPickupController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
+    public function estimate(Request $request, ReturnPickup $pickup, DistanceService $distanceService, ReturnChargeService $chargeService): JsonResponse
+    {
+        if ((int) $pickup->store_id !== (int) $request->user()->store_id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'pickup_latitude' => ['required', 'numeric', 'between:-90,90'],
+            'pickup_longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $branchId = $this->resolveReturnSourceBranchId($pickup);
+        $branch = $branchId
+            ? Branch::query()->whereKey($branchId)->where('store_id', $pickup->store_id)->first()
+            : null;
+        if (!$branch || $branch->latitude === null || $branch->longitude === null) {
+            return response()->json(['success' => false, 'message' => 'The original fulfillment branch needs a saved map location before a return estimate can be calculated.'], 422);
+        }
+
+        try {
+            $distance = $distanceService->getDistanceKmBetweenCoordinates(
+                (float) $validated['pickup_latitude'],
+                (float) $validated['pickup_longitude'],
+                (float) $branch->latitude,
+                (float) $branch->longitude,
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+            return response()->json(['success' => false, 'message' => 'Unable to calculate the route distance. Check the map pin and try again.'], 422);
+        }
+
+        $pickup->loadMissing('returnRequest');
+        $responsibility = (string) ($pickup->returnRequest?->charge_responsibility ?: 'store');
+        $estimate = $pickup->returnRequest
+            ? $chargeService->calculate($pickup->returnRequest, $responsibility, $distance)
+            : ['fee' => 0, 'breakdown' => ['distance_km' => $distance]];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'distance_km' => $distance,
+                'estimated_fee' => (float) $estimate['fee'],
+                'breakdown' => $estimate['breakdown'],
+                'destination' => ['branch_id' => $branch->id, 'name' => $branch->name, 'address' => $branch->address],
+            ],
+        ]);
+    }
+
     public function warehouseReturns(Request $request): JsonResponse { return $this->destinationReturns($request, 'warehouse'); }
     public function inventoryReturns(Request $request): JsonResponse { return $this->destinationReturns($request, 'storefront'); }
 
@@ -37,9 +88,13 @@ class ReturnPickupController extends Controller
 
         $query = ReturnPickup::query()->with([
             'destinationBranch:id,name,branch_type,address', 'driver:id,fname,lname',
-            'returnRequest:id,return_number,order_id,order_item_id,requested_quantity,reason,status,return_type',
+            'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,requested_quantity,reason,status,return_type',
             'returnRequest.order:id,order_number,shipping_name,shipping_phone',
             'returnRequest.orderItem:id,product_name,sku,unit_price',
+            'returnRequest.salesOrder:id,order_number,customer_name,customer_phone,delivery_email,delivery_address,branch_id',
+            'returnRequest.salesOrder.branch:id,name,address,latitude,longitude',
+            'returnRequest.salesOrderItem:id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'returnRequest.salesOrderItem.product:id,product_name,sku,weight_kg',
         ])->where('store_id', $request->user()->store_id)
             ->whereHas('destinationBranch', fn ($q) => $q->where('branch_type', $branchType))
             ->whereNotIn('status', ['ready_for_dispatch', 'scheduled', 'cancelled']);
@@ -51,7 +106,9 @@ class ReturnPickupController extends Controller
             $term = trim($request->string('search')->toString());
             $query->where(fn ($q) => $q->whereHas('returnRequest', fn ($r) => $r->where('return_number', 'like', "%{$term}%"))
                 ->orWhereHas('returnRequest.order', fn ($o) => $o->where('order_number', 'like', "%{$term}%")->orWhere('shipping_name', 'like', "%{$term}%"))
-                ->orWhereHas('returnRequest.orderItem', fn ($i) => $i->where('product_name', 'like', "%{$term}%")->orWhere('sku', 'like', "%{$term}%")));
+            ->orWhereHas('returnRequest.orderItem', fn ($i) => $i->where('product_name', 'like', "%{$term}%")->orWhere('sku', 'like', "%{$term}%"))
+            ->orWhereHas('returnRequest.salesOrder', fn ($o) => $o->where('order_number', 'like', "%{$term}%")->orWhere('customer_name', 'like', "%{$term}%"))
+            ->orWhereHas('returnRequest.salesOrderItem', fn ($i) => $i->where('product_name', 'like', "%{$term}%")->orWhere('sku', 'like', "%{$term}%")));
         }
 
         if (!empty($dateFilters['start_date'])) $query->whereDate('created_at', '>=', $dateFilters['start_date']);
@@ -61,7 +118,10 @@ class ReturnPickupController extends Controller
         $sortBy = in_array($sortBy, ['created_at', 'scheduled_at', 'status'], true) ? $sortBy : 'created_at';
         $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        return response()->json(['success' => true, 'data' => $query->orderBy($sortBy, $sortOrder)->get()]);
+        $rows = $query->orderBy($sortBy, $sortOrder)->get();
+        $rows->each(fn (ReturnPickup $pickup) => $pickup->returnRequest?->normalizeSourceRelationsForDisplay());
+
+        return response()->json(['success' => true, 'data' => $rows]);
     }
 
     public function warehouseShow(Request $request, ReturnPickup $pickup): JsonResponse
@@ -90,8 +150,11 @@ class ReturnPickupController extends Controller
         $query = ReturnPickup::query()
             ->with([
                 'driver:id,fname,lname,email',
-                'returnRequest:id,order_id,order_item_id,store_id,user_id,requested_quantity,reason,status,created_at',
+                'returnRequest:id,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,reason,status,created_at',
                 'returnRequest.order:id,order_number,store_id,user_id,shipping_name,shipping_phone,shipping_address',
+                'returnRequest.salesOrder:id,order_number,store_id,branch_id,customer_name,customer_phone,delivery_email,delivery_address',
+                'returnRequest.salesOrder.branch:id,name,address,latitude,longitude',
+                'returnRequest.salesOrderItem:id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
                 'returnRequest.user:id,fname,lname,email',
             ])
             ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId));
@@ -104,7 +167,13 @@ class ReturnPickupController extends Controller
             $search = trim((string) $request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->whereHas('returnRequest.order', fn ($oq) => $oq->where('order_number', 'like', "%{$search}%"))
-                    ->orWhereHas('returnRequest.user', fn ($uq) => $uq->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                    ->orWhereHas('returnRequest.salesOrder', fn ($oq) => $oq->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%"))
+                    ->orWhereHas('returnRequest.user', fn ($uq) => $uq
+                        ->where('fname', 'like', "%{$search}%")
+                        ->orWhere('lname', 'like', "%{$search}%")
+                        ->orWhereRaw("CONCAT_WS(' ', fname, lname) LIKE ?", ["%{$search}%"])
+                        ->orWhere('email', 'like', "%{$search}%"))
                     ->orWhere('pickup_name', 'like', "%{$search}%")
                     ->orWhere('pickup_phone', 'like', "%{$search}%");
             });
@@ -126,6 +195,7 @@ class ReturnPickupController extends Controller
         $query->orderBy($sortBy, $sortOrder);
 
         $pickups = $query->paginate((int) $request->input('per_page', 15));
+        collect($pickups->items())->each(fn (ReturnPickup $pickup) => $pickup->returnRequest?->normalizeSourceRelationsForDisplay());
 
         return response()->json([
             'success' => true,
@@ -149,21 +219,34 @@ class ReturnPickupController extends Controller
         $pickup->load([
             'driver:id,fname,lname,email,phone_number',
             'vehicle:id,vehicle_name,vehicle_type,plate_number,brand,model',
+            'trip:id,created_at',
             'destinationBranch:id,name,address,city,province,latitude,longitude,contact_number,email',
             'logs.creator:id,fname,lname,email',
-            'returnRequest:id,return_number,order_id,order_item_id,store_id,user_id,requested_quantity,reason,details,evidence_urls,status,return_type,product_condition,inventory_disposition,received_quantity,inspected_by,inspected_at,inspection_notes,replacement_status,created_at,review_notes,reviewed_at,reviewed_by',
+            'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,reason,details,evidence_urls,status,return_type,product_condition,inventory_disposition,received_quantity,inspected_by,inspected_at,inspection_notes,replacement_status,created_at,review_notes,reviewed_at,reviewed_by',
             'returnRequest.order:id,order_number,store_id,assigned_branch_id,user_id,shipping_name,shipping_phone,shipping_email,shipping_address,customer_latitude,customer_longitude,total_amount,status,created_at',
             'returnRequest.order.assignedBranch:id,name,address,latitude,longitude',
             'returnRequest.orderItem:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
             'returnRequest.orderItem.product:id,product_name,sku,weight_kg',
-            'returnRequest.orderItem.branchInventory:id,variation_id',
+            'returnRequest.orderItem.branchInventory:id,branch_id,variation_id',
+            'returnRequest.orderItem.branchInventory.branch:id,name,branch_type,address,city,province,latitude,longitude',
             'returnRequest.orderItem.branchInventory.variation:id,variation_name,variation_sku,color,size,material,finish',
+            'returnRequest.salesOrder:id,store_id,branch_id,order_number,status,customer_name,customer_phone,delivery_email,delivery_address,delivery_latitude,delivery_longitude,created_at,paid_at',
+            'returnRequest.salesOrder.branch:id,name,address,latitude,longitude',
+            'returnRequest.salesOrderItem:id,order_id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'returnRequest.salesOrderItem.product:id,product_name,sku,weight_kg',
+            'returnRequest.salesOrderItem.variation:id,variation_name,variation_sku,color,size,material,finish',
+            'returnRequest.salesOrderItem.branchInventory:id,branch_id,variation_id',
             'returnRequest.user:id,fname,lname,email',
             'returnRequest.reviewer:id,fname,lname,email',
             'returnRequest.inspector:id,fname,lname,email',
         ]);
 
+        $pickup->returnRequest?->normalizeSourceRelationsForDisplay();
+
         $data = $pickup->toArray();
+        $data['trip_reference'] = $pickup->trip
+            ? sprintf('TRIP-%s-%06d', $pickup->trip->created_at?->format('Y') ?? now()->format('Y'), (int) $pickup->trip->id)
+            : null;
         $data['assistants'] = User::query()
             ->whereIn('id', $pickup->assistant_user_ids ?? [])
             ->get(['id', 'fname', 'lname', 'email'])
@@ -193,7 +276,7 @@ class ReturnPickupController extends Controller
         $validated = $request->validate([
             'driver_user_id' => ['required', 'exists:users,id'],
             'vehicle_id' => ['required', 'exists:ecommerce_delivery_vehicles,id'],
-            'destination_branch_id' => ['required', 'exists:branches,id'],
+            'destination_branch_id' => ['nullable', 'exists:branches,id'],
             'assistant_user_ids' => ['nullable', 'array'],
             'assistant_user_ids.*' => ['integer', 'exists:users,id'],
             'distance_km' => ['nullable', 'numeric', 'min:0'],
@@ -204,6 +287,14 @@ class ReturnPickupController extends Controller
 
         if (!in_array((string) $pickup->status, ['ready_for_dispatch', 'scheduled'], true)) {
             return response()->json(['success' => false, 'message' => 'This return pickup is no longer available for assignment.'], 422);
+        }
+
+        $originBranchId = $this->resolveReturnSourceBranchId($pickup);
+        if (!$originBranchId) {
+            return response()->json(['success' => false, 'message' => 'The original fulfillment branch could not be determined for this return.'], 422);
+        }
+        if (!empty($validated['destination_branch_id']) && (int) $validated['destination_branch_id'] !== $originBranchId) {
+            return response()->json(['success' => false, 'message' => 'A returned item must be delivered to the branch that fulfilled its original order.'], 422);
         }
 
         $driver = User::query()
@@ -222,7 +313,7 @@ class ReturnPickupController extends Controller
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->firstOrFail();
-        $branch = Branch::query()->where('id', $validated['destination_branch_id'])->where('store_id', $storeId)->firstOrFail();
+        $branch = Branch::query()->whereKey($originBranchId)->where('store_id', $storeId)->firstOrFail();
 
         $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->reject(fn ($id) => $id === (int) $driver->id)->values();
         $validAssistantCount = User::query()->with('employee')->where('store_id', $storeId)->where('is_active', true)
@@ -246,6 +337,26 @@ class ReturnPickupController extends Controller
         }
         $pickup->save();
         ReturnPickupLog::create(['return_pickup_id' => $pickup->id, 'event_type' => 'assigned', 'status_to' => $pickup->status, 'message' => "Return pickup assigned for delivery to {$branch->name}.", 'created_by' => $request->user()->id]);
+
+        $pickup->loadMissing('returnRequest:id,user_id,store_id,order_id,source_type');
+        $returnRequest = $pickup->returnRequest;
+        if ($returnRequest?->user_id && $returnRequest->source_type !== 'pos') {
+            $scheduledMessage = $pickup->scheduled_at
+                ? ' Pickup is scheduled for ' . $pickup->scheduled_at->format('M d, Y h:i A') . '.'
+                : '';
+            $this->notify((int) $returnRequest->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'return_pickup',
+                'entity_id' => (int) $pickup->id,
+                'action' => 'return_pickup_assigned',
+                'title' => 'Return pickup arranged',
+                'message' => 'A driver has been assigned to collect your return.' . $scheduledMessage,
+                'severity' => 'info',
+                'store_id' => (int) $returnRequest->store_id,
+                'link' => '/orders/' . (int) $returnRequest->order_id,
+                'data' => ['status' => 'assigned'],
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -275,14 +386,24 @@ class ReturnPickupController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'pickup_latitude' => ['sometimes', 'required_with:pickup_longitude', 'numeric', 'between:-90,90'],
+            'pickup_longitude' => ['sometimes', 'required_with:pickup_latitude', 'numeric', 'between:-180,180'],
             'location_address' => ['nullable', 'string', 'max:2000'],
-            'photo' => [Rule::requiredIf(fn () => $request->user()->hasRole('driver') && in_array((string) $request->input('status'), ['picked_up', 'delivered'], true)), 'nullable', 'image', 'max:5120'],
+            'photo' => [Rule::requiredIf(fn () => (int) $pickup->driver_user_id === (int) $request->user()->id
+                && (in_array((string) $request->input('status'), ['picked_up', 'delivered'], true)
+                    || ((string) $request->input('status') === 'out_for_delivery' && $pickup->status === 'assigned'))), 'nullable', 'image', 'max:5120'],
         ]);
+
+        if (isset($validated['status'])
+            && $validated['status'] !== $pickup->status
+            && (int) $pickup->driver_user_id !== (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'Only the assigned driver can update this return delivery status.'], 403);
+        }
 
         if (isset($validated['status']) && $validated['status'] !== $pickup->status) {
             $allowed = [
                 'ready_for_dispatch' => ['assigned'], 'scheduled' => ['assigned'],
-                'assigned' => ['picked_up'], 'picked_up' => ['out_for_delivery'],
+                'assigned' => ['out_for_delivery'], 'picked_up' => ['out_for_delivery'],
                 'out_for_delivery' => ['delivered'],
             ];
             $canCancel = $validated['status'] === 'cancelled' && $pickup->status !== 'delivered';
@@ -291,7 +412,7 @@ class ReturnPickupController extends Controller
             }
         }
 
-        if (($validated['status'] ?? null) === 'picked_up' && $pickup->trip_id) {
+        if (($validated['status'] ?? null) === 'out_for_delivery' && $pickup->status === 'assigned' && $pickup->trip_id) {
             $pickup->loadMissing([
                 'returnRequest.orderItem.product:id,weight_kg',
                 'trip.vehicle:id,capacity_kg',
@@ -312,8 +433,42 @@ class ReturnPickupController extends Controller
 
         $wasScheduledAt = $pickup->scheduled_at;
         $from = $pickup->status;
+        if (array_key_exists('pickup_latitude', $validated) && array_key_exists('pickup_longitude', $validated)) {
+            $branchId = $this->resolveReturnSourceBranchId($pickup);
+            $branch = $branchId
+                ? Branch::query()->whereKey($branchId)->where('store_id', $pickup->store_id)->first()
+                : null;
+            if (!$branch || $branch->latitude === null || $branch->longitude === null) {
+                return response()->json(['success' => false, 'message' => 'The original fulfillment branch needs a saved map location before this pickup can be scheduled.'], 422);
+            }
+
+            try {
+                $distance = app(DistanceService::class)->getDistanceKmBetweenCoordinates(
+                    (float) $validated['pickup_latitude'],
+                    (float) $validated['pickup_longitude'],
+                    (float) $branch->latitude,
+                    (float) $branch->longitude,
+                );
+            } catch (\Throwable $exception) {
+                report($exception);
+                return response()->json(['success' => false, 'message' => 'Unable to calculate the route distance. Check the map pin and try again.'], 422);
+            }
+
+            $pickup->pickup_latitude = $validated['pickup_latitude'];
+            $pickup->pickup_longitude = $validated['pickup_longitude'];
+            $pickup->distance_km = $distance;
+            $pickup->loadMissing('returnRequest');
+            if ($pickup->returnRequest) {
+                $responsibility = (string) ($pickup->returnRequest->charge_responsibility ?: 'store');
+                $charge = app(ReturnChargeService::class)->calculate($pickup->returnRequest, $responsibility, $distance);
+                $pickup->estimated_fee = $charge['fee'];
+                $pickup->returnRequest->return_fee = $charge['fee'];
+                $pickup->returnRequest->return_fee_breakdown = $charge['breakdown'];
+                $pickup->returnRequest->save();
+            }
+        }
         $pickup->fill(collect($validated)->except(['latitude', 'longitude', 'location_address', 'photo'])->all());
-        if (($validated['status'] ?? null) === 'picked_up' && !$pickup->picked_up_at) {
+        if (in_array(($validated['status'] ?? null), ['picked_up', 'out_for_delivery'], true) && !$pickup->picked_up_at) {
             $pickup->picked_up_at = now();
         }
         if (($validated['status'] ?? null) === 'out_for_delivery' && !$pickup->out_for_delivery_at) $pickup->out_for_delivery_at = now();
@@ -339,7 +494,7 @@ class ReturnPickupController extends Controller
 
         // Notify customer when schedule is issued/updated.
         $scheduledAtChanged = array_key_exists('scheduled_at', $validated) && (string) ($validated['scheduled_at'] ?? '') !== (string) ($wasScheduledAt ?? '');
-        if ($scheduledAtChanged && $pickup->scheduled_at) {
+        if ($scheduledAtChanged && $pickup->scheduled_at && (!isset($validated['status']) || $validated['status'] === $from)) {
             $pickup->loadMissing(['returnRequest:id,user_id,store_id,order_id', 'returnRequest.order:id,order_number']);
             $returnRequest = $pickup->returnRequest;
             if ($returnRequest && $returnRequest->user_id) {
@@ -348,10 +503,42 @@ class ReturnPickupController extends Controller
                     'module' => 'ecommerce',
                     'entity_type' => 'return_pickup',
                     'entity_id' => (int) $pickup->id,
+                    'action' => 'return_pickup_scheduled',
                     'title' => 'Return pickup scheduled',
                     'message' => "Your return pickup for {$orderNumber} has been scheduled on " . $pickup->scheduled_at->format('M d, Y h:i A') . '.',
                     'severity' => 'info',
                     'store_id' => (int) $returnRequest->store_id,
+                    'link' => '/orders/' . (int) $returnRequest->order_id,
+                    'data' => ['status' => (string) $pickup->status],
+                ]);
+            }
+        }
+
+        if (isset($validated['status']) && $validated['status'] !== $from) {
+            $pickup->loadMissing('returnRequest:id,user_id,store_id,order_id,source_type');
+            $returnRequest = $pickup->returnRequest;
+            $customerUpdate = match ((string) $pickup->status) {
+                'assigned' => ['Return pickup arranged', 'A driver has been assigned to collect your return.', 'info'],
+                'picked_up' => ['Return item picked up', 'Your item has been picked up and is being returned to the store.', 'info'],
+                'out_for_delivery' => ['Return is on its way', 'Your item has been collected and is on its way to the assigned store branch.', 'info'],
+                'delivered' => ['Return delivered to store', 'Your returned item has arrived at the store and is waiting for inspection.', 'success'],
+                'cancelled' => ['Return pickup cancelled', 'The scheduled pickup for your return was cancelled. Contact the store if you need help arranging another pickup.', 'warn'],
+                default => null,
+            };
+
+            if ($returnRequest?->user_id && $returnRequest->source_type !== 'pos' && $customerUpdate) {
+                [$title, $message, $severity] = $customerUpdate;
+                $this->notify((int) $returnRequest->user_id, [
+                    'module' => 'ecommerce',
+                    'entity_type' => 'return_pickup',
+                    'entity_id' => (int) $pickup->id,
+                    'action' => 'return_pickup_' . $pickup->status,
+                    'title' => $title,
+                    'message' => $message,
+                    'severity' => $severity,
+                    'store_id' => (int) $returnRequest->store_id,
+                    'link' => '/orders/' . (int) $returnRequest->order_id,
+                    'data' => ['status' => (string) $pickup->status],
                 ]);
             }
         }
@@ -415,7 +602,15 @@ class ReturnPickupController extends Controller
         $pickup->updated_by = $request->user()->id;
         $pickup->save();
 
-        $data = $pickup->fresh(['driver', 'returnRequest.order', 'returnRequest.user'])->toArray();
+        $freshPickup = $pickup->fresh([
+            'driver',
+            'returnRequest.order',
+            'returnRequest.user',
+            'returnRequest.salesOrder.branch',
+            'returnRequest.salesOrderItem.product',
+        ]);
+        $freshPickup?->returnRequest?->normalizeSourceRelationsForDisplay();
+        $data = $freshPickup?->toArray() ?? [];
         $data['proof_photo_url'] = Storage::disk('public')->url($pickup->proof_photo_path);
         $data['proof_signature_url'] = null;
 
@@ -424,5 +619,44 @@ class ReturnPickupController extends Controller
             'message' => 'Proof uploaded. Pickup marked as picked up.',
             'data' => $data,
         ]);
+    }
+
+    private function resolveReturnSourceBranchId(ReturnPickup $pickup): ?int
+    {
+        $pickup->loadMissing([
+            'returnRequest.order',
+            'returnRequest.orderItem',
+            'returnRequest.salesOrder',
+            'returnRequest.salesOrderItem.branchInventory',
+        ]);
+
+        $return = $pickup->returnRequest;
+        if (!$return) {
+            return null;
+        }
+
+        $return->normalizeSourceRelationsForDisplay();
+
+        $inventoryId = (int) ($return->source_type === 'pos'
+            ? ($return->salesOrderItem?->branch_inventory_id ?? 0)
+            : ($return->orderItem?->branch_inventory_id ?? 0));
+        $branchId = $inventoryId > 0
+            ? BranchInventory::withTrashed()
+                ->where('store_id', (int) $pickup->store_id)
+                ->whereKey($inventoryId)
+                ->value('branch_id')
+            : null;
+        $branchId = (int) ($branchId ?: ($return->source_type === 'pos'
+            ? ($return->salesOrder?->branch_id ?? 0)
+            : ($return->order?->assigned_branch_id ?? 0)));
+
+        if ($branchId <= 0) {
+            return null;
+        }
+
+        return Branch::query()
+            ->whereKey($branchId)
+            ->where('store_id', (int) $pickup->store_id)
+            ->value('id');
     }
 }

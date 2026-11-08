@@ -37,7 +37,7 @@
               <p>{{ label(detail.order?.payment_status || detail.order?.payment?.status || '-') }}</p>
             </div>
 
-            <div>
+            <div v-if="source === 'pickup' || !['ecommerce', 'sales', 'replacement'].includes(source)">
               <small class="text-slate-500">{{ source === 'pickup' ? 'Supplier Pickup' : 'Recipient' }}</small>
               <p>{{ source === 'pickup' ? supplierPickupName : recipientName }}</p>
             </div>
@@ -57,7 +57,7 @@
               <p>{{ vehicleLabel }}</p>
             </div>
 
-            <div>
+            <div v-if="detail.delivery?.expected_delivery_date || detail.delivery?.estimated_delivery_at || detail.order?.expected_delivery_date || detail.order?.estimated_delivery_at">
               <small class="text-slate-500">{{ source === 'pickup' ? 'Expected Pickup' : 'Expected Date' }}</small>
               <p>
                 {{ formatDate(detail.delivery?.expected_delivery_date || detail.delivery?.estimated_delivery_at || detail.order?.expected_delivery_date || detail.order?.estimated_delivery_at) }}
@@ -80,7 +80,7 @@
             </div>
           </div>
 
-          <div class="grid gap-3 md:grid-cols-2">
+          <div v-if="!['ecommerce', 'sales', 'replacement'].includes(source)" class="grid gap-3 md:grid-cols-2">
             <!-- <div class="rounded-2xl bg-slate-50 p-4">
               <small class="text-slate-500">Pickup address</small>
               <p class="mt-1 font-medium">{{ pickupAddress }}</p>
@@ -314,16 +314,6 @@
                 </template>
               </Column>
 
-              <Column header="Received">
-                <template #body="{ data }">
-                  {{
-                    data.quantity_received ??
-                    data.received_quantity ??
-                    0
-                  }}
-                </template>
-              </Column>
-
               <Column header="Unit Cost">
                 <template #body="{ data }">
                   ₱{{
@@ -336,7 +326,7 @@
                 </template>
               </Column>
 
-              <Column header="Line Total">
+              <Column v-if="false" header="Line Total">
                 <template #body="{ data }">
                   ₱{{
                     money(
@@ -443,6 +433,7 @@
     </Card>
 
     <Dialog
+      v-if="isAssignedDriver"
       v-model:visible="proofDialog"
       modal
       :header="nextStatusLabel"
@@ -457,6 +448,11 @@
           <label class="mb-2 block text-sm font-medium text-slate-700">
             {{ proofPhotoLabel }} *
           </label>
+
+          <div v-if="source === 'replacement'" class="mb-3">
+            <label class="mb-1 block text-xs font-medium text-slate-600">Received by *</label>
+            <InputText v-model="replacementReceivedBy" size="small" fluid placeholder="Customer or recipient name" />
+          </div>
 
           <input
             type="file"
@@ -500,14 +496,14 @@
         <Button
           :label="proofSubmitLabel"
           icon="pi pi-map-marker"
-          :disabled="!proofPhoto || updating"
+          :disabled="!proofPhoto || updating || (source === 'replacement' && !replacementReceivedBy.trim())"
           :loading="updating"
           @click="submitPickupStatus"
         />
       </template>
     </Dialog>
 
-    <div v-if="nextStatus" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+    <div v-if="isAssignedDriver && nextStatus" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
       <Button
         icon="pi pi-check"
         :label="nextStatusLabel"
@@ -518,7 +514,7 @@
         @click="beginAdvance"
       />
     </div>
-    <div v-if="nextStatus" class="fixed bottom-6 right-8 z-40 hidden md:block">
+    <div v-if="isAssignedDriver && nextStatus" class="fixed bottom-6 right-8 z-40 hidden md:block">
       <Button
         icon="pi pi-check"
         :label="nextStatusLabel"
@@ -535,6 +531,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { usePage } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -542,6 +539,7 @@ import Tag from 'primevue/tag'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
+import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import logisticsService from '@/services/logistics.service'
@@ -555,6 +553,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const page = usePage()
 const toast = useToast()
 
 const loading = ref(false)
@@ -568,6 +567,7 @@ const proofPhoto = ref<File | null>(null)
 const photoPreview = ref('')
 const statusNotes = ref('')
 const capturedAddress = ref('')
+const replacementReceivedBy = ref('')
 
 const mapElement = ref<HTMLElement | null>(null)
 const trackingActive = ref(false)
@@ -581,22 +581,29 @@ let locationTimer: number | null = null
 let lastLocationSentAt = 0
 
 const source = computed(() =>
-  String(route.params.source || '').toLowerCase(),
+  String(route.params.source || (route.name === 'driver.replacements.detail' ? 'replacement' : '')).toLowerCase(),
 )
 
-const orderId = computed(() => String(route.params.orderId))
+const orderId = computed(() => String(route.params.orderId || route.params.id))
 
 const label = (value: string) =>
   String(value || 'Pending')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
 
-const formatActivityMessage = (value: unknown) =>
-  String(value || '').replace(
+const formatActivityMessage = (value: unknown) => {
+  const message = String(value || '').replace(
     /\b(from|to)\s+([a-z][a-z0-9_]*)(?=\b|\.)/gi,
     (_match, direction: string, status: string) =>
       `${direction.toLowerCase()} ${label(status)}`,
   )
+  if (source.value !== 'return_pickup') return message
+
+  const tripReference = detail.value?.delivery?.trip_reference
+  return tripReference
+    ? message.replace(/return pickup assigned to trip #\d+\.?/i, `Return pickup assigned to ${tripReference}.`)
+    : message
+}
 
 const isDelivered = computed(
   () =>
@@ -726,15 +733,16 @@ const destinationPoint = computed<[number, number] | null>(() => {
   const branch = source.value === 'pickup'
     ? handoffBranch.value
     : detail.value?.order?.branch || {}
+  const isCustomerDestination = ['ecommerce', 'sales', 'replacement'].includes(source.value) || returnPickupToCustomer.value
 
   const latitude = Number(
-    source.value === 'ecommerce' || source.value === 'sales' || returnPickupToCustomer.value
+    isCustomerDestination
       ? source.value === 'sales' ? detail.value?.order?.delivery_latitude : detail.value?.order?.customer_latitude
       : branch.latitude ?? detail.value?.delivery?.destination_latitude,
   )
 
   const longitude = Number(
-    source.value === 'ecommerce' || source.value === 'sales' || returnPickupToCustomer.value
+    isCustomerDestination
       ? source.value === 'sales' ? detail.value?.order?.delivery_longitude : detail.value?.order?.customer_longitude
       : branch.longitude ?? detail.value?.delivery?.destination_longitude,
   )
@@ -772,6 +780,12 @@ const currentDeliveryStatus = computed(() =>
   String(detail.value?.delivery?.status || '').toLowerCase(),
 )
 
+const isAssignedDriver = computed(() => {
+  const userId = Number((page.props as any)?.auth?.user?.id)
+  const assignedDriverId = Number(detail.value?.delivery?.driver_user_id)
+  return userId > 0 && assignedDriverId > 0 && userId === assignedDriverId
+})
+
 const returnDeliverySteps = [
   { label: 'Pickup', value: 'picked_up' },
   { label: 'Out for Delivery', value: 'out_for_delivery' },
@@ -783,8 +797,10 @@ const returnStepSeverity = (status: string) => isReturnStepCompleted(status) || 
 const returnStepIcon = (status: string) => isReturnStepCompleted(status) || (status === 'delivered' && currentDeliveryStatus.value === 'delivered') ? 'pi pi-check' : status === 'picked_up' ? 'pi pi-camera' : status === 'out_for_delivery' ? 'pi pi-truck' : 'pi pi-check-circle'
 
 const nextStatus = computed(() =>
-  source.value === 'return_pickup'
-    ? ({ assigned: 'picked_up', picked_up: 'out_for_delivery', out_for_delivery: 'delivered' } as any)[currentDeliveryStatus.value]
+  source.value === 'replacement'
+    ? (currentDeliveryStatus.value === 'out_for_delivery' ? 'delivered' : null)
+    : source.value === 'return_pickup'
+    ? ({ assigned: 'out_for_delivery', picked_up: 'out_for_delivery', out_for_delivery: 'delivered' } as any)[currentDeliveryStatus.value]
     : source.value === 'pickup'
     ? (
         {
@@ -809,7 +825,7 @@ const nextStatusLabel = computed(() => {
   if (source.value === 'pickup' && nextStatus.value === 'en_route_to_supplier') {
     return 'Start Route to Supplier'
   }
-  if (source.value === 'return_pickup' && nextStatus.value === 'picked_up') {
+  if (source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned') {
     return 'Confirm Pickup & Start Delivery'
   }
   if (nextStatus.value === 'out_for_delivery') {
@@ -828,7 +844,9 @@ const nextStatusLabel = computed(() => {
 })
 
 const proofPhotoLabel = computed(() =>
-  source.value === 'return_pickup' && nextStatus.value === 'picked_up'
+  source.value === 'replacement' && nextStatus.value === 'delivered'
+    ? 'Replacement handoff photo'
+    : source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
     ? 'Customer pickup photo'
     : source.value === 'return_pickup' && nextStatus.value === 'delivered'
       ? 'Return delivered to branch photo'
@@ -843,8 +861,10 @@ const proofPhotoLabel = computed(() =>
 )
 
 const proofInstruction = computed(() =>
-  source.value === 'return_pickup'
-    ? nextStatus.value === 'picked_up'
+  source.value === 'replacement'
+    ? 'Attach a photo confirming the replacement was handed to the customer. Enter the recipient name; your final GPS location will be captured.'
+    : source.value === 'return_pickup'
+    ? nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
       ? 'Attach a photo confirming the item was collected from the customer. Your GPS location will also be captured.'
       : 'Attach a photo confirming the returned item was delivered to the destination branch. Your final GPS location will be captured.'
     :
@@ -862,8 +882,8 @@ const proofInstruction = computed(() =>
 )
 
 const proofSubmitLabel = computed(() =>
-  source.value === 'return_pickup' && nextStatus.value === 'picked_up'
-    ? 'Confirm Pickup'
+  source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
+    ? 'Confirm Pickup & Start Delivery'
     : source.value === 'pickup' && nextStatus.value === 'out_for_delivery'
       ? 'Confirm Pickup & Start Delivery'
     : nextStatus.value === 'delivered'
@@ -1011,12 +1031,14 @@ const selectPhoto = (event: Event) => {
 }
 
 const beginAdvance = async () => {
-  if (!nextStatus.value) return
+  if (!isAssignedDriver.value || !nextStatus.value) return
 
   const needsProof =
-    ['pickup', 'ecommerce', 'sales', 'return_pickup'].includes(source.value) &&
+    ['pickup', 'ecommerce', 'sales', 'return_pickup', 'replacement'].includes(source.value) &&
     (source.value === 'return_pickup'
-      ? ['picked_up', 'delivered'].includes(nextStatus.value)
+      ? (currentDeliveryStatus.value === 'assigned' || nextStatus.value === 'delivered')
+        : source.value === 'replacement'
+          ? nextStatus.value === 'delivered'
       : source.value === 'pickup'
         ? ['out_for_delivery', 'delivered'].includes(nextStatus.value)
         : ['in_transit', 'delivered'].includes(nextStatus.value))
@@ -1032,6 +1054,7 @@ const beginAdvance = async () => {
 
     photoPreview.value = ''
     proofDialog.value = true
+    replacementReceivedBy.value = ''
     return
   }
 
@@ -1039,6 +1062,7 @@ const beginAdvance = async () => {
 }
 
 const updateRegularDelivery = async () => {
+  if (!isAssignedDriver.value) return
   const targetStatus = nextStatus.value
 
   if (!targetStatus) return
@@ -1110,7 +1134,7 @@ const updateRegularDelivery = async () => {
 }
 
 const submitPickupStatus = async () => {
-  if (!proofPhoto.value || !nextStatus.value) return
+  if (!isAssignedDriver.value || !proofPhoto.value || !nextStatus.value) return
 
   const targetStatus = nextStatus.value
   updating.value = true
@@ -1126,7 +1150,7 @@ const submitPickupStatus = async () => {
     let longitude = Number(detail.value?.delivery?.current_longitude)
     let hasTrackedLocation = Number.isFinite(latitude) && Number.isFinite(longitude)
 
-    if (source.value === 'return_pickup' && !hasTrackedLocation) {
+    if (['return_pickup', 'replacement'].includes(source.value) && !hasTrackedLocation) {
       const point = await coordinates()
       latitude = point.latitude
       longitude = point.longitude
@@ -1151,7 +1175,17 @@ const submitPickupStatus = async () => {
       form.append('notes', statusNotes.value.trim())
     }
 
-    if (source.value === 'return_pickup') {
+    if (source.value === 'replacement') {
+      const replacementForm = new FormData()
+      replacementForm.append('received_by', replacementReceivedBy.value.trim())
+      replacementForm.append('proof', proofPhoto.value)
+      if (hasTrackedLocation) {
+        replacementForm.append('latitude', String(latitude))
+        replacementForm.append('longitude', String(longitude))
+      }
+      if (capturedAddress.value) replacementForm.append('location_address', capturedAddress.value)
+      await logisticsService.completeReplacementDelivery(orderId.value, replacementForm)
+    } else if (source.value === 'return_pickup') {
       await logisticsService.updateReturnPickupWithProof(orderId.value, form)
     } else {
       await logisticsService.updateUnifiedDeliveryStatus(source.value as any, orderId.value, form)
@@ -1220,7 +1254,7 @@ const sendLiveLocation = async (
   refresh = false,
 ) => {
   if (
-    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
+    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup', 'replacement'].includes(
       source.value,
     ) ||
     isDelivered.value
@@ -1262,10 +1296,11 @@ const updateTrackingState = () => {
   ).toLowerCase()
 
   const shouldTrack =
-    ['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
+    (source.value !== 'replacement' || isAssignedDriver.value) &&
+    ['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup', 'replacement'].includes(
       source.value,
     ) &&
-    (source.value === 'return_pickup' ? ['assigned', 'picked_up', 'out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
+    (source.value === 'return_pickup' ? ['assigned', 'picked_up', 'out_for_delivery'] : source.value === 'replacement' ? ['out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
       status,
     )
 
@@ -1281,6 +1316,7 @@ const updateTrackingState = () => {
 }
 
 const startLocationTracking = () => {
+  if (source.value === 'replacement' && !isAssignedDriver.value) return
   if (!navigator.geolocation || locationWatcher !== null) return
 
   locationWatcher = navigator.geolocation.watchPosition(
@@ -1326,7 +1362,7 @@ const fetchRoadRoute = fetchMapboxRoadRoute
 const renderTrackingMap = async () => {
   if (
     !mapElement.value ||
-    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup'].includes(
+    !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup', 'replacement'].includes(
       source.value,
     )
   ) {

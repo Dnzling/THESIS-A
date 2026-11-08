@@ -1,5 +1,6 @@
 <template>
   <div class=" mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
@@ -32,6 +33,7 @@
               />
               <small v-if="errors.type" class="text-red-500">{{ errors.type }}</small>
               <small v-if="hasCauseConflict" class="text-red-500">This cause does not match the quantity change. Review the listed items or choose a different cause.</small>
+              <small v-if="form.type === 'damage'" class="text-amber-700">Damaged units remain in physical on-hand stock, but are removed from available stock and tracked separately.</small>
             </div>
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Additional Remarks</label>
@@ -47,6 +49,30 @@
             </div>
           </div>
           <p v-if="errors.branch_id" class="text-sm text-red-500">{{ errors.branch_id }}</p>
+
+          <section class="space-y-3 rounded-lg border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-semibold text-gray-800">Supporting Photos</h3>
+                <p class="text-xs text-gray-500">Add up to 5 photos (JPG, PNG, or WebP; 10 MB each).</p>
+              </div>
+              <label class="inline-flex cursor-pointer items-center gap-2 rounded-md border border-orange-200 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50"
+                :class="{ 'pointer-events-none opacity-50': photoEntries.length >= 5 || submitting }">
+                <i class="pi pi-upload"></i>
+                Add Photos
+                <input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple :disabled="photoEntries.length >= 5 || submitting" @change="selectPhotos" />
+              </label>
+            </div>
+            <p v-if="photoError" class="text-sm text-red-600">{{ photoError }}</p>
+            <div v-if="photoEntries.length" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <div v-for="photo in photoEntries" :key="photo.id" class="group relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                <img :src="photo.url" :alt="photo.file.name" class="h-28 w-full object-cover" />
+                <p class="truncate px-2 py-1 text-xs text-gray-600">{{ photo.file.name }}</p>
+                <Button type="button" icon="pi pi-times" rounded severity="danger" size="small" aria-label="Remove photo"
+                  class="!absolute right-2 top-2 !h-7 !w-7 shadow" @click="removePhoto(photo.id)" />
+              </div>
+            </div>
+          </section>
   
           <!-- Items Section -->
           <Divider>
@@ -229,19 +255,24 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 
 // State
 const submitting = ref(false)
 const loadingProducts = ref(false)
+const photoEntries = ref<Array<{ id: string; file: File; url: string }>>([])
+const photoError = ref('')
 
 // Form data - Updated to match backend expectations
 const form = reactive({
@@ -486,6 +517,35 @@ const removeItem = (index: number) => {
   })
 }
 
+const selectPhotos = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const selected = Array.from(input.files || [])
+  input.value = ''
+  photoError.value = ''
+
+  if (photoEntries.value.length + selected.length > 5) {
+    photoError.value = 'You can attach up to 5 photos.'
+    return
+  }
+  const invalidPhoto = selected.find(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024)
+  if (invalidPhoto) {
+    photoError.value = `${invalidPhoto.name} is not a supported image or exceeds 10 MB.`
+    return
+  }
+  selected.forEach(file => photoEntries.value.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    file,
+    url: URL.createObjectURL(file),
+  }))
+}
+
+const removePhoto = (id: string) => {
+  const index = photoEntries.value.findIndex(photo => photo.id === id)
+  if (index < 0) return
+  URL.revokeObjectURL(photoEntries.value[index].url)
+  photoEntries.value.splice(index, 1)
+}
+
 const validateForm = () => {
   let isValid = true
   errors.value = { branch_id: '', type: '' }
@@ -524,8 +584,6 @@ const toDateString = (value: Date | null) => {
 }
 
 const saveAdjustment = async () => {
-  if (!validateForm()) return
-
   submitting.value = true
 
   try {
@@ -553,7 +611,7 @@ const saveAdjustment = async () => {
       })
     }
 
-    const response = await inventoryService.createAdjustment(adjustmentData)
+    const response = await inventoryService.createAdjustment(adjustmentData, photoEntries.value.map(photo => photo.file))
     const adjustmentId = response?.data?.id || response?.id
 
     if (!adjustmentId) {
@@ -600,8 +658,24 @@ const saveAdjustment = async () => {
 }
 
 const submitAdjustment = async () => {
-  await saveAdjustment()
+  if (!validateForm()) return
+
+  const cause = adjustmentTypeOptions.find(option => option.value === form.type)?.label || 'stock adjustment'
+  confirm.require({
+    header: 'Create Stock Adjustment?',
+    message: `Create a ${cause.toLowerCase()} adjustment for ${form.items.length} item${form.items.length === 1 ? '' : 's'}? The adjustment will be recorded and may require approval before stock changes.`,
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Create Adjustment',
+    rejectLabel: 'Keep Editing',
+    acceptProps: { severity: 'warn' },
+    rejectProps: { severity: 'secondary' },
+    accept: () => { void saveAdjustment() },
+  })
 }
+
+onBeforeUnmount(() => {
+  photoEntries.value.forEach(photo => URL.revokeObjectURL(photo.url))
+})
 
 const cancel = () => {
   router.push({ name: 'inventory.adjustments' })

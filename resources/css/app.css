@@ -119,3 +119,56 @@
 		.module-dashboard .dashboard-hero { padding: 1.125rem; }
 	}
 }
+
+/* Keep PrimeVue confirmation dialogs consistent throughout the application. */
+.p-confirmdialog .p-dialog {
+	border: 1px solid #e2e8f0;
+	border-radius: .875rem;
+	box-shadow: 0 20px 50px -24px rgb(15 23 42 / .42);
+}
+
+.p-confirmdialog .p-dialog-header {
+	padding: 1.25rem 1.25rem .5rem;
+}
+
+.p-confirmdialog .p-dialog-content {
+	padding: .5rem 1.25rem 1rem;
+	color: #475569;
+	line-height: 1.5;
+}
+
+.p-confirmdialog .p-dialog-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: .5rem;
+	padding: 0 1.25rem 1.25rem;
+}
+
+.p-confirmdialog .p-confirmdialog-reject-button {
+	order: 0;
+	border: 1px solid #cbd5e1 !important;
+	border-radius: .5rem;
+	background: #fff !important;
+	color: #475569 !important;
+	box-shadow: none !important;
+}
+
+.p-confirmdialog .p-confirmdialog-reject-button:hover {
+	border-color: #94a3b8 !important;
+	background: #f8fafc !important;
+	color: #334155 !important;
+}
+
+.p-confirmdialog .p-confirmdialog-accept-button {
+	order: 1;
+	border: 1px solid #f97316 !important;
+	border-radius: .5rem;
+	background: #f97316 !important;
+	color: #fff !important;
+	box-shadow: none !important;
+}
+
+.p-confirmdialog .p-confirmdialog-accept-button:hover {
+	border-color: #ea580c !important;
+	background: #ea580c !important;
+}

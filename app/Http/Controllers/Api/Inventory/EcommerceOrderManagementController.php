@@ -86,7 +86,20 @@ class EcommerceOrderManagementController extends Controller
                 'items.branchInventory.branch:id,name,branch_code,city,province',
                 'items.branchInventory.variation:id,variation_name,variation_sku',
                 'items.returnRequests',
+                'items.returnRequests.financeRefund',
+                'items.returnRequests.orderItem:id,product_name,sku',
+                'items.returnRequests.replacementBranch:id,name',
+                'items.returnRequests.replacementProduct:id,product_name,sku',
+                'items.returnRequests.replacementInventory.product:id,product_name,sku',
+                'items.returnRequests.replacementInventory.variation:id,variation_name,variation_sku',
+                'items.returnRequests.replacementTrip:id,created_at,status,driver_user_id,vehicle_id',
+                'items.returnRequests.replacementTrip.driver:id,fname,lname',
+                'items.returnRequests.replacementTrip.vehicle:id,vehicle_name,plate_number',
+                'items.returnRequests.pickup',
+                'items.returnRequests.pickup.trip:id,created_at',
+                'items.returnRequests.pickup.destinationBranch:id,name',
                 'cancellationRequests',
+                'cancellationRefund',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
                 'delivery.driver:id,fname,lname,email,phone_number,role_id',
                 'delivery.driver.employee:id,user_id,employee_number,status,department,employment_type',
@@ -101,6 +114,72 @@ class EcommerceOrderManagementController extends Controller
         $data = $order->toArray();
         $data['primary_status'] = $this->resolvePrimaryStatus($order);
         $data['timeline'] = $this->formatOrderTimeline($order);
+        $data['return_requests'] = $order->items
+            ->flatMap(fn ($item) => $item->returnRequests)
+            ->sortBy('created_at')
+            ->map(fn ($return) => [
+                'id' => (int) $return->id,
+                'return_number' => $return->return_number,
+                'return_type' => $return->return_type,
+                'status' => $return->status,
+                'reason' => $return->reason,
+                'created_at' => $return->created_at,
+                'reviewed_at' => $return->reviewed_at,
+                'review_notes' => $return->review_notes,
+                'inspected_at' => $return->inspected_at,
+                'inspection_notes' => $return->inspection_notes,
+                'resolved_at' => $return->resolved_at,
+                'updated_at' => $return->updated_at,
+                'item_name' => $return->orderItem?->product_name,
+                'item_sku' => $return->orderItem?->sku,
+                'pickup' => $return->pickup ? [
+                    'status' => $return->pickup->status,
+                    'scheduled_at' => $return->pickup->scheduled_at,
+                    'branch_name' => $return->pickup->destinationBranch?->name,
+                    'trip_reference' => $return->pickup->trip?->created_at
+                        ? sprintf('TRIP-%s-%06d', $return->pickup->trip->created_at->format('Y'), (int) $return->pickup->trip_id)
+                        : null,
+                    'picked_up_at' => $return->pickup->picked_up_at,
+                    'out_for_delivery_at' => $return->pickup->out_for_delivery_at,
+                    'delivered_at' => $return->pickup->delivered_at,
+                ] : null,
+                'refund' => $return->financeRefund ? [
+                    'amount' => (float) $return->financeRefund->amount,
+                    'status' => $return->financeRefund->status,
+                    'method' => $return->financeRefund->refund_method,
+                    'account_name' => $return->financeRefund->refund_account_name,
+                    'account_number' => $return->financeRefund->refund_account_number,
+                    'processed_at' => $return->financeRefund->processed_at,
+                    'sent_at' => $return->financeRefund->sent_at,
+                    'payout_reference' => $return->financeRefund->payout_reference,
+                ] : null,
+                'replacement' => $return->return_type === 'replacement' ? [
+                    'status' => $return->replacement_status ?: ($return->status === 'received' ? 'awaiting_stock' : null),
+                    'price_difference' => (float) ($return->replacement_price_difference ?? 0),
+                    'payment_status' => $return->replacement_payment_status,
+                    'branch_name' => $return->replacementBranch?->name,
+                    'item_name' => $return->replacementInventory?->variation?->variation_name
+                        ? trim(($return->replacementInventory->product?->product_name ?? '') . ' - ' . $return->replacementInventory->variation->variation_name)
+                        : ($return->replacementInventory?->product?->product_name ?? $return->replacementProduct?->product_name),
+                    'sku' => $return->replacementInventory?->variation?->variation_sku
+                        ?: $return->replacementInventory?->product?->sku
+                        ?: $return->replacementProduct?->sku,
+                    'trip_reference' => $return->replacementTrip?->created_at
+                        ? sprintf('TRIP-%s-%06d', $return->replacementTrip->created_at->format('Y'), (int) $return->replacement_trip_id)
+                        : null,
+                    'trip_status' => $return->replacementTrip?->status,
+                    'driver_name' => trim(($return->replacementTrip?->driver?->fname ?? '') . ' ' . ($return->replacementTrip?->driver?->lname ?? '')) ?: null,
+                    'vehicle' => $return->replacementTrip?->vehicle
+                        ? trim($return->replacementTrip->vehicle->vehicle_name . ' · ' . ($return->replacementTrip->vehicle->plate_number ?: ''))
+                        : null,
+                    'assigned_at' => $return->replacement_assigned_at,
+                    'dispatched_at' => $return->replacement_dispatched_at,
+                    'delivered_at' => $return->replacement_delivered_at,
+                    'received_by' => $return->replacement_received_by,
+                    'failure_reason' => $return->replacement_failure_reason,
+                    'proof_url' => $return->replacement_proof_path ? \Storage::disk('public')->url($return->replacement_proof_path) : null,
+                ] : null,
+            ])->values()->all();
 
         return response()->json(['success' => true, 'data' => $data]);
     }
@@ -870,6 +949,90 @@ class EcommerceOrderManagementController extends Controller
                 'actor' => $actor !== '' ? $actor : 'System',
                 'created_at' => $log->created_at,
             ];
+        }
+
+        $returnCases = collect();
+        if ($order->relationLoaded('items')) {
+            $returnCases = $order->items
+                ->flatMap(fn ($item) => $item->relationLoaded('returnRequests') ? $item->returnRequests : collect())
+                ->unique('id');
+        }
+
+        foreach ($returnCases as $return) {
+            $reference = $return->return_number ?: 'Return #' . $return->id;
+            $push = function (string $type, string $title, ?string $description, $at) use (&$timeline, $reference): void {
+                if (!$at) return;
+                $timeline[] = [
+                    'type' => $type,
+                    'title' => $title,
+                    'description' => trim($reference . ($description ? ' · ' . $description : '')),
+                    'created_at' => $at,
+                ];
+            };
+
+            $push('return_requested', 'Return requested', $return->reason, $return->created_at);
+            if ($return->reviewed_at) {
+                $isRejected = in_array((string) $return->status, ['rejected', 'cancelled'], true);
+                $push($isRejected ? 'return_rejected' : 'return_approved', $isRejected ? 'Return request declined' : 'Return request approved', $return->review_notes, $return->reviewed_at);
+            }
+            if ($return->inspected_at) {
+                $push('return_inspected', 'Returned item inspected', $return->inspection_notes, $return->inspected_at);
+                if ($return->return_type === 'replacement' && (string) ($return->replacement_status ?? 'awaiting_stock') === 'awaiting_stock') {
+                    $push('replacement_awaiting_stock', 'Awaiting replacement stock', 'Sales follow-up required; keep the returned item quarantined and do not assign a trip yet.', $return->inspected_at);
+                }
+            }
+
+            $pickup = $return->pickup;
+            if ($pickup && ($pickup->driver_user_id || $pickup->trip_id)) {
+                $tripReference = $pickup->trip?->created_at
+                    ? sprintf('TRIP-%s-%06d', $pickup->trip->created_at->format('Y'), (int) $pickup->trip_id)
+                    : null;
+                $push('return_pickup_assigned', 'Return pickup assigned', $tripReference, $pickup->updated_at ?? $pickup->created_at);
+            }
+            if ($pickup?->picked_up_at) $push('return_picked_up', 'Return picked up from customer', null, $pickup->picked_up_at);
+            if ($pickup?->out_for_delivery_at) $push('return_out_for_delivery', 'Return on the way to branch', null, $pickup->out_for_delivery_at);
+            if ($pickup?->delivered_at) {
+                $branchName = $pickup->destinationBranch?->name;
+                $push('return_delivered_to_branch', 'Returned item delivered to branch', $branchName ? 'Received at ' . $branchName : null, $pickup->delivered_at);
+            }
+
+            if ($return->return_type === 'refund' && $return->financeRefund) {
+                $refund = $return->financeRefund;
+                $description = 'PHP ' . number_format((float) $refund->amount, 2) . ' · ' . str($refund->status)->replace('_', ' ')->title();
+                if ($refund->refund_method) $description .= ' via ' . str($refund->refund_method)->replace('_', ' ')->title();
+                $refundIsWithFinance = in_array((string) $return->status, ['refund_pending', 'refunded'], true);
+                $push('refund_recorded', $refundIsWithFinance ? 'Refund sent to Finance' : 'Refund case opened', $description, $refundIsWithFinance ? ($return->inspected_at ?: $refund->created_at) : $refund->created_at);
+                if ($refund->processed_at) {
+                    $push($refund->status === 'rejected' ? 'refund_rejected' : 'refund_processed', $refund->status === 'rejected' ? 'Refund declined' : 'Refund processed', $refund->notes, $refund->processed_at);
+                }
+                if ($refund->sent_at) $push('refund_sent', 'Refund sent to customer', $refund->payout_reference ? 'Reference ' . $refund->payout_reference : null, $refund->sent_at);
+            }
+
+            if ($return->return_type !== 'replacement') continue;
+            if ($return->replacement_customer_accepted_at) $push('replacement_accepted', 'Replacement accepted', null, $return->replacement_customer_accepted_at);
+            if ($return->replacement_status === 'reserved') $push('replacement_reserved', 'Replacement stock reserved', null, $return->updated_at);
+            if ($return->replacement_assigned_at) {
+                $tripRef = $return->replacementTrip?->created_at
+                    ? sprintf('TRIP-%s-%06d', $return->replacementTrip->created_at->format('Y'), (int) $return->replacement_trip_id)
+                    : 'Trip assigned';
+                $push('replacement_assigned', 'Replacement delivery assigned', $tripRef, $return->replacement_assigned_at);
+            }
+            if ($return->replacement_dispatched_at) $push('replacement_dispatched', 'Replacement out for delivery', null, $return->replacement_dispatched_at);
+            if ($return->replacement_status === 'delivery_failed') $push('replacement_failed', 'Replacement delivery attempt failed', $return->replacement_failure_reason, $return->updated_at);
+            if ($return->replacement_delivered_at) $push('replacement_delivered', 'Replacement delivered', $return->replacement_received_by ? 'Received by ' . $return->replacement_received_by : null, $return->replacement_delivered_at);
+        }
+
+        if ($order->cancellationRefund) {
+            $refund = $order->cancellationRefund;
+            $description = 'PHP ' . number_format((float) $refund->amount, 2);
+            if ($refund->refund_method) $description .= ' via ' . str($refund->refund_method)->replace('_', ' ')->title();
+            $timeline[] = ['type' => 'refund_recorded', 'title' => 'Cancellation refund recorded', 'description' => $description, 'created_at' => $refund->created_at];
+            if ($refund->processed_at) {
+                $timeline[] = ['type' => 'refund_processed', 'title' => $refund->status === 'rejected' ? 'Cancellation refund declined' : 'Cancellation refund processed', 'description' => $refund->notes, 'created_at' => $refund->processed_at];
+            }
+            if ($refund->sent_at) {
+                $timeline[] = ['type' => 'refund_sent', 'title' => 'Cancellation refund sent', 'description' => $refund->payout_reference ? 'Reference ' . $refund->payout_reference : null, 'created_at' => $refund->sent_at];
+            }
         }
 
         return collect($timeline)

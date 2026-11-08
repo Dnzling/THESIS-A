@@ -453,23 +453,12 @@ class AuthController extends Controller
                 ], 403);
             }
 
-            if (!$this->passesGeofence($user, $request->input('latitude'), $request->input('longitude'))) {
-                Auth::logout();
-                return response()->json([
-                    'success' => false,
-                    'code' => $request->input('latitude') === null || $request->input('longitude') === null
-                        ? 'location_required' : 'outside_geofence',
-                    'message' => $request->input('latitude') === null || $request->input('longitude') === null
-                        ? 'Location access is required to clock in at this branch.'
-                        : 'You are outside the allowed attendance radius.',
-                ], 403);
-            }
-
             // Check email verification
             if (!$user->email_verified_at) {
                 // Issue a temporary token for OTP verification flow.
                 $tempToken = $user->createToken('otp_verification', ['otp:verify'])->plainTextToken;
                 $user->loadMissing('role');
+                Auth::logout();
 
                 return response()->json([
                     'success' => false,
@@ -479,6 +468,21 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'access_token' => $tempToken,
                     'role' => strtolower((string) ($user->role?->name ?? $user->role_name ?? '')),
+                ], 403);
+            }
+
+            // Do not require attendance location before an unverified user can
+            // receive and complete the OTP flow. Geofence validation applies
+            // only once the verified employee is actually signing in.
+            if (!$this->passesGeofence($user, $request->input('latitude'), $request->input('longitude'))) {
+                Auth::logout();
+                return response()->json([
+                    'success' => false,
+                    'code' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'location_required' : 'outside_geofence',
+                    'message' => $request->input('latitude') === null || $request->input('longitude') === null
+                        ? 'Location access is required to clock in at this branch.'
+                        : 'You are outside the allowed attendance radius.',
                 ], 403);
             }
 

@@ -514,6 +514,7 @@ const formatReferenceType = (value: string) => {
     sales_order: 'Sales',
     sales_pos_order: 'POS Sale',
     ecommerce_order: 'Ecommerce',
+    ecommerce_return_replacement: 'Higher-value Replacement',
     invoice: 'Supplier Invoice',
     expense: 'Expense',
     finance_expense: 'Expense',

@@ -20,6 +20,8 @@ interface User {
     last_name: string
     role: string
     email: string
+    full_name?: string
+    is_employee?: boolean
     store?: { id: number; name: string; subscription_name?: string; subscription_key?: string } | null
     abilities?: string[]
 }
@@ -108,7 +110,7 @@ export const useAuthStore = defineStore('auth', () => {
             return '/admin/dashboard'
         }
         if (normalizedRole === 'driver') {
-            return '/driver/deliveries'
+            return '/logistics/trips'
         }
 
         const moduleOrder = ['admin', 'store', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance', 'logistics', 'sales', 'crm']
@@ -499,6 +501,61 @@ export const useAuthStore = defineStore('auth', () => {
         })
     }
 
+    const clockInEmployeeAfterLogin = async (userData: User | null = user.value) => {
+        const role = String(userData?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
+        if (!userData?.id || ['supplier', 'customer', 'super_admin', 'applicant'].includes(role)) return null
+
+        try {
+            const clockIn = (location?: { latitude: number; longitude: number } | null) => axios.post('/api/attendances/clock-in', {
+                user_id: userData.id,
+                method: 'web',
+                latitude: location?.latitude ?? null,
+                longitude: location?.longitude ?? null,
+            })
+
+            let response
+            try {
+                response = await clockIn()
+            } catch (clockInError: any) {
+                const message = String(clockInError?.response?.data?.message || '').toLowerCase()
+                if (clockInError?.response?.status !== 403 || !message.includes('location access is required')) {
+                    throw clockInError
+                }
+
+                const location = await getCurrentLocation()
+                if (!location) {
+                    return {
+                        state: 'not_recorded',
+                        message: 'Location access is required to clock in at this branch.',
+                        employeeName: userData.full_name || userData.first_name || 'there',
+                        late_seconds: 0,
+                    }
+                }
+                response = await clockIn(location)
+            }
+
+            const record = response.data?.data
+            if (!response.data?.success || !record) return null
+
+            return {
+                state: record.clock_out
+                    ? 'completed'
+                    : response.data.already_clocked_in ? 'already_clocked_in' : 'clocked_in',
+                late_seconds: Number(record.late_seconds || 0),
+                employeeName: record.employee_name || userData.full_name || userData.first_name || 'there',
+                message: response.data.message,
+            }
+        } catch (clockInError: any) {
+            devWarn('Clock-in failed:', clockInError)
+            return {
+                state: 'not_recorded',
+                message: clockInError?.response?.data?.message || 'Attendance could not be recorded.',
+                employeeName: userData.full_name || userData.first_name || 'there',
+                late_seconds: 0,
+            }
+        }
+    }
+
     const establishAuthenticatedSession = async (accessToken: string, userData: User) => {
         token.value = accessToken
         user.value = userData
@@ -664,6 +721,7 @@ export const useAuthStore = defineStore('auth', () => {
         // Auth Actions
         login,
         establishAuthenticatedSession,
+        clockInEmployeeAfterLogin,
         logout,
         fetchCurrentUser,
         initialize,

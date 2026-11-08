@@ -205,26 +205,47 @@
                 <p v-if="item.review">Your review: {{ item.review.rating }}/5</p>
                 <div v-if="item.return_request?.return_type"
                   class="rounded-xl border border-orange-100 bg-orange-50 p-3 text-sm text-orange-950">
-                  <p class="font-semibold">{{ formatStatus(item.return_request.return_type) }} approved</p>
+                  <p class="font-semibold">{{ formatStatus(item.return_request.return_type) }} · {{ item.return_request.return_number || `Return #${item.return_request.id}` }}</p>
+                  <p class="mt-1">Case status: <strong>{{ formatStatus(item.return_request.status) }}</strong></p>
                   <p class="mt-1">Return pickup charge: <strong>{{ Number(item.return_request.return_fee || 0) > 0 ? formatMoney(item.return_request.return_fee) : 'Waived by store' }}</strong></p>
                   <p v-if="item.return_request.refund_exception_reason" class="mt-1">Refund reason: {{ item.return_request.refund_exception_reason }}</p>
                 </div>
-                <div v-if="item.return_request?.refund?.refund_method"
+                <div v-if="item.return_request?.refund"
                   class="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-                  <p class="font-semibold">{{ item.return_request.refund.automatic_refund_available ? 'Original Payment Method' : 'Payout Details' }}</p>
-                  <p class="mt-1">{{ item.return_request.refund.automatic_refund_available ? paymentMethodLabel(item.return_request.refund.original_payment_method) : refundMethodLabel(item.return_request.refund.refund_method) }}</p>
+                  <p class="font-semibold">{{ item.return_request.refund.automatic_refund_available ? 'Original Payment Method' : item.return_request.refund.refund_method ? 'Payout Details' : 'Refund Processing' }}</p>
+                  <p v-if="item.return_request.refund.amount !== undefined" class="mt-1">Refund amount: <strong>{{ formatMoney(item.return_request.refund.amount) }}</strong></p>
+                  <p class="mt-1">{{ item.return_request.refund.automatic_refund_available ? paymentMethodLabel(item.return_request.refund.original_payment_method) : (item.return_request.refund.refund_method ? refundMethodLabel(item.return_request.refund.refund_method) : 'Payout method not provided') }}</p>
                   <template v-if="!item.return_request.refund.automatic_refund_available">
                     <p>{{ item.return_request.refund.refund_account_name }}</p>
                     <p>{{ item.return_request.refund.refund_account_number }}</p>
                   </template>
                    <p v-if="item.return_request.refund.status === 'awaiting_payout' || isLegacyUnpaidRefund(item.return_request.refund)" class="mt-2 font-medium">Your refund is awaiting payout.</p>
                    <p v-else-if="item.return_request.refund.status === 'sent'" class="mt-2 font-medium">Finance sent the refund. Expected arrival: less than 30 days.</p>
+                   <p v-else-if="item.return_request.refund.processed_at" class="mt-2 font-medium">Processed {{ formatDateTime(item.return_request.refund.processed_at) }}. {{ item.return_request.refund.notes || '' }}</p>
                    <p v-else class="mt-2 font-medium">Estimated arrival: less than 30 days after Finance sends the refund.</p>
                 </div>
                 <div v-else-if="item.return_request?.return_type === 'refund'"
                   class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <p class="font-semibold">Refund approved</p>
                   <p class="mt-1">Finance will refund to the original payment method when available. Otherwise, provide GCash or Maya payout details. Estimated arrival is less than 30 days after Finance sends it.</p>
+                </div>
+
+                <div v-if="item.return_request?.return_type === 'replacement'" class="rounded-xl border border-orange-200 bg-orange-50/70 p-3 text-sm text-orange-950">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-semibold">Replacement Fulfillment Information</p>
+                    <Tag :value="formatStatus(item.return_request.replacement?.status || 'awaiting_stock')" severity="warn" />
+                  </div>
+                  <div class="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                    <p><span class="text-orange-800/70">Replacement item:</span> <strong>{{ item.return_request.replacement?.item_name || 'Not reserved' }}<span v-if="item.return_request.replacement?.sku"> · {{ item.return_request.replacement.sku }}</span></strong></p>
+                    <p><span class="text-orange-800/70">Fulfillment branch:</span> <strong>{{ item.return_request.replacement?.branch_name || 'Not assigned' }}</strong></p>
+                    <p><span class="text-orange-800/70">Trip:</span> <strong>{{ item.return_request.replacement?.trip_reference || 'Not assigned' }}</strong></p>
+                    <p><span class="text-orange-800/70">Driver / vehicle:</span> <strong>{{ [item.return_request.replacement?.driver_name, item.return_request.replacement?.vehicle].filter(Boolean).join(' · ') || 'Not assigned' }}</strong></p>
+                    <p v-if="Number(item.return_request.replacement?.price_difference || 0) > 0"><span class="text-orange-800/70">Price difference:</span> <strong>{{ formatMoney(item.return_request.replacement.price_difference) }} · {{ formatStatus(item.return_request.replacement.payment_status || 'pending') }}</strong></p>
+                    <p v-if="item.return_request.replacement?.delivered_at"><span class="text-orange-800/70">Delivered:</span> <strong>{{ formatDateTime(item.return_request.replacement.delivered_at) }}<span v-if="item.return_request.replacement.received_by"> · {{ item.return_request.replacement.received_by }}</span></strong></p>
+                    <p v-if="item.return_request.replacement?.failure_reason" class="text-red-700 sm:col-span-2">Delivery issue: {{ item.return_request.replacement.failure_reason }}</p>
+                  </div>
+                  <p v-if="item.return_request.replacement?.status === 'awaiting_stock'" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">The replacement is waiting for stock. Sales is following up; the returned item remains quarantined and delivery will be assigned after replacement stock is reserved.</p>
+                  <a v-if="item.return_request.replacement?.proof_url" :href="item.return_request.replacement.proof_url" target="_blank" rel="noopener" class="mt-3 inline-flex text-xs font-medium text-orange-800 underline">View replacement delivery proof</a>
                 </div>
 
                 <div v-if="item.return_request?.investigation_ticket"

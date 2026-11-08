@@ -5,7 +5,10 @@
         <h1 class="text-xl font-bold text-slate-900">Returns</h1>
         <p class="text-xs text-slate-500">Review and track customer return requests.</p>
       </div>
-      <Button icon="pi pi-refresh" label="Refresh" severity="warn" outlined size="small" :loading="loading" @click="loadReturns" />
+      <div class="flex flex-wrap items-center gap-2">
+        <Button v-if="canManageReturns" icon="pi pi-plus" label="Create Return" severity="warn" size="small" @click="router.push('/crm/returns/create')" />
+        <Button icon="pi pi-refresh" label="Refresh" severity="warn" outlined size="small" :loading="loading" @click="loadReturns" />
+      </div>
     </div>
 
     <Card class="border border-slate-200 shadow-sm">
@@ -114,6 +117,7 @@
           <Column header="Return ID" field="return_number" class="text-xs" style="width: 28%">
             <template #body="{ data }">
               <span class="font-semibold text-gray-900">{{ data.return_number || '—' }}</span>
+              <span v-if="data.source_type === 'pos'" class="mt-0.5 block text-[11px] text-slate-500">POS | {{ data.order?.order_number }}</span>
             </template>
           </Column>
 
@@ -123,8 +127,8 @@
           <Column header="Customer" style="width: 18%">
             <template #body="{ data }">
               <div class="text-xs">
-                <div class="font-medium text-gray-900">{{ data.user?.full_name || data.user?.email || 'N/A' }}</div>
-                <div class="text-xs text-gray-500">{{ data.user?.email || '' }}</div>
+                <div class="font-medium text-gray-900">{{ data.source_type === 'pos' ? (data.sales_order?.customer_name || data.return_contact_name || data.user?.full_name || data.user?.email || 'N/A') : (data.user?.full_name || data.user?.email || 'N/A') }}</div>
+                <div class="text-xs text-gray-500">{{ data.source_type === 'pos' ? (data.sales_order?.delivery_email || data.user?.email || '') : (data.user?.email || '') }}</div>
               </div>
             </template>
           </Column>
@@ -218,9 +222,12 @@ import { useToast } from 'primevue/usetoast'
 import Skeleton from 'primevue/skeleton'
 import { useRouter } from 'vue-router'
 import crmService from '@/services/crm.service'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManageReturns = computed(() => authStore.hasPermission('crm.returns.manage'))
 
 const loading = ref(false)
 const rows = ref<any[]>([])

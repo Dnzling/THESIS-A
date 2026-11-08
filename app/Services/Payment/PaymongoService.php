@@ -115,6 +115,19 @@ class PaymongoService
         }
     }
 
+    public function retrieveRefund(string $refundId): array
+    {
+        try {
+            $response = $this->client->get('refunds/' . rawurlencode($refundId));
+            $decoded = json_decode($response->getBody()->getContents(), true) ?: [];
+            $decoded['_http_status'] = (int) $response->getStatusCode();
+            return $decoded;
+        } catch (\Throwable $e) {
+            Log::error('PaymongoService: retrieveRefund exception', ['refund_id' => $refundId, 'error' => $e->getMessage()]);
+            return ['errors' => [['detail' => 'Unable to check the PayMongo refund status.']], '_http_status' => 500];
+        }
+    }
+
     public function createPaymentMethod(array $payload): array
     {
         try {

@@ -36,7 +36,7 @@
               </Link>
             </div>
   
-            <Button type="submit" :loading="isSubmitting" fluid severity="warn"
+            <Button type="submit" :loading="isSubmitting" :disabled="isSubmitting" fluid severity="warn"
               class="text-sm font-semibold text-white sm:py-3 sm:text-base">
               Log In
             </Button>

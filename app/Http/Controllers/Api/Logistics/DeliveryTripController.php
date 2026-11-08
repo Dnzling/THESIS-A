@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Api\Logistics;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
+use App\Models\Core\SystemNotification;
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\Inventory\BranchInventory;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
@@ -14,6 +18,7 @@ use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
 use App\Services\Logistics\DriverPermissionEligibility;
+use App\Services\Logistics\ReplacementDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,11 +36,11 @@ class DeliveryTripController extends Controller
                 'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
                 'driver:id,fname,lname,email',
             ])
-            ->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers']);
+            ->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns']);
 
         $this->applyTenantScope($request, $query);
-        if ($this->isDriverOnly($request)) {
-            $query->where('driver_user_id', $request->user()->id);
+        if ($request->user()->hasAnyPermission(['logistics.driver.trips', 'driver.trips.view'])) {
+            $this->scopeAssignedTrips($query, (int) $request->user()->id);
         }
 
         if ($request->filled('status')) {
@@ -79,7 +84,7 @@ class DeliveryTripController extends Controller
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
-            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer'])],
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement'])],
             'order_id' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -122,7 +127,7 @@ class DeliveryTripController extends Controller
                 ->findOrFail((int) $validated['order_id']);
             $address = (string) $order->pickup_address;
             $orderWeight = $this->returnPickupWeight($order);
-        } else {
+        } elseif ($source === 'stock_transfer') {
             $order = \App\Models\Inventory\StockTransfer::query()
                 ->with(['items.product:id,weight_kg', 'toBranch:id,address,city,province'])
                 ->where('store_id', $storeId)
@@ -136,6 +141,17 @@ class DeliveryTripController extends Controller
                 $order->toBranch?->province,
             ])->filter()->implode(', ');
             $orderWeight = $this->stockTransferWeight($order);
+        } else {
+            $order = EcommerceOrderReturn::query()
+                ->with(['order:id,shipping_address,customer_latitude,customer_longitude', 'orderItem.branchInventory.variation:id,weight_kg', 'orderItem.product:id,weight_kg', 'salesOrder', 'salesOrderItem.branchInventory.variation:id,weight_kg', 'salesOrderItem.variation:id,weight_kg', 'salesOrderItem.product:id,weight_kg', 'replacementInventory:id,product_id,variation_id', 'replacementInventory.product:id,weight_kg', 'replacementInventory.variation:id,weight_kg', 'replacementBranch:id,latitude,longitude'])
+                ->where('store_id', $storeId)
+                ->where('return_type', 'replacement')
+                ->where('status', 'received')
+                ->where('replacement_status', 'reserved')
+                ->whereNull('replacement_trip_id')
+                ->findOrFail((int) $validated['order_id']);
+            $address = $this->replacementDeliveryAddress($order);
+            $orderWeight = $this->replacementWeight($order);
         }
 
         $orderArea = $source === 'sales' ? $this->salesAreaKey($order) : $this->areaKey($address);
@@ -148,7 +164,15 @@ class DeliveryTripController extends Controller
             'stockTransfers.fromBranch:id,name,address,latitude,longitude',
             'stockTransfers.toBranch:id,name,address,latitude,longitude',
             'stockTransfers.items.product:id,weight_kg',
-        ])->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers'])
+            'replacementReturns.order:id,shipping_address,customer_latitude,customer_longitude',
+            'replacementReturns.salesOrder',
+            'replacementReturns.orderItem.product:id,weight_kg',
+            'replacementReturns.salesOrderItem.product:id,weight_kg',
+            'replacementReturns.replacementInventory:id,product_id,variation_id',
+            'replacementReturns.replacementInventory.product:id,weight_kg',
+            'replacementReturns.replacementInventory.variation:id,weight_kg',
+            'replacementReturns.replacementBranch:id,latitude,longitude',
+        ])->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns'])
             ->where('store_id', $storeId)
             ->where('status', 'planned');
         $this->applyTenantScope($request, $query);
@@ -160,7 +184,8 @@ class DeliveryTripController extends Controller
             $stops = (int) $trip->ecommerceDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
                 + (int) $trip->salesDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
                 + (int) $trip->returnPickups()->whereNotIn('status', ['delivered', 'cancelled'])->count()
-                + (int) $trip->stockTransfers()->whereNotIn('delivery_status', ['delivered', 'cancelled'])->count();
+                + (int) $trip->stockTransfers()->whereNotIn('delivery_status', ['delivered', 'cancelled'])->count()
+                + (int) $trip->replacementReturns()->where('replacement_status', '!=', 'delivered')->count();
             $tripArea = $this->tripAreaKey($trip);
 
             if ($maxStops > 0 && $stops >= $maxStops) return null;
@@ -170,6 +195,7 @@ class DeliveryTripController extends Controller
             $driverName = trim((string) ($trip->driver?->fname . ' ' . $trip->driver?->lname));
             return [
                 'id' => $trip->id,
+                'trip_reference' => sprintf('TRIP-%s-%06d', $trip->created_at?->format('Y') ?? now()->format('Y'), (int) $trip->id),
                 'created_at' => $trip->created_at,
                 'status' => $trip->status,
                 'driver_name' => $driverName ?: 'Driver not set',
@@ -184,6 +210,7 @@ class DeliveryTripController extends Controller
                 'sales_deliveries_count' => (int) $trip->sales_deliveries_count,
                 'return_pickups_count' => (int) $trip->return_pickups_count,
                 'stock_transfers_count' => (int) $trip->stock_transfers_count,
+                'replacement_returns_count' => (int) $trip->replacement_returns_count,
                 'max_stops' => $maxStops ?: null,
                 'current_weight_kg' => round($weight, 2),
                 'order_weight_kg' => round($orderWeight, 2),
@@ -205,28 +232,195 @@ class DeliveryTripController extends Controller
             ->with([
                 'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
                 'driver:id,fname,lname,email',
-                'ecommerceDeliveries.order:id,order_number,shipping_name,shipping_phone,shipping_address,total_amount,status,customer_latitude,customer_longitude',
-                'ecommerceDeliveries.order.items:id,order_id,product_id,quantity',
+                'ecommerceDeliveries.order:id,order_number,shipping_name,shipping_phone,shipping_address,total_amount,status,customer_latitude,customer_longitude,requested_fulfillment_date,requested_fulfillment_window',
+                'ecommerceDeliveries.order.items:id,order_id,product_id,branch_inventory_id,quantity',
                 'ecommerceDeliveries.order.items.product:id,weight_kg',
+                'ecommerceDeliveries.order.items.branchInventory.variation:id,weight_kg',
                 'salesDeliveries.order:id,order_number,customer_name,customer_phone,delivery_address,total_amount,status,delivery_latitude,delivery_longitude',
-                'salesDeliveries.order.items:id,order_id,product_id,quantity',
+                'salesDeliveries.order.items:id,order_id,product_id,variation_id,branch_inventory_id,quantity',
                 'salesDeliveries.order.items.product:id,weight_kg',
-                'returnPickups.returnRequest:id,return_number,order_id,order_item_id,requested_quantity',
+                'salesDeliveries.order.items.variation:id,weight_kg',
+                'salesDeliveries.order.items.branchInventory.variation:id,weight_kg',
+                'returnPickups.returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,requested_quantity',
                 'returnPickups.returnRequest.order:id,order_number,shipping_name,shipping_address',
                 'returnPickups.returnRequest.orderItem:id,product_id,product_name,sku',
                 'returnPickups.returnRequest.orderItem.product:id,weight_kg',
+                'returnPickups.returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+                'returnPickups.returnRequest.salesOrder:id,order_number,branch_id,customer_name,customer_phone,delivery_email,delivery_address,delivery_latitude,delivery_longitude',
+                'returnPickups.returnRequest.salesOrderItem:id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+                'returnPickups.returnRequest.salesOrderItem.product:id,weight_kg',
+                'returnPickups.returnRequest.salesOrderItem.variation:id,weight_kg',
+                'returnPickups.returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
                 'stockTransfers.fromBranch:id,name,address,latitude,longitude',
                 'stockTransfers.toBranch:id,name,address,latitude,longitude',
                 'stockTransfers.items.product:id,weight_kg',
+                'stockTransfers.items.variation:id,weight_kg',
+                'replacementReturns.order:id,order_number,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude',
+                'replacementReturns.orderItem:id,product_id,branch_inventory_id,product_name,sku,quantity',
+                'replacementReturns.orderItem.product:id,weight_kg',
+                'replacementReturns.salesOrder:id,order_number,customer_name,customer_phone,delivery_address,delivery_latitude,delivery_longitude',
+                'replacementReturns.salesOrderItem:id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity',
+                'replacementReturns.salesOrderItem.product:id,weight_kg',
+                'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
+                'replacementReturns.salesOrderItem.variation:id,weight_kg',
+                'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
+                'replacementReturns.replacementInventory:id,product_id,variation_id',
+                'replacementReturns.replacementInventory.product:id,weight_kg',
+                'replacementReturns.replacementInventory.variation:id,weight_kg',
+                'replacementReturns.replacementBranch:id,name,address,latitude,longitude',
+                'replacementReturns.replacementDriver:id,fname,lname,email,phone_number',
+                'replacementReturns.replacementVehicle:id,vehicle_name,plate_number',
             ]);
 
         $this->applyTenantScope($request, $query);
         if ($this->isDriverOnly($request)) {
-            $query->where('driver_user_id', $request->user()->id);
+            $this->scopeAssignedTrips($query, (int) $request->user()->id);
         }
         $trip = $query->findOrFail($id);
+        $trip->returnPickups->each(fn (ReturnPickup $pickup) => $pickup->returnRequest?->normalizeSourceRelationsForDisplay());
+        $trip->setAttribute('assistant_users', User::query()
+            ->whereIn('id', $trip->assistant_user_ids ?? [])
+            ->where('store_id', $trip->store_id)
+            ->get(['id', 'fname', 'lname', 'email', 'phone_number']));
+        $capacity = (float) ($trip->vehicle?->capacity_kg ?? 0);
+        $currentWeight = $this->currentTripWeight($trip);
+        $trip->setAttribute('current_weight_kg', round($currentWeight, 2));
+        $trip->setAttribute('vehicle_capacity_kg', $capacity > 0 ? round($capacity, 2) : null);
+        $trip->setAttribute('remaining_capacity_kg', $capacity > 0 ? round(max(0, $capacity - $currentWeight), 2) : null);
 
         return response()->json(['success' => true, 'data' => $trip]);
+    }
+
+    public function printManifest(Request $request, int $id)
+    {
+        $this->authorizeTripViewer($request);
+        $query = DeliveryTrip::query()
+            ->with([
+                'store:id,name',
+                'vehicle:id,vehicle_name,plate_number,vehicle_type,brand,model,color,capacity_kg,max_orders_per_trip',
+                'driver:id,fname,lname,email,phone_number',
+                'ecommerceDeliveries.order:id,order_number,shipping_name,shipping_phone,shipping_address,requested_fulfillment_date',
+                'ecommerceDeliveries.order.items:id,order_id,product_id,branch_inventory_id,quantity',
+                'ecommerceDeliveries.order.items.product:id,weight_kg',
+                'ecommerceDeliveries.order.items.branchInventory.variation:id,weight_kg',
+                'salesDeliveries.order:id,order_number,customer_name,customer_phone,delivery_address',
+                'salesDeliveries.order.items:id,order_id,product_id,variation_id,branch_inventory_id,quantity',
+                'salesDeliveries.order.items.product:id,weight_kg',
+                'salesDeliveries.order.items.variation:id,weight_kg',
+                'salesDeliveries.order.items.branchInventory.variation:id,weight_kg',
+                'returnPickups.returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,requested_quantity',
+                'returnPickups.returnRequest.orderItem:id,product_id,branch_inventory_id',
+                'returnPickups.returnRequest.orderItem.product:id,weight_kg',
+                'returnPickups.returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+                'returnPickups.returnRequest.salesOrderItem:id,product_id,variation_id,branch_inventory_id,quantity',
+                'returnPickups.returnRequest.salesOrderItem.product:id,weight_kg',
+                'returnPickups.returnRequest.salesOrderItem.variation:id,weight_kg',
+                'returnPickups.returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
+                'stockTransfers.fromBranch:id,name',
+                'stockTransfers.toBranch:id,name,address,city,province',
+                'stockTransfers.items.product:id,weight_kg',
+                'stockTransfers.items.variation:id,weight_kg',
+                'replacementReturns.order:id,order_number,shipping_name,shipping_phone,shipping_address',
+                'replacementReturns.salesOrder:id,order_number,customer_name,customer_phone,delivery_address',
+                'replacementReturns.orderItem:id,product_id,branch_inventory_id,product_name,sku,quantity',
+                'replacementReturns.salesOrderItem:id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity',
+                'replacementReturns.orderItem.product:id,weight_kg',
+                'replacementReturns.salesOrderItem.product:id,weight_kg',
+                'replacementReturns.replacementBranch:id,name',
+            ]);
+
+        $this->applyTenantScope($request, $query);
+        if ($this->isDriverOnly($request)) {
+            $this->scopeAssignedTrips($query, (int) $request->user()->id);
+        }
+        $trip = $query->findOrFail($id);
+        $trip->returnPickups->each(fn (ReturnPickup $pickup) => $pickup->returnRequest?->normalizeSourceRelationsForDisplay());
+        $trip->setAttribute('assistant_users', User::query()
+            ->whereIn('id', $trip->assistant_user_ids ?? [])
+            ->where('store_id', $trip->store_id)
+            ->get(['id', 'fname', 'lname', 'email', 'phone_number']));
+
+        $stops = collect();
+        foreach ($trip->ecommerceDeliveries as $delivery) {
+            if (!$delivery->order) continue;
+            $stops->push([
+                'source' => 'Ecommerce',
+                'reference' => $delivery->order->order_number ?: '-',
+                'recipient' => $delivery->order->shipping_name ?: '-',
+                'address' => $delivery->order->shipping_address ?: '-',
+                'date' => $delivery->estimated_delivery_at ?? $delivery->order->requested_fulfillment_date,
+                'status' => $delivery->status,
+                'weight' => $this->orderWeight($delivery->order->items ?? []),
+            ]);
+        }
+        foreach ($trip->salesDeliveries as $delivery) {
+            if (!$delivery->order) continue;
+            $stops->push([
+                'source' => 'Sales',
+                'reference' => $delivery->order->order_number ?: '-',
+                'recipient' => $delivery->order->customer_name ?: '-',
+                'address' => $delivery->order->delivery_address ?: '-',
+                'date' => $delivery->scheduled_delivery_at,
+                'status' => $delivery->status,
+                'weight' => $this->orderWeight($delivery->order->items ?? []),
+            ]);
+        }
+        foreach ($trip->returnPickups as $pickup) {
+            $stops->push([
+                'source' => 'Return Pickup',
+                'reference' => $pickup->returnRequest?->return_number ?: '-',
+                'recipient' => $pickup->pickup_name ?: '-',
+                'address' => $pickup->pickup_address ?: '-',
+                'date' => $pickup->scheduled_at,
+                'status' => $pickup->status,
+                'weight' => $this->returnPickupWeight($pickup),
+            ]);
+        }
+        foreach ($trip->stockTransfers as $transfer) {
+            $stops->push([
+                'source' => 'Stock Transfer',
+                'reference' => $transfer->transfer_number ?: '-',
+                'recipient' => trim(($transfer->fromBranch?->name ?? 'Source branch') . ' to ' . ($transfer->toBranch?->name ?? 'Destination branch')),
+                'address' => collect([$transfer->toBranch?->address, $transfer->toBranch?->city, $transfer->toBranch?->province])->filter()->implode(', ') ?: '-',
+                'date' => $transfer->expected_delivery_date,
+                'status' => $transfer->delivery_status ?: $transfer->status,
+                'weight' => $this->stockTransferWeight($transfer),
+            ]);
+        }
+        foreach ($trip->replacementReturns as $replacement) {
+            $order = $replacement->source_type === 'pos' ? $replacement->salesOrder : $replacement->order;
+            $stops->push([
+                'source' => 'Replacement Delivery',
+                'reference' => $replacement->return_number ?: '-',
+                'recipient' => $replacement->source_type === 'pos'
+                    ? ($replacement->return_contact_name ?: $order?->customer_name ?: '-')
+                    : ($order?->shipping_name ?: $replacement->return_contact_name ?: '-'),
+                'address' => $this->replacementDeliveryAddress($replacement) ?: '-',
+                'date' => $trip->scheduled_departure_at,
+                'status' => $replacement->replacement_status,
+                'weight' => $this->replacementWeight($replacement),
+            ]);
+        }
+
+        $user = $request->user();
+        $printedBy = trim(implode(' ', array_filter([$user?->fname, $user?->mname, $user?->lname])));
+        $printedBy = $printedBy !== '' ? $printedBy : (string) ($user?->email ?? 'Authenticated user');
+        $reference = $this->tripReference($trip);
+        $pdf = \PDF::loadView('logistics.trip-manifest-pdf', [
+            'trip' => $trip,
+            'reference' => $reference,
+            'store' => $trip->store,
+            'stops' => $stops,
+            'onboardWeight' => $this->currentTripWeight($trip),
+            'assistants' => $trip->assistant_users,
+            'printedBy' => $printedBy,
+            'printedAt' => now(),
+        ])->setPaper('a4', 'landscape');
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $reference . '-MANIFEST.pdf"',
+        ]);
     }
 
     public function store(Request $request, DriverPermissionEligibility $driverEligibility): JsonResponse
@@ -235,6 +429,8 @@ class DeliveryTripController extends Controller
         $validated = $request->validate([
             'vehicle_id' => 'required|exists:ecommerce_delivery_vehicles,id',
             'driver_user_id' => 'required|exists:users,id',
+            'assistant_user_ids' => 'nullable|array',
+            'assistant_user_ids.*' => 'integer|distinct|exists:users,id',
             'scheduled_departure_at' => 'nullable|date',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -243,6 +439,22 @@ class DeliveryTripController extends Controller
         if (!$storeId) {
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
         }
+
+        $vehicle = EcommerceDeliveryVehicle::query()
+            ->whereKey((int) $validated['vehicle_id'])
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->first();
+        if (!$vehicle) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'vehicle_id' => 'Select an active vehicle assigned to this store.',
+            ]);
+        }
+        $this->assertVehicleDateAvailable(
+            $storeId,
+            (int) $vehicle->id,
+            $validated['scheduled_departure_at'] ?? null,
+        );
 
         $driver = User::query()->with('employee')
             ->where('id', (int) $validated['driver_user_id'])
@@ -256,10 +468,17 @@ class DeliveryTripController extends Controller
             ]);
         }
 
+        $assistantIds = $this->validatedAssistantIds(
+            $validated['assistant_user_ids'] ?? [],
+            $storeId,
+            (int) $driver->id
+        );
+
         $trip = DeliveryTrip::query()->create([
             'store_id' => $storeId,
             'vehicle_id' => (int) $validated['vehicle_id'],
             'driver_user_id' => (int) $validated['driver_user_id'],
+            'assistant_user_ids' => $assistantIds,
             'status' => 'planned',
             'scheduled_departure_at' => $validated['scheduled_departure_at'] ?? null,
             'notes' => $validated['notes'] ?? null,
@@ -267,7 +486,161 @@ class DeliveryTripController extends Controller
             'updated_by' => $request->user()->id,
         ]);
 
+        $this->notifyTripDriver(
+            $trip,
+            'trip_assigned',
+            'Delivery trip assigned',
+            'You have been assigned as the driver for ' . $this->tripReference($trip) . '.'
+        );
+        $this->notifyTripAssistants($trip);
+
         return response()->json(['success' => true, 'message' => 'Trip created.', 'data' => $trip], 201);
+    }
+
+    public function update(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
+    {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
+        $validated = $request->validate([
+            'vehicle_id' => 'required|exists:ecommerce_delivery_vehicles,id',
+            'driver_user_id' => 'required|exists:users,id',
+            'assistant_user_ids' => 'nullable|array',
+            'assistant_user_ids.*' => 'integer|distinct|exists:users,id',
+            'scheduled_departure_at' => 'nullable|date',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $query = DeliveryTrip::query();
+        $this->applyTenantScope($request, $query);
+        $trip = $query->findOrFail($id);
+        abort_unless($trip->status === 'planned', 422, 'Only planned trips can be edited.');
+
+        $previousDriverId = (int) $trip->driver_user_id;
+        $storeId = (int) $trip->store_id;
+        $vehicle = EcommerceDeliveryVehicle::query()
+            ->whereKey((int) $validated['vehicle_id'])
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->first();
+        if (!$vehicle) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'vehicle_id' => 'Select an active vehicle assigned to this store.',
+            ]);
+        }
+        $this->assertVehicleDateAvailable(
+            $storeId,
+            (int) $vehicle->id,
+            $validated['scheduled_departure_at'] ?? null,
+            (int) $trip->id,
+        );
+        $driver = User::query()->with('employee')
+            ->whereKey((int) $validated['driver_user_id'])
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->whereHas('employee', fn ($employee) => $employee->where('status', 'active'))
+            ->first();
+        if (!$driver || !$driverEligibility->userCanDrive($driver, $storeId)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'driver_user_id' => 'Select an active employee with a logistics driver permission.',
+            ]);
+        }
+
+        $assistantIds = $this->validatedAssistantIds(
+            $validated['assistant_user_ids'] ?? [],
+            $storeId,
+            (int) $driver->id
+        );
+        $driverName = trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? ''));
+        $driverContact = $this->resolveDriverContact($driver);
+
+        DB::transaction(function () use ($trip, $validated, $driver, $assistantIds, $request, $driverName, $driverContact): void {
+            $trip->fill([
+            'vehicle_id' => (int) $validated['vehicle_id'],
+            'driver_user_id' => (int) $driver->id,
+            'assistant_user_ids' => $assistantIds,
+            'scheduled_departure_at' => $validated['scheduled_departure_at'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'updated_by' => $request->user()->id,
+            ])->save();
+
+            $trip->ecommerceDeliveries()->where(fn ($query) => $query->whereNull('status')->orWhereNotIn('status', ['delivered', 'cancelled']))->get()->each(function (EcommerceOrderDelivery $delivery) use ($trip, $driver, $driverName, $driverContact, $assistantIds, $request): void {
+                $delivery->driver_user_id = $driver->id;
+                $delivery->vehicle_id = $trip->vehicle_id;
+                $delivery->courier_name = $driverName ?: $delivery->courier_name;
+                $delivery->courier_contact = $driverContact ?: $delivery->courier_contact;
+                $delivery->assistant_user_ids = $assistantIds;
+                $delivery->updated_by = $request->user()->id;
+                $delivery->save();
+            });
+            $trip->salesDeliveries()->where(fn ($query) => $query->whereNull('status')->orWhereNotIn('status', ['delivered', 'cancelled']))->get()->each(function (SalesOrderDelivery $delivery) use ($trip, $driver, $driverName, $driverContact, $assistantIds, $request): void {
+                $delivery->driver_user_id = $driver->id;
+                $delivery->vehicle_id = $trip->vehicle_id;
+                $delivery->courier_name = $driverName ?: $delivery->courier_name;
+                $delivery->courier_contact = $driverContact ?: $delivery->courier_contact;
+                $delivery->assistant_user_ids = $assistantIds;
+                $delivery->updated_by = $request->user()->id;
+                $delivery->save();
+            });
+            $trip->returnPickups()->where(fn ($query) => $query->whereNull('status')->orWhereNotIn('status', ['delivered', 'cancelled']))->get()->each(function (ReturnPickup $pickup) use ($trip, $driver, $assistantIds, $request): void {
+                $pickup->driver_user_id = $driver->id;
+                $pickup->vehicle_id = $trip->vehicle_id;
+                $pickup->assistant_user_ids = $assistantIds;
+                $pickup->updated_by = $request->user()->id;
+                $pickup->save();
+            });
+            $trip->stockTransfers()->where(fn ($query) => $query->whereNull('delivery_status')->orWhereNotIn('delivery_status', ['delivered', 'cancelled']))->get()->each(function ($transfer) use ($trip, $driver, $driverName, $driverContact): void {
+                $transfer->driver_user_id = $driver->id;
+                $transfer->vehicle_id = $trip->vehicle_id;
+                $transfer->driver_name = $driverName ?: $transfer->driver_name;
+                $transfer->driver_contact = $driverContact ?: $transfer->driver_contact;
+                $transfer->save();
+            });
+        });
+
+        $trip->load(['vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip', 'driver:id,fname,lname,email']);
+        $trip->setAttribute('assistant_users', User::query()
+            ->whereIn('id', $trip->assistant_user_ids ?? [])
+            ->where('store_id', $storeId)
+            ->get(['id', 'fname', 'lname', 'email', 'phone_number']));
+
+        if ((int) $trip->driver_user_id !== $previousDriverId) {
+            $this->notifyTripDriver(
+                $trip,
+                'trip_reassigned',
+                'Delivery trip assigned to you',
+                'You are now the assigned driver for ' . $this->tripReference($trip) . '.'
+            );
+        }
+
+        return response()->json(['success' => true, 'message' => 'Trip updated.', 'data' => $trip]);
+    }
+
+    private function validatedAssistantIds(array $assistantIds, int $storeId, int $driverId): array
+    {
+        $assistantIds = collect($assistantIds)->map(fn ($id) => (int) $id)->unique()->values();
+        if ($assistantIds->contains($driverId)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'assistant_user_ids' => 'The selected driver cannot also be selected as an assistant.',
+            ]);
+        }
+
+        if ($assistantIds->isEmpty()) {
+            return [];
+        }
+
+        $validCount = User::query()
+            ->whereIn('id', $assistantIds)
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->whereHas('employee', fn ($employee) => $employee->where('status', 'active'))
+            ->count();
+
+        if ($validCount !== $assistantIds->count()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'assistant_user_ids' => 'Select only active employees from this store.',
+            ]);
+        }
+
+        return $assistantIds->all();
     }
 
     public function updateStatus(Request $request, int $id): JsonResponse
@@ -293,7 +666,8 @@ class DeliveryTripController extends Controller
         }
 
         if ($validated['status'] === 'out_for_delivery' && !$trip->ecommerceDeliveries()->exists()
-            && !$trip->salesDeliveries()->exists() && !$trip->returnPickups()->exists() && !$trip->stockTransfers()->exists()) {
+            && !$trip->salesDeliveries()->exists() && !$trip->returnPickups()->exists() && !$trip->stockTransfers()->exists()
+            && !$trip->replacementReturns()->exists()) {
             return response()->json(['success' => false, 'message' => 'Add an order before dispatching this trip.'], 422);
         }
 
@@ -301,7 +675,8 @@ class DeliveryTripController extends Controller
             $totalDeliveries = (int) $trip->ecommerceDeliveries()->count()
                 + (int) $trip->salesDeliveries()->count()
                 + (int) $trip->returnPickups()->count()
-                + (int) $trip->stockTransfers()->count();
+                + (int) $trip->stockTransfers()->count()
+                + (int) $trip->replacementReturns()->count();
             $undelivered = (int) $trip->ecommerceDeliveries()
                 ->whereRaw('LOWER(COALESCE(status, ?)) <> ?', ['', 'delivered'])
                 ->count()
@@ -313,6 +688,9 @@ class DeliveryTripController extends Controller
                     ->count()
                 + (int) $trip->stockTransfers()
                     ->whereRaw('LOWER(COALESCE(delivery_status, ?)) <> ?', ['', 'delivered'])
+                    ->count()
+                + (int) $trip->replacementReturns()
+                    ->whereNotIn('replacement_status', ['delivered'])
                     ->count();
 
             if ($totalDeliveries === 0) {
@@ -391,6 +769,12 @@ class DeliveryTripController extends Controller
                 $trip->stockTransfers()
                     ->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])
                     ->update(['delivery_status' => 'in_transit', 'updated_at' => $now]);
+                $trip->replacementReturns()
+                    ->whereIn('replacement_status', ['reserved', 'assigned'])
+                    ->with('replacementDriver')
+                    ->get()
+                    ->each(fn (EcommerceOrderReturn $replacement) => app(ReplacementDispatchService::class)
+                        ->dispatch($replacement, $request->user()));
             } elseif ((string) $validated['status'] === 'cancelled') {
                 $trip->stockTransfers()
                     ->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])
@@ -404,6 +788,16 @@ class DeliveryTripController extends Controller
                         'delivery_status' => 'ready_for_dispatch',
                         'updated_at' => now(),
                     ]);
+                $trip->replacementReturns()
+                    ->whereIn('replacement_status', ['reserved', 'assigned'])
+                    ->update([
+                        'replacement_trip_id' => null,
+                        'replacement_driver_id' => null,
+                        'replacement_vehicle_id' => null,
+                        'replacement_status' => 'reserved',
+                        'replacement_assigned_at' => null,
+                        'updated_at' => now(),
+                    ]);
             }
         });
 
@@ -414,7 +808,7 @@ class DeliveryTripController extends Controller
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
-            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer'])],
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement'])],
         ]);
 
         $query = DeliveryTrip::query()->with('vehicle');
@@ -424,7 +818,8 @@ class DeliveryTripController extends Controller
         $capacityKg = (float) ($trip->vehicle?->capacity_kg ?? 0);
         $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
         $currentStops = (int) $trip->ecommerceDeliveries()->count() + (int) $trip->salesDeliveries()->count()
-            + (int) $trip->returnPickups()->count() + (int) $trip->stockTransfers()->count();
+            + (int) $trip->returnPickups()->count() + (int) $trip->stockTransfers()->count()
+            + (int) $trip->replacementReturns()->count();
         $remainingStops = $maxStops > 0 ? max(0, $maxStops - $currentStops) : PHP_INT_MAX;
         $assignedReturnWeight = $trip->returnPickups()->whereNotIn('status', ['delivered', 'cancelled'])
             ->with('returnRequest.orderItem.product:id,weight_kg')->get()
@@ -437,6 +832,7 @@ class DeliveryTripController extends Controller
             'ecommerce' => $this->ecommerceSuggestionRows($trip),
             'sales' => $this->salesSuggestionRows($trip),
             'return_pickup' => $this->returnPickupSuggestionRows($trip),
+            'replacement' => $this->replacementSuggestionRows($trip),
             default => $this->stockTransferSuggestionRows($trip),
         };
 
@@ -540,6 +936,62 @@ class DeliveryTripController extends Controller
             })->all();
     }
 
+    private function replacementSuggestionRows(DeliveryTrip $trip): array
+    {
+        return EcommerceOrderReturn::query()
+            ->with(['order', 'orderItem.branchInventory.variation:id,weight_kg', 'orderItem.product:id,weight_kg', 'salesOrder', 'salesOrderItem.branchInventory.variation:id,weight_kg', 'salesOrderItem.variation:id,weight_kg', 'salesOrderItem.product:id,weight_kg', 'replacementBranch:id,latitude,longitude'])
+            ->where('store_id', $trip->store_id)
+            ->where('return_type', 'replacement')
+            ->where('status', 'received')
+            ->where('replacement_status', 'reserved')
+            ->whereNull('replacement_trip_id')
+            ->get()->map(function (EcommerceOrderReturn $replacement) {
+                $address = $this->replacementDeliveryAddress($replacement);
+                $origin = $replacement->replacementBranch;
+                $order = $replacement->source_type === 'pos' ? $replacement->salesOrder : $replacement->order;
+                $lat = $replacement->source_type === 'pos' ? $order?->delivery_latitude : $order?->customer_latitude;
+                $lng = $replacement->source_type === 'pos' ? $order?->delivery_longitude : $order?->customer_longitude;
+
+                return [
+                    'id' => 'replacement-'.$replacement->id,
+                    'source_type' => 'replacement',
+                    'order_id' => $replacement->id,
+                    'order_number' => $replacement->return_number ?: 'Return #'.$replacement->id,
+                    'customer_name' => $replacement->source_type === 'pos'
+                        ? ($replacement->return_contact_name ?: $order?->customer_name)
+                        : ($order?->shipping_name ?? $replacement->return_contact_name),
+                    'delivery_address' => $address,
+                    'order_status' => $replacement->replacement_status,
+                    'distance_km' => $this->haversineDistance($origin?->latitude, $origin?->longitude, $lat, $lng),
+                    'weight_kg' => $this->replacementWeight($replacement),
+                    'area_key' => $this->areaKey($address),
+                ];
+            })->all();
+    }
+
+    private function replacementDeliveryAddress(EcommerceOrderReturn $replacement): string
+    {
+        if ($replacement->source_type === 'pos') {
+            return (string) ($replacement->salesOrder?->delivery_address ?: $replacement->return_pickup_address ?: '');
+        }
+
+        return (string) ($replacement->order?->shipping_address ?: $replacement->return_pickup_address ?: '');
+    }
+
+    private function replacementWeight(EcommerceOrderReturn $replacement): float
+    {
+        if ($replacement->replacementInventory) {
+            $inventory = $replacement->replacementInventory;
+            $weight = (float) ($inventory->variation?->weight_kg ?? $inventory->product?->weight_kg ?? 0);
+            $quantity = (int) ($replacement->received_quantity ?: $replacement->requested_quantity);
+            return $weight * max(0, $quantity);
+        }
+
+        $item = $replacement->source_type === 'pos' ? $replacement->salesOrderItem : $replacement->orderItem;
+        $quantity = (int) ($replacement->received_quantity ?: $replacement->requested_quantity);
+        return $this->itemUnitWeight($item) * max(0, $quantity);
+    }
+
     private function areaKey(string $address): string
     {
         $parts = array_values(array_filter(array_map(fn ($part) => trim(mb_strtolower($part)), explode(',', $address))));
@@ -575,7 +1027,7 @@ class DeliveryTripController extends Controller
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
-            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer'])],
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement'])],
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'integer|min:1',
         ]);
@@ -596,14 +1048,16 @@ class DeliveryTripController extends Controller
         $skipped = 0;
         $overCapacity = 0;
         $areaMismatch = 0;
+        $addedOrderNumbers = [];
         $capacityKg = (float) ($trip->vehicle?->capacity_kg ?? 0);
         $currentWeight = $this->currentTripWeight($trip);
         $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
         $currentStops = (int) $trip->ecommerceDeliveries()->count() + (int) $trip->salesDeliveries()->count()
-            + (int) $trip->returnPickups()->count() + (int) $trip->stockTransfers()->count();
+            + (int) $trip->returnPickups()->count() + (int) $trip->stockTransfers()->count()
+            + (int) $trip->replacementReturns()->count();
         $targetArea = $this->tripAreaKey($trip);
 
-        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, &$areaMismatch, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$targetArea) {
+        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, &$areaMismatch, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$targetArea, &$addedOrderNumbers) {
             if ($validated['source_type'] === 'ecommerce') {
                 $orders = EcommerceOrder::query()
                     ->with(['items.product:id,weight_kg'])
@@ -657,6 +1111,7 @@ class DeliveryTripController extends Controller
                     $delivery->trip_id = $trip->id;
                     $delivery->vehicle_id = $trip->vehicle_id;
                     $delivery->driver_user_id = $trip->driver_user_id;
+                    $delivery->assistant_user_ids = $trip->assistant_user_ids ?? [];
                     $delivery->courier_provider = 'internal';
                     $delivery->lalamove_quotation_id = null;
                     $delivery->lalamove_order_id = null;
@@ -687,6 +1142,7 @@ class DeliveryTripController extends Controller
                     ]);
 
                     $added++;
+                    $addedOrderNumbers[] = (string) $order->order_number;
                     $currentWeight += $orderWeight;
                     $currentStops++;
                 }
@@ -737,6 +1193,7 @@ class DeliveryTripController extends Controller
 
                     $delivery->trip_id = $trip->id;
                     $delivery->driver_user_id = $trip->driver_user_id;
+                    $delivery->assistant_user_ids = $trip->assistant_user_ids ?? [];
                     $delivery->courier_provider = 'internal';
                     $delivery->lalamove_quotation_id = null;
                     $delivery->lalamove_order_id = null;
@@ -767,6 +1224,7 @@ class DeliveryTripController extends Controller
                     ]);
 
                     $added++;
+                    $addedOrderNumbers[] = (string) $order->order_number;
                     $currentWeight += $orderWeight;
                     $currentStops++;
                 }
@@ -786,16 +1244,48 @@ class DeliveryTripController extends Controller
                     $pickup->trip_id = $trip->id;
                     $pickup->driver_user_id = $trip->driver_user_id;
                     $pickup->vehicle_id = $trip->vehicle_id;
+                    $pickup->assistant_user_ids = $trip->assistant_user_ids ?? [];
                     $pickup->status = 'assigned';
                     $pickup->updated_by = $request->user()->id;
                     $pickup->save();
                     ReturnPickupLog::query()->create([
                         'return_pickup_id' => $pickup->id, 'event_type' => 'assigned',
-                        'status_to' => 'assigned', 'message' => "Return pickup assigned to trip #{$trip->id}.",
+                        'status_to' => 'assigned', 'message' => 'Return pickup assigned to ' . $this->tripReference($trip) . '.',
                         'created_by' => $request->user()->id,
                     ]);
                     $added++;
                     $currentWeight += $pickupWeight;
+                    $currentStops++;
+                }
+            } elseif ($validated['source_type'] === 'replacement') {
+                $replacements = EcommerceOrderReturn::query()
+                    ->with(['order', 'orderItem.branchInventory.variation:id,weight_kg', 'orderItem.product:id,weight_kg', 'salesOrder', 'salesOrderItem.branchInventory.variation:id,weight_kg', 'salesOrderItem.variation:id,weight_kg', 'salesOrderItem.product:id,weight_kg', 'replacementInventory:id,product_id,variation_id', 'replacementInventory.product:id,weight_kg', 'replacementInventory.variation:id,weight_kg'])
+                    ->whereIn('id', $validated['order_ids'])
+                    ->where('store_id', $trip->store_id)
+                    ->where('return_type', 'replacement')
+                    ->where('status', 'received')
+                    ->where('replacement_status', 'reserved')
+                    ->whereNull('replacement_trip_id')
+                    ->get();
+
+                foreach ($replacements as $replacement) {
+                    $address = $this->replacementDeliveryAddress($replacement);
+                    $replacementArea = $this->areaKey($address);
+                    $targetArea = $targetArea ?: $replacementArea;
+                    if ($replacementArea !== $targetArea) { $areaMismatch++; continue; }
+                    if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
+                    $replacementWeight = $this->replacementWeight($replacement);
+                    if ($capacityKg > 0 && ($currentWeight + $replacementWeight) > $capacityKg) { $overCapacity++; continue; }
+
+                    $replacement->replacement_trip_id = $trip->id;
+                    $replacement->replacement_driver_id = $trip->driver_user_id;
+                    $replacement->replacement_vehicle_id = $trip->vehicle_id;
+                    $replacement->replacement_status = 'assigned';
+                    $replacement->replacement_assigned_at = now();
+                    $replacement->save();
+                    $addedOrderNumbers[] = (string) ($replacement->return_number ?: 'Return #'.$replacement->id);
+                    $added++;
+                    $currentWeight += $replacementWeight;
                     $currentStops++;
                 }
             } else {
@@ -858,6 +1348,20 @@ class DeliveryTripController extends Controller
             ], 422);
         }
 
+        if ($added > 0 && in_array($validated['source_type'], ['sales', 'replacement'], true)) {
+            $replacementBatch = $validated['source_type'] === 'replacement';
+            $this->notifyTripDriver(
+                $trip,
+                $replacementBatch ? 'replacement_deliveries_assigned' : 'sales_orders_assigned',
+                $replacementBatch ? 'Replacement deliveries added' : 'New sales deliveries added',
+                count($addedOrderNumbers) === 1
+                    ? ($replacementBatch ? "Replacement {$addedOrderNumbers[0]} was added to your trip " : "Sales order {$addedOrderNumbers[0]} was added to your trip ") . $this->tripReference($trip) . '.'
+                    : count($addedOrderNumbers) . ($replacementBatch ? ' replacement deliveries were added to your trip ' : ' sales orders were added to your trip ') . $this->tripReference($trip) . '.',
+                ['order_numbers' => $addedOrderNumbers]
+            );
+            $this->notifyTripAssistants($trip);
+        }
+
         $message = "Orders added to trip ({$added}).";
         if ($overCapacity > 0) {
             $message .= " {$overCapacity} skipped due to capacity.";
@@ -879,6 +1383,112 @@ class DeliveryTripController extends Controller
         ]);
     }
 
+    private function notifyTripDriver(
+        DeliveryTrip $trip,
+        string $action,
+        string $title,
+        string $message,
+        array $extraData = []
+    ): void {
+        try {
+            $driver = User::query()
+                ->where('store_id', (int) $trip->store_id)
+                ->find((int) $trip->driver_user_id);
+            if (!$driver) {
+                return;
+            }
+
+            if ($action === 'trip_assigned' && SystemNotification::query()
+                ->where('user_id', (int) $driver->id)
+                ->where('entity_type', 'delivery_trip')
+                ->where('entity_id', (int) $trip->id)
+                ->where('action', $action)
+                ->exists()) {
+                return;
+            }
+
+            $this->notify((int) $driver->id, [
+                'store_id' => (int) $trip->store_id,
+                'module' => 'logistics',
+                'entity_type' => 'delivery_trip',
+                'entity_id' => (int) $trip->id,
+                'action' => $action,
+                'title' => $title,
+                'message' => $message,
+                'severity' => 'info',
+                'link' => '/logistics/trips/' . (int) $trip->id,
+                'data' => array_merge($extraData, [
+                    'trip_reference' => $this->tripReference($trip),
+                ]),
+            ]);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function notifyTripAssistants(DeliveryTrip $trip): void
+    {
+        $assistantIds = collect($trip->assistant_user_ids ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->reject(fn (int $id) => $id === (int) $trip->driver_user_id);
+        if ($assistantIds->isEmpty()) return;
+
+        try {
+            $assistants = User::query()
+                ->where('store_id', (int) $trip->store_id)
+                ->where('is_active', true)
+                ->whereIn('id', $assistantIds)
+                ->get();
+
+            foreach ($assistants as $assistant) {
+                $reference = $this->tripReference($trip);
+                $alreadyNotified = SystemNotification::query()
+                    ->where('user_id', (int) $assistant->id)
+                    ->where('entity_type', 'delivery_trip')
+                    ->where('entity_id', (int) $trip->id)
+                    ->where('action', 'trip_assigned')
+                    ->exists();
+                if ($alreadyNotified) continue;
+
+                $this->notify((int) $assistant->id, [
+                    'store_id' => (int) $trip->store_id,
+                    'module' => 'logistics',
+                    'entity_type' => 'delivery_trip',
+                    'entity_id' => (int) $trip->id,
+                    'action' => 'trip_assigned',
+                    'title' => 'Delivery trip assignment',
+                    'message' => 'You have been assigned as an accompanying employee for ' . $reference . '.',
+                    'severity' => 'info',
+                    'link' => '/logistics/trips/' . (int) $trip->id,
+                    'data' => [
+                        'trip_reference' => $reference,
+                    ],
+                ]);
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function scopeAssignedTrips($query, int $userId): void
+    {
+        $query->where(function ($assigned) use ($userId): void {
+            $assigned->where('driver_user_id', $userId)
+                ->orWhereJsonContains('assistant_user_ids', $userId);
+        });
+    }
+
+    private function tripReference(DeliveryTrip $trip): string
+    {
+        return sprintf(
+            'TRIP-%s-%06d',
+            $trip->created_at?->format('Y') ?? now()->format('Y'),
+            (int) $trip->id
+        );
+    }
+
     private function tripAreaKey(DeliveryTrip $trip): ?string
     {
         $areas = collect()
@@ -886,6 +1496,7 @@ class DeliveryTripController extends Controller
             ->merge($trip->salesDeliveries()->with('order:id,delivery_address,delivery_province,delivery_city')->get()->map(fn ($delivery) => $delivery->order ? $this->salesAreaKey($delivery->order) : null))
             ->merge($trip->returnPickups()->pluck('pickup_address')->map(fn ($address) => $this->areaKey((string) $address)))
             ->merge($trip->stockTransfers()->with('toBranch:id,address,city,province')->get()->map(fn ($transfer) => $this->areaKey(collect([$transfer->toBranch?->address, $transfer->toBranch?->city, $transfer->toBranch?->province])->filter()->implode(', '))))
+            ->merge($trip->replacementReturns()->with(['order', 'salesOrder'])->get()->map(fn ($replacement) => $this->areaKey($this->replacementDeliveryAddress($replacement))))
             ->filter();
 
         return $areas->countBy()->sortDesc()->keys()->first();
@@ -893,8 +1504,21 @@ class DeliveryTripController extends Controller
 
     private function returnPickupWeight(ReturnPickup $pickup): float
     {
-        $unitWeight = (float) ($pickup->returnRequest?->orderItem?->product?->weight_kg ?? 0);
-        $quantity = (int) ($pickup->returnRequest?->requested_quantity ?? 0);
+        $return = $pickup->returnRequest;
+        if ($return) {
+            $return->loadMissing([
+                'orderItem.product:id,weight_kg',
+                'orderItem.branchInventory.variation:id,weight_kg',
+                'salesOrder',
+                'salesOrderItem.product:id,weight_kg',
+                'salesOrderItem.variation:id,weight_kg',
+                'salesOrderItem.branchInventory.variation:id,weight_kg',
+            ]);
+            $return->normalizeSourceRelationsForDisplay();
+        }
+        $item = $return?->sourceOrderItem();
+        $unitWeight = $this->itemUnitWeight($item);
+        $quantity = (int) ($return?->requested_quantity ?? 0);
         return $unitWeight * $quantity;
     }
 
@@ -904,9 +1528,26 @@ class DeliveryTripController extends Controller
 
         $trip->loadMissing([
             'ecommerceDeliveries.order.items.product:id,weight_kg',
+            'ecommerceDeliveries.order.items.branchInventory.variation:id,weight_kg',
             'salesDeliveries.order.items.product:id,weight_kg',
+            'salesDeliveries.order.items.variation:id,weight_kg',
+            'salesDeliveries.order.items.branchInventory.variation:id,weight_kg',
             'returnPickups.returnRequest.orderItem.product:id,weight_kg',
+            'returnPickups.returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+            'returnPickups.returnRequest.salesOrderItem.product:id,weight_kg',
+            'returnPickups.returnRequest.salesOrderItem.variation:id,weight_kg',
+            'returnPickups.returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
             'stockTransfers.items.product:id,weight_kg',
+            'stockTransfers.items.variation:id,weight_kg',
+            'replacementReturns.orderItem.product:id,weight_kg',
+            'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
+            'replacementReturns.salesOrderItem.variation:id,weight_kg',
+            'replacementReturns.salesOrderItem.product:id,weight_kg',
+            'replacementReturns.salesOrderItem.variation:id,weight_kg',
+            'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
+            'replacementReturns.replacementInventory:id,product_id,variation_id',
+            'replacementReturns.replacementInventory.product:id,weight_kg',
+            'replacementReturns.replacementInventory.variation:id,weight_kg',
         ]);
 
         foreach ($trip->ecommerceDeliveries as $delivery) {
@@ -920,13 +1561,18 @@ class DeliveryTripController extends Controller
         }
 
         foreach ($trip->returnPickups as $pickup) {
-            if (in_array(strtolower((string) $pickup->status), ['delivered', 'cancelled'], true)) continue;
+            if (!in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)) continue;
             $weight += $this->returnPickupWeight($pickup);
         }
 
         foreach ($trip->stockTransfers as $transfer) {
             if (in_array(strtolower((string) $transfer->delivery_status), ['delivered', 'cancelled'], true)) continue;
             $weight += $this->stockTransferWeight($transfer);
+        }
+
+        foreach ($trip->replacementReturns as $replacement) {
+            if (strtolower((string) $replacement->replacement_status) === 'delivered') continue;
+            $weight += $this->replacementWeight($replacement);
         }
 
         return $weight;
@@ -936,7 +1582,7 @@ class DeliveryTripController extends Controller
     {
         $total = 0.0;
         foreach ($items as $item) {
-            $w = (float) ($item->product?->weight_kg ?? 0);
+            $w = $this->itemUnitWeight($item);
             $total += $w * (int) ($item->quantity ?? 0);
         }
         return $total;
@@ -946,15 +1592,78 @@ class DeliveryTripController extends Controller
     {
         return collect($transfer->items ?? [])->sum(function ($item) {
             $quantity = $item->shipped_quantity ?? $item->approved_quantity ?? $item->requested_quantity ?? 0;
-            return (float) ($item->product?->weight_kg ?? 0) * (float) $quantity;
+            return $this->itemUnitWeight($item) * (float) $quantity;
         });
+    }
+
+    private function itemUnitWeight($item): float
+    {
+        return (float) (
+            $item?->branchInventory?->variation?->weight_kg
+            ?? $item?->variation?->weight_kg
+            ?? $item?->product?->weight_kg
+            ?? 0
+        );
+    }
+
+    public function unavailableDepartureDates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'vehicle_id' => ['required', 'integer'],
+            'exclude_trip_id' => ['nullable', 'integer'],
+        ]);
+        $storeId = $this->resolveStoreId($request);
+        abort_unless($storeId, 422, 'No store assigned.');
+
+        $vehicleExists = EcommerceDeliveryVehicle::query()
+            ->whereKey((int) $validated['vehicle_id'])
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->exists();
+        abort_unless($vehicleExists, 422, 'Select an active vehicle assigned to this store.');
+
+        $query = DeliveryTrip::query()
+            ->where('store_id', $storeId)
+            ->where('vehicle_id', (int) $validated['vehicle_id'])
+            ->where('status', 'planned')
+            ->whereNotNull('scheduled_departure_at')
+            ->when($validated['exclude_trip_id'] ?? null, fn ($builder, $tripId) => $builder->where('id', '!=', (int) $tripId));
+        $this->applyTenantScope($request, $query);
+
+        $dates = $query->get(['scheduled_departure_at'])
+            ->map(fn (DeliveryTrip $trip) => $trip->scheduled_departure_at?->toDateString())
+            ->filter()
+            ->unique()
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $dates]);
+    }
+
+    private function assertVehicleDateAvailable(int $storeId, int $vehicleId, ?string $departureDate, ?int $excludeTripId = null): void
+    {
+        if (!$departureDate) return;
+
+        $date = \Illuminate\Support\Carbon::parse($departureDate)->toDateString();
+        $conflict = DeliveryTrip::query()
+            ->where('store_id', $storeId)
+            ->where('vehicle_id', $vehicleId)
+            ->where('status', 'planned')
+            ->whereDate('scheduled_departure_at', $date)
+            ->when($excludeTripId, fn ($query) => $query->where('id', '!=', $excludeTripId))
+            ->exists();
+
+        if ($conflict) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'scheduled_departure_at' => 'This vehicle already has a planned trip on the selected date. Choose another vehicle or departure date.',
+            ]);
+        }
     }
 
     public function removeOrders(Request $request, int $id): JsonResponse
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
-            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer'])],
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement'])],
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'integer|min:1',
         ]);
@@ -1039,6 +1748,22 @@ class DeliveryTripController extends Controller
                     ]);
                     $removed++;
                 }
+            } elseif ($validated['source_type'] === 'replacement') {
+                $replacements = EcommerceOrderReturn::query()
+                    ->where('replacement_trip_id', $trip->id)
+                    ->whereIn('id', $validated['order_ids'])
+                    ->whereIn('replacement_status', ['assigned', 'reserved'])
+                    ->get();
+                foreach ($replacements as $replacement) {
+                    $replacement->update([
+                        'replacement_trip_id' => null,
+                        'replacement_driver_id' => null,
+                        'replacement_vehicle_id' => null,
+                        'replacement_status' => 'reserved',
+                        'replacement_assigned_at' => null,
+                    ]);
+                    $removed++;
+                }
             } else {
                 $transfers = \App\Models\Inventory\StockTransfer::query()
                     ->where('trip_id', $trip->id)
@@ -1087,14 +1812,15 @@ class DeliveryTripController extends Controller
 
     private function isDriverOnly(Request $request): bool
     {
-        return $request->user()->hasPermissionTo('driver.trips.view')
+        return ($request->user()->hasPermissionTo('logistics.driver.trips')
+            || $request->user()->hasPermissionTo('driver.trips.view'))
             && !$request->user()->hasPermissionTo('logistics.deliveries.manage');
     }
 
     private function authorizeTripViewer(Request $request): void
     {
         abort_unless($request->user()->hasAnyPermission([
-            'driver.trips.view', 'logistics.deliveries.view', 'logistics.deliveries.manage',
+            'logistics.driver.trips', 'driver.trips.view', 'logistics.deliveries.view', 'logistics.deliveries.manage',
         ]) || $request->user()->hasRole('super_admin'), 403);
     }
 
@@ -1139,3 +1865,5 @@ class DeliveryTripController extends Controller
         return $tracking;
     }
 }
+
+

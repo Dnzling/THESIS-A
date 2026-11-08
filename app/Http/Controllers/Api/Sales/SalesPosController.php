@@ -19,6 +19,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\CRM\EcommerceOrderReturn;
+use Illuminate\Support\Facades\Storage;
 
 class SalesPosController extends Controller
 {
@@ -432,7 +434,7 @@ class SalesPosController extends Controller
                     'title' => 'New In-Store Order Received',
                     'message' => "POS order {$order->order_number} has been created.",
                     'severity' => 'info',
-                    'link' => "/sales/pos/orders/{$order->id}",
+                    'link' => "/pos-orders/{$order->id}",
                 ],
                 [(int) $user->id]
             );
@@ -531,6 +533,95 @@ class SalesPosController extends Controller
         $this->applyStoreScope($request, $query);
         $order = $query->findOrFail($id);
 
+        $returnRequests = EcommerceOrderReturn::query()
+            ->where('store_id', (int) $order->store_id)
+            ->where('source_type', 'pos')
+            ->where('sales_order_id', (int) $order->id)
+            ->with([
+                'salesOrderItem:id,order_id,product_name,sku,variation_id',
+                'financeRefund',
+                'replacementBranch:id,name',
+                'replacementInventory.product:id,product_name,sku',
+                'replacementInventory.variation:id,variation_name,variation_sku',
+                'replacementTrip:id,created_at,status,driver_user_id,vehicle_id',
+                'replacementTrip.driver:id,fname,lname',
+                'replacementTrip.vehicle:id,vehicle_name,plate_number',
+                'pickup',
+                'pickup.trip:id,created_at',
+                'pickup.destinationBranch:id,name',
+            ])
+            ->orderBy('created_at')
+            ->get();
+
+        $order->setAttribute('return_requests', $returnRequests->map(fn (EcommerceOrderReturn $return) => [
+            'id' => (int) $return->id,
+            'return_number' => $return->return_number,
+            'return_type' => $return->return_type,
+            'status' => $return->status,
+            'reason' => $return->reason,
+            'requested_quantity' => (int) $return->requested_quantity,
+            'created_at' => $return->created_at,
+            'reviewed_at' => $return->reviewed_at,
+            'review_notes' => $return->review_notes,
+            'inspected_at' => $return->inspected_at,
+            'inspection_notes' => $return->inspection_notes,
+            'resolved_at' => $return->resolved_at,
+            'updated_at' => $return->updated_at,
+            'pickup' => $return->pickup ? [
+                'status' => $return->pickup->status,
+                'scheduled_at' => $return->pickup->scheduled_at,
+                'branch_name' => $return->pickup->destinationBranch?->name,
+                'trip_reference' => $return->pickup->trip?->created_at
+                    ? sprintf('TRIP-%s-%06d', $return->pickup->trip->created_at->format('Y'), (int) $return->pickup->trip_id)
+                    : null,
+                'assigned_at' => $return->pickup->driver_user_id || $return->pickup->trip_id
+                    ? ($return->pickup->updated_at ?? $return->pickup->created_at)
+                    : null,
+                'picked_up_at' => $return->pickup->picked_up_at,
+                'out_for_delivery_at' => $return->pickup->out_for_delivery_at,
+                'delivered_at' => $return->pickup->delivered_at,
+            ] : null,
+            'item_name' => $return->salesOrderItem?->product_name,
+            'item_sku' => $return->salesOrderItem?->sku,
+            'refund' => $return->financeRefund ? [
+                'amount' => (float) $return->financeRefund->amount,
+                'created_at' => $return->financeRefund->created_at,
+                'status' => $return->financeRefund->status,
+                'method' => $return->financeRefund->refund_method,
+                'account_name' => $return->financeRefund->refund_account_name,
+                'account_number' => $return->financeRefund->refund_account_number,
+                'processed_at' => $return->financeRefund->processed_at,
+                'sent_at' => $return->financeRefund->sent_at,
+                'payout_reference' => $return->financeRefund->payout_reference,
+                'notes' => $return->financeRefund->notes,
+            ] : null,
+            'replacement' => $return->return_type === 'replacement' ? [
+                'status' => $return->replacement_status ?: 'awaiting_stock',
+                'price_difference' => (float) ($return->replacement_price_difference ?? 0),
+                'payment_status' => $return->replacement_payment_status,
+                'branch_name' => $return->replacementBranch?->name,
+                'item_name' => $return->replacementInventory?->variation?->variation_name
+                    ? trim(($return->replacementInventory->product?->product_name ?? '') . ' - ' . $return->replacementInventory->variation->variation_name)
+                    : ($return->replacementInventory?->product?->product_name ?? null),
+                'sku' => $return->replacementInventory?->variation?->variation_sku
+                    ?: $return->replacementInventory?->product?->sku,
+                'trip_reference' => $return->replacementTrip?->created_at
+                    ? sprintf('TRIP-%s-%06d', $return->replacementTrip->created_at->format('Y'), (int) $return->replacementTrip->id)
+                    : null,
+                'trip_status' => $return->replacementTrip?->status,
+                'driver_name' => trim(($return->replacementTrip?->driver?->fname ?? '') . ' ' . ($return->replacementTrip?->driver?->lname ?? '')) ?: null,
+                'vehicle' => $return->replacementTrip?->vehicle
+                    ? trim($return->replacementTrip->vehicle->vehicle_name . ' · ' . ($return->replacementTrip->vehicle->plate_number ?: ''))
+                    : null,
+                'assigned_at' => $return->replacement_assigned_at,
+                'dispatched_at' => $return->replacement_dispatched_at,
+                'delivered_at' => $return->replacement_delivered_at,
+                'received_by' => $return->replacement_received_by,
+                'failure_reason' => $return->replacement_failure_reason,
+                'proof_url' => $return->replacement_proof_path ? Storage::disk('public')->url($return->replacement_proof_path) : null,
+            ] : null,
+        ])->values()->all());
+
         return response()->json(['success' => true, 'data' => $order]);
     }
 
@@ -607,6 +698,9 @@ class SalesPosController extends Controller
             ], 422);
         }
 
+        $wasAlreadyQueued = (string) $order->status === 'ready_for_dispatch'
+            && strtolower((string) $order->delivery?->status) === 'ready_for_dispatch';
+
         DB::transaction(function () use ($order, $request): void {
             $delivery = $order->delivery;
             if (!$delivery) {
@@ -652,6 +746,34 @@ class SalesPosController extends Controller
                 $order->save();
             }
         });
+
+        if (!$wasAlreadyQueued) {
+            try {
+                $this->notifyUsersByPermissions(
+                    (int) $order->store_id,
+                    ['logistics.deliveries.view'],
+                    [
+                        'store_id' => (int) $order->store_id,
+                        'branch_id' => (int) $order->branch_id ?: null,
+                        'module' => 'logistics',
+                        'entity_type' => 'sales_order',
+                        'entity_id' => (int) $order->id,
+                        'action' => 'ready_for_dispatch',
+                        'title' => 'Sales Order Ready for Dispatch',
+                        'message' => "Sales order {$order->order_number} is ready for driver and trip assignment.",
+                        'severity' => 'info',
+                        'link' => '/logistics/deliveries',
+                        'data' => [
+                            'required_permission' => 'logistics.deliveries.view',
+                            'order_number' => $order->order_number,
+                        ],
+                    ],
+                    [(int) $request->user()->id]
+                );
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
 
         return response()->json([
             'success' => true,

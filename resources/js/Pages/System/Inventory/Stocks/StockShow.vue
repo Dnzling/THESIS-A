@@ -1,5 +1,13 @@
 <template>
   <div class="mx-auto max-w-6xl space-y-5 pb-8">
+    <Dialog v-model:visible="damagedDispositionVisible" modal header="Choose damaged-stock disposition" :style="{ width: 'min(34rem, calc(100vw - 2rem))' }">
+      <p class="mb-4 text-sm text-slate-600">Damaged units stay on hand but are not saleable. Choose where they should go next.</p>
+      <div class="grid gap-3">
+        <Button v-if="canCreateTransfer" label="Pull out to a warehouse" icon="pi pi-warehouse" severity="warn" outlined class="justify-start" @click="goToDamagedWarehousePullout" />
+        <Button v-if="canCreateSupplierReturn" label="Return to supplier" icon="pi pi-replay" severity="secondary" outlined class="justify-start" @click="goToDamagedSupplierReturn" />
+        <Message v-if="!canCreateTransfer && !canCreateSupplierReturn" severity="warn" :closable="false">You do not have permission to create a warehouse pull-out or supplier return.</Message>
+      </div>
+    </Dialog>
     <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex min-w-0 items-center gap-3">
         <Button icon="pi pi-arrow-left" text rounded aria-label="Go back" @click="router.back()" />
@@ -15,13 +23,14 @@
       <div v-if="item" class="flex flex-wrap gap-2 sm:justify-end">
         <Button label="Reorder rule" icon="pi pi-sliders-h" severity="secondary" outlined size="small" @click="goToReorderRule" />
         <Button v-if="['low_stock', 'out_of_stock'].includes(item.stock_status)" label="Create Stock Request" icon="pi pi-plus" severity="warn" outlined size="small" :loading="creatingStockRequest" :disabled="creatingStockRequest" @click="createPurchaseRequisition" />
+        <Button v-if="Number(item.quantity_damaged || 0) > 0 && canCreateDamagedDisposition" label="Damaged stock" icon="pi pi-exclamation-triangle" severity="danger" outlined size="small" @click="openDamagedDisposition" />
         <Button v-if="canUpdateItems" label="Edit item" icon="pi pi-pencil" severity="warn" size="small" @click="router.push({ name: 'inventory.items.edit', params: { id: itemId } })" />
       </div>
     </header>
 
     <div v-if="loading" class="space-y-4">
       <Skeleton height="10rem" borderRadius="1rem" />
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Skeleton v-for="index in 4" :key="index" height="6rem" borderRadius="1rem" /></div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Skeleton v-for="index in 5" :key="index" height="6rem" borderRadius="1rem" /></div>
       <Skeleton height="12rem" borderRadius="1rem" />
     </div>
 
@@ -49,7 +58,7 @@
         </template>
       </Card>
 
-      <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div v-for="metric in stockMetrics" :key="metric.label" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p class="text-xs font-medium text-slate-500">{{ metric.label }}</p>
           <p class="mt-2 text-2xl font-semibold text-slate-900">{{ metric.value }}</p>
@@ -132,6 +141,8 @@ import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import Badge from 'primevue/badge'
 import Chart from 'primevue/chart'
+import Dialog from 'primevue/dialog'
+import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
@@ -145,6 +156,7 @@ const itemId = Number(route.params.id)
 const item = ref<any>(null)
 const loading = ref(false)
 const creatingStockRequest = ref(false)
+const damagedDispositionVisible = ref(false)
 const performance = ref<any>(null)
 const performanceLoading = ref(false)
 const performanceError = ref('')
@@ -163,10 +175,16 @@ const stockMetrics = computed(() => [
   { label: 'On hand', value: Number(item.value?.quantity_on_hand || 0), note: 'Physical quantity recorded' },
   { label: 'Reserved', value: Number(item.value?.quantity_reserved || 0), note: 'Held for current orders' },
   { label: 'Available', value: Number(item.value?.quantity_available || 0), note: 'Ready to allocate or sell' },
+  { label: 'Damaged', value: Number(item.value?.quantity_damaged || 0), note: 'Quarantined, still on hand' },
   { label: 'Pre Order', value: Number(item.value?.quantity_incoming || 0), note: 'Expected replenishment' },
 ])
 
 const canUpdateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
+const canCreateTransfer = computed(() => authStore.hasPermission('inventory.transfers.manage')
+  || authStore.hasPermission('inventory.transfers.create')
+)
+const canCreateSupplierReturn = computed(() => authStore.hasPermission('inventory.stock_returns.manage'))
+const canCreateDamagedDisposition = computed(() => canCreateTransfer.value || canCreateSupplierReturn.value)
 const isFinishedProduct = computed(() => item.value?.product?.product_type === 'finished_good')
 const performanceChartData = computed(() => ({
   labels: performance.value?.labels || [],
@@ -348,6 +366,39 @@ const createPurchaseRequisition = async () => {
   } finally {
     creatingStockRequest.value = false
   }
+}
+
+const openDamagedDisposition = () => {
+  if (!item.value) return
+  damagedDispositionVisible.value = true
+}
+
+const goToDamagedWarehousePullout = () => {
+  if (!item.value) return
+  damagedDispositionVisible.value = false
+  router.push({
+    name: 'inventory.transfers.create',
+    query: {
+      damaged_pullout: '1',
+      branch_inventory_id: String(item.value.id),
+      branch_id: String(item.value.branch_id),
+      requested_quantity: String(item.value.quantity_damaged || 1),
+    },
+  })
+}
+
+const goToDamagedSupplierReturn = () => {
+  if (!item.value) return
+  damagedDispositionVisible.value = false
+  router.push({
+    name: 'inventory.stock-returns.create',
+    query: {
+      damaged_return: '1',
+      branch_inventory_id: String(item.value.id),
+      branch_id: String(item.value.branch_id),
+      requested_quantity: String(item.value.quantity_damaged || 1),
+    },
+  })
 }
 
 onMounted(() => {

@@ -14,14 +14,14 @@
           <div class="md:col-span-4">
             <IconField>
               <InputIcon class="pi pi-search" />
-              <InputText v-model="filters.search" placeholder="Search order, return, customer" fluid size="small" />
+              <InputText v-model="filters.search" placeholder="Search order, return, customer" fluid size="small" showClear />
             </IconField>
           </div>
           <div class="md:col-span-3">
-            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" fluid size="small" />
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" fluid size="small" showClear />
           </div>
           <div class="md:col-span-3">
-            <DatePicker v-model="filters.date_range" selectionMode="range" dateFormat="M dd, yy" placeholder="Created date range" showIcon showButtonBar fluid size="small" />
+            <DatePicker v-model="filters.date_range" selectionMode="range" dateFormat="M dd, yy" placeholder="Created date range" showIcon showButtonBar showClear fluid size="small" />
           </div>
           <div class="md:col-span-2">
             <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" class="w-full" @click="resetFilters" />
@@ -68,9 +68,9 @@
             </template>
           </Column>
 
-          <Column header="Scheduled Pickup" style="min-width: 11rem">
+          <Column header="Pickup Date" style="min-width: 11rem">
             <template #body="{ data }">
-              <span class="whitespace-nowrap text-xs text-slate-600">{{ data.scheduled_at ? formatDateTime(data.scheduled_at) : '-' }}</span>
+              <span class="whitespace-nowrap text-xs text-slate-600">{{ data.scheduled_at ? formatDateOnly(data.scheduled_at) : '-' }}</span>
             </template>
           </Column>
 
@@ -138,12 +138,12 @@ const pickups = ref<any[]>([])
 
 const filters = reactive({
   search: '',
-  status: 'ready_for_dispatch',
+  status: '',
   date_range: null as Date[] | null,
 })
 
 const sort = reactive({ field: 'created_at', order: -1 })
-const hasActiveFilters = computed(() => Boolean(filters.search || filters.date_range?.length || filters.status !== 'ready_for_dispatch'))
+const hasActiveFilters = computed(() => Boolean(filters.search || filters.date_range?.length || filters.status))
 
 const pageState = reactive({
   page: 1,
@@ -240,6 +240,12 @@ const driverName = (driver?: any) => {
 const formatDateTime = (value: any) => {
   const date = new Date(value)
   return new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)
+}
+
+const formatDateOnly = (value: any) => {
+  const raw = String(value || '')
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00`) : new Date(raw)
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit' }).format(date)
 }
 
 watch(

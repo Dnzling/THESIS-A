@@ -44,9 +44,9 @@
                         <Model3DPreview
                             model-url="/storage/platform/sofa.glb"
                             model-format="glb"
-                            :camera-x="-18"
-                            :camera-y="14"
-                            :zoom="1.25"
+                            :camera-x="-90"
+                            :camera-y="-10"
+                            :zoom="1"
                             allow-bottom-view
                             height="330px"
                         />

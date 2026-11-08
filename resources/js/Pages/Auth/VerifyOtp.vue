@@ -252,6 +252,33 @@ const verifyOtp = async () => {
         await authStore.fetchCurrentUser({ reloadPermissions: true })
       }
 
+      const verifiedUser = authStore.currentUser as any
+      const verifiedRole = String(verifiedUser?.role || user.role || '').toLowerCase().replace(/[\s-]+/g, '_')
+      if (verifiedUser?.is_employee && !['supplier', 'customer', 'super_admin', 'applicant'].includes(verifiedRole)) {
+        const attendance = await authStore.clockInEmployeeAfterLogin(verifiedUser)
+        if (attendance) {
+          const attendanceMessage = attendance.state === 'clocked_in' ? 'You are now clocked in.'
+            : attendance.state === 'already_clocked_in' ? 'You are already clocked in.'
+            : attendance.state === 'completed' ? 'Your attendance is complete for today.'
+            : attendance.message || 'Attendance could not be recorded.'
+          const lateSeconds = Number(attendance.late_seconds || 0)
+          const lateMinutes = Math.ceil(lateSeconds / 60)
+          const hours = Math.floor(lateMinutes / 60)
+          const minutes = lateMinutes % 60
+          const lateMessage = lateSeconds > 0
+            ? lateSeconds < 60 ? 'Less than a minute late.'
+              : `You are late by ${hours ? `${hours} hour${hours === 1 ? '' : 's'}` : ''}${hours && minutes ? ' and ' : ''}${minutes ? `${minutes} minute${minutes === 1 ? '' : 's'}` : ''}.`
+            : ''
+          sessionStorage.setItem('employee_login_welcome', JSON.stringify({
+            state: attendance.state,
+            employeeName: attendance.employeeName || verifiedUser.full_name || verifiedUser.first_name || 'there',
+            branchName: verifiedUser.branch?.name || 'Branch not assigned',
+            attendanceMessage,
+            lateMessage,
+          }))
+        }
+      }
+
       const destination = verifiedCustomer
         ? '/'
         : verifiedBusinessRegistration && needsStoreSetup

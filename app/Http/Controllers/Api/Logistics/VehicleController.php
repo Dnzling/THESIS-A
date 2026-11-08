@@ -176,6 +176,7 @@ class VehicleController extends Controller
     private function buildIndexQuery(int $storeId, ?int $branchId, $user, Request $request): Builder
     {
         $query = EcommerceDeliveryVehicle::query()
+            ->with('branch:id,name')
             ->select([
                 'id',
                 'store_id',

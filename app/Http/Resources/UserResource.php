@@ -35,6 +35,7 @@ class UserResource extends JsonResource
             'last_name' => $this->lname,
             'email' => $this->email,
             'avatar_url' => $this->avatar_url,
+            'is_employee' => $this->when($canViewOwnStoreBranch, fn () => $this->isEmployee()),
             'store_id' => $canViewStoreBranch ? $this->store_id : null,
             'position_setup_required' => $canViewStoreBranch && $this->store
                 ? app(\App\Services\Store\StoreTrialService::class)->needsPositionSetup($this->store)

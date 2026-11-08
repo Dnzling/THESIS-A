@@ -290,7 +290,7 @@
       <Message v-if="customerValidationAttempted && customerInformationError" severity="error" :closable="false" class="mb-4">
         {{ customerInformationError }}
       </Message>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form id="pos-customer-information-form" class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="requestSaveCustomerInformation">
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Name <span class="text-red-600">*</span></label>
           <InputText v-model="customerForm.name" :invalid="customerValidationAttempted && !customerForm.name.trim()" fluid placeholder="Customer name" />
@@ -356,9 +356,14 @@
         </div>
         <div class="md:col-span-2">
           <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location</label>
-          <div class="flex gap-2 mb-2">
-            <InputText v-model="addressSearchText" placeholder="Search address to pin" fluid />
-            <Button text icon="pi pi-search" @click="geocodeCustomerAddress" />
+          <div class="mb-2 flex gap-2">
+            <InputText
+              v-model="addressSearchText"
+              placeholder="Search address to pin"
+              fluid
+              @keydown.enter.prevent.stop="geocodeCustomerAddress"
+            />
+            <Button text icon="pi pi-search" :loading="searchingCustomerAddress" @click="geocodeCustomerAddress" />
           </div>
           <div ref="mapEl" class="h-64 w-full rounded-lg border border-gray-200"></div>
           <div class="text-xs text-gray-500 mt-2">
@@ -369,9 +374,16 @@
           <label class="text-sm font-medium text-gray-700 block mb-1">Delivery Notes</label>
           <Textarea v-model="customerForm.deliveryNotes" rows="2" auto-resize fluid placeholder="Gate, landmark, instructions (optional)" />
         </div>
-      </div>
+      </form>
       <template #footer>
         <Button label="Close" severity="secondary" text @click="customerDialog = false" />
+        <Button
+          type="submit"
+          form="pos-customer-information-form"
+          label="Save Information"
+          icon="pi pi-check"
+          severity="warn"
+        />
       </template>
     </Dialog>
   </div>
@@ -428,6 +440,7 @@ const estimatingShipping = ref(false)
 const shippingEstimateError = ref('')
 const customerDialog = ref(false)
 const customerValidationAttempted = ref(false)
+const searchingCustomerAddress = ref(false)
 const cashAmountAttempted = ref(false)
 const customerForm = ref({
   name: '',
@@ -861,16 +874,39 @@ const geocodeAddressText = async (addressText: string): Promise<{ latitude: numb
 }
 
 async function geocodeCustomerAddress() {
-  const built = `${customerForm.value.addressLine || ''}, ${barangayOptions.value.find(b => b.value === addressSelection.value.barangayCode)?.label || ''}, ${cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label || ''}, ${provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label || ''}, Philippines ${addressSearchText.value ? ` ${addressSearchText.value}` : ''}`
-  const geocoded = await geocodeAddressText(built)
-  if (!geocoded) {
-    toast.add({ severity: 'warn', summary: 'Not Found', detail: 'Unable to find location for that address.' })
-    return
+  if (searchingCustomerAddress.value) return
+  searchingCustomerAddress.value = true
+  try {
+    const built = `${customerForm.value.addressLine || ''}, ${barangayOptions.value.find(b => b.value === addressSelection.value.barangayCode)?.label || ''}, ${cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label || ''}, ${provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label || ''}, Philippines ${addressSearchText.value ? ` ${addressSearchText.value}` : ''}`
+    const geocoded = await geocodeAddressText(built)
+    if (!geocoded) {
+      toast.add({ severity: 'warn', summary: 'Not Found', detail: 'Unable to find location for that address.' })
+      return
+    }
+    customerForm.value.latitude = geocoded.latitude
+    customerForm.value.longitude = geocoded.longitude
+    if (marker) marker.setLngLat([geocoded.longitude, geocoded.latitude])
+    if (map) map.flyTo({ center: [geocoded.longitude, geocoded.latitude], zoom: 14 })
+  } finally {
+    searchingCustomerAddress.value = false
   }
-  customerForm.value.latitude = geocoded.latitude
-  customerForm.value.longitude = geocoded.longitude
-  if (marker) marker.setLngLat([geocoded.longitude, geocoded.latitude])
-  if (map) map.flyTo({ center: [geocoded.longitude, geocoded.latitude], zoom: 14 })
+}
+
+function requestSaveCustomerInformation() {
+  customerValidationAttempted.value = true
+  if (customerInformationError.value) return
+
+  confirm.require({
+    header: 'Save Customer Information?',
+    message: 'Use these details for this POS order? You can still update them before checkout.',
+    icon: 'pi pi-user-edit',
+    acceptLabel: 'Save Information',
+    rejectLabel: 'Continue Editing',
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: () => {
+      customerDialog.value = false
+    },
+  })
 }
 
 async function fetchProvinces() {

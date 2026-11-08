@@ -2,6 +2,7 @@
 
 namespace App\Models\Core;
 
+use App\Events\SystemNotificationCreated;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Store\Store;
@@ -33,6 +34,13 @@ class SystemNotification extends Model
         'is_read' => 'boolean',
         'read_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (self $notification): void {
+            SystemNotificationCreated::dispatch($notification);
+        });
+    }
 
     public function store(): BelongsTo
     {

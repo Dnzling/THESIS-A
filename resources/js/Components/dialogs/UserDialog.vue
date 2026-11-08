@@ -35,17 +35,17 @@
     :closable="!isLoggingOut"
     :closeOnEscape="!isLoggingOut"
     :header="isLoggingOut ? '' : 'Log out of FurniSync?'"
-    :style="{ width: 'min(92vw, 400px)' }"
+    :style="{ width: 'min(95vw, 500px)' }"
   >
     <div v-if="isLoggingOut" class="flex flex-col items-center justify-center p-4">
       <ProgressSpinner style="width: 42px; height: 42px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
       <p class="mt-4 text-base font-medium text-gray-700">Logging you out...</p>
-      <p class="text-sm text-gray-500">Please wait a moment</p>
+      <p class="text-sm`` text-gray-500">Please wait a moment</p>
     </div>
-    <p v-if="!isLoggingOut" class="text-sm text-slate-600">Are you sure you want to end your current session?</p>
+    <p v-if="!isLoggingOut" class="text-base text-slate-600">Are you sure you want to end your current session?</p>
     <template v-if="!isLoggingOut" #footer>
-      <button class="rounded-lg px-4 py-2 text-sm text-slate-600" @click="confirmLogout = false">Cancel</button>
-      <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white" @click="performLogout">Log Out</button>
+      <Button class="font-semibold" severity="secondary" outlined @click="confirmLogout = false">Cancel</Button>
+      <Button class="font-semibold" severity="danger" @click="performLogout">Log Out</Button>
     </template>
   </Dialog>
 </template>

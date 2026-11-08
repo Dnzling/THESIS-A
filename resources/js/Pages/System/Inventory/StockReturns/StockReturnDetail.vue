@@ -1,5 +1,23 @@
 <template>
   <div class="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6">
+    <ConfirmDialog />
+    <Dialog v-model:visible="resolutionVisible" modal header="Record supplier response" :style="{ width: 'min(32rem, calc(100vw - 2rem))' }">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">Record what the supplier decided after receiving the damaged item.</p>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-slate-700">Supplier outcome</label>
+          <Select v-model="resolution.supplier_resolution" :options="resolutionOptions" optionLabel="label" optionValue="value" placeholder="Select outcome" fluid />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-slate-700">Reference or notes</label>
+          <Textarea v-model="resolution.supplier_resolution_notes" rows="3" autoResize fluid placeholder="Credit note, replacement reference, repair notes, or reason rejected." />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="resolutionVisible = false" />
+        <Button label="Save outcome" severity="warn" :loading="actionLoading" :disabled="!resolution.supplier_resolution" @click="recordResolution" />
+      </template>
+    </Dialog>
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text rounded aria-label="Back to stock returns"
@@ -33,8 +51,29 @@
             <div><p class="field-label">Return Reason</p><p class="field-value">{{ humanize(stockReturn.return_reason) }}</p></div>
             <div><p class="field-label">Total Return Value</p><p class="field-value">{{ money(stockReturn.total_value) }}</p></div>
           </div>
+          <div v-if="stockReturn.return_type === 'supplier_return'" class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+            <span class="font-medium text-slate-700">Resolution state: </span>
+            <span class="text-slate-600">{{ stockReturn.supplier_resolution ? humanize(stockReturn.supplier_resolution) : 'Awaiting supplier response' }}</span>
+          </div>
           <p v-if="stockReturn.reason_details" class="mt-4 whitespace-pre-line text-sm text-slate-700">{{ stockReturn.reason_details }}</p>
           <p v-if="stockReturn.notes" class="mt-3 whitespace-pre-line text-sm text-slate-600">{{ stockReturn.notes }}</p>
+        </template>
+      </Card>
+
+      <Card v-if="stockReturn.return_type === 'supplier_return'" class="border border-orange-200 bg-orange-50/40">
+        <template #content>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="font-semibold text-slate-900">Supplier disposition</p>
+              <p class="mt-1 text-sm text-slate-600">{{ stockReturn.supplier_resolution ? humanize(stockReturn.supplier_resolution) : 'Waiting for supplier response' }}</p>
+              <p v-if="stockReturn.supplier_resolution_notes" class="mt-1 text-sm text-slate-600">{{ stockReturn.supplier_resolution_notes }}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <Button v-if="stockReturn.status === 'requested' && canApprove" label="Approve return" icon="pi pi-check" severity="warn" size="small" :loading="actionLoading" @click="approveReturn" />
+              <Button v-if="stockReturn.status === 'approved' && canManage" label="Mark dispatched" icon="pi pi-send" severity="warn" outlined size="small" :loading="actionLoading" @click="dispatchReturn" />
+              <Button v-if="stockReturn.status === 'in_transit' && canManage" label="Record supplier response" icon="pi pi-file-edit" severity="secondary" outlined size="small" @click="resolutionVisible = true" />
+            </div>
+          </div>
         </template>
       </Card>
 
@@ -67,19 +106,43 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axiosClient from '@/axios'
 import Button from 'primevue/button'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Card from 'primevue/card'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
+import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
+import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import { computed, reactive } from 'vue'
+import inventoryService from '@/services/inventory.service'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const confirm = useConfirm()
+const toast = useToast()
+const authStore = useAuthStore()
 const stockReturn = ref<any>(null)
 const loading = ref(true)
 const printing = ref(false)
 const error = ref('')
+const actionLoading = ref(false)
+const resolutionVisible = ref(false)
+const resolution = reactive({ supplier_resolution: '', supplier_resolution_notes: '' })
+const resolutionOptions = [
+  { label: 'Replacement', value: 'replacement' },
+  { label: 'Credit', value: 'credit' },
+  { label: 'Repair', value: 'repair' },
+  { label: 'Rejected by supplier', value: 'rejected' },
+  { label: 'Other', value: 'other' },
+]
+const canApprove = computed(() => authStore.hasPermission('inventory.stock_returns.approve'))
+const canManage = computed(() => authStore.hasPermission('inventory.stock_returns.manage'))
 
 const load = async () => {
   loading.value = true
@@ -93,6 +156,48 @@ const load = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const approveReturn = () => confirm.require({
+  header: 'Approve supplier return?',
+  message: 'This approves the return request only. Damaged stock will be removed when it is marked as dispatched.',
+  acceptLabel: 'Approve',
+  rejectLabel: 'Keep pending',
+  accept: async () => {
+    actionLoading.value = true
+    try { await inventoryService.approveStockReturn(Number(route.params.id)); await load(); toast.add({ severity: 'success', summary: 'Return approved', detail: 'Stock remains quarantined until dispatch.', life: 3000 }) }
+    catch (cause: any) { toast.add({ severity: 'error', summary: 'Unable to approve', detail: cause?.response?.data?.message || 'Approval failed.', life: 4000 }) }
+    finally { actionLoading.value = false }
+  },
+})
+
+const dispatchReturn = () => confirm.require({
+  header: 'Mark return as dispatched?',
+  message: 'This confirms the damaged items have physically left the branch. The damaged and on-hand counts will be reduced.',
+  acceptLabel: 'Mark dispatched',
+  rejectLabel: 'Cancel',
+  accept: async () => {
+    actionLoading.value = true
+    try { await inventoryService.shipStockReturn(Number(route.params.id)); await load(); toast.add({ severity: 'success', summary: 'Return dispatched', detail: 'Damaged stock was removed from branch on-hand.', life: 3000 }) }
+    catch (cause: any) { toast.add({ severity: 'error', summary: 'Unable to dispatch', detail: cause?.response?.data?.message || 'Dispatch failed.', life: 4000 }) }
+    finally { actionLoading.value = false }
+  },
+})
+
+const recordResolution = async () => {
+  if (!resolution.supplier_resolution || actionLoading.value) return
+  actionLoading.value = true
+  try {
+    await inventoryService.receiveStockReturn(Number(route.params.id), {
+      supplier_resolution: resolution.supplier_resolution,
+      supplier_resolution_notes: resolution.supplier_resolution_notes || undefined,
+    })
+    resolutionVisible.value = false
+    await load()
+    toast.add({ severity: 'success', summary: 'Supplier outcome recorded', detail: 'The return record is now complete.', life: 3000 })
+  } catch (cause: any) {
+    toast.add({ severity: 'error', summary: 'Unable to record outcome', detail: cause?.response?.data?.message || 'Supplier outcome could not be saved.', life: 4000 })
+  } finally { actionLoading.value = false }
 }
 
 const printReturn = async () => {

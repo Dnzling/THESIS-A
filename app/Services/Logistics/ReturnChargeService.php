@@ -9,16 +9,22 @@ class ReturnChargeService
 {
     public function __construct(private readonly BulkyProductService $bulkyProducts) {}
 
-    public function calculate(EcommerceOrderReturn $return, string $responsibility): array
+    public function calculate(EcommerceOrderReturn $return, string $responsibility, ?float $distanceOverride = null): array
     {
-        $return->loadMissing(['order.delivery', 'orderItem.product', 'orderItem.branchInventory.variation']);
+        if ($return->source_type === 'pos') {
+            $return->loadMissing(['salesOrder.delivery', 'salesOrderItem.product', 'salesOrderItem.branchInventory.variation']);
+        } else {
+            $return->loadMissing(['order.delivery', 'orderItem.product', 'orderItem.branchInventory.variation']);
+        }
+        $order = $return->sourceOrder();
+        $orderItem = $return->sourceOrderItem();
         $quantity = max(1, (int) $return->requested_quantity);
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $return->store_id)->first();
-        $product = $return->orderItem?->product;
-        $variation = $return->orderItem?->branchInventory?->variation;
+        $product = $orderItem?->product;
+        $variation = $orderItem?->branchInventory?->variation;
         $unitWeight = (float) ($variation?->weight_kg ?? $product?->weight_kg ?? 0);
         $totalWeight = $unitWeight * $quantity;
-        $distance = (float) ($return->order?->delivery?->distance_km ?? 0);
+        $distance = $distanceOverride ?? (float) ($order?->delivery?->distance_km ?? 0);
         $isBulky = $setting && $this->bulkyProducts->isBulky($product, $setting);
         if ($setting && $variation && !$isBulky) {
             $sides = array_filter([(float) $variation->length_cm, (float) $variation->width_cm, (float) $variation->height_cm], fn ($side) => $side > 0);
@@ -32,7 +38,9 @@ class ReturnChargeService
         $weightFee = $setting && $setting->is_active ? $totalWeight * (float) $setting->per_kg_fee : 0.0;
         $bulkyFee = $setting && $setting->is_active && $isBulky ? $quantity * (float) $setting->bulky_item_surcharge : 0.0;
         $raw = $base + $distanceFee + $weightFee + $bulkyFee;
-        $calculated = $setting && $setting->is_active ? $raw : 0.0;
+        $minimumFee = $setting && $setting->is_active ? (float) ($setting->min_delivery_fee ?? 0) : 0.0;
+        $minimumAdjustment = $setting && $setting->is_active ? max(0, $minimumFee - $raw) : 0.0;
+        $calculated = $setting && $setting->is_active ? $raw + $minimumAdjustment : 0.0;
         $charged = $responsibility === 'customer' ? round($calculated, 2) : 0.0;
 
         return [
@@ -44,6 +52,8 @@ class ReturnChargeService
                 'base_fee' => round($base, 2),
                 'distance_km' => round($distance, 2),
                 'distance_fee' => round($distanceFee, 2),
+                'minimum_fee' => round($minimumFee, 2),
+                'minimum_fee_adjustment' => round($minimumAdjustment, 2),
                 'unit_weight_kg' => round($unitWeight, 2),
                 'total_weight_kg' => round($totalWeight, 2),
                 'weight_fee' => round($weightFee, 2),

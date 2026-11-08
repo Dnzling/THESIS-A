@@ -99,7 +99,7 @@
                     class="font-semibold underline"
                     @click="
                         router.visit(
-                            `/sales/pos/orders/${quote.sales_order_id}`
+                            `/pos-orders/${quote.sales_order_id}`
                         )
                     "
                 >

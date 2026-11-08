@@ -6,6 +6,7 @@ use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Inventory\StockTransfer;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,7 @@ class DeliveryTrip extends Model
         'store_id',
         'vehicle_id',
         'driver_user_id',
+        'assistant_user_ids',
         'status',
         'scheduled_departure_at',
         'notes',
@@ -29,6 +31,7 @@ class DeliveryTrip extends Model
 
     protected $casts = [
         'scheduled_departure_at' => 'datetime',
+        'assistant_user_ids' => 'array',
     ];
 
     public function store(): BelongsTo
@@ -65,4 +68,10 @@ class DeliveryTrip extends Model
     {
         return $this->hasMany(StockTransfer::class, 'trip_id');
     }
+
+    public function replacementReturns(): HasMany
+    {
+        return $this->hasMany(EcommerceOrderReturn::class, 'replacement_trip_id');
+    }
+
 }
