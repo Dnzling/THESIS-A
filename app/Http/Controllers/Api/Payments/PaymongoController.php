@@ -905,11 +905,14 @@ class PaymongoController extends Controller
     private function availableHostedMethods(?Store $store, array $accountMethods): array
     {
         if (str_starts_with((string) config('paymongo.secret'), 'sk_test_')) {
-            return ['gcash', 'card', 'paymaya'];
+            return ['qrph', 'gcash', 'card', 'paymaya'];
         }
 
-        $supported = ['gcash', 'card', 'paymaya', 'grab_pay'];
+        $supported = ['qrph', 'gcash', 'card', 'paymaya', 'grab_pay'];
         $methods = count($accountMethods) ? $accountMethods : $this->resolveStorePaymongoMethods($store);
+        // QR Ph is enabled by default for activated PayMongo accounts, even when
+        // older store settings only list individually configured wallets.
+        $methods[] = 'qrph';
 
         return array_values(array_intersect($supported, $methods));
     }

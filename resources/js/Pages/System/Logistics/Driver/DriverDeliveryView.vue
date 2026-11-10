@@ -842,7 +842,7 @@ const nextStatus = computed(() =>
     ? (
         {
           pending: 'en_route_to_supplier',
-          en_route_to_supplier: 'in_transit',
+          en_route_to_supplier: 'out_for_delivery',
           in_transit: 'out_for_delivery',
           out_for_delivery: 'delivered',
         } as any
@@ -865,8 +865,11 @@ const nextStatusLabel = computed(() => {
   if (source.value === 'pickup' && nextStatus.value === 'in_transit') {
     return 'Confirm Supplier Pickup'
   }
+  if (source.value === 'pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'en_route_to_supplier') {
+    return 'Confirm Pickup & Start Delivery'
+  }
   if (source.value === 'pickup' && nextStatus.value === 'out_for_delivery') {
-    return 'Start Route to Store'
+    return 'Continue Delivery to Store'
   }
   if (source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned') {
     return 'Confirm Pickup & Start Delivery'
@@ -894,7 +897,7 @@ const proofPhotoLabel = computed(() =>
     : source.value === 'return_pickup' && nextStatus.value === 'delivered'
       ? 'Return delivered to branch photo'
       :
-  source.value === 'pickup' && nextStatus.value === 'in_transit'
+  source.value === 'pickup' && ['en_route_to_supplier', 'in_transit'].includes(currentDeliveryStatus.value) && nextStatus.value === 'out_for_delivery'
     ? 'Supplier pickup photo'
     : nextStatus.value === 'delivered'
     ? source.value === 'pickup'
@@ -912,7 +915,7 @@ const proofInstruction = computed(() =>
     ? nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
       ? 'Attach a photo confirming the item was collected from the customer. Your GPS location will also be captured.'
       : 'Attach a photo confirming the returned item was delivered to the destination branch. Your final GPS location will be captured.'
-    : source.value === 'pickup' && nextStatus.value === 'in_transit'
+    : source.value === 'pickup' && ['en_route_to_supplier', 'in_transit'].includes(currentDeliveryStatus.value) && nextStatus.value === 'out_for_delivery'
       ? 'Attach a photo confirming the goods were collected from the supplier. Driver location is included when available.'
     :
   nextStatus.value === 'delivered'
@@ -931,8 +934,8 @@ const proofInstruction = computed(() =>
 const proofSubmitLabel = computed(() =>
   source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
     ? 'Confirm Pickup & Start Delivery'
-    : source.value === 'pickup' && nextStatus.value === 'in_transit'
-      ? 'Confirm Supplier Pickup'
+    : source.value === 'pickup' && ['en_route_to_supplier', 'in_transit'].includes(currentDeliveryStatus.value) && nextStatus.value === 'out_for_delivery'
+      ? 'Confirm Pickup & Start Delivery'
     : nextStatus.value === 'delivered'
     ? source.value === 'pickup' ? 'Confirm Delivery to Store' : 'Mark Delivered'
     : 'Mark In Transit',
@@ -1281,7 +1284,7 @@ const submitPickupStatus = async () => {
       summary:
         targetStatus === 'delivered'
           ? source.value === 'pickup' ? 'Store Handoff Confirmed' : 'Delivery Completed'
-          : source.value === 'pickup' && targetStatus === 'in_transit'
+          : source.value === 'pickup' && targetStatus === 'out_for_delivery'
             ? 'Supplier Pickup Confirmed'
           : 'Delivery In Transit',
       detail:
@@ -1289,8 +1292,8 @@ const submitPickupStatus = async () => {
           ? source.value === 'pickup'
             ? 'The handoff photo was recorded and the goods were delivered to the receiving store.'
             : 'The delivery proof was recorded and the order was marked delivered.'
-          : source.value === 'pickup' && targetStatus === 'in_transit'
-            ? 'The supplier pickup photo was recorded. Start the route to the store when you are ready.'
+          : source.value === 'pickup' && targetStatus === 'out_for_delivery'
+            ? 'The supplier pickup photo was recorded and the delivery is now on its way to the store.'
             : 'The proof photo was recorded and the delivery is now in transit.',
       life: 3000,
     })

@@ -1159,7 +1159,7 @@ class UnifiedDeliveryController extends Controller
     {
         $source = strtolower($source);
         $targetStatus = strtolower((string) $request->input('status'));
-        $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['in_transit', 'delivered'], true))
+        $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['out_for_delivery', 'delivered'], true))
             || (in_array($source, ['ecommerce', 'sales'], true) && in_array($targetStatus, ['in_transit', 'delivered'], true));
         // GPS is best-effort for delivery milestones. A driver may submit the
         // required proof even when the device cannot provide a fresh position.
@@ -1194,7 +1194,8 @@ class UnifiedDeliveryController extends Controller
             $from = (string) $pickup->status;
             $allowedTransitions = [
                 'pending' => ['en_route_to_supplier', 'cancelled'],
-                'en_route_to_supplier' => ['in_transit', 'cancelled'],
+                'en_route_to_supplier' => ['out_for_delivery', 'cancelled'],
+                // Retain the old intermediate state for pickups already underway.
                 'in_transit' => ['out_for_delivery', 'cancelled'],
                 'out_for_delivery' => ['delivered', 'cancelled'],
             ];

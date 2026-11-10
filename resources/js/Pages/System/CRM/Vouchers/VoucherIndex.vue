@@ -25,7 +25,7 @@
           <template #empty><div class="py-8 text-center text-xs text-slate-500">No vouchers found.</div></template>
           <Column field="voucher_name" header="Name" />
           <Column field="code" header="Code" />
-          <Column field="voucher_slots" header="Voucher Slots" />
+          <Column field="voucher_slots" header="Maximum Uses" />
           <Column header="Performance">
             <template #body="{ data }">
               <div class="leading-4">

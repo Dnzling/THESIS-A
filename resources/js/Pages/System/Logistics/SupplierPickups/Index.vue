@@ -57,21 +57,9 @@
           <Column field="shipping_fee" header="Fee" class="text-right">
             <template #body="{ data }">{{ data.shipping_fee == null ? '-' : money(data.shipping_fee) }}</template>
           </Column>
-          <Column header="Actions" style="width: 13rem">
+          <Column header="Actions" style="width: 7rem">
             <template #body="{ data }">
-              <div class="flex flex-wrap items-center gap-2">
-                <Button icon="pi pi-eye" label="View" size="small" outlined rounded @click="view(data)" />
-                <Button
-                  v-if="canManage && data.can_create_delivery"
-                  icon="pi pi-user-plus"
-                  label="Assign"
-                  size="small"
-                  severity="warn"
-                  outlined
-                  rounded
-                  @click="assign(data)"
-                />
-              </div>
+              <Button icon="pi pi-eye" label="View" size="small" outlined rounded @click="view(data)" />
             </template>
           </Column>
         </DataTable>
@@ -94,11 +82,8 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import logisticsService from '@/services/logistics.service'
-import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
-const auth = useAuthStore()
-const canManage = auth.hasPermission('logistics.supplier-pickups.manage')
 const loading = ref(false)
 const pickups = ref<any[]>([])
 const search = ref('')
@@ -149,7 +134,6 @@ const clearFilters = () => {
   load()
 }
 const view = (pickup: any) => router.push({ name: 'logistics.supplier-pickups.detail', params: { orderId: pickup.order_id } })
-const assign = (pickup: any) => router.push({ name: 'logistics.supplier-pickups.assign', params: { id: pickup.order_id } })
 const statusLabel = (value: string) => value === 'ready_for_dispatch' ? 'Ready for Dispatch' : String(value || 'Pending').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const statusSeverity = (value: string) => {
   if (['delivered'].includes(String(value).toLowerCase())) return 'success'

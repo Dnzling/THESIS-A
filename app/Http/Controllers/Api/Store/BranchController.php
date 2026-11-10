@@ -7,6 +7,7 @@ use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Hr\Employee;
 use App\Services\Store\CaviteLocationService;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class BranchController extends Controller
                 'success' => true,
                 'data' => $branches,
                 'store_location' => $store,
+                'can_create_warehouse' => $this->canCreateWarehouse($user),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -67,6 +69,13 @@ class BranchController extends Controller
                 'is_main_branch' => 'nullable|boolean',
                 'branch_type' => 'nullable|in:storefront,warehouse,wholesale',
             ]);
+
+            if (($validated['branch_type'] ?? 'storefront') === 'warehouse'
+                && !$this->canCreateWarehouse($user)) {
+                throw ValidationException::withMessages([
+                    'branch_type' => 'Warehouse branches are not enabled for this store plan.',
+                ]);
+            }
 
             $storeId = $user?->store_id;
             $branchCode = $validated['branch_code'] ?? $this->generateBranchCode($validated['name'], $storeId);
@@ -135,10 +144,12 @@ class BranchController extends Controller
 
     public function show(Request $request, $id)
     {
-        $branch = Branch::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
+        $user = $request->user();
+        $branch = Branch::query()->where('store_id', $user->store_id)->findOrFail($id);
         return response()->json([
             'success' => true,
             'data' => $branch,
+            'can_create_warehouse' => $this->canCreateWarehouse($user),
         ]);
     }
 
@@ -248,6 +259,14 @@ class BranchController extends Controller
             'geofence_enabled' => 'nullable|boolean',
         ]);
 
+        if (($validated['branch_type'] ?? null) === 'warehouse'
+            && $branch->branch_type !== 'warehouse'
+            && !$this->canCreateWarehouse($request->user())) {
+            throw ValidationException::withMessages([
+                'branch_type' => 'Warehouse branches are not enabled for this store plan.',
+            ]);
+        }
+
         if (isset($validated['latitude'], $validated['longitude'])) {
             try {
                 if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
@@ -268,5 +287,18 @@ class BranchController extends Controller
             'data' => $branch,
             'message' => 'Branch updated successfully',
         ]);
+    }
+
+    private function canCreateWarehouse($user): bool
+    {
+        if (!$user || !$user->store_id) {
+            return false;
+        }
+
+        return app(PermissionService::class)->userHasPermission(
+            $user,
+            'warehouse.warehouses.view',
+            (int) $user->store_id,
+        );
     }
 }

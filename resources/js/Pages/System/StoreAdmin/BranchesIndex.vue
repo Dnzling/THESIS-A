@@ -167,6 +167,7 @@ const loading = ref(false)
 const saving = ref(false)
 const branches = ref<any[]>([])
 const mainBranch = computed(() => branches.value.find((branch: any) => Boolean(branch.is_main_branch)))
+const canCreateWarehouse = ref(false)
 const registeredStoreLocation = ref<any>(null)
 const search = ref('')
 const showCreateDialog = ref(false)
@@ -177,11 +178,11 @@ const barangays = ref<any[]>([])
 const isCitiesLoading = ref(false)
 const isBarangaysLoading = ref(false)
 
-const branchTypeOptions = [
+const branchTypeOptions = computed(() => [
   { label: 'Storefront', value: 'storefront' },
   { label: 'Wholesale', value: 'wholesale' },
-  { label: 'Warehouse', value: 'warehouse' },
-]
+  ...(canCreateWarehouse.value ? [{ label: 'Warehouse', value: 'warehouse' }] : []),
+])
 
 const emptyForm = () => ({
   name: '',
@@ -322,6 +323,7 @@ const loadBranches = async () => {
     const payload = res?.data ?? res ?? {}
     branches.value = payload.data ?? payload ?? []
     registeredStoreLocation.value = payload.store_location ?? null
+    canCreateWarehouse.value = Boolean(payload.can_create_warehouse)
   } finally {
     loading.value = false
   }

@@ -41,6 +41,16 @@ class WarehousePurchaseRequisitionController extends Controller
             ->with(['branch:id,name,branch_code,branch_type', 'product', 'variation'])
             ->orderBy('branch_id')->orderBy('product_id')->get();
 
+        // Product cost is intentionally hidden from general API serialization.
+        // This authorized procurement workflow needs the cost for the estimate,
+        // matching the value used when the requisition is persisted below.
+        $inventory->each(function (BranchInventory $row): void {
+            $row->product?->setAttribute(
+                'inventory_cost_price',
+                $row->product->getRawOriginal('cost_price')
+            );
+        });
+
         return response()->json(['success' => true, 'data' => compact('branches', 'inventory')]);
     }
 
@@ -96,6 +106,8 @@ class WarehousePurchaseRequisitionController extends Controller
                 'items.product.suppliers',
                 'items.variation',
                 'purchaseOrders.supplier',
+                'purchaseOrders.items.product',
+                'purchaseOrders.items.variation',
                 'rfqs.awardedToSupplier',
             ])
             ->findOrFail($id);

@@ -1,58 +1,67 @@
 <template>
-  <div class="max-w-6xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
     <ConfirmDialog />
-    <Card class="border border-gray-100 shadow-sm rounded-2xl">
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
       <template #content>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 class="text-2xl font-semibold text-gray-900">Voucher Details</h1>
-            <p class="text-sm text-gray-500">Includes draft voucher stats for quick monitoring.</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Voucher Details</p>
+            <h1 class="mt-1 break-words text-xl font-semibold text-slate-900">{{ voucher.voucher_name || voucher.code || 'Loading voucher...' }}</h1>
+            <p class="mt-1 text-sm text-slate-500">Usage updates automatically every 10 seconds.</p>
           </div>
           <div class="flex items-center gap-2">
-            <Button icon="pi pi-pencil" label="Edit" @click="openEdit" />
-            <Button text icon="pi pi-arrow-left" label="Back to Vouchers" @click="router.visit('/merchandising/vouchers')" />
+            <Button icon="pi pi-pencil" label="Edit" severity="warn" size="small" @click="openEdit" />
+            <Button icon="pi pi-arrow-left" aria-label="Back to vouchers" v-tooltip.bottom="'Back to vouchers'" rounded outlined severity="secondary" @click="router.visit('/merchandising/vouchers')" />
           </div>
         </div>
       </template>
     </Card>
 
-    <Card class="border border-gray-100 shadow-sm rounded-2xl">
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
       <template #title>Voucher Info</template>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div><p class="text-gray-500">Voucher Name</p><p class="font-semibold text-gray-900">{{ voucher.voucher_name || '-' }}</p></div>
-          <div><p class="text-gray-500">Code</p><p class="font-semibold text-gray-900">{{ voucher.code || '-' }}</p></div>
-          <div><p class="text-gray-500">Voucher Slots</p><p class="font-semibold text-gray-900">{{ Number(voucher.voucher_slots || 0) }}</p></div>
-          <div><p class="text-gray-500">Discount</p><p class="font-semibold text-gray-900">{{ discountLabel(voucher) }}</p></div>
-          <div><p class="text-gray-500">Status</p><Tag :severity="statusSeverity(voucher)">{{ statusLabel(voucher) }}</Tag></div>
-          <div><p class="text-gray-500">Minimum Order</p><p class="font-semibold text-gray-900">{{ money(voucher.min_order_amount) }}</p></div>
-          <div><p class="text-gray-500">Max Discount</p><p class="font-semibold text-gray-900">{{ voucher.max_discount_amount ? money(voucher.max_discount_amount) : '-' }}</p></div>
-          <div><p class="text-gray-500">Start / End</p><p class="font-semibold text-gray-900">{{ dt(voucher.starts_at) }} - {{ dt(voucher.ends_at) }}</p></div>
+        <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div><p class="text-xs text-slate-500">Voucher Code</p><p class="mt-1 break-all font-semibold text-slate-900">{{ voucher.code || '-' }}</p></div>
+          <div><p class="text-xs text-slate-500">Discount</p><p class="mt-1 font-semibold text-slate-900">{{ discountLabel(voucher) }}</p></div>
+          <div><p class="text-xs text-slate-500">Status</p><div class="mt-1"><Badge :severity="statusSeverity(voucher)" :value="statusLabel(voucher)" /></div></div>
+          <div><p class="text-xs text-slate-500">Minimum Order</p><p class="mt-1 font-semibold text-slate-900">{{ money(voucher.min_order_amount) }}</p></div>
+          <div><p class="text-xs text-slate-500">Maximum Discount</p><p class="mt-1 font-semibold text-slate-900">{{ voucher.max_discount_amount ? money(voucher.max_discount_amount) : 'No limit' }}</p></div>
+          <div><p class="text-xs text-slate-500">Valid From</p><p class="mt-1 font-semibold text-slate-900">{{ dt(voucher.starts_at) }}</p></div>
+          <div><p class="text-xs text-slate-500">Valid Until</p><p class="mt-1 font-semibold text-slate-900">{{ dt(voucher.ends_at) }}</p></div>
+          <div><p class="text-xs text-slate-500">Usage Limit</p><p class="mt-1 font-semibold text-slate-900">{{ Number(voucher.voucher_slots || 0) > 0 ? Number(voucher.voucher_slots) : 'Unlimited' }}</p></div>
         </div>
       </template>
     </Card>
 
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Drafts Total</p><p class="text-2xl font-semibold">{{ draftStats.total_drafts }}</p></template></Card>
-      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Draft Slots</p><p class="text-2xl font-semibold">{{ draftStats.total_draft_slots }}</p></template></Card>
-      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Drafts Started</p><p class="text-2xl font-semibold">{{ draftStats.drafts_started }}</p></template></Card>
-      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">With End Date</p><p class="text-2xl font-semibold">{{ draftStats.drafts_with_end_date }}</p></template></Card>
-      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Future Start</p><p class="text-2xl font-semibold">{{ draftStats.drafts_future_start }}</p></template></Card>
-    </div>
-
-    <Card class="border border-gray-100 shadow-sm rounded-2xl">
-      <template #title>Draft Vouchers</template>
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
+      <template #title>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span>Voucher Usage</span>
+          <span class="text-xs font-normal text-slate-500">{{ refreshing ? 'Updating…' : `Updated ${lastUpdatedLabel}` }}</span>
+        </div>
+      </template>
       <template #content>
-        <DataTable :value="drafts" stripedRows>
-          <Column field="code" header="Code" />
-          <Column field="voucher_slots" header="Slots" />
-          <Column field="discount_type" header="Type" />
-          <Column field="discount_value" header="Discount">
-            <template #body="{ data }">{{ data.discount_type === 'percent' ? `${Number(data.discount_value || 0)}%` : money(data.discount_value) }}</template>
-          </Column>
-          <Column field="starts_at" header="Start"><template #body="{ data }">{{ dt(data.starts_at) }}</template></Column>
-          <Column field="ends_at" header="End"><template #body="{ data }">{{ dt(data.ends_at) }}</template></Column>
-        </DataTable>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Times Used</p>
+            <p class="mt-2 text-3xl font-semibold tabular-nums text-slate-900">{{ Number(voucher.used_order_count || 0).toLocaleString() }}</p>
+            <p class="mt-1 text-xs text-slate-500">Orders checked out with this code</p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Customers</p>
+            <p class="mt-2 text-3xl font-semibold tabular-nums text-slate-900">{{ Number(voucher.used_customer_count || 0).toLocaleString() }}</p>
+            <p class="mt-1 text-xs text-slate-500">Unique signed-in customers</p>
+          </div>
+          <div class="rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+            <p class="text-xs font-medium uppercase tracking-wide text-orange-800">Uses Remaining</p>
+            <p class="mt-2 text-3xl font-semibold tabular-nums text-slate-900">{{ voucher.remaining_slots === null ? 'Unlimited' : Number(voucher.remaining_slots || 0).toLocaleString() }}</p>
+            <p class="mt-1 text-xs text-slate-600">{{ Number(voucher.voucher_slots || 0) > 0 ? `From ${Number(voucher.voucher_slots).toLocaleString()} total uses` : 'No usage limit set' }}</p>
+          </div>
+        </div>
+        <p class="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+          A use is recorded when checkout creates the order. Cancelled, failed, or refunded orders release the use.
+        </p>
+        <p v-if="loadError" class="mt-3 text-xs text-red-600">Could not refresh usage right now. The last loaded count is still shown.</p>
       </template>
     </Card>
 
@@ -63,7 +72,7 @@
           <InputText v-model="editForm.voucher_name" class="w-full" />
         </div>
         <div>
-          <label class="text-sm text-gray-600">Voucher Slots</label>
+          <label class="text-sm text-gray-600">Maximum Uses (0 = unlimited)</label>
           <InputNumber v-model="editForm.voucher_slots" :min="0" :useGrouping="false" class="w-full" />
         </div>
         <div>
@@ -75,8 +84,21 @@
           <Dropdown v-model="editForm.discount_type" :options="discountTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
         </div>
         <div>
-          <label class="text-sm text-gray-600">Discount Value</label>
-          <InputNumber v-model="editForm.discount_value" :min="0.01" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
+          <label class="text-sm text-gray-600">{{ editForm.discount_type === 'percent' ? 'Discount Percentage' : 'Discount Amount' }}</label>
+          <InputNumber
+            v-model="editForm.discount_value"
+            :mode="editForm.discount_type === 'percent' ? 'decimal' : 'currency'"
+            :currency="editForm.discount_type === 'fixed' ? 'PHP' : undefined"
+            :suffix="editForm.discount_type === 'percent' ? '%' : undefined"
+            :min="0.01"
+            :max="editForm.discount_type === 'percent' ? 100 : undefined"
+            :minFractionDigits="editForm.discount_type === 'percent' ? 0 : 2"
+            :maxFractionDigits="2"
+            :invalid="Boolean(editDiscountValueError)"
+            class="w-full"
+          />
+          <small v-if="editDiscountValueError" class="mt-1 block text-xs text-red-600">{{ editDiscountValueError }}</small>
+          <small v-else-if="editForm.discount_type === 'percent'" class="mt-1 block text-xs text-slate-500">Enter a discount from 0.01% to 100%.</small>
         </div>
         <div>
           <label class="text-sm text-gray-600">Minimum Order Amount</label>
@@ -101,6 +123,7 @@
           <Calendar v-model="editForm.ends_at" showTime hourFormat="12" class="w-full" />
         </div>
       </div>
+      <p v-if="editErrorMessage" class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ editErrorMessage }}</p>
       <template #footer>
         <Button text label="Cancel" @click="editDialogVisible = false" />
         <Button label="Save Changes" icon="pi pi-save" :loading="saving" @click="saveEdit" />
@@ -110,14 +133,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import crmService from '@/services/crm.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -128,17 +149,17 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
 
 const voucher = reactive<any>({})
-const draftStats = reactive<any>({
-  total_drafts: 0,
-  total_draft_slots: 0,
-  drafts_started: 0,
-  drafts_with_end_date: 0,
-  drafts_future_start: 0,
-})
-const drafts = ref<any[]>([])
 const confirm = useConfirm()
+const refreshing = ref(false)
+const loadError = ref(false)
+const lastUpdatedAt = ref<Date | null>(null)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+const lastUpdatedLabel = computed(() => lastUpdatedAt.value
+  ? lastUpdatedAt.value.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+  : '—')
 const editDialogVisible = ref(false)
 const saving = ref(false)
+const editErrorMessage = ref('')
 const editForm = reactive<any>({
   voucher_name: '',
   voucher_slots: 0,
@@ -155,6 +176,9 @@ const discountTypeOptions = [
   { label: 'Fixed Amount', value: 'fixed' },
   { label: 'Percent', value: 'percent' },
 ]
+const editDiscountValueError = computed(() => editForm.discount_type === 'percent' && Number(editForm.discount_value) > 100
+  ? 'Percentage discount cannot exceed 100%.'
+  : '')
 
 const getIdFromPath = () => {
   const parts = window.location.pathname.split('/').filter(Boolean)
@@ -162,14 +186,23 @@ const getIdFromPath = () => {
 }
 
 const load = async () => {
+  if (refreshing.value) return
+  refreshing.value = true
   const id = getIdFromPath()
-  const res = await crmService.getVoucher(id)
-  Object.assign(voucher, res?.data || {})
-  Object.assign(draftStats, res?.draft_stats || {})
-  drafts.value = res?.drafts || []
+  try {
+    const res = await crmService.getVoucher(id)
+    Object.assign(voucher, res?.data || {})
+    lastUpdatedAt.value = new Date()
+    loadError.value = false
+  } catch {
+    loadError.value = true
+  } finally {
+    refreshing.value = false
+  }
 }
 
 const openEdit = () => {
+  editErrorMessage.value = ''
   Object.assign(editForm, {
     voucher_name: voucher.voucher_name || '',
     voucher_slots: Number(voucher.voucher_slots || 0),
@@ -200,6 +233,11 @@ const confirmSaveEdit = () =>
   })
 
 const saveEdit = async () => {
+  if (editDiscountValueError.value) {
+    editErrorMessage.value = editDiscountValueError.value
+    return
+  }
+
   const confirmed = await confirmSaveEdit()
   if (!confirmed) {
     return
@@ -215,6 +253,8 @@ const saveEdit = async () => {
     })
     editDialogVisible.value = false
     await load()
+  } catch (error: any) {
+    editErrorMessage.value = error?.response?.data?.message || 'Unable to save voucher changes.'
   } finally {
     saving.value = false
   }
@@ -228,5 +268,12 @@ const statusLabel = (row: any) => (isExpired(row) ? 'Expired' : row?.is_active ?
 const statusSeverity = (row: any) => (isExpired(row) ? 'danger' : row?.is_active ? 'success' : 'warn')
 const discountLabel = (row: any) => row?.discount_type === 'percent' ? `${Number(row?.discount_value || 0)}%` : money(row?.discount_value)
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  refreshTimer = setInterval(() => void load(), 10000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 </script>

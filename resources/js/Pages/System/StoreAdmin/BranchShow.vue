@@ -113,7 +113,8 @@
           </div>
           <div class="space-y-2">
             <label class="text-xs font-semibold text-slate-600">Branch Type</label>
-            <Select v-model="form.branch_type" :options="branchTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+            <Select v-if="canCreateWarehouse || form.branch_type !== 'warehouse'" v-model="form.branch_type" :options="branchTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+            <div v-else class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Warehouse</div>
           </div>
         </div>
 
@@ -204,6 +205,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 
 const branchId = Number(window.location.pathname.match(/\/store\/branches\/(\d+)/)?.[1] || 0)
 const branch = ref<any>(null)
+const canCreateWarehouse = ref(false)
 const showEdit = ref(false)
 const saving = ref(false)
 const searching = ref(false)
@@ -218,11 +220,11 @@ const isBarangaysLoading = ref(false)
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
-const branchTypeOptions = [
+const branchTypeOptions = computed(() => [
   { label: 'Storefront', value: 'storefront' },
   { label: 'Wholesale', value: 'wholesale' },
-  { label: 'Warehouse', value: 'warehouse' },
-]
+  ...(canCreateWarehouse.value ? [{ label: 'Warehouse', value: 'warehouse' }] : []),
+])
 const form = ref({
   name: '',
   branch_type: 'storefront',
@@ -307,6 +309,7 @@ const loadBranch = async () => {
   const payload = res?.data ?? res ?? {}
   const data = payload.data ?? payload ?? null
   branch.value = data
+  canCreateWarehouse.value = Boolean(payload.can_create_warehouse)
   form.value.name = data?.name || ''
   form.value.branch_type = data?.branch_type || 'storefront'
   form.value.address = data?.address || ''

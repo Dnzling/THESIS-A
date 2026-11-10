@@ -377,6 +377,7 @@ const formatLabel = (value: string) => {
   if (value === 'card') return 'Credit Card'
   if (value === 'gcash') return 'GCash'
   if (value === 'paymaya') return 'Maya'
+  if (value === 'qrph') return 'QR Ph (GCash, Maya, bank apps)'
   return String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 const formatDateTime = (value: string | null) => value

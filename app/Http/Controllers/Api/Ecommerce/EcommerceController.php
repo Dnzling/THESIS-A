@@ -168,6 +168,10 @@ class EcommerceController extends Controller
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->where(function ($query) {
+                $query->where('voucher_slots', 0)
+                    ->orWhereRaw("voucher_slots > (SELECT COUNT(*) FROM ecommerce_orders WHERE (ecommerce_vouchers.store_id IS NULL OR ecommerce_orders.store_id = ecommerce_vouchers.store_id) AND ecommerce_orders.voucher_code = ecommerce_vouchers.code AND ecommerce_orders.status <> 'cancelled' AND ecommerce_orders.payment_status NOT IN ('failed', 'refunded'))");
+            })
+            ->where(function ($query) {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
             })
             ->where(function ($query) {
@@ -242,6 +246,10 @@ class EcommerceController extends Controller
         $vouchers = EcommerceVoucher::query()
             ->with('store:id,name')
             ->where('is_active', true)
+            ->where(function ($query) {
+                $query->where('voucher_slots', 0)
+                    ->orWhereRaw("voucher_slots > (SELECT COUNT(*) FROM ecommerce_orders WHERE (ecommerce_vouchers.store_id IS NULL OR ecommerce_orders.store_id = ecommerce_vouchers.store_id) AND ecommerce_orders.voucher_code = ecommerce_vouchers.code AND ecommerce_orders.status <> 'cancelled' AND ecommerce_orders.payment_status NOT IN ('failed', 'refunded'))");
+            })
             ->whereHas('store', fn ($query) => $query->acceptingNewSales())
             ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
             ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', $now))
@@ -1918,7 +1926,7 @@ class EcommerceController extends Controller
             ->filter(fn ($request) => $request !== '');
 
         $resumedExistingOrder = false;
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests, &$resumedExistingOrder) {
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $previewSubtotal, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests, &$resumedExistingOrder) {
             EcommerceCart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
 
             $existingOrder = $this->findResumableEcommerceOrder(
@@ -1930,6 +1938,19 @@ class EcommerceController extends Controller
             if ($existingOrder) {
                 $resumedExistingOrder = true;
                 return $existingOrder;
+            }
+
+            if ($appliedVoucherCode) {
+                // Lock and revalidate the voucher so simultaneous checkouts cannot
+                // consume more uses than the configured limit.
+                $voucherResult = $this->validateVoucherCode(
+                    $appliedVoucherCode,
+                    (float) $previewSubtotal,
+                    (int) $cart->store_id,
+                    true
+                );
+                $voucherDiscount = (float) $voucherResult['discount_amount'];
+                $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
             }
 
             $subtotal = 0;
@@ -4564,16 +4585,20 @@ class EcommerceController extends Controller
         return array_sum($scores) / count($scores);
     }
 
-    private function validateVoucherCode(string $code, float $orderAmount, int $storeId): array
+    private function validateVoucherCode(string $code, float $orderAmount, int $storeId, bool $lockForUpdate = false): array
     {
         $normalized = strtoupper(trim($code));
 
-        $voucher = EcommerceVoucher::query()
+        $voucherQuery = EcommerceVoucher::query()
             ->where('code', $normalized)
             ->where(function ($query) use ($storeId) {
                 $query->whereNull('store_id')->orWhere('store_id', $storeId);
             })
-            ->first();
+            ->orderByRaw('store_id = ? desc', [$storeId]);
+        if ($lockForUpdate) {
+            $voucherQuery->lockForUpdate();
+        }
+        $voucher = $voucherQuery->first();
 
         if (!$voucher) {
             throw ValidationException::withMessages(['code' => 'This voucher is not available for the selected store.']);
@@ -4586,6 +4611,20 @@ class EcommerceController extends Controller
         }
         if ($voucher->ends_at && $voucher->ends_at->isPast()) {
             throw ValidationException::withMessages(['code' => 'This voucher has expired.']);
+        }
+
+        $usageQuery = EcommerceOrder::query()
+            ->where('voucher_code', $voucher->code)
+            ->whereNotIn('status', ['cancelled'])
+            ->whereNotIn('payment_status', ['failed', 'refunded']);
+        if ($voucher->store_id !== null) {
+            $usageQuery->where('store_id', (int) $voucher->store_id);
+        }
+        $usedCount = $lockForUpdate
+            ? $usageQuery->lockForUpdate()->get(['id'])->count()
+            : $usageQuery->count();
+        if ((int) $voucher->voucher_slots > 0 && $usedCount >= (int) $voucher->voucher_slots) {
+            throw ValidationException::withMessages(['code' => 'This voucher has reached its usage limit.']);
         }
 
         $minimum = (float) ($voucher->min_order_amount ?? 0);

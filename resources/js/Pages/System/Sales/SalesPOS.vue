@@ -172,6 +172,10 @@
             class="mb-3"
           />
 
+          <Message v-if="paymentMethod === 'qrph'" severity="info" :closable="false" class="mb-3 text-xs">
+            PayMongo will show one QR Ph code. The customer can scan it with GCash, Maya, or a participating bank app.
+          </Message>
+
           <!-- Cash tendered -->
           <InputNumber 
             v-if="paymentMethod === 'cash'"
@@ -459,7 +463,7 @@ const customizationForm = ref({ request: '', fee: 0 as number | null, leadTimeDa
 const loadingProducts = ref(false)
 const checkingOut = ref(false)
 const cart = ref<any[]>([])
-const paymentMethod = ref<'cash' | 'card' | 'gcash' | 'paymaya'>('cash')
+const paymentMethod = ref<'cash' | 'card' | 'qrph'>('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
 const fulfillmentOptions = [
@@ -844,7 +848,7 @@ const checkout = async () => {
   } finally { checkingOut.value = false }
 }
 
-const paymentLabel = (value: string) => ({ cash: 'Cash', card: 'Credit Card', gcash: 'GCash', paymaya: 'Maya' }[value] || 'Online payment')
+const paymentLabel = (value: string) => ({ cash: 'Cash', card: 'Credit / Debit Card', qrph: 'QR Scan (QR Ph)' }[value] || 'Online payment')
 
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 
@@ -860,9 +864,8 @@ onMounted(async () => {
       paymentOptions.value = [
         { label: 'Cash', value: 'cash' },
         ...[
-          { label: 'Credit Card', value: 'card' },
-          { label: 'GCash', value: 'gcash' },
-          { label: 'Maya', value: 'paymaya' },
+          { label: 'QR Scan (GCash, Maya, bank apps)', value: 'qrph' },
+          { label: 'Credit / Debit Card', value: 'card' },
         ].filter(method => available.has(method.value)),
       ]
     }

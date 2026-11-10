@@ -77,6 +77,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/warehouse/transfer-requests', 'System/Warehouse/Transfers/RequestsIndex', 'warehouse.transfer-requests', 'Transfer Requests');
     $inertia('/warehouse/transfer-requests/{id}', 'System/Warehouse/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
     $inertia('/warehouse/receiving', 'System/Warehouse/Receiving/Index', 'warehouse.receiving', 'Receiving');
+    $inertia('/warehouse/receiving/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'warehouse.receiving.create', 'Create Warehouse Goods Receipt');
     $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
     $inertia('/warehouse/returns/{id}', 'System/Warehouse/Returns/View', 'warehouse.returns.view', 'Warehouse Return Details');
     $inertia('/warehouse/returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'warehouse.replacements.detail', 'Replacement Case');

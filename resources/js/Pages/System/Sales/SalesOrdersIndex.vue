@@ -204,6 +204,7 @@ const statusOptions = [
 const paymentMethodOptions = [
   { label: 'Cash', value: 'cash' },
   { label: 'GCash', value: 'gcash' },
+  { label: 'QR Ph', value: 'qrph' },
   { label: 'Credit / Debit Card', value: 'card' },
   { label: 'Cash on Delivery', value: 'cod' },
   { label: 'Bank Transfer', value: 'bank_transfer' },
@@ -322,6 +323,7 @@ const paymentMethodLabel = (value: any) => {
   const method = paymentMethodKey(value)
   const labels: Record<string, string> = {
     gcash: 'GCASH',
+    qrph: 'QR Ph',
     card: 'Credit / Debit Card',
     cash: 'Cash',
     cod: 'Cash on Delivery',

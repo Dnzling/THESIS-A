@@ -33,7 +33,7 @@ class SalesOrderSettlementService
             if ($lockedOrder->payment_status === 'paid') {
                 $this->commissionService->record(
                     $lockedOrder,
-                    in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'e_wallet', 'paymongo'], true)
+                    in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'qrph', 'e_wallet', 'paymongo'], true)
                 );
                 return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);
             }
@@ -156,7 +156,7 @@ class SalesOrderSettlementService
 
             $this->commissionService->record(
                 $lockedOrder->fresh(),
-                in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'e_wallet', 'paymongo'], true)
+                in_array(strtolower($paymentMethod), ['card', 'gcash', 'paymaya', 'qrph', 'e_wallet', 'paymongo'], true)
             );
 
             return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);

@@ -208,8 +208,8 @@ class SalesPosController extends Controller
             'success' => true,
             'data' => [
                 'cash' => true,
-                'card' => true,
-                'gcash' => $this->paymongoService->isConfigured(),
+                'card' => $this->paymongoService->isConfigured(),
+                'qrph' => $this->paymongoService->isConfigured(),
             ],
         ]);
     }
@@ -220,7 +220,7 @@ class SalesPosController extends Controller
             'branch_id' => 'nullable|exists:branches,id',
             'customer_name' => 'nullable|string|max:150',
             'customer_phone' => 'nullable|string|max:50',
-            'payment_method' => 'required|in:cash,card,gcash,paymaya',
+            'payment_method' => 'required|in:cash,card,qrph',
             'discount_amount' => 'nullable|numeric|min:0',
             'amount_tendered' => 'required_if:payment_method,cash|nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',

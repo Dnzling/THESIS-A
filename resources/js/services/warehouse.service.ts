@@ -21,6 +21,10 @@ export const WarehouseService = {
   purchaseRequisitions: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/purchase-requisitions', { params })),
   purchaseRequisition: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/purchase-requisitions/${id}`)),
   createPurchaseRequisition: async (payload: any) => unwrap(await axiosClient.post('/api/warehouse/purchase-requisitions', payload)),
+  warehouseGoodsReceipt: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/goods-receipts/${id}`)),
+  createGoodsReceipt: async (payload: any) => unwrap(await axiosClient.post('/api/warehouse/goods-receipts', payload)),
+  updateGoodsReceiptDraft: async (id: number | string, payload: any) => unwrap(await axiosClient.put(`/api/warehouse/goods-receipts/${id}`, payload)),
+  verifyGoodsReceipt: async (id: number | string) => unwrap(await axiosClient.post(`/api/warehouse/goods-receipts/${id}/verify`)),
 }
 
 export default WarehouseService

@@ -25,7 +25,7 @@
             <InputText :model-value="autoCode" readonly class="w-full" />
           </div>
           <div>
-            <label class="text-sm text-gray-600">Voucher Slots</label>
+            <label class="text-sm text-gray-600">Maximum Uses <span class="text-xs text-gray-500">(0 = unlimited)</span></label>
             <InputNumber v-model="form.voucher_slots" :min="0" :useGrouping="false" class="w-full" />
           </div>
           <div>
@@ -33,8 +33,21 @@
             <Dropdown v-model="form.discount_type" :options="discountTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
           </div>
           <div>
-            <label class="text-sm text-gray-600">Discount Value</label>
-            <InputNumber v-model="form.discount_value" :min="0.01" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
+            <label class="text-sm text-gray-600">{{ form.discount_type === 'percent' ? 'Discount Percentage' : 'Discount Amount' }}</label>
+            <InputNumber
+              v-model="form.discount_value"
+              :mode="form.discount_type === 'percent' ? 'decimal' : 'currency'"
+              :currency="form.discount_type === 'fixed' ? 'PHP' : undefined"
+              :suffix="form.discount_type === 'percent' ? '%' : undefined"
+              :min="0.01"
+              :max="form.discount_type === 'percent' ? 100 : undefined"
+              :minFractionDigits="form.discount_type === 'percent' ? 0 : 2"
+              :maxFractionDigits="2"
+              :invalid="Boolean(discountValueError)"
+              class="w-full"
+            />
+            <small v-if="discountValueError" class="mt-1 block text-xs text-red-600">{{ discountValueError }}</small>
+            <small v-else-if="form.discount_type === 'percent'" class="mt-1 block text-xs text-slate-500">Enter a discount from 0.01% to 100%.</small>
           </div>
           <div>
             <label class="text-sm text-gray-600">Minimum Order Amount</label>
@@ -109,6 +122,9 @@ const discountTypeOptions = [
   { label: 'Fixed Amount', value: 'fixed' },
   { label: 'Percent', value: 'percent' },
 ]
+const discountValueError = computed(() => form.discount_type === 'percent' && Number(form.discount_value) > 100
+  ? 'Percentage discount cannot exceed 100%.'
+  : '')
 
 const isoOrNull = (value: Date | null) => (value ? new Date(value).toISOString() : null)
 const autoCode = computed(() => {
@@ -143,6 +159,11 @@ const confirmSave = () =>
   })
 
 const submit = async () => {
+  if (discountValueError.value) {
+    errorMessage.value = discountValueError.value
+    return
+  }
+
   const confirmed = await confirmSave()
   if (!confirmed) {
     return

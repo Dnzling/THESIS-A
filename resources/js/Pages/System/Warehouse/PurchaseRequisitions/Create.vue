@@ -207,7 +207,12 @@ const stock = (item: any) =>
     (row) => Number(row.id) === Number(item.branch_inventory_id),
   );
 const unitCost = (row: any) =>
-  Number(row?.variation?.cost_price ?? row?.product?.cost_price ?? 0);
+  Number(
+    row?.variation?.cost_price ??
+    row?.product?.inventory_cost_price ??
+    row?.product?.cost_price ??
+    0,
+  );
 const money = (v: any) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",

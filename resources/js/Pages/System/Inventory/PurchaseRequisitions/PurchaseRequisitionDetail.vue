@@ -43,15 +43,27 @@
             :loading="approving"
             @click="confirmApprove"
           />
-           <div v-if="canGenerateReceipt" class="flex justify-end">
-          <Button
-            label="Generate Receipt"
-            icon="pi pi-receipt"
-            severity="success"
-            size="small"
-            @click="generateReceipt"
-          />
-        </div>
+          <div v-if="props.warehouseMode && warehouseReceiptOrders.length" class="flex flex-wrap justify-end gap-2">
+            <Button
+              v-for="po in warehouseReceiptOrders"
+              :key="po.id"
+              label="Create Goods Receipt"
+              icon="pi pi-receipt"
+              severity="warn"
+              size="small"
+              v-tooltip="`PO ${po.po_number}`"
+              @click="generateReceipt(po.id)"
+            />
+          </div>
+          <div v-else-if="canGenerateReceipt" class="flex justify-end">
+            <Button
+              label="Create Goods Receipt"
+              icon="pi pi-receipt"
+              severity="warn"
+              size="small"
+              @click="generateReceipt"
+            />
+          </div>
           <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="rounded-full px-3 py-1" />
         </div>
       </div>
@@ -234,6 +246,19 @@ const canGenerateReceipt = computed(() => {
     : (Array.isArray(detail.value?.purchaseOrders) ? detail.value.purchaseOrders : [])
   return purchaseOrders.length > 0
 })
+const warehouseReceiptOrders = computed(() => {
+  if (!props.warehouseMode || !authStore.hasPermission('warehouse.receiving.view')) return []
+  const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
+    ? detail.value.purchase_orders
+    : (Array.isArray(detail.value?.purchaseOrders) ? detail.value.purchaseOrders : [])
+
+  return purchaseOrders.filter((po: any) => {
+    if (String(po?.status || '').toLowerCase() !== 'delivered') return false
+    return (po.items || []).some((item: any) =>
+      Number(item.quantity_ordered || 0) - Number(item.quantity_received || 0) - Number(item.quantity_rejected || 0) > 0
+    )
+  })
+})
 
 const id = computed(() => String(route.params.id || ''))
 const editDraft = () => router.push({ name: 'inventory.stock-requests.edit', params: { id: id.value } })
@@ -332,7 +357,15 @@ const goBack = () => {
   if (window.history.state?.back) router.back()
   else router.push(props.warehouseMode ? { name: fallback } : { name: fallback, query: { type: 'purchase' } })
 }
-const generateReceipt = () => {
+const generateReceipt = (purchaseOrderId?: number) => {
+  if (props.warehouseMode && purchaseOrderId) {
+    router.push({
+      name: 'warehouse.receiving.create',
+      query: { po_id: String(purchaseOrderId), warehouse_pr_id: id.value },
+    })
+    return
+  }
+
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
     ? detail.value.purchase_orders
     : (Array.isArray(detail.value?.purchaseOrders) ? detail.value.purchaseOrders : [])

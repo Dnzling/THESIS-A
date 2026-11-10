@@ -6,7 +6,7 @@
 
     <!-- Header -->
     <div class="flex items-center gap-3">
-      <Button label="Back" text @click="router.push({ name: 'inventory.goods-receipts' })" />
+      <Button label="Back" text @click="router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Goods Receipt</h2>
         <p class="text-sm text-gray-500 mt-1">Receive and verify purchased items from supplier</p>
@@ -190,7 +190,7 @@
               severity="secondary"
               text
               type="button"
-              @click="router.push({ name: 'inventory.goods-receipts' })"
+              @click="router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })"
             />
             <Button
               label="Save as Draft"
@@ -218,6 +218,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import inventoryService from '../../../../services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
 import axiosClient from '@/axios'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
@@ -227,6 +228,8 @@ const route = useRoute()
 const toast = useToast()
 const confirm = useConfirm()
 const isInventoryFlow = window.location.pathname.startsWith('/inventory/')
+const isWarehouseFlow = window.location.pathname.startsWith('/warehouse/')
+const receiptApiBase = isWarehouseFlow ? '/api/warehouse/goods-receipts' : '/api/inventory/goods-receipts'
 
 // Form State
 const form = reactive({
@@ -274,12 +277,17 @@ const completionPercent = computed(() => {
 // Methods
 onMounted(async () => {
   const draftIdFromQuery = Number(new URLSearchParams(window.location.search).get('draft_id') || 0)
-  if (isInventoryFlow && draftIdFromQuery > 0) {
+  if ((isInventoryFlow || isWarehouseFlow) && draftIdFromQuery > 0) {
     await prefillFromDraft(draftIdFromQuery)
     return
   }
   // If PO ID provided in query, auto-select and prefill
   const poIdFromQuery = Number(new URLSearchParams(window.location.search).get('po_id') || route.query.po_id || 0)
+  const warehousePrId = Number(route.query.warehouse_pr_id || 0)
+  if (isWarehouseFlow && warehousePrId > 0 && poIdFromQuery > 0) {
+    await prefillFromWarehouseRequisition(warehousePrId, poIdFromQuery)
+    return
+  }
   if (poIdFromQuery > 0) {
     await prefillFromPurchaseOrder(poIdFromQuery)
     if (selectedPO.value) return
@@ -306,14 +314,14 @@ const hydrateReceiptFromPO = (po: any) => {
     variation_id: item.variation_id,
     quantity_ordered: item.remaining,
     quantity_expected: item.remaining,
-    quantity_received: isInventoryFlow ? 0 : item.remaining,
-    confirmedQuantityReceived: isInventoryFlow ? 0 : item.remaining,
+    quantity_received: isInventoryFlow || isWarehouseFlow ? 0 : item.remaining,
+    confirmedQuantityReceived: isInventoryFlow || isWarehouseFlow ? 0 : item.remaining,
     quantity_damaged: 0,
-    variance: isInventoryFlow ? -item.remaining : 0,
-    variance_percent: isInventoryFlow ? -100 : 0,
+    variance: isInventoryFlow || isWarehouseFlow ? -item.remaining : 0,
+    variance_percent: isInventoryFlow || isWarehouseFlow ? -100 : 0,
     varianceTouched: false,
     quantityError: '',
-    status: isInventoryFlow ? 'short' : 'complete',
+    status: isInventoryFlow || isWarehouseFlow ? 'short' : 'complete',
     remarks: ''
   }))
 }
@@ -334,10 +342,29 @@ const prefillFromPurchaseOrder = async (poId: number) => {
   }
 }
 
+const prefillFromWarehouseRequisition = async (requisitionId: number, purchaseOrderId: number) => {
+  try {
+    const requisition = await WarehouseService.purchaseRequisition(requisitionId)
+    const purchaseOrders = Array.isArray(requisition?.purchase_orders)
+      ? requisition.purchase_orders
+      : (Array.isArray(requisition?.purchaseOrders) ? requisition.purchaseOrders : [])
+    const po = purchaseOrders.find((item: any) => Number(item.id) === purchaseOrderId)
+    if (!po) {
+      toast.add({ severity: 'error', summary: 'Purchase order unavailable', detail: 'This PO is not linked to the selected warehouse requisition.', life: 3500 })
+      return
+    }
+
+    form.purchase_order_id = Number(po.id)
+    hydrateReceiptFromPO(po)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load requisition', detail: error?.response?.data?.message || 'Could not load the linked PO items.', life: 3500 })
+  }
+}
+
 const prefillFromDraft = async (id: number) => {
   try {
-    const response = await axiosClient.get(`/api/inventory/goods-receipts/${id}`)
-    const draft = response?.data?.data
+    const response = await axiosClient.get(`${receiptApiBase}/${id}`)
+    const draft = response?.data?.data ?? response?.data
     if (draft?.receipt_status !== 'draft' || !draft.purchase_order_id) return
     await prefillFromPurchaseOrder(Number(draft.purchase_order_id))
     if (!selectedPO.value) return
@@ -357,7 +384,9 @@ const prefillFromDraft = async (id: number) => {
 
 const prefillFromRequisition = async (prId: number) => {
   try {
-    const response = await inventoryService.getPurchaseRequisition(prId)
+    const response = isWarehouseFlow
+      ? await WarehouseService.purchaseRequisition(prId)
+      : await inventoryService.getPurchaseRequisition(prId)
     const requisition = response?.data ?? response
     const data = requisition?.data ?? requisition
     const purchaseOrders = Array.isArray(data?.purchase_orders)
@@ -493,13 +522,13 @@ const submitForm = async () => {
         status: saveDraft.value ? 'draft' : 'completed'
       }
 
-    if (isInventoryFlow && draftId.value) {
-      await axiosClient.put(`/api/inventory/goods-receipts/${draftId.value}`, payload)
+    if ((isInventoryFlow || isWarehouseFlow) && draftId.value) {
+      await axiosClient.put(`${receiptApiBase}/${draftId.value}`, payload)
       if (!saveDraft.value) {
-        await axiosClient.post(`/api/inventory/goods-receipts/${draftId.value}/verify`)
+        await axiosClient.post(`${receiptApiBase}/${draftId.value}/verify`)
       }
-    } else if (isInventoryFlow) {
-      await axiosClient.post('/api/inventory/goods-receipts', payload)
+    } else if (isInventoryFlow || isWarehouseFlow) {
+      await axiosClient.post(receiptApiBase, payload)
     } else {
       await procurementService.createGoodsReceipt(payload as any)
     }
@@ -512,14 +541,14 @@ const submitForm = async () => {
     })
 
     setTimeout(() => {
-      router.push({ name: 'inventory.goods-receipts' })
+      router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })
     }, 1500)
   } catch (error) {
     console.error('Failed to create goods receipt', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to create goods receipt',
+      detail: (error as any)?.response?.data?.message || 'Failed to create goods receipt',
       life: 3000
     })
   } finally {

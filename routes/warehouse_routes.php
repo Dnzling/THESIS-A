@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\WarehouseOperations\WarehouseOperationsController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehousePurchaseRequisitionController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehouseReorderController;
+use App\Http\Controllers\Api\WarehouseOperations\WarehouseGoodsReceiptController;
 use App\Http\Controllers\Api\Inventory\ForecastController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,10 @@ Route::prefix('warehouse')->controller(WarehouseOperationsController::class)->gr
     Route::post('transfer-requests/{id}/ready-for-dispatch', 'readyTransferForDispatch')->whereNumber('id');
     Route::post('transfer-requests/{id}/reject', 'rejectTransferRequest')->whereNumber('id');
     Route::get('receiving', 'receiving');
+    Route::post('goods-receipts', [WarehouseGoodsReceiptController::class, 'store']);
+    Route::get('goods-receipts/{id}', [WarehouseGoodsReceiptController::class, 'show'])->whereNumber('id');
+    Route::put('goods-receipts/{id}', [WarehouseGoodsReceiptController::class, 'updateDraft'])->whereNumber('id');
+    Route::post('goods-receipts/{id}/verify', [WarehouseGoodsReceiptController::class, 'verify'])->whereNumber('id');
     Route::get('transfer-history', 'transferHistory');
 });
 

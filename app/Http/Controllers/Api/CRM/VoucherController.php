@@ -99,17 +99,24 @@ class VoucherController extends Controller
             ], 422);
         }
 
+        $discountValueRules = ['required', 'numeric', 'min:0.01'];
+        if ($request->input('discount_type') === 'percent') {
+            $discountValueRules[] = 'max:100';
+        }
+
         $validated = $request->validate([
             'voucher_name' => ['required', 'string', 'max:120'],
             'voucher_slots' => ['required', 'integer', 'min:0'],
             'code' => ['nullable', 'string', 'max:40'],
             'discount_type' => ['required', 'in:fixed,percent'],
-            'discount_value' => ['required', 'numeric', 'min:0.01'],
+            'discount_value' => $discountValueRules,
             'min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
             'is_active' => ['nullable', 'boolean'],
+        ], [
+            'discount_value.max' => 'Percentage discount cannot exceed 100%.',
         ]);
 
         $rawCode = trim((string) ($validated['code'] ?? ''));
@@ -157,28 +164,26 @@ class VoucherController extends Controller
             abort(404);
         }
 
-        $draftQuery = EcommerceVoucher::query()
+        $usedOrders = EcommerceOrder::query()
             ->where('store_id', $storeId)
-            ->where('is_active', false);
-
-        $draftStats = [
-            'total_drafts' => (clone $draftQuery)->count(),
-            'total_draft_slots' => (int) (clone $draftQuery)->sum('voucher_slots'),
-            'drafts_started' => (clone $draftQuery)->whereNotNull('starts_at')->where('starts_at', '<=', now())->count(),
-            'drafts_with_end_date' => (clone $draftQuery)->whereNotNull('ends_at')->count(),
-            'drafts_future_start' => (clone $draftQuery)->whereNotNull('starts_at')->where('starts_at', '>', now())->count(),
-        ];
-
-        $drafts = (clone $draftQuery)
-            ->orderByDesc('created_at')
-            ->limit(10)
-            ->get();
+            ->where('voucher_code', $voucher->code)
+            ->whereNotIn('status', ['cancelled'])
+            ->whereNotIn('payment_status', ['failed', 'refunded']);
+        $usedOrderCount = (clone $usedOrders)->count();
+        $usedCustomerCount = (clone $usedOrders)
+            ->whereNotNull('user_id')
+            ->distinct('user_id')
+            ->count('user_id');
 
         return response()->json([
             'success' => true,
-            'data' => $voucher,
-            'draft_stats' => $draftStats,
-            'drafts' => $drafts,
+            'data' => array_merge($voucher->toArray(), [
+                'used_order_count' => $usedOrderCount,
+                'used_customer_count' => $usedCustomerCount,
+                'remaining_slots' => (int) $voucher->voucher_slots > 0
+                    ? max(0, (int) $voucher->voucher_slots - $usedOrderCount)
+                    : null,
+            ]),
         ]);
     }
 
@@ -189,17 +194,24 @@ class VoucherController extends Controller
             abort(404);
         }
 
+        $discountValueRules = ['required', 'numeric', 'min:0.01'];
+        if ($request->input('discount_type') === 'percent') {
+            $discountValueRules[] = 'max:100';
+        }
+
         $validated = $request->validate([
             'voucher_name' => ['required', 'string', 'max:120'],
             'voucher_slots' => ['required', 'integer', 'min:0'],
             'code' => ['nullable', 'string', 'max:40'],
             'discount_type' => ['required', 'in:fixed,percent'],
-            'discount_value' => ['required', 'numeric', 'min:0.01'],
+            'discount_value' => $discountValueRules,
             'min_order_amount' => ['nullable', 'numeric', 'min:0'],
             'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
             'is_active' => ['nullable', 'boolean'],
+        ], [
+            'discount_value.max' => 'Percentage discount cannot exceed 100%.',
         ]);
 
         $rawCode = trim((string) ($validated['code'] ?? ''));
