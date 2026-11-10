@@ -59,7 +59,16 @@ class UnifiedDeliveryController extends Controller
         $source = (string) $request->input('source', 'all');
         $search = trim((string) $request->input('search', ''));
         $statusFilter = strtolower((string) $request->input('status', ''));
-        $assignedDriverOnly = $request->boolean('assigned_driver_only') || $isDriver;
+        $permissionService = app(\App\Services\Core\PermissionService::class);
+        $canProcessSupplierPickups = $permissionService->userHasPermission($user, 'logistics.driver.supplier-pickups');
+        $canManageSupplierPickupQueue = $permissionService->userHasPermission($user, 'logistics.supplier-pickups.view')
+            || $permissionService->userHasPermission($user, 'logistics.supplier-pickups.manage');
+        if ($source === 'pickup') {
+            abort_unless($canProcessSupplierPickups || $canManageSupplierPickupQueue, 403);
+        }
+        $assignedDriverOnly = $request->boolean('assigned_driver_only')
+            || $isDriver
+            || ($source === 'pickup' && $canProcessSupplierPickups && !$canManageSupplierPickupQueue);
 
         $rows = collect();
 
@@ -640,6 +649,12 @@ class UnifiedDeliveryController extends Controller
 
         if ($source === 'pickup') {
             $storeId = $this->resolveStoreId($request);
+            $permissionService = app(\App\Services\Core\PermissionService::class);
+            $canProcessSupplierPickups = $permissionService->userHasPermission($request->user(), 'logistics.driver.supplier-pickups');
+            $canManageSupplierPickupQueue = $permissionService->userHasPermission($request->user(), 'logistics.supplier-pickups.view')
+                || $permissionService->userHasPermission($request->user(), 'logistics.supplier-pickups.manage');
+            abort_unless($canProcessSupplierPickups || $canManageSupplierPickupQueue, 403);
+
             $purchaseOrder = PurchaseOrder::query()
                 ->with([
                     'items.product',
@@ -674,7 +689,9 @@ class UnifiedDeliveryController extends Controller
                 ->where('purchase_order_id', $purchaseOrder->id)
                 ->first();
 
-            if ($request->user()->hasRole('driver') && (!$pickup || (int) $pickup->driver_user_id !== (int) $request->user()->id)) {
+            $mustBeAssignedDriver = $request->user()->hasRole('driver')
+                || ($canProcessSupplierPickups && !$canManageSupplierPickupQueue);
+            if ($mustBeAssignedDriver && (!$pickup || (int) $pickup->driver_user_id !== (int) $request->user()->id)) {
                 return response()->json(['success' => false, 'message' => 'This pickup is not assigned to you.'], 403);
             }
 

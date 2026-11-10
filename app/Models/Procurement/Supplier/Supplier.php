@@ -21,6 +21,7 @@ class Supplier extends Model
 
     protected $fillable = [
         'store_id',
+        'supplier_portal_id',
         'supplier_code',
         'supplier_name',
         'logo_path',

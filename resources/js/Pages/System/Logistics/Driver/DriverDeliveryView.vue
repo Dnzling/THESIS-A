@@ -1150,24 +1150,25 @@ const updateRegularDelivery = async () => {
       return
     }
 
-    // Delivery milestones are status actions. Send them immediately instead
-    // of blocking the request on browser GPS or Mapbox reverse geocoding.
-    const isImmediateMilestone = ['out_for_delivery', 'delivered'].includes(targetStatus)
-    let point: { latitude: number; longitude: number } | null = null
-    let locationAddress = ''
-
-    if (!isImmediateMilestone) {
-      point = await coordinates()
-      locationAddress = await reverseGeocode(point).catch(() => '')
-    }
+    // Use the latest background-tracked point when available. A status action
+    // must not be blocked by browser location permission or geocoding latency.
+    const rawLatitude = detail.value?.delivery?.current_latitude
+    const rawLongitude = detail.value?.delivery?.current_longitude
+    const latitude = rawLatitude !== null && rawLatitude !== undefined && rawLatitude !== ''
+      ? Number(rawLatitude)
+      : NaN
+    const longitude = rawLongitude !== null && rawLongitude !== undefined && rawLongitude !== ''
+      ? Number(rawLongitude)
+      : NaN
+    const hasCurrentPoint = Number.isFinite(latitude) && Number.isFinite(longitude)
 
     await logisticsService.updateUnifiedDeliveryStatus(
       source.value as any,
       orderId.value,
       {
         status: targetStatus,
-        ...(point ? { latitude: point.latitude, longitude: point.longitude } : {}),
-        location_address: locationAddress || undefined,
+        ...(hasCurrentPoint ? { latitude, longitude } : {}),
+        location_address: detail.value?.delivery?.current_address || undefined,
       },
     )
 
@@ -1218,8 +1219,14 @@ const submitPickupStatus = async () => {
 
     // Reuse the latest tracked location when available. Proof submission and
     // the delivered API call must not wait for a new browser GPS reading.
-    let latitude = Number(detail.value?.delivery?.current_latitude)
-    let longitude = Number(detail.value?.delivery?.current_longitude)
+    const rawLatitude = detail.value?.delivery?.current_latitude
+    const rawLongitude = detail.value?.delivery?.current_longitude
+    let latitude = rawLatitude !== null && rawLatitude !== undefined && rawLatitude !== ''
+      ? Number(rawLatitude)
+      : NaN
+    let longitude = rawLongitude !== null && rawLongitude !== undefined && rawLongitude !== ''
+      ? Number(rawLongitude)
+      : NaN
     let hasTrackedLocation = Number.isFinite(latitude) && Number.isFinite(longitude)
 
     if (['return_pickup', 'replacement'].includes(source.value) && !hasTrackedLocation) {

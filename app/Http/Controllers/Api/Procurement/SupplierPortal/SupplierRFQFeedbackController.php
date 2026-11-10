@@ -36,14 +36,19 @@ class SupplierRFQFeedbackController extends Controller
             }
 
             // Suppliers may only see RFQs explicitly invited to their linked supplier record.
+            $supplierIds = $portal->linkedSupplierIds();
+            if ($supplierIds->isEmpty()) {
+                return response()->json(['success' => true, 'data' => RequestForQuotation::whereRaw('1 = 0')->paginate($request->get('per_page', 10))]);
+            }
+
             $relations = ['items.product', 'store'];
             if (Schema::hasTable('rfq_attachments')) {
                 $relations[] = 'attachments';
             }
 
             $query = RequestForQuotation::whereNotIn('status', ['draft', 'cancelled'])
-                ->whereHas('suppliers', function ($supplierQuery) use ($portal) {
-                    $supplierQuery->where('supplier_id', $portal->supplier_id);
+                ->whereHas('suppliers', function ($supplierQuery) use ($supplierIds) {
+                    $supplierQuery->whereIn('supplier_id', $supplierIds);
                 })
                 ->with($relations)
                 ->orderBy('created_at', 'desc');
@@ -166,15 +171,21 @@ class SupplierRFQFeedbackController extends Controller
                 $relations[] = 'attachments';
             }
 
-            $rfq = RequestForQuotation::whereHas('suppliers', function ($supplierQuery) use ($portal) {
-                    $supplierQuery->where('supplier_id', $portal->supplier_id);
+            $supplierIds = $portal->linkedSupplierIds();
+            $rfqSupplier = \App\Models\Procurement\RFQ\RFQSupplier::query()
+                ->where('rfq_id', $id)
+                ->whereIn('supplier_id', $supplierIds)
+                ->firstOrFail();
+
+            $rfq = RequestForQuotation::whereHas('suppliers', function ($supplierQuery) use ($supplierIds) {
+                    $supplierQuery->whereIn('supplier_id', $supplierIds);
                 })
                 ->with($relations)
                 ->findOrFail($id);
 
             // Mark RFQ as viewed for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $id)
-                ->where('supplier_id', $portal->supplier_id)
+                ->where('supplier_id', $rfqSupplier->supplier_id)
                 ->whereNull('viewed_at')
                 ->update([
                     'status' => 'viewed',
@@ -302,7 +313,20 @@ class SupplierRFQFeedbackController extends Controller
                 ], 409);
             }
 
+            $supplierIds = $portal->linkedSupplierIds();
+            $rfqSupplier = \App\Models\Procurement\RFQ\RFQSupplier::query()
+                ->where('rfq_id', $request->rfq_id)
+                ->whereIn('supplier_id', $supplierIds)
+                ->first();
+            if (!$rfqSupplier) {
+                return response()->json(['success' => false, 'message' => 'This RFQ was not sent to your supplier account.'], 403);
+            }
+            $supplierId = (int) $rfqSupplier->supplier_id;
+
             $rfq = RequestForQuotation::findOrFail($request->rfq_id);
+            if (!RFQItem::where('id', $request->rfq_item_id)->where('rfq_id', $rfq->id)->exists()) {
+                return response()->json(['success' => false, 'message' => 'The selected item does not belong to this RFQ.'], 422);
+            }
 
             if ($rfq->status === 'closed') {
                 return response()->json([
@@ -325,7 +349,7 @@ class SupplierRFQFeedbackController extends Controller
 
             // Determine supplier contract tax rate (server authoritative)
             $rfq = RequestForQuotation::findOrFail($request->rfq_id);
-            $contract = \App\Models\Procurement\Supplier\SupplierContract::where('supplier_id', $portal->supplier_id)
+            $contract = \App\Models\Procurement\Supplier\SupplierContract::where('supplier_id', $supplierId)
                 ->where('store_id', $rfq->store_id)
                 ->where('status', 'active')
                 ->whereDate('start_date', '<=', now())
@@ -345,7 +369,7 @@ class SupplierRFQFeedbackController extends Controller
 
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
-                    'supplier_id' => $portal->supplier_id,
+                    'supplier_id' => $supplierId,
                     'rfq_item_id' => $request->rfq_item_id,
                 ],
                 [
@@ -392,7 +416,7 @@ class SupplierRFQFeedbackController extends Controller
             try {
                 if (\Schema::hasTable('supplier_quotations')) {
                     $quotation = \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
-                        ->where('supplier_id', $portal->supplier_id)
+                        ->where('supplier_id', $supplierId)
                         ->first();
 
                     if ($quotation) {
@@ -447,7 +471,7 @@ class SupplierRFQFeedbackController extends Controller
 
             // Update RFQ supplier status for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $request->rfq_id)
-                ->where('supplier_id', $portal->supplier_id)
+                ->where('supplier_id', $supplierId)
                 ->update([
                     'status' => 'submitted',
                     'viewed_at' => \DB::raw('COALESCE(viewed_at, NOW())'),

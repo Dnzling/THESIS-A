@@ -291,6 +291,18 @@ class SupplierController extends Controller
                 ->first();
 
             if ($existing) {
+                if ($existing->supplier_portal_id && (int) $existing->supplier_portal_id !== (int) $portal->id) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This supplier record is already linked to another supplier portal account.',
+                    ], 409);
+                }
+
+                if (!$existing->supplier_portal_id) {
+                    $existing->supplier_portal_id = $portal->id;
+                    $existing->save();
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Supplier already linked to this store.',
@@ -306,6 +318,7 @@ class SupplierController extends Controller
 
             $supplier = Supplier::create([
                 'store_id' => Auth::user()->store_id,
+                'supplier_portal_id' => $portal->id,
                 'supplier_code' => $this->generateSupplierCode(),
                 'supplier_name' => $supplierName ?: 'Unnamed Supplier',
                 'company_name' => $sourceSupplier?->company_name ?: $supplierName,
@@ -359,6 +372,26 @@ class SupplierController extends Controller
             'country' => 'Philippines',
             'phone' => $validated['phone'] ?? '',
         ];
+
+        // A store may enter a supplier manually instead of linking it from the
+        // verified directory. Associate it with a portal account only when the
+        // normalized email identifies exactly one approved account.
+        $normalizedEmail = strtolower(trim($validated['email']));
+        $matchingPortals = SupplierPortal::query()
+            ->approved()
+            ->where(function ($query) use ($normalizedEmail) {
+                $query->whereHas('user', function ($userQuery) use ($normalizedEmail) {
+                    $userQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
+                })->orWhereHas('supplier', function ($supplierQuery) use ($normalizedEmail) {
+                    $supplierQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
+                });
+            })
+            ->limit(2)
+            ->pluck('id');
+
+        if ($matchingPortals->count() === 1) {
+            $data['supplier_portal_id'] = $matchingPortals->first();
+        }
 
         \Log::info('[Supplier] Creating supplier record', ['supplier_code' => $supplierCode]);
         $supplier = Supplier::create($data);

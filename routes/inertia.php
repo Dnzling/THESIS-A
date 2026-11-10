@@ -375,11 +375,23 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     Route::get('/logistics/supplier-pickups', function (\App\Services\Core\PermissionService $permissions) use ($render) {
-        abort_unless($permissions->userHasPermission(request()->user(), 'logistics.supplier-pickups.view'), 403);
+        $user = request()->user();
+        abort_unless(
+            $permissions->userHasPermission($user, 'logistics.supplier-pickups.view')
+            || $permissions->userHasPermission($user, 'logistics.supplier-pickups.manage')
+            || $permissions->userHasPermission($user, 'logistics.driver.supplier-pickups'),
+            403,
+        );
         return $render('System/Logistics/SupplierPickups/Index', ['title' => 'Supplier Pickups']);
     })->name('logistics.supplier-pickups');
     Route::get('/logistics/supplier-pickups/{orderId}', function (int $orderId, \App\Services\Core\PermissionService $permissions) use ($render) {
-        abort_unless($permissions->userHasPermission(request()->user(), 'logistics.supplier-pickups.view'), 403);
+        $user = request()->user();
+        abort_unless(
+            $permissions->userHasPermission($user, 'logistics.supplier-pickups.view')
+            || $permissions->userHasPermission($user, 'logistics.supplier-pickups.manage')
+            || $permissions->userHasPermission($user, 'logistics.driver.supplier-pickups'),
+            403,
+        );
         return $render('System/Logistics/Driver/DriverDeliveryView', ['title' => 'Supplier Pickup Details']);
     })->whereNumber('orderId')->name('logistics.supplier-pickups.detail');
     Route::get('/logistics/supplier-pickups/{id}/assign', function (int $id, \App\Services\Core\PermissionService $permissions) use ($render) {

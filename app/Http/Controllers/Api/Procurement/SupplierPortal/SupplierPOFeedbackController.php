@@ -33,7 +33,8 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            if (!$portal->supplier_id) {
+            $supplierIds = $portal->linkedSupplierIds();
+            if ($supplierIds->isEmpty()) {
                 $perPage = (int) $request->get('per_page', 10);
                 $page = (int) $request->get('page', 1);
                 $empty = new LengthAwarePaginator([], 0, $perPage, $page, [
@@ -57,7 +58,7 @@ class SupplierPOFeedbackController extends Controller
                 'declined_supplier',
             ];
 
-            $query = PurchaseOrder::where('supplier_id', $portal->supplier_id)
+            $query = PurchaseOrder::whereIn('supplier_id', $supplierIds)
                 ->whereIn('status', $allowedStatuses)
                 ->with(['items.product', 'supplier', 'store']);
 
@@ -143,7 +144,7 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            if (!$portal->supplier_id) {
+            if ($portal->linkedSupplierIds()->isEmpty()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Supplier portal is not linked to a supplier.',
@@ -153,7 +154,7 @@ class SupplierPOFeedbackController extends Controller
             $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract'])
                 ->findOrFail($id);
 
-            if ($po->supplier_id !== $portal->supplier_id) {
+            if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized access to this purchase order.',
@@ -269,7 +270,7 @@ class SupplierPOFeedbackController extends Controller
 
             $po = PurchaseOrder::findOrFail($request->purchase_order_id);
 
-            if ((int) $po->supplier_id !== (int) $portal->supplier_id) {
+            if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized access to this purchase order.',
@@ -279,7 +280,7 @@ class SupplierPOFeedbackController extends Controller
             // Create or update feedback
             $feedback = SupplierPOFeedback::updateOrCreate(
                 [
-                    'supplier_id' => $portal->supplier_id,
+                    'supplier_id' => $po->supplier_id,
                     'purchase_order_id' => $request->purchase_order_id,
                 ],
                 [
@@ -308,7 +309,7 @@ class SupplierPOFeedbackController extends Controller
                     "PO {$po->po_number} accepted by supplier.",
                     [
                         'po_number' => $po->po_number,
-                        'supplier_id' => $portal->supplier_id,
+                        'supplier_id' => $po->supplier_id,
                         'fulfillment_method' => 'store_pickup',
                     ],
                     'purchase_order',
@@ -340,7 +341,7 @@ class SupplierPOFeedbackController extends Controller
                     "PO {$po->po_number} declined by supplier.",
                     [
                         'po_number' => $po->po_number,
-                        'supplier_id' => $portal->supplier_id,
+                        'supplier_id' => $po->supplier_id,
                         'reason' => $request->get('rejection_reason'),
                     ],
                     'purchase_order',
