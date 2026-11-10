@@ -16,6 +16,9 @@ class Store45SimplePayrollAttendanceSeeder extends Seeder
     private const TIMEZONE = 'Asia/Manila';
     private const NOTE_PREFIX = '[Store 45 Basic Payroll demo]';
 
+    /** @var array{days: list<string>, opens_at: string, closes_at: string} */
+    private array $operatingHours;
+
     public function run(): void
     {
         $store = $this->targetStore();
@@ -40,7 +43,7 @@ class Store45SimplePayrollAttendanceSeeder extends Seeder
             );
         }
 
-        $this->assertPayableWeeklySchedules($employees);
+        $this->operatingHours = $this->storeOperatingHours($store);
 
         $recordedBy = $this->recordedByUserId($employees);
         $paidMinutes = $this->standardPaidMinutes($store);
@@ -114,32 +117,25 @@ class Store45SimplePayrollAttendanceSeeder extends Seeder
         return $owner ? (int) $owner : ($employees->first()?->user_id ? (int) $employees->first()->user_id : null);
     }
 
-    private function assertPayableWeeklySchedules($employees): void
+    /** @return array{days: list<string>, opens_at: string, closes_at: string} */
+    private function storeOperatingHours(object $store): array
     {
-        $missing = $employees->reject(function (object $employee): bool {
-            return DB::table('employee_weekly_schedules as schedule')
-                ->leftJoin('shifts as shift', 'shift.id', '=', 'schedule.shift_id')
-                ->where('schedule.employee_id', $employee->id)
-                ->where('schedule.is_off', false)
-                ->where(function ($query): void {
-                    $query->whereNull('schedule.effective_from')
-                        ->orWhereDate('schedule.effective_from', '<=', self::END_DATE);
-                })
-                ->where(function ($query): void {
-                    $query->whereNull('schedule.effective_to')
-                        ->orWhereDate('schedule.effective_to', '>=', self::START_DATE);
-                })
-                ->whereRaw('COALESCE(schedule.start_time, shift.start_time) IS NOT NULL')
-                ->whereRaw('COALESCE(schedule.end_time, shift.end_time) IS NOT NULL')
-                ->exists();
-        })->pluck('id')->all();
+        $settings = json_decode((string) ($store->settings ?? ''), true);
+        $hours = is_array($settings) ? ($settings['simple_operating_hours'] ?? null) : null;
+        $days = is_array($hours) ? array_values(array_filter(array_map(
+            fn ($day): string => strtolower(trim((string) $day)),
+            $hours['days'] ?? [],
+        ))) : [];
+        $opensAt = is_array($hours) ? trim((string) ($hours['opens_at'] ?? '')) : '';
+        $closesAt = is_array($hours) ? trim((string) ($hours['closes_at'] ?? '')) : '';
 
-        if ($missing !== []) {
+        if ($days === [] || $opensAt === '' || $closesAt === '') {
             throw new RuntimeException(
-                'Basic Payroll requires an effective weekly work schedule. Missing schedule for employee IDs: '
-                . implode(', ', $missing),
+                'Store 45 must configure operating days, opening time, and closing time before attendance can be seeded.',
             );
         }
+
+        return ['days' => $days, 'opens_at' => $opensAt, 'closes_at' => $closesAt];
     }
 
     private function standardPaidMinutes(object $store): int
@@ -177,7 +173,7 @@ class Store45SimplePayrollAttendanceSeeder extends Seeder
 
     private function weeklySchedule(int $employeeId, CarbonImmutable $date): ?object
     {
-        return DB::table('employee_weekly_schedules as schedule')
+        $schedule = DB::table('employee_weekly_schedules as schedule')
             ->leftJoin('shifts as shift', 'shift.id', '=', 'schedule.shift_id')
             ->where('schedule.employee_id', $employeeId)
             ->whereRaw('LOWER(schedule.day_of_week) = ?', [strtolower($date->englishDayOfWeek)])
@@ -199,6 +195,21 @@ class Store45SimplePayrollAttendanceSeeder extends Seeder
                 'shift.start_time as shift_start_time',
                 'shift.end_time as shift_end_time',
             ]);
+
+        if ($schedule) {
+            return $schedule;
+        }
+
+        $isWorkday = in_array(strtolower($date->englishDayOfWeek), $this->operatingHours['days'], true);
+
+        return (object) [
+            'id' => null,
+            'is_off' => !$isWorkday,
+            'start_time' => $this->operatingHours['opens_at'],
+            'end_time' => $this->operatingHours['closes_at'],
+            'shift_start_time' => null,
+            'shift_end_time' => null,
+        ];
     }
 
     private function nonWorkingHoliday(CarbonImmutable $date): ?object

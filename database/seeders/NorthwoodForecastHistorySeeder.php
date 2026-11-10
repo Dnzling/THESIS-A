@@ -90,8 +90,6 @@ class NorthwoodForecastHistorySeeder extends Seeder
         $inventory = $query->first([
             'id',
             'quantity_on_hand',
-            'unit_cost',
-            'average_cost',
         ]);
 
         if (!$inventory) {
@@ -127,7 +125,7 @@ class NorthwoodForecastHistorySeeder extends Seeder
         $quantities = $this->distributedQuantities($demand['units'], $movementCount);
         $dates = $this->distributedDates($movementCount);
         $balance = (int) $inventory->quantity_on_hand + $demand['units'];
-        $unitCost = (float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0);
+        $unitCost = 0.0;
         $variationKey = $demand['variation_id'] ?? 0;
 
         foreach ($quantities as $index => $quantity) {
