@@ -273,14 +273,15 @@ class SimpleStaffController extends Controller
     {
         abort_unless(ctype_digit($employeeId), 404);
         $storeId = (int) $request->user()->store_id;
-        $employee = Employee::query()->where('store_id', $storeId)->with('user')->findOrFail((int) $employeeId);
+        $employee = Employee::query()->where('store_id', $storeId)->with(['user.role'])->findOrFail((int) $employeeId);
+        $isOwner = strtolower((string) $employee->user?->role?->name) === 'owner';
         $validated = $request->validate([
             'fname' => ['required', 'string', 'max:100'],
             'lname' => ['required', 'string', 'max:100'],
             'phone_number' => ['nullable', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
             'pay_type' => ['required', Rule::in(['daily'])],
             'salary' => ['required', 'numeric', 'gt:0'],
-            'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
+            'role_id' => ['sometimes', 'required', 'integer', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
                 $query->where(function ($scoped) use ($storeId) {
                     $scoped->whereNull('store_id')->orWhere('store_id', $storeId);
                 });
@@ -292,17 +293,18 @@ class SimpleStaffController extends Controller
             'status' => ['required', Rule::in(['active', 'on_leave', 'suspended'])],
         ]);
 
-        $roleChanged = (int) $employee->role_id !== (int) $validated['role_id'];
-        DB::transaction(function () use ($employee, $validated) {
+        $roleId = $isOwner ? (int) $employee->role_id : (int) ($validated['role_id'] ?? $employee->role_id);
+        $roleChanged = (int) $employee->role_id !== $roleId;
+        DB::transaction(function () use ($employee, $validated, $roleId) {
             $employee->user->fill([
                 'fname' => $validated['fname'],
                 'lname' => $validated['lname'],
                 'phone_number' => $validated['phone_number'] ?? null,
-                'role_id' => $validated['role_id'],
+                'role_id' => $roleId,
                 'branch_id' => $validated['branch_id'],
             ])->save();
             $employee->fill([
-                'role_id' => $validated['role_id'],
+                'role_id' => $roleId,
                 'branch_id' => $validated['branch_id'],
                 'hire_date' => $validated['hire_date'],
                 'employment_type' => $validated['employment_type'],
@@ -333,6 +335,7 @@ class SimpleStaffController extends Controller
             'phone_number' => $employee->user?->phone_number,
             'avatar_url' => $employee->user?->avatar_url,
             'role_id' => $employee->role_id,
+            'role_key' => $employee->user?->role?->name,
             'role' => $employee->user?->role?->display_name ?? $employee->user?->role?->name,
             'branch_id' => $employee->branch_id,
             'branch' => $employee->branch?->name,

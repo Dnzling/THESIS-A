@@ -5,8 +5,8 @@
     <div class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 sm:text-3xl">FurnitureSync Admin Dashboard</h1>
-          <p class="mt-2 text-sm text-gray-500">Welcome back, Admin. Here’s your platform overview.</p>
+          <h1 class="text-2xl font-semibold text-gray-900 sm:text-3xl">FurniSync Overview</h1>
+          <p class="mt-2 text-sm text-gray-500">Store growth and subscription performance at a glance.</p>
           <div class="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-600">
             <div class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
               <i class="pi pi-calendar text-gray-500"></i>
@@ -21,8 +21,8 @@
         <div class="flex flex-col items-stretch gap-3 sm:items-end">
           <Button label="Audit Logs" icon="pi pi-history" size="small" severity="secondary" outlined @click="goToActivityLog" />
           <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
-            <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Subscription Revenue</div>
+            <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(stats.subscriptionRevenue) }}
             </div>
           </div>
         </div>
@@ -30,7 +30,7 @@
     </div>
   
     <!-- Improved KPI Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -44,18 +44,6 @@
         </div>
       </div>
 
-      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
-        <div class="flex items-start justify-between">
-          <div>
-            <div class="text-xs text-gray-400">Commission Revenue</div>
-            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.commissionRevenue) }}</div>
-            <div class="text-sm text-indigo-500 mt-1">{{ formatCurrency(stats.monthlyCommissionRevenue) }} this month</div>
-          </div>
-          <div class="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-percentage text-indigo-600 text-xl"></i>
-          </div>
-        </div>
-      </div>
 
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
@@ -70,38 +58,14 @@
         </div>
       </div>
   
-      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
-        <div class="flex items-start justify-between">
-          <div>
-            <div class="text-xs text-gray-400">Active Subscriptions</div>
-            <div class="text-2xl font-bold text-gray-800 mt-1">{{ stats.activeSubscriptions }}</div>
-            <div class="text-sm text-green-500 mt-1">{{ stats.subscriptionGrowth }}% growth</div>
-          </div>
-          <div class="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-credit-card text-green-600 text-xl"></i>
-          </div>
-        </div>
-      </div>
+  
   
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
-            <div class="text-xs text-gray-400">Pending Validations</div>
-            <div class="text-2xl font-bold text-gray-800 mt-1">{{ stats.pendingValidations }}</div>
-            <div class="text-sm text-yellow-500 mt-1">Requires attention</div>
-          </div>
-          <div class="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-clock text-yellow-600 text-xl"></i>
-          </div>
-        </div>
-      </div>
-  
-      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
-        <div class="flex items-start justify-between">
-          <div>
-            <div class="text-xs text-gray-400">Monthly Revenue</div>
-            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.monthlyRevenue) }}</div>
-            <div class="text-sm text-green-500 mt-1">+{{ stats.revenueGrowth }}% vs last month</div>
+            <div class="text-xs text-gray-400">This Month</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.monthlySubscriptionRevenue) }}</div>
+            <div class="text-sm text-gray-500 mt-1">Subscription payments received</div>
           </div>
           <div class="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-chart-line text-purple-600 text-xl"></i>
@@ -115,7 +79,7 @@
       <!-- Revenue Trend -->
       <div class="bg-white shadow rounded-xl p-6">
         <div class="flex justify-between items-center mb-6">
-          <h3 class="text-lg font-semibold text-gray-800">Revenue Trend</h3>
+          <h3 class="text-lg font-semibold text-gray-800">Subscription Revenue Trend</h3>
           <div class="flex space-x-2">
             <Button @click="setRevenueChartView('monthly')"
               :severity="revenueChartView === 'monthly' ? 'primary' : 'secondary'" size="small">
@@ -145,139 +109,96 @@
       </div>
     </div>
   
-    <!-- Subscription Overview -->
-    <div class="bg-white shadow rounded-xl p-6">
-      <div class="flex justify-between items-center mb-6">
-        <h3 class="text-lg font-semibold text-gray-800">Subscription Overview</h3>
-        <router-link to="/admin/subscriptions" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-          Manage All Plans →
-        </router-link>
-      </div>
-  
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div v-for="plan in subscriptionPlans" :key="plan.id"
-          class="border rounded-lg p-4 hover:shadow-md transition-shadow">
-          <div class="flex justify-between items-start mb-3">
-            <div>
-              <h4 class="font-bold text-gray-800">{{ plan.name }}</h4>
-              <p class="text-2xl font-bold mt-2">{{ formatCurrency(plan.price) }}<span class="text-sm text-gray-500">/{{
-                  plan.period }}</span></p>
-            </div>
-            <Tag :value="plan.status" :severity="getPlanStatusSeverity(plan.status)" />
-          </div>
-          <div class="space-y-2 mb-4">
-            <div class="flex items-center text-sm text-gray-600">
-              <i class="pi pi-check-circle text-green-500 mr-2"></i>
-              <span>{{ plan.features.stores }} Stores</span>
-            </div>
-            <div class="flex items-center text-sm text-gray-600">
-              <i class="pi pi-check-circle text-green-500 mr-2"></i>
-              <span>{{ plan.features.products }} Products</span>
-            </div>
-            <div class="flex items-center text-sm text-gray-600">
-              <i class="pi pi-check-circle text-green-500 mr-2"></i>
-              <span>{{ plan.features.users }} Users</span>
-            </div>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-sm text-gray-500">{{ plan.subscribers }} subscribers</span>
-            <Button label="Manage" size="small" severity="secondary" @click="managePlan(plan)" />
-          </div>
+    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Subscription Plans</h2>
+          <p class="mt-1 text-sm text-slate-500">Active stores on each plan.</p>
         </div>
+        <Button label="Manage Plans" icon="pi pi-arrow-right" iconPos="right" size="small" outlined @click="goToSubscriptions" />
       </div>
-    </div>
-  
-    <!-- Pending Actions -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Pending Store Registrations -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex justify-between items-center mb-6">
+      <div v-if="plansLoading" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Skeleton v-for="item in 3" :key="item" height="190px" />
+      </div>
+      <div v-else-if="subscriptionPlans.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div v-for="(plan, index) in subscriptionPlans" :key="plan.id"
+          class="flex min-h-48 flex-col justify-between rounded-2xl p-5 text-white"
+          :class="planGradient(index)">
           <div>
-            <h3 class="text-lg font-semibold text-gray-800">Pending Store Registrations</h3>
-            <p class="text-sm text-gray-500">{{ pendingStores.length }} stores awaiting approval</p>
+            <p class="text-xs font-semibold uppercase tracking-widest text-white/70">{{ plan.plan_key }}</p>
+            <h3 class="mt-2 text-xl font-bold">{{ plan.name }}</h3>
+            <p class="mt-2 text-sm text-white/80">{{ plan.description || 'FurniSync subscription plan' }}</p>
           </div>
-          <Button label="Review All" size="small" @click="goToPendingApprovals" />
-        </div>
-  
-        <div class="space-y-3">
-          <div v-for="store in pendingStores.slice(0, 3)" :key="store.id"
-            class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="pi pi-store text-blue-600"></i>
-              </div>
-              <div>
-                <p class="font-medium">{{ store.name }}</p>
-                <p class="text-xs text-gray-500">{{ store.owner }} • {{ store.waitingTime }}</p>
-              </div>
-            </div>
-            <div class="flex space-x-2">
-              <Button icon="pi pi-check" size="small" severity="success" @click="approveStore(store)" />
-              <Button icon="pi pi-times" size="small" severity="danger" @click="rejectStore(store)" />
-            </div>
+          <div class="mt-5 flex items-end justify-between gap-3 border-t border-white/20 pt-4">
+            <p class="text-sm"><span class="text-2xl font-semibold">{{ plan.active_stores_count || 0 }}</span> active stores</p>
+            <p class="text-sm font-medium">{{ formatCurrency(plan.monthly_price) }} / mo</p>
           </div>
-        </div>
-  
-        <div v-if="pendingStores.length > 3" class="mt-4 text-center">
-          <span class="text-sm text-gray-500">+{{ pendingStores.length - 3 }} more pending stores</span>
         </div>
       </div>
-  
-      <!-- Recent Payments -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex justify-between items-center mb-6">
-          <div>
-            <h3 class="text-lg font-semibold text-gray-800">Recent Payments</h3>
-            <p class="text-sm text-gray-500">Latest Online Payment subscription and billing transactions</p>
-          </div>
-          <router-link to="/finance/receivables" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-            View All →
-          </router-link>
-        </div>
-  
-        <DataTable :value="recentPayments" tableStyle="min-width: 60rem">
-          <Column field="store" header="Store" style="width: 30%">
-            <template #body="slotProps">
-              <div>
-                <div class="flex items-center">
-                  <i class="pi pi-store text-gray-400 mr-2"></i>
-                  <span class="text-sm font-medium">{{ slotProps.data.store }}</span>
-                </div>
-                <div class="mt-1 text-xs text-gray-500">{{ slotProps.data.paymentIntentId }}</div>
-              </div>
-            </template>
-          </Column>
-  
-          <Column field="type" header="Type" style="width: 15%">
-            <template #body="slotProps">
-              <span class="text-sm text-gray-600">{{ slotProps.data.type }}</span>
-            </template>
-          </Column>
-  
-          <Column field="amount" header="Amount" style="width: 25%">
-            <template #body="slotProps">
-              <div class="font-bold">{{ formatCurrency(slotProps.data.amount) }}</div>
-              <div class="text-xs text-gray-500">{{ slotProps.data.currency }}</div>
-            </template>
-          </Column>
-  
-          <Column field="date" header="Date" style="width: 25%">
-            <template #body="slotProps">
-              <span class="text-sm text-gray-500">{{ formatDate(slotProps.data.date) }}</span>
-            </template>
-          </Column>
-  
-          <Column field="status" header="Status" style="width: 20%">
-            <template #body="slotProps">
-              <Tag :value="slotProps.data.status" :severity="getPaymentStatusSeverity(slotProps.data.status)" rounded />
-              <div class="mt-1 text-xs text-gray-500">{{ slotProps.data.storeStatus }}</div>
-            </template>
-          </Column>
-        </DataTable>
-      </div>
-  
+      <p v-else class="py-8 text-center text-sm text-slate-500">No subscription plans found.</p>
+    </section>
 
-    </div>
+    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Recent Subscription Payments</h2>
+        <p class="mt-1 text-sm text-slate-500">Subscription checkout transactions only.</p>
+      </div>
+      <DataTable :value="recentPayments" rowHover size="small" responsiveLayout="scroll" class="text-sm">
+        <template #empty><div class="py-8 text-center text-sm text-slate-500">No subscription payments yet.</div></template>
+        <Column field="date" header="Date">
+          <template #body="{ data }">{{ formatDate(data.date) }}</template>
+        </Column>
+        <Column field="store" header="Store" />
+        <Column field="amount" header="Amount">
+          <template #body="{ data }"><span class="font-semibold">{{ formatCurrency(data.amount) }}</span></template>
+        </Column>
+        <Column field="status" header="Status">
+          <template #body="{ data }"><Badge :value="humanizePaymentStatus(data.status)" :severity="getPaymentStatusSeverity(data.status)" /></template>
+        </Column>
+        <Column header="Action" style="width: 90px">
+          <template #body="{ data }">
+            <Button label="View" icon="pi pi-eye" outlined rounded size="small" @click="viewPayment(data)" />
+          </template>
+        </Column>
+      </DataTable>
+    </section>
+
+    <Dialog v-model:visible="paymentDialogVisible" modal header="Subscription Payment Details" :style="{ width: 'min(34rem, 94vw)' }">
+      <div v-if="selectedPayment" class="space-y-4">
+        <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-slate-500">Store</p>
+            <p class="mt-1 font-semibold text-slate-900">{{ selectedPayment.store || 'Unknown Store' }}</p>
+          </div>
+          <Badge :value="humanizePaymentStatus(selectedPayment.status)" :severity="getPaymentStatusSeverity(selectedPayment.status)" />
+        </div>
+        <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div class="rounded-lg border border-slate-200 p-3">
+            <dt class="text-xs text-slate-500">Amount</dt>
+            <dd class="mt-1 font-semibold text-slate-900">{{ formatCurrency(selectedPayment.amount) }}</dd>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3">
+            <dt class="text-xs text-slate-500">Payment Date</dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900">{{ formatDate(selectedPayment.date) }}</dd>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3">
+            <dt class="text-xs text-slate-500">Payment Type</dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900">{{ selectedPayment.type || 'Subscription' }}</dd>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3">
+            <dt class="text-xs text-slate-500">Store Status</dt>
+            <dd class="mt-1 text-sm font-medium text-slate-900">{{ formatLabel(selectedPayment.storeStatus) }}</dd>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3 sm:col-span-2">
+            <dt class="text-xs text-slate-500">Payment Reference</dt>
+            <dd class="mt-1 break-all text-sm font-medium text-slate-900">{{ selectedPayment.paymentIntentId || 'Not provided' }}</dd>
+          </div>
+        </dl>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined size="small" @click="paymentDialogVisible = false" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -290,6 +211,9 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
+import Dialog from 'primevue/dialog'
 
 let ChartConstructor: any = null
 let chartJsPromise: Promise<any> | null = null
@@ -357,16 +281,24 @@ const growthPeriodOptions = ref([
 // Recent Activities (populated from API)
 const recentActivities = ref([])
 
-const subscriptionPlans = ref([])
+const subscriptionPlans = ref<any[]>([])
+const plansLoading = ref(true)
+const planGradient = (index: number) => [
+  'bg-gradient-to-br from-slate-900 to-blue-900',
+  'bg-gradient-to-br from-rose-900 to-blue-950',
+  'bg-gradient-to-br from-orange-600 to-red-800',
+][index % 3]
 
 const pendingStores = ref([])
 
 const recentPayments = ref([])
+const selectedPayment = ref<any>(null)
+const paymentDialogVisible = ref(false)
 
 // Helper Functions
-const formatCurrency = (amount: number) => {
-  return '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+const formatCurrency = (amount: number | string) => new Intl.NumberFormat('en-PH', {
+  style: 'currency', currency: 'PHP',
+}).format(Number(amount || 0))
 
 const formatDate = (value: any) => {
   if (!value) return '-'
@@ -410,6 +342,15 @@ const getPaymentStatusSeverity = (status: string) => {
   }
 }
 
+const formatLabel = (value?: string | null) => value
+  ? value.replace(/[_-]/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+  : 'Unknown'
+const humanizePaymentStatus = (status?: string | null) => formatLabel(status || 'unknown')
+const viewPayment = (payment: any) => {
+  selectedPayment.value = payment
+  paymentDialogVisible.value = true
+}
+
 // Chart Functions
 const initRevenueChart = async () => {
   if (!revenueChartRef.value) return
@@ -432,15 +373,6 @@ const initRevenueChart = async () => {
     data: {
       labels: data.labels,
       datasets: [
-        {
-          label: 'Commission Revenue',
-          data: data.commissionRevenue,
-          borderColor: '#4f46e5',
-          backgroundColor: 'rgba(79, 70, 229, 0.1)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4
-        },
         {
           label: 'Subscription Revenue',
           data: data.subscriptionRevenue,
@@ -592,6 +524,19 @@ const loadDashboard = async () => {
   }
 }
 
+const loadPlans = async () => {
+  plansLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/admin/subscription-plans')
+    subscriptionPlans.value = Array.isArray(response.data?.data) ? response.data.data : []
+  } catch (error) {
+    console.error('Failed to load subscription plans', error)
+    subscriptionPlans.value = []
+  } finally {
+    plansLoading.value = false
+  }
+}
+
 
 const updateDateTime = () => {
   const now = new Date()
@@ -652,7 +597,7 @@ onMounted(() => {
   updateDateTime()
   dateInterval = window.setInterval(updateDateTime, 60000)
 
-  loadDashboard()
+  void Promise.all([loadDashboard(), loadPlans()])
 })
 
 onUnmounted(() => {

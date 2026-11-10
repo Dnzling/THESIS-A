@@ -26,6 +26,18 @@
           <Column field="voucher_name" header="Name" />
           <Column field="code" header="Code" />
           <Column field="voucher_slots" header="Voucher Slots" />
+          <Column header="Performance">
+            <template #body="{ data }">
+              <div class="leading-4">
+                <p class="font-semibold text-slate-900">
+                  {{ Number(data.used_customer_count || 0) }} {{ Number(data.used_customer_count || 0) === 1 ? 'customer' : 'customers' }}
+                </p>
+                <p class="text-[11px] text-slate-500">
+                  {{ Number(data.used_order_count || 0) }} {{ Number(data.used_order_count || 0) === 1 ? 'order' : 'orders' }}
+                </p>
+              </div>
+            </template>
+          </Column>
           <Column field="discount_type" header="Discount">
             <template #body="{ data }">
               {{ data.discount_type === 'percent' ? `${Number(data.discount_value || 0)}%` : money(data.discount_value) }}
@@ -107,8 +119,8 @@ const dt = (v: string | null) => (v ? new Date(v).toLocaleDateString('en-PH') : 
 const isExpired = (row: any) => !!row?.ends_at && new Date(row.ends_at).getTime() < Date.now()
 const statusLabel = (row: any) => (isExpired(row) ? 'Expired' : row?.is_active ? 'Active' : 'Inactive')
 const statusSeverity = (row: any) => (isExpired(row) ? 'danger' : row?.is_active ? 'success' : 'warn')
-const goCreate = () => router.visit('/crm/vouchers/create')
-const goShow = (id: number | string) => router.visit(`/crm/vouchers/${id}`)
+const goCreate = () => router.visit('/merchandising/vouchers/create')
+const goShow = (id: number | string) => router.visit(`/merchandising/vouchers/${id}`)
 
 onMounted(load)
 </script>

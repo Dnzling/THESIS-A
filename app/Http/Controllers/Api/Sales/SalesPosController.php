@@ -857,6 +857,7 @@ class SalesPosController extends Controller
         $previousMonthEcomSales = 0.0;
         $ecomMethods = collect();
         $ecomPendingPayments = 0;
+        $recentEcommerceOrders = collect();
 
         if (DB::getSchemaBuilder()->hasTable('ecommerce_orders')) {
             $ecomQuery = DB::table('ecommerce_orders');
@@ -898,6 +899,52 @@ class SalesPosController extends Controller
                 ->whereNotNull('payment_method')
                 ->groupBy('payment_method')
                 ->get();
+
+            $recentEcommerceOrders = EcommerceOrder::query()
+                ->with([
+                    'assignedBranch:id,name',
+                    'delivery.creator:id,fname,lname,email',
+                    'delivery.updater:id,fname,lname,email',
+                    'delivery.logs' => fn ($query) => $query
+                        ->with('creator:id,fname,lname,email')
+                        ->latest('id'),
+                ])
+                ->when(
+                    !$request->user()->hasRole('super_admin'),
+                    fn ($query) => $query->where('store_id', $request->user()->store_id),
+                    fn ($query) => $request->filled('store_id')
+                        ? $query->where('store_id', (int) $request->input('store_id'))
+                        : $query
+                )
+                ->latest('created_at')
+                ->limit(8)
+                ->get()
+                ->map(function (EcommerceOrder $order): array {
+                    $latestLog = $order->delivery?->logs?->first();
+                    $processor = $latestLog?->creator
+                        ?? $order->delivery?->updater
+                        ?? $order->delivery?->creator;
+                    $processorName = trim(implode(' ', array_filter([
+                        $processor?->fname,
+                        $processor?->lname,
+                    ])));
+
+                    return [
+                        'id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'customer_name' => $order->shipping_name,
+                        'branch_name' => $order->assignedBranch?->name,
+                        'status' => $order->status,
+                        'payment_method' => $order->payment_method,
+                        'payment_status' => $order->payment_status,
+                        'total_amount' => (float) $order->total_amount,
+                        'processed_by' => $processorName !== ''
+                            ? $processorName
+                            : ($processor?->email ?: 'Not yet processed'),
+                        'processed_at' => $latestLog?->created_at ?? $order->delivery?->updated_at,
+                        'created_at' => $order->created_at,
+                    ];
+                });
         }
 
         $posMethods = (clone $paymentQuery)
@@ -1001,6 +1048,7 @@ class SalesPosController extends Controller
                 'pending_payments' => (clone $paymentQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count() + $ecomPendingPayments,
                 'payments_by_method' => $paymentsByMethod,
                 'recent_orders' => (clone $query)->with('branch:id,name')->orderByDesc('created_at')->limit(8)->get(),
+                'recent_ecommerce_orders' => $recentEcommerceOrders,
             ],
         ]);
     }

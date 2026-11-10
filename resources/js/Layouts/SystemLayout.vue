@@ -57,6 +57,8 @@
                       ]"></i>
                       <span>{{ item.display_name }}</span>
                     </div>
+                    <span v-if="itemNeedsSetupAttention(item)" role="status" :aria-label="setupAttentionTooltip(item)" :title="setupAttentionTooltip(item)"
+                      class="ml-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold leading-none text-white">!</span>
                     <Badge v-if="item.name !== 'merchandising.products' && item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
                       size="small" />
                     </Link>
@@ -87,11 +89,13 @@
               v-for="item in moduleGroup.items"
               :key="item.id"
               :href="item.route_path"
-              class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600"
+              class="relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600"
               :class="{ 'bg-orange-100 text-orange-600': isActive(item.route_path) }"
-              v-tooltip.right="item.display_name"
+              v-tooltip.right="navItemTooltip(item)"
+              :aria-label="navItemTooltip(item)"
             >
               <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
+              <span v-if="itemNeedsSetupAttention(item)" aria-hidden="true" class="absolute -right-0.5 -top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-amber-500 text-[10px] font-bold leading-none text-white">!</span>
             </Link>
           </div>
         </div>
@@ -365,11 +369,35 @@ const notificationPanel = ref()
 const staffChatPanel = ref()
 const staffChatConversations = ref<any[]>([])
 const staffChatsLoading = ref(false)
+const setupAttention = ref<Record<string, boolean>>({})
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 const unreadCount = ref(0)
 const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
 const canManageStaffChats = computed(() => authStore.hasPermission('admin.chats.manage'))
+const loadSetupAttention = async () => {
+  if (!authStore.user?.store_id && !String(authStore.userRole || '').toLowerCase().includes('store')) return
+  try {
+    const response = await axiosClient.get('/api/store/setup-attention')
+    setupAttention.value = response.data?.data?.setup_attention || {}
+  } catch {}
+}
+const itemNeedsSetupAttention = (item: any) => {
+  const name = String(item?.name || '').toLowerCase()
+  const path = String(item?.route_path || '').toLowerCase()
+  if (name.startsWith('store.settings') || path.startsWith('/store/settings')) {
+    return Boolean(setupAttention.value.photo_upload || setupAttention.value.operating_hours || setupAttention.value.fulfillment_windows)
+  }
+  if (name.startsWith('store.employees') || name.startsWith('hr.employees') || path.startsWith('/store/employees') || path.startsWith('/hr/employees')) {
+    return Boolean(setupAttention.value.employees)
+  }
+  if (name === 'inventory.products' || path.startsWith('/inventory/products')) {
+    return Boolean(setupAttention.value.products)
+  }
+  return false
+}
+const setupAttentionTooltip = (item: any) => `${item?.display_name || 'Page'} needs setup`
+const navItemTooltip = (item: any) => `${item?.display_name || ''}${itemNeedsSetupAttention(item) ? ' - action needed' : ''}`
 const staffChatUnread = computed(() => staffChatConversations.value.reduce((sum, chat) => sum + Number(chat.unread_count || 0), 0))
 const notificationPoller = ref<number | null>(null)
 let knownNotificationIds = new Set<string>()
@@ -460,10 +488,13 @@ onMounted(async () => {
     }
   }
 
+  await loadSetupAttention()
+
   isBooting.value = false
 
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
+  window.addEventListener('setup-attention-refresh', loadSetupAttention)
   void loadNotifications()
   if (canManageStaffChats.value) loadStaffChats()
   if (!notificationPoller.value) {
@@ -500,6 +531,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyboardShortcut)
   document.removeEventListener('visibilitychange', refreshNavigationWhenVisible)
+  window.removeEventListener('setup-attention-refresh', loadSetupAttention)
   if (notificationPoller.value) {
     clearInterval(notificationPoller.value)
     notificationPoller.value = null
@@ -548,6 +580,7 @@ watch(currentPath, () => {
   if (window.innerWidth < 1024) {
     sidebarOpen.value = false
   }
+  void loadSetupAttention()
 })
 
 // Keyboard shortcut: Ctrl+B to toggle sidebar

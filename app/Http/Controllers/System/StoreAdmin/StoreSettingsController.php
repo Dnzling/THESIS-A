@@ -35,6 +35,28 @@ class StoreSettingsController extends Controller
         $profile = $user?->trialOnboardingProfile;
         $storeId = (int) ($store?->id ?? 0);
         $mainBranch = $store?->branches()->orderByDesc('is_main_branch')->first();
+        $storeSettings = is_array($store?->settings) ? $store->settings : [];
+        $operatingHours = $storeSettings['simple_operating_hours'] ?? [];
+        $savedWindows = $storeSettings['fulfillment_windows'] ?? [];
+        $isSimpleSetupPlan = in_array(strtolower((string) ($subscriptionPlan?->plan_key ?? $store?->subscription_tier)), ['free', 'simple'], true);
+        $hasValidWindow = static fn ($window): bool => is_array($window)
+            && !empty($window['days'])
+            && !empty($window['start'])
+            && !empty($window['end'])
+            && (string) $window['end'] > (string) $window['start'];
+        $setupAttention = [
+            'photo_upload' => empty($mainBranch?->logo_path),
+            'operating_hours' => $isSimpleSetupPlan && (
+                !is_array($operatingHours)
+                || empty($operatingHours['days'])
+                || empty($operatingHours['opens_at'])
+                || empty($operatingHours['closes_at'])
+                || (string) $operatingHours['closes_at'] <= (string) $operatingHours['opens_at']
+            ),
+            'pickup_window' => !$hasValidWindow($savedWindows['pickup'] ?? null),
+            'delivery_window' => !$hasValidWindow($savedWindows['delivery'] ?? null),
+        ];
+        $setupAttention['fulfillment_windows'] = $setupAttention['pickup_window'] || $setupAttention['delivery_window'];
 
         $enabledModuleKeys = $storeId > 0
             ? app(ModuleAccessService::class)->enabledModuleKeysForStore($storeId)
@@ -126,8 +148,9 @@ class StoreSettingsController extends Controller
                 ->toArray() ?? [],
             'attendance' => $this->resolveAttendanceSettings($store?->id),
             'attendance_geolocation_available' => $store && $this->planIncludesAttendanceRecording($store),
-            'operating_hours' => is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null,
+            'operating_hours' => $storeSettings['simple_operating_hours'] ?? null,
             'fulfillment_windows' => $store ? app(\App\Services\Ecommerce\FulfillmentWindowService::class)->settings($store) : null,
+            'setup_attention' => $setupAttention,
             'subscription' => [
                 'tier' => $subscriptionPlan?->plan_key,
                 'plan_label' => $subscriptionPlan?->name ?? 'No plan',

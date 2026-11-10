@@ -16,9 +16,9 @@
         <div v-else class="grid gap-3 text-sm md:grid-cols-2">
           <div><span class="text-slate-500">Source:</span> <strong>{{ sourceLabel }}</strong></div>
           <div><span class="text-slate-500">Order #:</span> <strong>{{ order.order_number || `#${orderId}` }}</strong></div>
-          <div><span class="text-slate-500">Customer:</span> <strong>{{ customerName }}</strong></div>
+          <div><span class="text-slate-500">{{ source === 'pickup' ? 'Supplier:' : 'Customer:' }}</span> <strong>{{ customerName }}</strong></div>
           <div><span class="text-slate-500">Contact:</span> <strong>{{ customerContact }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong></div>
+          <div class="md:col-span-2"><span class="text-slate-500">{{ source === 'pickup' ? 'Pickup from:' : 'Address:' }}</span> <strong>{{ deliveryAddress }}</strong></div>
           <div><span class="text-slate-500">Status:</span> <Tag :value="formatStatus(order.status)" severity="secondary" /></div>
         </div>
       </template>
@@ -92,12 +92,12 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const canManage = useAuthStore().hasPermission('logistics.deliveries.manage')
-const source = computed<'ecommerce' | 'sales' | 'return_pickup'>(() => {
+const source = computed<'ecommerce' | 'sales' | 'return_pickup' | 'pickup'>(() => {
   const value = String(route.query.source || '').toLowerCase()
-  return value === 'sales' || value === 'return_pickup' ? value : 'ecommerce'
+  return value === 'sales' || value === 'return_pickup' || value === 'pickup' ? value : 'ecommerce'
 })
 const orderId = computed(() => Number(route.query.order_id || 0))
-const sourceLabel = computed(() => source.value === 'return_pickup' ? 'Return Pickup' : source.value === 'sales' ? 'Sales' : 'Ecommerce')
+const sourceLabel = computed(() => source.value === 'pickup' ? 'Supplier Pickup' : source.value === 'return_pickup' ? 'Return Pickup' : source.value === 'sales' ? 'Sales' : 'Ecommerce')
 const loadingOrder = ref(false)
 const loadingOptions = ref(false)
 const submitting = ref(false)
@@ -135,16 +135,19 @@ const isDepartureDateUnavailable = (value: Date | null) => Boolean(value && isUn
 }))
 const selectedDriver = computed(() => drivers.value.find(driver => Number(driver.id) === Number(form.driver_user_id)))
 const selectedVehicle = computed(() => vehicles.value.find(vehicle => Number(vehicle.id) === Number(form.vehicle_id)))
-const customerName = computed(() => (source.value === 'return_pickup' ? order.value?.pickup_name : source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
-const customerContact = computed(() => (source.value === 'return_pickup' ? order.value?.pickup_phone : source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
-const deliveryAddress = computed(() => (source.value === 'return_pickup' ? order.value?.pickup_address : source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
+const customerName = computed(() => (source.value === 'pickup' ? order.value?.supplier?.supplier_name || order.value?.customer_name : source.value === 'return_pickup' ? order.value?.pickup_name : source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
+const customerContact = computed(() => (source.value === 'pickup' ? order.value?.supplier?.contact_number || order.value?.customer_contact : source.value === 'return_pickup' ? order.value?.pickup_phone : source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
+const deliveryAddress = computed(() => (source.value === 'pickup' ? order.value?.supplier?.address || order.value?.origin_address : source.value === 'return_pickup' ? order.value?.pickup_address : source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
 const formatStatus = (value: string) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
 
 const loadOrder = async () => {
   if (!Number.isInteger(orderId.value) || orderId.value <= 0) return
   loadingOrder.value = true
   try {
-    if (source.value === 'return_pickup') {
+    if (source.value === 'pickup') {
+      const response = await logisticsService.getDeliveryOrderDetail('pickup', orderId.value)
+      order.value = response?.data?.order || null
+    } else if (source.value === 'return_pickup') {
       const response = await logisticsService.getReturnPickup(orderId.value)
       const pickup = response?.data
       order.value = pickup ? { ...pickup, order_number: pickup.return_request?.return_number || `Return #${pickup.return_request?.id || pickup.id}` } : null

@@ -107,6 +107,27 @@
                   placeholder="House/building number, street, subdivision" />
                 <small v-if="errors.address" class="text-red-500">{{ errors.address }}</small>
               </div>
+
+              <div class="md:col-span-2 space-y-2">
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-gray-700">Supplier Map Location <span class="text-red-500">*</span></label>
+                  <p class="mb-2 text-xs text-gray-500">Search the supplier address or click/drag the pin to mark the pickup location.</p>
+                  <div class="flex gap-2">
+                    <InputText v-model="mapSearchQuery" class="min-w-0 flex-1" size="small"
+                      placeholder="Search street, barangay, city, province"
+                      @keyup.enter.prevent="searchSupplierLocation" />
+                    <Button type="button" label="Search" icon="pi pi-search" severity="warn" size="small"
+                      :loading="searchingLocation" @click="searchSupplierLocation" />
+                  </div>
+                  <small v-if="errors.coordinates" class="mt-1 block text-red-500">{{ errors.coordinates }}</small>
+                </div>
+                <div ref="mapElement" class="h-72 w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 sm:h-80" />
+                <Message v-if="mapError" severity="error" :closable="false" class="text-sm">{{ mapError }}</Message>
+                <p v-if="form.latitude && form.longitude" class="text-xs text-gray-600">
+                  Pin selected: {{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}
+                </p>
+                <p v-else class="text-xs text-amber-700">Choose a map location before saving this supplier.</p>
+              </div>
             </div>
           </div>
 
@@ -139,12 +160,23 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Message from 'primevue/message'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import inventoryService from '../../../../services/inventory.service'
 import ecommerceService from '../../../../services/ecommerce.service'
+import { forwardGeocodeMapbox, requireMapboxToken } from '../../../../utils/mapbox'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const mapElement = ref<HTMLElement | null>(null)
+const mapSearchQuery = ref('')
+const mapError = ref('')
+const searchingLocation = ref(false)
+let supplierMap: MapboxMap | null = null
+let supplierMarker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const supplierId = Number(route.params.id || 0)
 const isEditing = computed(() => supplierId > 0)
 const saving = ref(false)
@@ -172,6 +204,8 @@ const form = reactive({
   city_id: '',
   barangay: '',
   address: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
 })
 
 const supplierTypeOptions = [
@@ -235,6 +269,91 @@ const onCityChange = async () => {
   }
 }
 
+const setSupplierLocation = (latitude: number, longitude: number) => {
+  form.latitude = Number(latitude.toFixed(7))
+  form.longitude = Number(longitude.toFixed(7))
+  const point: [number, number] = [form.longitude, form.latitude]
+
+  if (supplierMap && mapboxgl) {
+    if (!supplierMarker) {
+      supplierMarker = new mapboxgl.Marker({ draggable: true, color: '#f97316' })
+        .setLngLat(point)
+        .addTo(supplierMap)
+      supplierMarker.on('dragend', () => {
+        const moved = supplierMarker?.getLngLat()
+        if (moved) setSupplierLocation(moved.lat, moved.lng)
+      })
+    } else {
+      supplierMarker.setLngLat(point)
+    }
+    supplierMap.easeTo({ center: point, zoom: 16 })
+  }
+}
+
+const initSupplierMap = async () => {
+  if (!mapElement.value || supplierMap) return
+
+  try {
+    mapError.value = ''
+    const module = await import('mapbox-gl')
+    mapboxgl = module.default
+    mapboxgl.accessToken = requireMapboxToken()
+    const hasLocation = form.latitude !== null && form.longitude !== null
+    const center: [number, number] = hasLocation
+      ? [form.longitude as number, form.latitude as number]
+      : [120.85, 14.20]
+
+    supplierMap = new mapboxgl.Map({
+      container: mapElement.value,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center,
+      zoom: hasLocation ? 15 : 8,
+    })
+    supplierMap.on('load', () => {
+      supplierMap?.resize()
+      if (form.latitude !== null && form.longitude !== null) {
+        setSupplierLocation(form.latitude, form.longitude)
+      }
+    })
+    supplierMap.on('click', (event) => setSupplierLocation(event.lngLat.lat, event.lngLat.lng))
+    supplierMap.on('error', (event) => {
+      mapError.value = event.error?.message || 'The supplier map could not be loaded.'
+    })
+  } catch (error: any) {
+    mapError.value = error?.message || 'Unable to load the supplier map.'
+  }
+}
+
+const searchSupplierLocation = async () => {
+  const addressQuery = mapSearchQuery.value.trim() || [
+    form.address,
+    form.barangay,
+    cityOptions.value.find(option => option.value === form.city_id)?.label,
+    provinceOptions.value.find(option => option.value === form.province_id)?.label,
+    'Philippines',
+  ].filter(Boolean).join(', ')
+
+  if (!addressQuery) {
+    toast.add({ severity: 'warn', summary: 'Enter an address', detail: 'Enter a supplier address or complete the address fields first.', life: 3000 })
+    return
+  }
+
+  searchingLocation.value = true
+  try {
+    const result = await forwardGeocodeMapbox(addressQuery)
+    if (!result) {
+      toast.add({ severity: 'warn', summary: 'Location not found', detail: 'Try adding the barangay, city, and province.', life: 3000 })
+      return
+    }
+    mapSearchQuery.value = result.address || addressQuery
+    setSupplierLocation(result.latitude, result.longitude)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Map search failed', detail: error?.message || 'Unable to search this address.', life: 3500 })
+  } finally {
+    searchingLocation.value = false
+  }
+}
+
 const revokePreview = () => {
   if (logoPreview.value) URL.revokeObjectURL(logoPreview.value)
   logoPreview.value = null
@@ -276,6 +395,8 @@ const loadSupplier = async () => {
     form.supplier_type = supplier.supplier_type || ''
     form.address = supplier.address || ''
     form.barangay = supplier.barangay || ''
+    form.latitude = supplier.latitude !== null && supplier.latitude !== undefined ? Number(supplier.latitude) : null
+    form.longitude = supplier.longitude !== null && supplier.longitude !== undefined ? Number(supplier.longitude) : null
     existingLogoUrl.value = supplier.logo_url || null
     logoPreview.value = existingLogoUrl.value
 
@@ -298,6 +419,9 @@ const loadSupplier = async () => {
         form.barangay = barangay?.value || supplier.barangay || ''
       }
     }
+    if (form.latitude !== null && form.longitude !== null) {
+      setSupplierLocation(form.latitude, form.longitude)
+    }
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Unable to Load Supplier',
       detail: error.response?.data?.message || error.message || 'Supplier details could not be loaded.', life: 4000 })
@@ -319,6 +443,7 @@ const validate = () => {
   if (!form.city_id) errors.value.city = 'City or municipality is required'
   if (!form.barangay) errors.value.barangay = 'Barangay is required'
   if (!form.address.trim()) errors.value.address = 'Street address is required'
+  if (form.latitude === null || form.longitude === null) errors.value.coordinates = 'Select the supplier pickup location on the map.'
   if (logoFile.value && logoFile.value.size > 2 * 1024 * 1024) errors.value.logo = 'Logo must not exceed 2 MB'
   return Object.keys(errors.value).length === 0
 }
@@ -351,6 +476,8 @@ const saveSupplier = async () => {
     payload.append('city', cityOptions.value.find(option => option.value === form.city_id)?.label || '')
     payload.append('barangay', form.barangay)
     payload.append('address', form.address.trim())
+    payload.append('latitude', String(form.latitude))
+    payload.append('longitude', String(form.longitude))
     if (logoFile.value) payload.append('logo', logoFile.value)
     if (isEditing.value && removeExistingLogo.value && !logoFile.value) payload.append('remove_logo', '1')
 
@@ -382,6 +509,15 @@ const saveSupplier = async () => {
   }
 }
 
-onBeforeUnmount(revokePreview)
-onMounted(() => isEditing.value ? loadSupplier() : loadProvinces())
+onBeforeUnmount(() => {
+  revokePreview()
+  supplierMap?.remove()
+  supplierMap = null
+  supplierMarker = null
+})
+onMounted(() => {
+  void initSupplierMap()
+  if (isEditing.value) void loadSupplier()
+  else void loadProvinces()
+})
 </script>

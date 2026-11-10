@@ -155,7 +155,7 @@
 
           <div v-if="detail" class="mt-5 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:ml-auto sm:max-w-md">
             <div class="flex items-center justify-between"><span class="text-gray-500">Subtotal</span><span>₱ {{ formatMoney(detail.amounts?.subtotal) }}</span></div>
-            <div v-if="Number(detail.amounts?.discount || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">Discount</span><span class="text-rose-600">- ₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
+            <div v-if="Number(detail.amounts?.discount || 0) > 0" class="flex items-center justify-between"><span class="text-slate-500">{{ detail.amounts?.voucher_code ? `Voucher (${detail.amounts.voucher_code})` : 'Discount' }}</span><span class="text-rose-600">- ₱ {{ formatMoney(detail.amounts?.discount) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">VATable Sales</span><span>₱ {{ formatMoney(vatableSales) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Output VAT (12%, included)</span><span>₱ {{ formatMoney(outputVat) }}</span></div>
             <div class="flex items-center justify-between"><span class="text-gray-500">Order Total</span><span>₱ {{ formatMoney(detail.amounts?.total) }}</span></div>

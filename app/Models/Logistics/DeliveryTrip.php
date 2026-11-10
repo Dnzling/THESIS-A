@@ -8,6 +8,7 @@ use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Inventory\StockTransfer;
 use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesOrderDelivery;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -72,6 +73,11 @@ class DeliveryTrip extends Model
     public function replacementReturns(): HasMany
     {
         return $this->hasMany(EcommerceOrderReturn::class, 'replacement_trip_id');
+    }
+
+    public function purchaseOrderShipments(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderShipment::class, 'trip_id');
     }
 
 }

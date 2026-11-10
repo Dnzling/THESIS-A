@@ -4,7 +4,7 @@
   <Toast />
   <div class="flex h-screen w-full max-w-[100vw] overflow-hidden">
     <!-- Sidebar -->
-    <aside class="sidebar bg-white w-64 shadow-lg flex flex-col z-30 overflow-y-auto">
+    <aside class="sidebar w-64 shrink-0 bg-white shadow-lg flex flex-col z-30 overflow-y-auto">
       <!-- Logo section -->
       <div class="px-5 py-4 border-b border-gray-200">
         <div class="flex items-center gap-3">
@@ -49,7 +49,7 @@
     </aside>
   
     <!-- Main content -->
-    <div class="flex-1 flex flex-col h-screen">
+    <div class="min-w-0 flex-1 flex flex-col h-screen">
       <!-- Top header -->
       <header class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between sticky top-0 z-20">
         <div>

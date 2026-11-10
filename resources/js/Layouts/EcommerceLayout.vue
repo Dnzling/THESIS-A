@@ -35,6 +35,7 @@
         <nav class="flex items-center gap-1" aria-label="Browse furniture">
           <Button label="Products" text severity="secondary" size="small" @click="toggleBrowse('products')" />
           <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
+          <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
         </nav>
   
         <div class="hidden items-center gap-2 md:flex">
@@ -134,6 +135,7 @@
       <div class="mt-2 flex gap-2">
         <Button label="Products" text severity="secondary" size="small" @click="toggleBrowse('products')" />
         <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
+        <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
       </div>
       </div>
 
@@ -318,6 +320,15 @@ function openSearchProduct(id: number) {
 }
 const browsePanel = ref('')
 const browseCategories = ref<any[]>([])
+const availableVoucherCount = ref(0)
+async function loadAvailableVoucherCount() {
+  try {
+    const response = await ecommerceService.getAvailableVouchers()
+    availableVoucherCount.value = Array.isArray(response.data?.data) ? response.data.data.length : 0
+  } catch {
+    availableVoucherCount.value = 0
+  }
+}
 const browseRooms = ref<any[]>([])
 async function toggleBrowse(panel: string) {
   browsePanel.value = browsePanel.value === panel ? '' : panel
@@ -539,6 +550,7 @@ watch(isLoggedIn, () => {
 
 onMounted(() => {
   document.addEventListener('pointerdown', handleOutsideSearch)
+  loadAvailableVoucherCount()
   loadCartCount()
   loadFavoriteCount()
   loadChatThreads()

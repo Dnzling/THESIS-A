@@ -229,7 +229,7 @@
             <section v-if="isEditMode" class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
                 <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
-                <p class="text-sm text-gray-500 mt-1">Set the selling price and optional discount</p>
+                <p class="text-sm text-gray-500 mt-1">Selling and cost prices are managed in Inventory. Use Promotions to schedule discounts.</p>
               </div>
   
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -246,20 +246,6 @@
                   <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH"
                     :min="0" disabled class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
                   <small class="text-gray-500 text-xs">Auto-managed value (read-only)</small>
-                </div>
-  
-                <div v-if="!isRawMaterialType" class="space-y-2 md:col-span-2">
-                  <label class="text-sm font-medium text-gray-700">Discounted Price</label>
-                  <div class="flex flex-col gap-2 sm:flex-row">
-                    <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP"
-                      locale="en-PH" :min="0" :max="Number(form.base_price || 0)" :invalid="Boolean(errors.discounted_price)"
-                      class="w-full bg-gray-50 border-gray-200 rounded-xl sm:flex-1" fluid />
-                    <Button v-if="form.discounted_price !== null && form.discounted_price !== ''" type="button"
-                      label="Clear discount" severity="secondary" outlined size="small"
-                      @click="form.discounted_price = null" />
-                  </div>
-                  <small v-if="errors.discounted_price" class="text-red-500">{{ errors.discounted_price }}</small>
-                  <small v-else class="text-gray-500 text-xs">Enter a price below the inventory selling price, or clear it to remove the discount.</small>
                 </div>
   
               </div>
@@ -1870,14 +1856,6 @@ const validateForm = () => {
     form.value.is_featured = false
     form.value.is_new_arrival = false
     form.value.is_bestseller = false
-  }
-
-  if (!isRawMaterialType.value && form.value.discounted_price !== null && form.value.discounted_price !== '') {
-    const discountedPrice = Number(form.value.discounted_price)
-    const sellingPrice = Number(form.value.base_price || 0)
-    if (!(discountedPrice > 0 && discountedPrice < sellingPrice)) {
-      errors.value.discounted_price = 'Discounted price must be greater than zero and less than the selling price.'
-    }
   }
 
   return Object.keys(errors.value).length === 0

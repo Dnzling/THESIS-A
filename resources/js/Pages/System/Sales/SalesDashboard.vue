@@ -109,6 +109,38 @@
           <template #empty><div class="py-7 text-center text-xs text-slate-500">No sales orders have been recorded yet.</div></template>
         </DataTable>
       </section>
+
+      <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
+        <div class="mb-4">
+          <h2 class="font-semibold text-slate-950">Recent ecommerce orders</h2>
+          <p class="text-xs text-slate-500">See who last handled each online order from its delivery activity.</p>
+        </div>
+        <DataTable :value="stats.recent_ecommerce_orders || []" size="small" rowHover class="text-xs" @row-click="openEcommerceOrder">
+          <Column field="order_number" header="Order" />
+          <Column field="customer_name" header="Customer">
+            <template #body="{ data }">{{ data.customer_name || 'Customer' }}</template>
+          </Column>
+          <Column field="branch_name" header="Branch">
+            <template #body="{ data }">{{ data.branch_name || '—' }}</template>
+          </Column>
+          <Column field="status" header="Status">
+            <template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="orderSeverity(data.status)" /></template>
+          </Column>
+          <Column field="processed_by" header="Processed by">
+            <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.processed_by || 'Not yet processed' }}</span></template>
+          </Column>
+          <Column field="payment_method" header="Payment">
+            <template #body="{ data }">{{ formatMethod(data.payment_method) }}</template>
+          </Column>
+          <Column field="total_amount" header="Total">
+            <template #body="{ data }"><span class="font-medium text-slate-900">{{ money(data.total_amount) }}</span></template>
+          </Column>
+          <Column field="processed_at" header="Last activity">
+            <template #body="{ data }">{{ formatDate(data.processed_at || data.created_at) }}</template>
+          </Column>
+          <template #empty><div class="py-7 text-center text-xs text-slate-500">No ecommerce orders have been recorded yet.</div></template>
+        </DataTable>
+      </section>
     </template>
   </div>
 </template>
@@ -187,6 +219,13 @@ const formatPeriod = (value: string) => {
 const formatMethod = (value: unknown) => String(value || 'Not recorded').replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const formatStatus = (value: unknown) => String(value || 'Unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const paymentSeverity = (value: unknown) => ['paid', 'succeeded', 'completed'].includes(String(value || '').toLowerCase()) ? 'success' : ['failed', 'cancelled'].includes(String(value || '').toLowerCase()) ? 'danger' : 'warn'
+const orderSeverity = (value: unknown) => {
+  const status = String(value || '').toLowerCase()
+  if (['delivered', 'completed', 'ready_for_pickup'].includes(status)) return 'success'
+  if (['cancelled', 'failed', 'rejected'].includes(status)) return 'danger'
+  if (['out_for_delivery', 'in_transit', 'processing', 'assigned', 'ready_for_dispatch'].includes(status)) return 'info'
+  return 'warn'
+}
 const comparisonLabel = (current: unknown, previous: unknown, period: string) => {
   const currentValue = Number(current) || 0
   const previousValue = Number(previous) || 0
@@ -212,6 +251,7 @@ const loadDashboard = async () => {
 }
 const goToOrders = () => router.push({ name: 'sales.orders' })
 const openOrder = (event: { data: any }) => router.push({ name: 'sales.pos.order-detail', params: { id: event.data.id } })
+const openEcommerceOrder = (event: { data: any }) => router.push({ name: 'sales.ecommerce-orders.detail', params: { id: event.data.id } })
 
 onMounted(loadDashboard)
 </script>

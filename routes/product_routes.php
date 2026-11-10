@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ProductCatalog\DashboardController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
 use App\Http\Controllers\Api\ProductCatalog\PromotionController;
+use App\Http\Controllers\Api\CRM\VoucherController;
 
 // Product Catalog Routes
 Route::prefix('product-catalog')->group(function () {
@@ -97,6 +98,12 @@ Route::prefix('product-catalog')->group(function () {
     Route::post('promotions/{id}/toggle', [PromotionController::class, 'toggle']);
     Route::post('promotions/{id}/duplicate', [PromotionController::class, 'duplicate']);
     Route::apiResource('promotions', PromotionController::class)->except(['show']);
+
+    // Vouchers are customer-entered offers, managed separately from promotions.
+    Route::get('vouchers', [VoucherController::class, 'index'])->middleware('can:merchandising.vouchers.view');
+    Route::post('vouchers', [VoucherController::class, 'store'])->middleware('can:merchandising.vouchers.manage');
+    Route::get('vouchers/{voucher}', [VoucherController::class, 'show'])->middleware('can:merchandising.vouchers.view');
+    Route::put('vouchers/{voucher}', [VoucherController::class, 'update'])->middleware('can:merchandising.vouchers.manage');
 
     // Delivery Fee Settings (hybrid: fixed + distance + surcharges)
     Route::get('delivery-fee-settings', [DeliveryFeeSettingController::class, 'show']);

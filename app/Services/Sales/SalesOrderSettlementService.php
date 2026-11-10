@@ -61,10 +61,18 @@ class SalesOrderSettlementService
                 $inventory->suppressAutomaticTransactionLog();
                 $inventory->save();
 
-                $transactionCreatorId = str_starts_with((string) $lockedOrder->order_number, 'WHO-')
-                    ? Employee::query()->where('store_id', $lockedOrder->store_id)
-                        ->where('user_id', $lockedOrder->created_by)->value('id')
-                    : $lockedOrder->created_by;
+                // Inventory transactions reference employees, while POS and
+                // wholesale orders store the creator as a user ID.
+                $transactionCreatorId = Employee::query()
+                    ->where('store_id', $lockedOrder->store_id)
+                    ->where('user_id', $lockedOrder->created_by)
+                    ->when($lockedOrder->branch_id, function ($query) use ($lockedOrder) {
+                        $query->where(function ($branchQuery) use ($lockedOrder) {
+                            $branchQuery->where('branch_id', $lockedOrder->branch_id)
+                                ->orWhereNull('branch_id');
+                        });
+                    })
+                    ->value('id');
                 if (!$transactionCreatorId) {
                     throw new \RuntimeException('The order creator needs an employee record before payment can be settled.');
                 }

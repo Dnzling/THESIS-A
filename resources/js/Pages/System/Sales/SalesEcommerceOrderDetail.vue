@@ -218,8 +218,7 @@
                   :severity="stockSeverity(data.branch_inventory?.stock_status)" />
               </template>
             </Column>
-            <Column header="Unit Price" style="min-width: 125px"><template #body="{ data }"><span class="font-mono">{{
-              formatMoney(data.unit_price) }}</span></template></Column>
+            <Column header="Unit Price" style="min-width: 125px"><template #body="{ data }"><div v-if="hasItemDiscount(data)" class="flex flex-col"><del class="text-xs text-slate-400">{{ formatMoney(originalUnitPrice(data)) }}</del><span class="font-mono font-semibold text-slate-900">{{ formatMoney(data.unit_price) }}</span></div><span v-else class="font-mono">{{ formatMoney(data.unit_price) }}</span></template></Column>
             <Column header="Line Total" style="min-width: 135px"><template #body="{ data }"><span
                   class="font-mono font-semibold text-gray-900">{{ formatMoney(data.line_total) }}</span></template>
             </Column>
@@ -235,10 +234,12 @@
             <h3 class="font-semibold text-slate-900">Order Cost Summary</h3>
           </div>
           <div class="space-y-3 text-sm">
-            <div class="flex justify-between gap-4 text-slate-600"><span>Subtotal</span><span
-                class="font-medium text-slate-900">{{ formatMoney(order?.subtotal) }}</span></div>
-            <div class="flex justify-between gap-4 text-slate-600"><span>Discount</span><span
-                class="font-medium text-slate-900">- {{ formatMoney(order?.discount_amount) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>{{ Number(order?.product_discount_amount || 0) > 0 ? 'Original item subtotal' : 'Subtotal' }}</span><span
+                class="font-medium text-slate-900">{{ formatMoney(Number(order?.product_discount_amount || 0) > 0 ? (order?.original_subtotal ?? order?.subtotal) : order?.subtotal) }}</span></div>
+            <div v-if="Number(order?.product_discount_amount || 0) > 0" class="flex justify-between gap-4 text-rose-600"><span>Product discount</span><span
+                class="font-medium">- {{ formatMoney(order?.product_discount_amount) }}</span></div>
+            <div v-if="Number(order?.discount_amount || 0) > 0" class="flex justify-between gap-4 text-rose-600"><span>{{ order?.voucher_code ? `Voucher (${order.voucher_code})` : 'Order discount' }}</span><span
+                class="font-medium">- {{ formatMoney(order?.discount_amount) }}</span></div>
             <div class="flex justify-between gap-4 text-slate-600"><span>VAT</span><span
                 class="font-medium text-slate-900">{{
                   formatMoney(order?.tax_amount) }}</span></div>
@@ -569,6 +570,8 @@ const printReceipt = async () => {
 
 const formatStatus = (status: string) => String(status || '—').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
+const originalUnitPrice = (item: any) => Math.max(Number(item?.unit_price || 0), Number(item?.original_unit_price || 0))
+const hasItemDiscount = (item: any) => originalUnitPrice(item) > Number(item?.unit_price || 0)
 const formatDateTime = (value: string) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-PH', {

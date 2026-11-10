@@ -346,7 +346,7 @@ const loadingAvailable = ref(false)
 const loadingSuggestion = ref(false)
 const suggestedArea = ref('')
 const selectedOrders = ref<any[]>([])
-const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement'>('ecommerce')
+const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement' | 'pickup'>('ecommerce')
 const availablePage = ref(1)
 const availablePerPage = ref(10)
 const availableTotal = ref(0)
@@ -365,6 +365,7 @@ const sourceOptions = [
   { label: 'Return Pickup', value: 'return_pickup' },
   { label: 'Stock Transfer', value: 'stock_transfer' },
   { label: 'Replacement Delivery', value: 'replacement' },
+  { label: 'Supplier Pickup', value: 'pickup' },
 ]
 
 const assignedOrders = computed(() => {
@@ -433,7 +434,23 @@ const assignedOrders = computed(() => {
       is_return: false,
     }
   })
-  return [...ecommerce, ...sales, ...returns, ...transfers, ...replacements]
+  const supplierPickups = (trip.value.purchase_order_shipments || []).map((shipment: any) => {
+    const order = shipment.purchase_order
+    const items = order?.items || []
+    return {
+      id: `supplier-pickup-${shipment.id}`,
+      source: 'Supplier Pickup',
+      order_number: order?.po_number || '-',
+      customer_name: order?.supplier?.supplier_name || 'Supplier',
+      address: [order?.branch?.address, order?.branch?.city, order?.branch?.province].filter(Boolean).join(', '),
+      delivery_date: shipment.expected_delivery_date || trip.value.scheduled_departure_at,
+      status: shipment.status || 'pending',
+      weight_kg: items.reduce((total: number, item: any) => total + Number(item.product?.weight_kg || 0) * Number(item.quantity_ordered || 0), 0),
+      order_id: order?.id,
+      is_return: false,
+    }
+  })
+  return [...ecommerce, ...sales, ...returns, ...transfers, ...replacements, ...supplierPickups]
 })
 
 const selectedOrderIds = computed(() => selectedOrders.value.map(o => o.order_id))
@@ -629,7 +646,7 @@ const loadAvailableOrders = async () => {
   loadingAvailable.value = true
   try {
     const res = await logisticsService.getDeliveryOrders({
-      source: availableSource.value,
+        source: availableSource.value,
       status: 'ready_for_dispatch',
       per_page: availablePerPage.value,
       page: availablePage.value,
@@ -710,7 +727,7 @@ const removeOrder = async (row: any) => {
     accept: async () => {
       try {
         await logisticsService.removeOrdersFromTrip(trip.value.id, {
-          source_type: row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : row.source === 'Stock Transfer' ? 'stock_transfer' : row.source === 'Replacement Delivery' ? 'replacement' : 'ecommerce',
+          source_type: row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : row.source === 'Stock Transfer' ? 'stock_transfer' : row.source === 'Replacement Delivery' ? 'replacement' : row.source === 'Supplier Pickup' ? 'pickup' : 'ecommerce',
           order_ids: [row.order_id],
         })
         toast.add({ severity: 'success', summary: 'Removed', detail: 'Order removed from trip.', life: 2000 })
@@ -800,6 +817,10 @@ const openAssignedOrderDetail = async (row: any) => {
   if (!row?.order_id) return
   if (row.source === 'Replacement Delivery') {
     router.push({ name: canManage ? 'logistics.replacements.detail' : 'driver.replacements.detail', params: { id: row.order_id } })
+    return
+  }
+  if (row.source === 'Supplier Pickup') {
+    router.push({ name: 'logistics.supplier-pickups.detail', params: { orderId: row.order_id } })
     return
   }
   if (row.source === 'Stock Transfer' && canManage) {

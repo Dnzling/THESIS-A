@@ -201,12 +201,13 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
 
     // Inventory
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
-    // Legacy request URLs now open the unified Inventory Stock Requests pages.
-    Route::redirect('/inventory/requisitions', '/inventory/stock-requests')->name('inventory.requisitions');
-    Route::get('/inventory/requisitions/create', fn(\Illuminate\Http\Request $request) => redirect()->route('inventory.purchase-orders.create', $request->query()))->name('inventory.requisitions.create');
-    Route::redirect('/inventory/requisitions/view', '/inventory/stock-requests');
-    Route::get('/inventory/requisitions/view/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]));
-    Route::get('/inventory/requisitions/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]));
+    // Direct PR routes remain for compatibility; the inventory navigation uses the unified Stock Requests page.
+    $inertia('/inventory/requisitions', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisitions', 'Purchase Requisitions');
+    $inertia('/inventory/requisitions/view', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisitions.view', 'Purchase Requisitions');
+    $inertia('/inventory/requisitions/create', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.create', 'Create Purchase Requisition');
+    $inertia('/inventory/requisitions/{id}/edit', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.edit', 'Edit Purchase Requisition');
+    $inertia('/inventory/requisitions/view/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisitions.view-detail', 'Purchase Requisition Details');
+    $inertia('/inventory/requisitions/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisites.detail', 'Purchase Requisition Details');
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
     Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
@@ -249,10 +250,10 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/inventory/stock-requests/create', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.create', 'Create Stock Request');
     $inertia('/inventory/stock-requests/purchase/{id}/edit', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.edit', 'Edit Stock Request');
     $inertia('/inventory/stock-requests/{type}/{id}', 'System/Inventory/StockRequests/StockRequestDetail', 'inventory.stock-requests.detail', 'Stock Request Details');
-    Route::get('/inventory/requisites', fn() => redirect()->route('inventory.stock-requests'))->name('inventory.requisites.index');
-    Route::get('/inventory/requisites/create', fn(\Illuminate\Http\Request $request) => redirect()->route('inventory.purchase-orders.create', $request->query()))->name('inventory.requisites.create');
-    Route::get('/inventory/requisites/{id}/edit', fn($id) => redirect()->route('inventory.stock-requests.edit', ['type' => 'purchase', 'id' => $id]))->name('inventory.requisites.edit');
-    Route::get('/inventory/requisites/{id}', fn($id) => redirect()->route('inventory.stock-requests.detail', ['type' => 'purchase', 'id' => $id]))->name('inventory.requisites.detail');
+    Route::redirect('/inventory/requisites', '/inventory/requisitions/view')->name('inventory.requisites.index');
+    Route::redirect('/inventory/requisites/create', '/inventory/requisitions/create')->name('inventory.requisites.legacy-create');
+    Route::redirect('/inventory/requisites/{id}/edit', '/inventory/requisitions/{id}/edit')->name('inventory.requisites.legacy-edit');
+    Route::redirect('/inventory/requisites/{id}', '/inventory/requisitions/{id}')->name('inventory.requisites.legacy-detail');
     $inertia('/inventory/stock-returns', 'System/Inventory/StockReturns/StockReturnIndex', 'inventory.stock-returns', 'Stock Returns');
     $inertia('/inventory/stock-returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'inventory.replacements.detail', 'Replacement Case');
     $inertia('/inventory/stock-returns/create', 'System/Inventory/StockReturns/StockReturnCreate', 'inventory.stock-returns.create', 'Create Stock Return');
@@ -373,6 +374,18 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/driver/delivery-history', 'System/Logistics/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
     $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
+    Route::get('/logistics/supplier-pickups', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'logistics.supplier-pickups.view'), 403);
+        return $render('System/Logistics/SupplierPickups/Index', ['title' => 'Supplier Pickups']);
+    })->name('logistics.supplier-pickups');
+    Route::get('/logistics/supplier-pickups/{orderId}', function (int $orderId, \App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'logistics.supplier-pickups.view'), 403);
+        return $render('System/Logistics/Driver/DriverDeliveryView', ['title' => 'Supplier Pickup Details']);
+    })->whereNumber('orderId')->name('logistics.supplier-pickups.detail');
+    Route::get('/logistics/supplier-pickups/{id}/assign', function (int $id, \App\Services\Core\PermissionService $permissions) use ($render) {
+        abort_unless($permissions->userHasPermission(request()->user(), 'logistics.supplier-pickups.manage'), 403);
+        return $render('System/Logistics/SupplierPickups/Assign', ['title' => 'Assign Supplier Pickup']);
+    })->whereNumber('id')->name('logistics.supplier-pickups.assign');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
     $inertia('/logistics/return-pickups', 'System/Logistics/ReturnPickups/ReturnPickupIndex', 'logistics.return-pickups', 'Return Pickups');
@@ -415,9 +428,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/crm/chats', 'System/CRM/Chats/Chats', 'crm.chats', 'Customer Chats');
     $inertia('/crm/reviews', 'System/CRM/Review/ReviewIndex', 'crm.reviews', 'Reviews');
     $inertia('/crm/reviews/{id}', 'System/CRM/Review/ReviewView', 'crm.reviews.view', 'Review Detail');
-    $inertia('/crm/vouchers', 'System/CRM/Vouchers/VoucherIndex', 'crm.vouchers', 'Vouchers');
-    $inertia('/crm/vouchers/create', 'System/CRM/Vouchers/VoucherCreate', 'crm.vouchers.create', 'Create Voucher');
-    $inertia('/crm/vouchers/{id}', 'System/CRM/Vouchers/VoucherView', 'crm.vouchers.view', 'Voucher Details');
+    Route::redirect('/crm/vouchers', '/merchandising/vouchers');
+    Route::redirect('/crm/vouchers/create', '/merchandising/vouchers/create');
+    Route::get('/crm/vouchers/{id}', fn (int $id) => redirect("/merchandising/vouchers/{$id}"))->whereNumber('id');
     $inertia('/crm/returns', 'System/CRM/Return/ReturnIndex', 'crm.returns', 'Returns');
     $inertia('/crm/returns/create', 'System/CRM/Return/ReturnCreate', 'crm.returns.create', 'Create Return');
     $inertia('/crm/returns/{id}', 'System/CRM/Return/ReturnDetail', 'crm.returns.view', 'Return Detail');
@@ -449,6 +462,27 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/attributes/new', 'System/Merchandising/attributes/AttributeForm', 'merchandising.attributes.create', 'Add Attribute', 'Create a new product attribute');
     $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Collections', 'Manage product tags and collections');
     $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Promotions & Discounts', 'Create store promotions for products and categories');
+    Route::get('/merchandising/vouchers', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        $user = request()->user();
+        $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
+        abort_unless($permissions->userHasPermission($user, 'merchandising.vouchers.view', $storeId ? (int) $storeId : null), 403);
+
+        return $render('System/CRM/Vouchers/VoucherIndex', ['title' => 'Vouchers', 'subtitle' => 'Manage voucher codes for customer orders']);
+    })->name('merchandising.vouchers');
+    Route::get('/merchandising/vouchers/create', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        $user = request()->user();
+        $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
+        abort_unless($permissions->userHasPermission($user, 'merchandising.vouchers.manage', $storeId ? (int) $storeId : null), 403);
+
+        return $render('System/CRM/Vouchers/VoucherCreate', ['title' => 'Create Voucher']);
+    })->name('merchandising.vouchers.create');
+    Route::get('/merchandising/vouchers/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) use ($render) {
+        $user = request()->user();
+        $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
+        abort_unless($permissions->userHasPermission($user, 'merchandising.vouchers.view', $storeId ? (int) $storeId : null), 403);
+
+        return $render('System/CRM/Vouchers/VoucherView', ['id' => $id, 'title' => 'Voucher Details']);
+    })->whereNumber('id')->name('merchandising.vouchers.view');
     $inertia('/merchandising/pricing/bulk-update', 'System/Merchandising/pricing/BulkPricing', 'merchandising.pricing.bulk', 'Bulk Price Update', 'Update multiple product prices at once');
     Route::get('/merchandising/reports', function (\App\Services\Core\PermissionService $permissions) {
         $user = request()->user();
@@ -495,6 +529,7 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 
 // Ecommerce storefront
 $inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');
+$inertia('/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.vouchers', 'Available Vouchers');
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
 $inertia('/categories', 'System/Ecommerce/EcommerceCategories', 'ecommerce.categories', 'Shop Categories');
 $inertia('/new-products', 'System/Ecommerce/EcommerceProducts', 'ecommerce.new-products', 'New Products');

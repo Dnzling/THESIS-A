@@ -680,6 +680,17 @@ class ReturnController extends Controller
             ], 422);
         }
 
+        if ($newStatus === 'approved'
+            && $currentStatus === 'approved'
+            && $return->return_type === 'replacement'
+            && $return->return_type !== $validated['return_type']
+            && $return->replacement_inventory_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A replacement unit is already reserved. Release that reservation before changing the resolution.',
+            ], 422);
+        }
+
         if ($newStatus === 'rejected' && empty(trim((string) ($validated['review_notes'] ?? '')))) {
             return response()->json([
                 'success' => false,
@@ -722,6 +733,7 @@ class ReturnController extends Controller
             }
             if ($newStatus === 'approved') {
                 $return->return_type = $validated['return_type'];
+                $return->replacement_status = $validated['return_type'] === 'replacement' ? 'awaiting_stock' : null;
                 $return->charge_responsibility = $validated['charge_responsibility'];
                 $return->refund_exception_reason = $validated['return_type'] === 'refund'
                     ? trim((string) $validated['refund_exception_reason'])
@@ -807,6 +819,35 @@ class ReturnController extends Controller
         });
 
         if ($newStatus === 'approved' && $currentStatus !== 'approved' && $pickupId) {
+            if ($return->return_type === 'replacement') {
+                try {
+                    $this->notifyUsersByPermissions(
+                        (int) $return->store_id,
+                        ['inventory.stock_returns.view'],
+                        [
+                            'store_id' => (int) $return->store_id,
+                            'module' => 'inventory',
+                            'entity_type' => 'ecommerce_order_return',
+                            'entity_id' => (int) $return->id,
+                            'action' => 'replacement_stock_reservation_needed',
+                            'title' => 'Replacement approved: reserve stock',
+                            'message' => 'CRM approved a replacement. Reserve the matching item at the branch that fulfilled the original order.',
+                            'severity' => 'warn',
+                            'link' => '/inventory/stock-returns/replacements/' . (int) $return->id,
+                            'data' => [
+                                'required_permission' => 'inventory.stock_returns.view',
+                                'return_id' => (int) $return->id,
+                                'return_number' => $return->return_number,
+                                'replacement_status' => 'awaiting_stock',
+                            ],
+                        ],
+                        [(int) $request->user()->id]
+                    );
+                } catch (\Throwable $exception) {
+                    report($exception);
+                }
+            }
+
             try {
                 $return->loadMissing(['order:id,order_number', 'salesOrder:id,order_number']);
                 $orderNumber = $return->sourceOrder()?->order_number ?: ('Return #' . (int) $return->id);
@@ -1142,17 +1183,49 @@ class ReturnController extends Controller
                 );
                 $return->status = 'refund_pending';
             } else {
-                $return->status = 'received';
-                $return->replacement_status = 'awaiting_stock';
+                $return->status = $return->replacement_status === 'delivered' ? 'replaced' : 'received';
+                if (!in_array($return->replacement_status, ['reserved', 'assigned', 'out_for_delivery', 'delivered'], true)) {
+                    $return->replacement_status = 'awaiting_stock';
+                }
             }
-            $return->product_condition = $validated['condition'];
-            $return->inventory_disposition = $return->return_type === 'replacement' ? null : ($validated['condition'] === 'good' ? 'resell' : 'discard');
-            $return->received_quantity = $receivedQty;
-            $return->inspected_by = auth()->id();
-            $return->inspected_at = now();
-            $return->inspection_notes = $validated['notes'] ?? null;
-            $return->save();
+            if ($return->return_type === 'replacement'
+                && $lockedReturn->replacement_inventory_id
+                && !in_array($lockedReturn->replacement_status, ['out_for_delivery', 'delivered'], true)) {
+                $replacementInventory = BranchInventory::query()->where('store_id', (int) $return->store_id)
+                    ->lockForUpdate()->findOrFail((int) $lockedReturn->replacement_inventory_id);
+                $reservationReduction = max(0, (int) $lockedReturn->requested_quantity - $receivedQty);
+                if ($reservationReduction > 0) {
+                    if ((int) $replacementInventory->quantity_reserved < $reservationReduction) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'replacement' => 'The replacement reservation changed unexpectedly. Reconcile reserved stock before completing this inspection.',
+                        ]);
+                    }
+                    $replacementInventory->quantity_reserved -= $reservationReduction;
+                    $replacementInventory->save();
+                }
+            }
+
+            $lockedReturn->status = $return->return_type === 'replacement'
+                && $lockedReturn->replacement_status === 'delivered'
+                ? 'replaced'
+                : ($return->return_type === 'refund' ? 'refund_pending' : 'received');
+            if ($return->return_type === 'replacement'
+                && !in_array($lockedReturn->replacement_status, ['reserved', 'assigned', 'out_for_delivery', 'delivered'], true)) {
+                $lockedReturn->replacement_status = 'awaiting_stock';
+            }
+            $lockedReturn->product_condition = $validated['condition'];
+            $lockedReturn->inventory_disposition = $return->return_type === 'replacement' ? null : ($validated['condition'] === 'good' ? 'resell' : 'discard');
+            $lockedReturn->received_quantity = $receivedQty;
+            $lockedReturn->inspected_by = auth()->id();
+            $lockedReturn->inspected_at = now();
+            $lockedReturn->inspection_notes = $validated['notes'] ?? null;
+            if ($lockedReturn->status === 'replaced') {
+                $lockedReturn->resolved_at = $lockedReturn->resolved_at ?: now();
+            }
+            $lockedReturn->save();
         });
+
+        $return->refresh();
 
         if ($return->user_id && $return->source_type !== 'pos') {
             $inspectionStatus = (string) $return->status;
@@ -1160,11 +1233,17 @@ class ReturnController extends Controller
                 'module' => 'ecommerce',
                 'entity_type' => 'ecommerce_order_return',
                 'entity_id' => (int) $return->id,
-                'action' => $return->return_type === 'refund' ? 'refund_pending' : 'return_received',
-                'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Return received for replacement',
+                'action' => $return->return_type === 'refund'
+                    ? 'refund_pending'
+                    : ($return->status === 'replaced' ? 'replacement_completed' : 'return_received'),
+                'title' => $return->return_type === 'refund'
+                    ? 'Return sent to Finance'
+                    : ($return->status === 'replaced' ? 'Replacement exchange completed' : 'Return received for replacement'),
                 'message' => $return->return_type === 'refund'
                     ? 'Inventory inspected your item. Your refund request was sent to Finance.'
-                    : 'Inventory inspected your item. Your replacement is being prepared.',
+                    : ($return->status === 'replaced'
+                        ? 'The returned item was inspected at the branch. Your replacement was already delivered.'
+                        : 'Inventory inspected your item. The replacement delivery is being prepared.'),
                 'severity' => 'success',
                 'store_id' => (int) $return->store_id,
                 'link' => '/orders/' . (int) $return->order_id,

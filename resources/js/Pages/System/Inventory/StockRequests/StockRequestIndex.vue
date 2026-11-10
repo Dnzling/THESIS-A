@@ -3,7 +3,7 @@
     <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-slate-900">Stock Requests</h1>
-        <p class="mt-1 text-sm text-slate-500">Create supplier purchase orders directly or request stock from a warehouse.</p>
+        <p class="mt-1 text-sm text-slate-500">Manage supplier replenishment and warehouse transfer requests in one place.</p>
       </div>
     </header>
 
@@ -14,18 +14,18 @@
           <Skeleton width="10rem" height="1.5rem" />
         </div>
         <div v-else-if="canViewPurchase && canViewTransfer" class="mb-4 flex flex-wrap gap-2 border-b border-slate-200">
-           <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium transition"
+          <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium transition"
             :class="activeType === 'transfer' ? 'border-orange-500 text-orange-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
             @click="setType('transfer')">Request from Warehouse</button>
           <button type="button" class="border-b-2 px-3 py-2 text-sm font-medium transition"
             :class="activeType === 'purchase' ? 'border-orange-500 text-orange-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
             @click="setType('purchase')">Request from Supplier</button>
          
-          <p class="ml-auto self-center pb-2 text-xs text-slate-500">{{ activeType === 'purchase' ? 'Managed in Inventory' : 'Sent to Warehouse' }}</p>
+          <p class="ml-auto self-center pb-2 text-xs text-slate-500">{{ activeType === 'purchase' ? 'Approved requests follow the available supplier workflow' : 'Sent to Warehouse' }}</p>
         </div>
         <div v-else-if="canViewPurchase" class="mb-4 border-b border-slate-200 pb-3">
           <p class="text-sm font-medium text-slate-800">Request from Supplier</p>
-          <p class="mt-0.5 text-xs text-slate-500">Create and manage Inventory purchase orders directly.</p>
+          <p class="mt-0.5 text-xs text-slate-500">Submit a supplier replenishment request for approval.</p>
         </div>
 
         <div v-if="!sourceLoading && !canViewPurchase && !canViewTransfer" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900">
@@ -37,7 +37,7 @@
             <label class="mb-1 block text-xs font-medium text-slate-600">Search</label>
             <IconField>
               <InputIcon class="pi pi-search" />
-              <InputText v-model="filters.search" fluid size="small" :placeholder="activeType === 'purchase' ? 'PO number or supplier' : 'Reference, reason, or branch'"
+              <InputText v-model="filters.search" fluid size="small" :placeholder="activeType === 'purchase' ? 'PR number, requester, or reason' : 'Reference, reason, or branch'"
                 @keyup.enter="loadRequests(1)" />
             </IconField>
           </div>
@@ -52,7 +52,7 @@
               showIcon fluid size="small" placeholder="Select dates" />
           </div>
           <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" @click="clearFilters" />
-          <Button v-if="canCreateActiveRequest" :label="activeType === 'purchase' ? 'Create Purchase Order' : 'Create Stock Transfer'"
+          <Button v-if="canCreateActiveRequest" :label="activeType === 'purchase' ? 'Create Supplier Request' : 'Create Stock Transfer'"
             icon="pi pi-plus" severity="warn" size="small" class="self-end lg:ml-auto"
             @click="createActiveRequest" />
         </div>
@@ -77,22 +77,22 @@
               <div class="mt-0.5 text-[11px] text-slate-500">{{ formatTime(data.date) }}</div>
             </template>
           </Column>
-          <Column field="reference" :header="activeType === 'purchase' ? 'PO Number' : 'Reference'" style="min-width: 190px">
+          <Column field="reference" :header="activeType === 'purchase' ? 'PR Number' : 'Reference'" style="min-width: 190px">
             <template #body="{ data }"><span class="font-semibold text-slate-900 text-xs">{{ data.reference }}</span></template>
           </Column>
-          <Column :header="activeType === 'purchase' ? 'Order' : 'Request'" style="min-width: 180px">
+          <Column header="Request" style="min-width: 180px">
             <template #body="{ data }">
-              <!-- <span class="text-slate-700">{{ data.requestLabel }}</span> -->
-              <span class="mt-0.5 block text-xs">{{ data.routeLabel }}</span>
+              <span class="block text-xs font-medium text-slate-800">{{ data.requestLabel }}</span>
+              <span class="mt-0.5 block text-xs text-slate-500">{{ activeType === 'purchase' ? data.branchLabel : data.routeLabel }}</span>
             </template>
           </Column>
-          <Column :header="activeType === 'purchase' ? 'Created By' : 'Requested By'" style="min-width: 150px">
+          <Column header="Requested By" style="min-width: 150px">
             <template #body="{ data }"><span class="text-slate-700">{{ data.requestedBy || '—' }}</span></template>
           </Column>
           <Column field="itemCount" header="Items" sortable style="width: 90px">
             <template #body="{ data }">{{ data.itemCount }}</template>
           </Column>
-          <Column field="amount" :header="activeType === 'purchase' ? 'Total Amount' : 'Estimated Amount'" sortable style="min-width: 150px">
+          <Column field="amount" header="Estimated Amount" sortable style="min-width: 150px">
             <template #body="{ data }"><span class="font-medium text-slate-800">{{ formatCurrency(data.amount) }}</span></template>
           </Column>
           <Column field="status" header="Status" style="min-width: 150px">
@@ -117,8 +117,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
-import axiosClient from '@/axios'
-import { router as inertiaRouter } from '@inertiajs/vue3'
 
 const router = useRouter()
 const route = useRoute()
@@ -127,9 +125,9 @@ const authStore = useAuthStore()
 const sourceLoading = ref(true)
 const hasWarehouseBranch = ref(false)
 const canViewStockRequests = computed(() => authStore.hasPermission('inventory.stock-requests.view'))
-const canViewPurchase = computed(() => authStore.hasPermission('inventory.purchase_orders.view') || authStore.hasPermission('inventory.purchase_orders.manage'))
+const canViewPurchase = computed(() => canViewStockRequests.value || authStore.hasPermission('inventory.requisites.view') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.view') || authStore.hasPermission('inventory.requisitions.manage'))
 const canViewTransfer = computed(() => hasWarehouseBranch.value && (canViewStockRequests.value || authStore.hasPermission('inventory.transfers.view') || authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
-const canCreatePurchase = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canCreatePurchase = computed(() => authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage'))
 const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
 const canCreateActiveRequest = computed(() => activeType.value === 'purchase' ? canCreatePurchase.value : canCreateTransfer.value)
 const requestedType = String(route.query.type || '')
@@ -150,10 +148,11 @@ const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters
 const dateSortField = computed(() => activeType.value === 'purchase' ? 'created_at' : 'requested_date')
 
 const purchaseStatuses = [
-  { label: 'Draft', value: 'draft' }, { label: 'Pending Receipt', value: 'pending_receipt' },
-  { label: 'Partially Received', value: 'partially_received' }, { label: 'Goods Received', value: 'goods_received' },
-  { label: 'Sent to Supplier', value: 'sent_to_supplier' }, { label: 'Supplier Accepted', value: 'supplier_accepted' },
-  { label: 'In Transit', value: 'in_transit' }, { label: 'Delivered', value: 'delivered' },
+  { label: 'Draft', value: 'draft' }, { label: 'Pending Approval', value: 'pending' },
+  { label: 'Procurement Pending', value: 'procurement_pending' },
+  { label: 'Sourcing in Progress', value: 'procurement_processing' },
+  { label: 'Ready for Inventory PO', value: 'inventory_po_pending' },
+  { label: 'PO Created', value: 'po_created' }, { label: 'Rejected', value: 'rejected' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
 const transferStatuses = [
@@ -169,11 +168,16 @@ const formatDateParam = (date?: Date | null) => date
 const formatDate = (value?: string) => value ? new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
 const formatTime = (value?: string) => value ? new Date(value).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : ''
 const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
-const formatStatus = (value: any) => String(value || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+const formatStatus = (value: any) => {
+  const status = String(value || 'unknown').toLowerCase()
+  if (status === 'inventory_po_pending') return 'Ready for Inventory PO'
+  if (status === 'procurement_pending') return 'Procurement Pending'
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
 const statusSeverity = (status: string) => {
-  if (['approved', 'received', 'goods_received', 'delivered'].includes(status)) return 'success'
+  if (['approved', 'received', 'goods_received', 'delivered', 'po_created'].includes(status)) return 'success'
   if (['procurement_processing', 'sent_to_supplier', 'supplier_accepted', 'in_transit'].includes(status)) return 'info'
-  if (['pending', 'pending_receipt', 'partially_received', 'requested', 'pending_approval', 'submitted'].includes(status)) return 'warn'
+  if (['pending', 'procurement_pending', 'pending_receipt', 'partially_received', 'requested', 'pending_approval', 'submitted', 'inventory_po_pending'].includes(status)) return 'warn'
   if (['rejected', 'declined_supplier', 'cancelled', 'failed'].includes(status)) return status === 'cancelled' ? 'secondary' : 'danger'
   if (status === 'draft') return 'secondary'
   return 'info'
@@ -190,7 +194,7 @@ const setType = (type: 'purchase' | 'transfer') => {
 const createActiveRequest = () => {
   if (!canCreateActiveRequest.value) return
   if (activeType.value === 'purchase') {
-    inertiaRouter.visit('/inventory/purchase-orders/create')
+    router.push({ name: 'inventory.stock-requests.create', query: { type: 'purchase' } })
     return
   }
   router.push({ name: 'inventory.stock-requests.create', query: { type: 'transfer' } })
@@ -198,7 +202,7 @@ const createActiveRequest = () => {
 
 const viewRequest = (id: number) => {
   if (activeType.value === 'purchase') {
-    inertiaRouter.visit(`/inventory/purchase-orders/${id}`)
+    router.push({ name: 'inventory.stock-requests.detail', params: { type: 'purchase', id } })
     return
   }
   router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id } })
@@ -219,19 +223,19 @@ const loadRequests = async (targetPage = page.value) => {
       date_to: formatDateParam(dateRange.value?.[1]),
     }
     if (activeType.value === 'purchase') {
-      const response = await axiosClient.get('/api/inventory/purchase-orders', { params })
-      const payload = response?.data?.data
+      const response = await inventoryService.getPurchaseRequisitions(params)
+      const payload = response?.data
       const list = Array.isArray(payload?.data) ? payload.data : []
       rows.value = list.map((row: any) => ({
         id: Number(row.id),
-        reference: row.po_number || `PO-${row.id}`,
-        requestLabel: 'Supplier purchase order',
-        routeLabel: row.branch?.name || 'Receiving branch',
-        requestedBy: [row.created_by?.user?.fname, row.created_by?.user?.lname].filter(Boolean).join(' ') || '',
-        itemCount: Number(row.items_count || row.items?.length || 0),
-        amount: Number(row.total_amount || 0),
+        reference: row.pr_number || `PR-${row.id}`,
+        requestLabel: 'Supplier replenishment',
+        branchLabel: row.branch?.name || 'Assigned branch',
+        requestedBy: row.requested_by_name || row.requested_by || '',
+        itemCount: Number(row.items?.length || 0),
+        amount: Number(row.estimated_amount || 0),
         status: row.status || 'draft',
-        date: row.order_date || row.created_at,
+        date: row.created_at,
       }))
       total.value = Number(payload?.total || 0)
     } else {

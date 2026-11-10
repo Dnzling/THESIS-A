@@ -35,9 +35,9 @@ class PromotionController extends BaseController
             match ($request->input('status')) {
                 'active' => $query->where('is_active', true)
                     ->where(fn (Builder $q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
-                    ->where(fn (Builder $q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', $now)),
+                    ->where(fn (Builder $q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', $now)),
                 'scheduled' => $query->where('is_active', true)->where('starts_at', '>', $now),
-                'expired' => $query->whereNotNull('ends_at')->where('ends_at', '<', $now),
+                'expired' => $query->whereNotNull('ends_at')->where('ends_at', '<=', $now),
                 'inactive' => $query->where('is_active', false),
                 default => null,
             };
@@ -138,9 +138,17 @@ class PromotionController extends BaseController
             'discount_type' => ['required', Rule::in(['percentage', 'fixed'])],
             'discount_value' => ['required', 'numeric', 'gt:0', $request->input('discount_type') === 'percentage' ? 'max:100' : 'max:99999999.99'],
             'target_type' => ['required', Rule::in(['all', 'categories', 'products'])],
-            'category_ids' => ['array', Rule::requiredIf($request->input('target_type') === 'categories'), 'min:1'],
+            'category_ids' => [
+                'array',
+                Rule::requiredIf($request->input('target_type') === 'categories'),
+                Rule::when($request->input('target_type') === 'categories', ['min:1']),
+            ],
             'category_ids.*' => ['integer'],
-            'product_ids' => ['array', Rule::requiredIf($request->input('target_type') === 'products'), 'min:1'],
+            'product_ids' => [
+                'array',
+                Rule::requiredIf($request->input('target_type') === 'products'),
+                Rule::when($request->input('target_type') === 'products', ['min:1']),
+            ],
             'product_ids.*' => ['integer'],
             'branch_ids' => ['nullable', 'array'],
             'branch_ids.*' => ['integer'],
@@ -213,7 +221,7 @@ class PromotionController extends BaseController
     {
         if (!$promotion->is_active) return 'inactive';
         if ($promotion->starts_at?->isFuture()) return 'scheduled';
-        if ($promotion->ends_at?->isPast()) return 'expired';
+        if ($promotion->ends_at?->lessThanOrEqualTo(now())) return 'expired';
         return 'active';
     }
 

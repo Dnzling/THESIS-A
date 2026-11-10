@@ -49,6 +49,10 @@ class MerchandisingPermissionsSeeder extends Seeder
             ['name' => 'merchandising.pricing.view', 'display_name' => 'View Pricing', 'module' => 'merchandising'],
             ['name' => 'merchandising.pricing.edit', 'display_name' => 'Edit Pricing', 'module' => 'merchandising'],
 
+            // Vouchers
+            ['name' => 'merchandising.vouchers.view', 'display_name' => 'View Vouchers', 'module' => 'merchandising'],
+            ['name' => 'merchandising.vouchers.manage', 'display_name' => 'Manage Vouchers', 'module' => 'merchandising'],
+
             // Reports
             ['name' => 'merchandising.reports.view', 'display_name' => 'View Product Catalog Reports', 'module' => 'merchandising'],
             ['name' => 'merchandising.reports.manage', 'display_name' => 'Manage Product Catalog Reports', 'module' => 'merchandising'],

@@ -250,6 +250,7 @@ const dateRange = ref<Date[] | null>(null)
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Procurement Pending', value: 'procurement_pending' },
   { label: 'Warehouse Approved', value: 'warehouse_approved' },
   { label: 'Branch Manager Approved', value: 'branch_manager_approved' },
   { label: 'Pending Central Review', value: 'pending_central_review' },
@@ -274,7 +275,7 @@ const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'proc
 
 const summary = computed(() => ({
   total: total.value,
-  pending: requisitions.value.filter(r => r.status === 'pending').length,
+  pending: requisitions.value.filter(r => ['pending', 'procurement_pending'].includes(r.status)).length,
   approved: requisitions.value.filter(r => approvedStatuses.includes(r.status)).length,
 }))
 
@@ -287,6 +288,7 @@ const statusSeverity = (status: string): string => {
   const severityMap: Record<string, string> = {
     draft: 'secondary',
     pending: 'info',
+    procurement_pending: 'warn',
     warehouse_approved: 'success',
     branch_manager_approved: 'success',
     pending_central_review: 'warning',

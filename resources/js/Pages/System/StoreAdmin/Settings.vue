@@ -106,10 +106,11 @@
 
                 <!-- Online Payment methods moved to Upgrade flow; card removed -->
 
-                <Card class="border border-slate-200 shadow-sm">
-                    <template #title>Logo</template>
+                <Card class="border border-slate-200 shadow-sm" :class="setupAttention.photo_upload ? 'border-amber-300 ring-1 ring-amber-100' : ''">
+                    <template #title><span class="inline-flex items-center gap-2">Photo Upload <span v-if="setupAttention.photo_upload" role="status" aria-label="Photo upload needed" title="Upload a store photo" class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span></span></template>
                     <template #content>
                         <div class="space-y-4">
+                            <div v-if="setupAttention.photo_upload" class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"><span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 font-bold text-white">!</span>Upload a store photo to complete this setup item.</div>
                             <div class="mx-auto w-full max-w-xs">
                                 <div
                                     class="relative aspect-square overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
@@ -463,16 +464,17 @@
                 ['free', 'simple'].includes(
                     String(subscription.tier).toLowerCase(),
                 )
-            " class="border border-slate-200 shadow-sm">
-                <template #title>Store Operating Hours</template>
+            " class="border border-slate-200 shadow-sm" :class="setupAttention.operating_hours ? 'border-amber-300 ring-1 ring-amber-100' : ''">
+                <template #title><span class="inline-flex items-center gap-2">Store Operating Hours <span v-if="setupAttention.operating_hours" role="status" aria-label="Operating hours setup needed" title="Complete operating days and hours" class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span></span></template>
                 <template #content>
+                    <div v-if="setupAttention.operating_hours" class="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"><span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 font-bold text-white">!</span>Select operating days and save valid opening and closing hours.</div>
                     <p class="mb-4 text-sm text-slate-500">
                         Simple attendance compares clock-in with opening time
                         and clock-out with closing time.
                     </p>
                     <div class="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
                         <div>
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Operating days</label>
+                            <label class="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">Operating days <span v-if="setupAttention.operating_hours" role="status" aria-label="Operating days need setup" title="Select operating days and save the hours" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">!</span></label>
                             <MultiSelect v-model="operatingHours.days" :options="operatingDayOptions"
                                 optionLabel="label" optionValue="value" placeholder="Select days" display="chip"
                                 fluid />
@@ -497,13 +499,14 @@
                 </template>
             </Card>
 
-            <Card class="border border-slate-200 shadow-sm">
-                <template #title>Pickup and delivery windows</template>
+            <Card class="border border-slate-200 shadow-sm" :class="setupAttention.fulfillment_windows ? 'border-amber-300 ring-1 ring-amber-100' : ''">
+                <template #title><span class="inline-flex items-center gap-2">Pickup and delivery windows <span v-if="setupAttention.fulfillment_windows" role="status" aria-label="Pickup and delivery windows need setup" title="Configure and save pickup and delivery windows" class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span></span></template>
                 <template #content>
+                    <div v-if="setupAttention.fulfillment_windows" class="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"><span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 font-bold text-white">!</span>Review and save the pickup and delivery windows that your store supports.</div>
                     <p class="mb-4 text-xs text-slate-500">Set broad service windows. Customers choose a date; your team confirms the exact time after ordering.</p>
                     <div class="grid gap-5 lg:grid-cols-2">
-                        <div v-for="method in ['pickup', 'delivery'] as const" :key="method" class="rounded-xl border border-slate-200 p-4">
-                            <h3 class="mb-3 text-sm font-semibold capitalize text-slate-900">{{ method }}</h3>
+                        <div v-for="method in ['pickup', 'delivery'] as const" :key="method" class="rounded-xl border p-4" :class="setupAttention[method === 'pickup' ? 'pickup_window' : 'delivery_window'] ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200'">
+                            <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold capitalize text-slate-900">{{ method }} <span v-if="setupAttention[method === 'pickup' ? 'pickup_window' : 'delivery_window']" role="status" :aria-label="`${method} window setup needed`" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">!</span></h3>
                             <label class="mb-1 block text-xs font-medium text-slate-700">Available days</label>
                             <MultiSelect v-model="fulfillmentWindows[method].days" :options="operatingDayOptions" optionLabel="label" optionValue="value" display="chip" size="small" fluid />
                             <div class="mt-3 grid grid-cols-2 gap-3">
@@ -805,9 +808,21 @@ const props = defineProps<{
     available_plans: any[];
     verification: any;
     onboarding: any;
+    setup_attention?: Record<string, boolean>;
 }>();
 
 const savingAttendance = ref(false);
+const setupAttention = ref<Record<string, boolean>>({ ...(props.setup_attention || {}) });
+const refreshSetupAttention = async () => {
+    try {
+        const response = await axiosClient.get('/api/store/setup-attention');
+        setupAttention.value = response.data?.data?.setup_attention || {};
+    } catch {}
+};
+const notifySetupAttentionChanged = () => {
+    window.dispatchEvent(new Event('setup-attention-refresh'));
+    void refreshSetupAttention();
+};
 const savingOperatingHours = ref(false);
 const operatingDayOptions = [
     "monday",
@@ -841,7 +856,7 @@ const saveFulfillmentWindows = () => {
     savingFulfillmentWindows.value = true;
     router.put('/store/settings/fulfillment-windows', fulfillmentWindows, {
         preserveScroll: true,
-        onSuccess: () => toast.add({ severity: 'success', summary: 'Service windows saved', life: 2500 }),
+        onSuccess: () => { toast.add({ severity: 'success', summary: 'Service windows saved', life: 2500 }); notifySetupAttentionChanged(); },
         onError: (errors) => toast.add({ severity: 'error', summary: 'Unable to save service windows', detail: Object.values(errors)[0] || 'Please check the fields.', life: 3500 }),
         onFinish: () => { savingFulfillmentWindows.value = false; },
     });
@@ -890,12 +905,14 @@ const saveOperatingHours = () => {
         { ...operatingHours },
         {
             preserveScroll: true,
-            onSuccess: () =>
+            onSuccess: () => {
+                notifySetupAttentionChanged();
                 toast.add({
                     severity: "success",
                     summary: "Operating hours saved",
                     life: 2500,
-                }),
+                });
+            },
             onError: () =>
                 toast.add({
                     severity: "error",
@@ -1740,6 +1757,7 @@ const saveLogo = () => {
         preserveScroll: true,
         onSuccess: () => {
             logoDialogVisible.value = false;
+            notifySetupAttentionChanged();
             toast.add({
                 severity: "success",
                 summary: "Logo updated",
@@ -2454,6 +2472,7 @@ const handleUpgradePrompt = () => {
 };
 
 onMounted(async () => {
+    void refreshSetupAttention();
     const params = new URLSearchParams(window.location.search);
     if (params.get("profile_updated") === "1") {
         showProfileResponse(true, "Your store profile was updated successfully.");

@@ -17,6 +17,7 @@ class LogisticsPermissionsSeeder extends Seeder
             ['name' => 'logistics.deliveries.manage', 'display_name' => 'Manage Deliveries', 'module' => 'logistics'],
             ['name' => 'driver.trips.view', 'display_name' => 'View Assigned Trips', 'module' => 'logistics'],
             ['name' => 'logistics.driver.history', 'display_name' => 'View Driver Delivery History', 'module' => 'logistics'],
+            ['name' => 'logistics.driver.supplier-pickups', 'display_name' => 'Process Assigned Supplier Pickups', 'module' => 'logistics'],
             ['name' => 'logistics.fleet.view', 'display_name' => 'View Fleet', 'module' => 'logistics'],
             ['name' => 'logistics.fleet.manage', 'display_name' => 'Manage Fleet', 'module' => 'logistics'],
             ['name' => 'logistics.zones.view', 'display_name' => 'View Delivery Zones', 'module' => 'logistics'],

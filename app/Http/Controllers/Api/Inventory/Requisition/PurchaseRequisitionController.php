@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Inventory\Requisition;
 
 use App\Http\Controllers\Controller;
+use App\Models\Core\User;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use App\Services\Core\PermissionService;
 
 /**
  * Inventory-scoped Purchase Requisitions (branch-only).
@@ -23,6 +25,29 @@ use Illuminate\Support\Str;
  */
 class PurchaseRequisitionController extends Controller
 {
+    /** Resolve Procurement availability from effective, plan-filtered store user permissions. */
+    private function storeHasProcurementAccess(int $storeId): bool
+    {
+        $permissionService = app(PermissionService::class);
+        $procurementPermissions = [
+            'procurement.rfq.manage',
+            'procurement.purchase_orders.manage',
+        ];
+
+        return User::query()
+            ->where('store_id', $storeId)
+            ->get()
+            ->contains(function (User $user) use ($permissionService, $procurementPermissions, $storeId): bool {
+                foreach ($procurementPermissions as $permission) {
+                    if ($permissionService->userHasPermission($user, $permission, $storeId)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+    }
+
     protected function userHasAnyPermission(array $permissions, $user = null): bool
     {
         $authUser = Auth::user();
@@ -295,6 +320,7 @@ class PurchaseRequisitionController extends Controller
 
             $requestedByEmployeeId = Auth::user()?->employee?->id;
             $isSubmitted = !empty($validated['submit']);
+            $procurementEnabled = $this->storeHasProcurementAccess($storeId);
             $autoApproved = $isSubmitted && $this->userHasAnyPermission([
                 'inventory.requisites.approve',
                 'inventory.requisitions.approve',
@@ -313,7 +339,11 @@ class PurchaseRequisitionController extends Controller
                 'store_id' => $storeId,
                 'branch_id' => $branchId,
                 'requisition_type' => $validated['requisition_type'] ?? 'regular',
-                'status' => !$isSubmitted ? 'draft' : ($autoApproved ? 'procurement_processing' : 'pending'),
+                'status' => !$isSubmitted
+                    ? 'draft'
+                    : ($autoApproved
+                        ? ($procurementEnabled ? 'procurement_pending' : 'inventory_po_pending')
+                        : 'pending'),
                 'submitted_at' => $isSubmitted ? now() : null,
                 'approval_chain' => $approvalChain,
                 'estimated_amount' => $estimatedAmount,
@@ -338,8 +368,8 @@ class PurchaseRequisitionController extends Controller
 
             DB::commit();
 
-            if (!empty($validated['submit'])) {
-                $this->notifyProcurementTeamForSubmittedPr($pr);
+            if ($autoApproved && $procurementEnabled) {
+                $this->notifyProcurementTeamForApprovedPr($pr);
             }
 
             return response()->json([
@@ -426,9 +456,6 @@ class PurchaseRequisitionController extends Controller
             ]);
         });
 
-        if (!empty($validated['submit'])) {
-            $this->notifyProcurementTeamForSubmittedPr($pr);
-        }
         return response()->json(['success' => true, 'message' => 'Requisition updated.', 'data' => $pr->fresh('items')]);
     }
 
@@ -472,7 +499,6 @@ class PurchaseRequisitionController extends Controller
         }
 
         $pr->submit();
-        $this->notifyProcurementTeamForSubmittedPr($pr);
 
         return response()->json([
             'success' => true,
@@ -481,7 +507,7 @@ class PurchaseRequisitionController extends Controller
         ]);
     }
 
-    private function notifyProcurementTeamForSubmittedPr(PurchaseRequisition $pr): void
+    private function notifyProcurementTeamForApprovedPr(PurchaseRequisition $pr): void
     {
         $storeId = (int) $pr->store_id;
         if ($storeId <= 0) {
@@ -502,9 +528,9 @@ class PurchaseRequisitionController extends Controller
                 'module' => 'procurement',
                 'entity_type' => 'purchase_requisition',
                 'entity_id' => $pr->id,
-                'action' => 'submitted',
-                'title' => 'New Purchase Requisition Submitted',
-                'message' => "PR {$pr->pr_number} is ready for procurement processing.",
+                'action' => 'approved',
+                'title' => 'Approved Purchase Requisition Ready',
+                'message' => "PR {$pr->pr_number} was approved and is pending Procurement action.",
                 'severity' => 'info',
                 'link' => "/system/procurement/purchase-requisitions/{$pr->id}",
             ],
@@ -625,8 +651,10 @@ class PurchaseRequisitionController extends Controller
         $chain = $pr->approval_chain ?? [];
         $chain[] = $approvalEntry;
 
+        $procurementEnabled = $this->storeHasProcurementAccess((int) $pr->store_id);
+        $nextStatus = $procurementEnabled ? 'procurement_pending' : 'inventory_po_pending';
         $pr->update([
-            'status' => 'procurement_processing',
+            'status' => $nextStatus,
             'approval_chain' => $chain,
         ]);
 
@@ -640,13 +668,15 @@ class PurchaseRequisitionController extends Controller
             'entity_id' => (int) $pr->id,
             'action' => 'approved',
             'title' => 'Purchase Requisition Approved',
-            'message' => "PR {$pr->pr_number} has been approved and moved to procurement processing.",
+            'message' => $procurementEnabled
+                ? "PR {$pr->pr_number} has been approved and is pending Procurement action."
+                : "PR {$pr->pr_number} has been approved and is ready for an Inventory purchase order.",
             'severity' => 'success',
             'link' => "/inventory/requisites/{$pr->id}",
             'data' => [
                 'pr_id' => (int) $pr->id,
                 'pr_number' => (string) $pr->pr_number,
-                'status' => 'procurement_processing',
+                'status' => $nextStatus,
             ],
         ];
         if ($requesterUserId > 0) {
@@ -672,9 +702,15 @@ class PurchaseRequisitionController extends Controller
             ])))
         );
 
+        if ($procurementEnabled) {
+            $this->notifyProcurementTeamForApprovedPr($pr);
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Purchase requisition approved',
+            'message' => $procurementEnabled
+                ? 'Purchase requisition approved and sent to Procurement.'
+                : 'Purchase requisition approved. Create an Inventory purchase order to continue.',
             'data' => $pr->fresh(),
         ]);
     }

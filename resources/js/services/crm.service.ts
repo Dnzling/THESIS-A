@@ -108,22 +108,22 @@ class CrmService {
   }
 
   async getVouchers(params?: any) {
-    const res = await axiosClient.get('/api/crm/vouchers', { params })
+    const res = await axiosClient.get('/api/product-catalog/vouchers', { params })
     return res.data
   }
 
   async createVoucher(payload: any) {
-    const res = await axiosClient.post('/api/crm/vouchers', payload)
+    const res = await axiosClient.post('/api/product-catalog/vouchers', payload)
     return res.data
   }
 
   async getVoucher(id: number | string) {
-    const res = await axiosClient.get(`/api/crm/vouchers/${id}`)
+    const res = await axiosClient.get(`/api/product-catalog/vouchers/${id}`)
     return res.data
   }
 
   async updateVoucher(id: number | string, payload: any) {
-    const res = await axiosClient.put(`/api/crm/vouchers/${id}`, payload)
+    const res = await axiosClient.put(`/api/product-catalog/vouchers/${id}`, payload)
     return res.data
   }
 

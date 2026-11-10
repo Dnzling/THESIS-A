@@ -401,7 +401,7 @@
                     <div>
                         <h3 class="font-semibold">Schedule and eligibility</h3>
                         <p class="hint">
-                            Leave dates empty for an ongoing offer.
+                            Leave dates empty for an ongoing offer. Selected times determine exactly when the offer starts and expires.
                         </p>
                     </div>
                     <div class="grid gap-3 md:grid-cols-2">

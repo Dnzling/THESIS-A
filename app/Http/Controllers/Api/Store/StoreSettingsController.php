@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
+use App\Models\ProductCatalog\Product;
 use App\Models\Admin\ViolationReport;
 use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Store;
@@ -18,6 +19,52 @@ use Illuminate\Support\Facades\DB;
 
 class StoreSettingsController extends Controller
 {
+    public function setupAttention(Request $request)
+    {
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+
+        $store->loadMissing('subscriptionPlan:id,plan_key');
+        $mainBranch = $store->branches()
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->first(['id', 'logo_path']);
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $hours = $settings['simple_operating_hours'] ?? [];
+        $windows = $settings['fulfillment_windows'] ?? [];
+        $isSimplePlan = in_array(strtolower((string) ($store->subscriptionPlan?->plan_key ?? $store->subscription_tier)), ['free', 'simple'], true);
+
+        $hasValidWindow = static function ($window): bool {
+            return is_array($window)
+                && !empty($window['days'])
+                && !empty($window['start'])
+                && !empty($window['end'])
+                && (string) $window['end'] > (string) $window['start'];
+        };
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'setup_attention' => [
+                    'photo_upload' => empty($mainBranch?->logo_path),
+                    'operating_hours' => $isSimplePlan && (
+                        !is_array($hours)
+                        || empty($hours['days'])
+                        || empty($hours['opens_at'])
+                        || empty($hours['closes_at'])
+                        || (string) $hours['closes_at'] <= (string) $hours['opens_at']
+                    ),
+                    'fulfillment_windows' => !$hasValidWindow($windows['pickup'] ?? null)
+                        || !$hasValidWindow($windows['delivery'] ?? null),
+                    'pickup_window' => !$hasValidWindow($windows['pickup'] ?? null),
+                    'delivery_window' => !$hasValidWindow($windows['delivery'] ?? null),
+                    'employees' => Employee::query()->where('store_id', $store->id)->count() <= 1,
+                    'products' => Product::query()->where('store_id', $store->id)->count() === 0,
+                ],
+            ],
+        ]);
+    }
+
     public function show(Request $request)
     {
         $user = $request->user();

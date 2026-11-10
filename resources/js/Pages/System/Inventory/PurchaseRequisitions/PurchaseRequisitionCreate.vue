@@ -5,8 +5,8 @@
       <div class="mb-4 flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
         <div>
-          <h1 class="text-xl font-bold text-gray-800">{{ editId ? 'Edit Draft Purchase Requisition' : 'Create Purchase Requisition' }}</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory with multiple items.</p>
+          <h1 class="text-xl font-bold text-gray-800">{{ editId ? 'Edit Draft Supplier Request' : 'Request Stock from Supplier' }}</h1>
+          <p class="text-xs text-gray-500 mt-0.5">Submit branch replenishment items for approval. Approved requests continue through the supplier workflow enabled for your store.</p>
         </div>
       </div>
   
@@ -119,9 +119,9 @@
             <div class="flex justify-end gap-2 pt-3 border-t">
               <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
               <Button type="button" label="Save Draft" severity="secondary" outlined size="small" :loading="saving"
-                :disabled="!canSubmit || validItems.length === 0" @click="submit(false)" />
+                :disabled="saving || !canSubmit || validItems.length === 0" @click="submit(false)" />
               <Button type="submit" :label="editId ? 'Save & Submit' : 'Submit Request'" severity="warn" size="small" :loading="saving"
-                :disabled="!canSubmit || validItems.length === 0" />
+                :disabled="saving || !canSubmit || validItems.length === 0" />
             </div>
           </form>
         </template>
@@ -227,7 +227,7 @@ const getInventoryOptionByValue = (value: number | string | null | undefined) =>
   return inventoryOptions.value.find((option: any) => Number(option.value) === Number(value)) || null
 }
 
-const goBack = () => router.push({ name: 'inventory.stock-requests' })
+const goBack = () => router.push({ name: 'inventory.stock-requests', query: { type: 'purchase' } })
 const formatMoney = (value: any) => {
   const n = Number(value || 0)
   return n.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
@@ -329,6 +329,7 @@ const onInventoryChange = async (index: number, event: any) => {
 }
 
 const doCreate = async (submitNow: boolean) => {
+  if (saving.value) return
   Object.keys(errors).forEach(k => delete errors[k])
   saving.value = true
   try {
@@ -356,15 +357,18 @@ const doCreate = async (submitNow: boolean) => {
       : await inventoryService.createPurchaseRequisitionFromInventory(payload)
 
     if (response?.success) {
-      const autoApproved = response.data?.status === 'procurement_processing'
+      const autoApproved = ['procurement_pending', 'procurement_processing', 'inventory_po_pending'].includes(response.data?.status)
+      const routedToProcurement = response.data?.status === 'procurement_pending'
       toast.add({
         severity: 'success',
         summary: !submitNow ? 'Draft Saved' : autoApproved ? 'Request Approved' : 'Request Submitted',
         detail: !submitNow
           ? 'You can edit or submit this draft later.'
           : autoApproved
-            ? 'Your approval permission automatically approved this request. It is ready for Procurement.'
-            : 'Purchase requisition is pending in Procurement.',
+            ? routedToProcurement
+              ? 'Your approval permission approved this request. It is now pending with Procurement.'
+              : 'Your approval permission approved this request. It is ready for an Inventory purchase order.'
+            : 'The supplier request is pending approval.',
         life: 3500,
       })
       router.push({ name: 'inventory.stock-requests.detail', params: { type: 'purchase', id: response.data?.id } })
@@ -386,6 +390,7 @@ const doCreate = async (submitNow: boolean) => {
 }
 
 const submit = async (submitNow: boolean) => {
+  if (saving.value) return
   Object.keys(errors).forEach(k => delete errors[k])
   if (!canSubmit.value) return
   if (validItems.value.length === 0) {

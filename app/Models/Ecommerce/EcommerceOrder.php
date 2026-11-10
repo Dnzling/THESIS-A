@@ -46,6 +46,7 @@ class EcommerceOrder extends Model
         'store_net_amount',
         'shipping_fee',
         'discount_amount',
+        'voucher_code',
         'total_amount',
         'notes',
         'pending_snapshot',

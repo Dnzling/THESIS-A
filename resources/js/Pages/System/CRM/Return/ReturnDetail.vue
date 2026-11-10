@@ -126,9 +126,9 @@
           <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
             <div>
               <Tag :value="prettyStatus(returnRequest.replacement_status || 'awaiting_return')" :severity="returnRequest.status === 'replaced' ? 'success' : 'warn'" />
-              <p class="mt-2 text-xs text-slate-500">The returned unit stays in quarantine. Replacement stock is reserved separately and the case closes after delivery proof.</p>
+            <p class="mt-2 text-xs text-slate-500">Inventory can reserve the replacement after approval. Logistics can deliver it while collecting the returned item; the return is inspected at the branch afterward.</p>
             </div>
-            <Button v-if="returnRequest.status === 'received'" label="Open replacement workflow" severity="warn" size="small"
+            <Button v-if="['approved', 'received'].includes(returnRequest.status)" label="Open replacement workflow" severity="warn" size="small"
               @click="router.push({ name: 'inventory.replacements.detail', params: { id: returnRequest.id } })" />
           </div>
         </template>

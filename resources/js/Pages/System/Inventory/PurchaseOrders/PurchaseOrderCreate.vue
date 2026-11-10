@@ -28,6 +28,16 @@
             >{{ error }}</Message
         >
         <div
+            v-if="requisitionPrefill"
+            class="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900"
+        >
+            <i class="pi pi-file-edit mt-0.5 text-orange-600" />
+            <p>
+                Creating an Inventory PO from approved request
+                <strong>{{ requisitionPrefill.pr_number }}</strong>. Choose a contracted supplier that can provide every requested item; the item list and quantities are prefilled.
+            </p>
+        </div>
+        <div
             v-if="reorderSuggestions.length"
             class="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900"
         >
@@ -548,6 +558,7 @@ const branches = ref<any[]>([])
 const products = ref<any[]>([])
 const reorderSuggestions = ref<any[]>([])
 const forecastPrefill = ref<any | null>(null)
+const requisitionPrefill = ref<any | null>(null)
 const assignedBranchName = ref('')
 let nextKey = 1
 const dateAfterDays = (days: number) => {
@@ -556,6 +567,7 @@ const dateAfterDays = (days: number) => {
     return date
 }
 const form = reactive({
+    purchase_requisition_id: null as number | null,
     supplier_id: null as number | null,
     branch_id: null as number | null,
     expected_delivery_date: dateAfterDays(2),
@@ -580,6 +592,15 @@ const selectedSupplier = computed(() =>
     suppliers.value.find(s => s.id === form.supplier_id)
 )
 const eligibleSuppliers = computed(() => {
+    if (requisitionPrefill.value) {
+        const requestedProductIds = [...new Set((requisitionPrefill.value.items || []).map((item: any) => Number(item.product_id)))]
+        const linkedIds = requestedProductIds.map(productId => {
+            const product = products.value.find(item => Number(item.id) === productId)
+            return new Set((product?.suppliers || []).map((supplier: any) => Number(supplier.id)))
+        })
+        if (!linkedIds.length) return []
+        return suppliers.value.filter(supplier => linkedIds.every(ids => ids.has(Number(supplier.id))))
+    }
     if (!reorderSuggestions.value.length && !forecastPrefill.value) return suppliers.value
     if (forecastPrefill.value) {
         const product = products.value.find(
@@ -790,6 +811,22 @@ function onSupplierChange() {
         )
         return
     }
+    if (requisitionPrefill.value) {
+        const lines = (requisitionPrefill.value.items || []).map((requested: any) => {
+            const product = products.value.find(item => Number(item.id) === Number(requested.product_id))
+            const supplier = product?.suppliers?.find((item: any) => Number(item.id) === Number(form.supplier_id))
+            return {
+                key: nextKey++,
+                product_id: Number(requested.product_id),
+                variation_id: requested.variation_id ? Number(requested.variation_id) : null,
+                selection_key: `${requested.product_id}:${requested.variation_id || 0}`,
+                quantity_ordered: Math.max(10, Number(requested.quantity_requested || 0)),
+                unit_cost: Number(supplier?.unit_cost || 0),
+            }
+        })
+        form.items.splice(0, form.items.length, ...lines)
+        return
+    }
     form.items.forEach(item => {
         item.product_id = null
         item.variation_id = null
@@ -943,6 +980,44 @@ onMounted(async () => {
                 (branch: any) => Number(branch.id) === Number(form.branch_id)
             )?.name || ''
         const query = new URLSearchParams(window.location.search)
+        const requisitionId = Number(query.get('requisition_id') || 0)
+        if (requisitionId) {
+            const response = await inventoryService.getPurchaseRequisition(requisitionId)
+            const requisition = response?.data
+            if (!response?.success || requisition?.status !== 'inventory_po_pending') {
+                throw new Error('This supplier request is not approved for an Inventory PO, or it was already converted.')
+            }
+            if (Number(requisition.branch_id) !== Number(form.branch_id)) {
+                throw new Error('This supplier request belongs to a different branch.')
+            }
+            const requestedItems = Array.isArray(requisition.items) ? requisition.items : []
+            if (!requestedItems.length || requestedItems.some((requested: any) => !products.value.some(product => Number(product.id) === Number(requested.product_id)))) {
+                throw new Error('One or more requested items are unavailable for an Inventory PO. Confirm they have an active supplier contract.')
+            }
+            requisitionPrefill.value = {
+                id: requisition.id,
+                pr_number: requisition.pr_number,
+                items: requestedItems,
+            }
+            form.purchase_requisition_id = Number(requisition.id)
+            form.notes = `Created from approved supplier request ${requisition.pr_number}. ${requisition.reason || ''}`.trim()
+            form.items.splice(0, form.items.length, ...requestedItems.map((requested: any) => ({
+                key: nextKey++,
+                product_id: Number(requested.product_id),
+                variation_id: requested.variation_id ? Number(requested.variation_id) : null,
+                selection_key: `${requested.product_id}:${requested.variation_id || 0}`,
+                quantity_ordered: Math.max(10, Number(requested.quantity_requested || 0)),
+                unit_cost: 0,
+            })))
+            if (!eligibleSuppliers.value.length) {
+                throw new Error('No active contracted supplier is linked to every item in this request. Update supplier links or contracts before creating the PO.')
+            }
+            if (eligibleSuppliers.value.length === 1) {
+                form.supplier_id = Number(eligibleSuppliers.value[0].id)
+                onSupplierChange()
+            }
+            return
+        }
         const ids = (
             query.get('reorder_suggestion_ids') ||
             query.get('reorder_suggestion_id') ||

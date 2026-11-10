@@ -214,7 +214,7 @@
                   Live Delivery Tracking
                 </h3>
                 <p class="text-xs text-slate-500">
-                  Your current GPS position refreshes the delivery is active.
+                  The assigned driver's GPS location updates while the pickup is active.
                 </p>
               </div>
 
@@ -242,9 +242,13 @@
               v-if="!destinationPoint"
               class="px-4 py-3 text-sm text-amber-700"
             >
-              {{ source === 'return_pickup' && returnPickupToCustomer
+              {{ source === 'pickup' && isSupplierLeg
+                ? 'Supplier coordinates are not available. The live driver location will still appear on the map.'
+                : source === 'return_pickup' && returnPickupToCustomer
                 ? 'The customer pickup address does not have map coordinates yet.'
-                : 'The drop-off branch does not have map coordinates yet.' }}
+                : source === 'pickup'
+                  ? 'The destination branch does not have map coordinates yet.'
+                  : 'The drop-off branch does not have map coordinates yet.' }}
             </div>
           </div>
 
@@ -433,7 +437,7 @@
     </Card>
 
     <Dialog
-      v-if="isAssignedDriver"
+      v-if="canOperateDelivery"
       v-model:visible="proofDialog"
       modal
       :header="nextStatusLabel"
@@ -503,7 +507,7 @@
       </template>
     </Dialog>
 
-    <div v-if="isAssignedDriver && nextStatus" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+    <div v-if="canShowDeliveryAction" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
       <Button
         icon="pi pi-check"
         :label="nextStatusLabel"
@@ -514,7 +518,7 @@
         @click="beginAdvance"
       />
     </div>
-    <div v-if="isAssignedDriver && nextStatus" class="fixed bottom-6 right-8 z-40 hidden md:block">
+    <div v-if="canShowDeliveryAction" class="fixed bottom-6 right-8 z-40 hidden md:block">
       <Button
         icon="pi pi-check"
         :label="nextStatusLabel"
@@ -533,6 +537,7 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMoun
 import { useRoute, useRouter } from 'vue-router'
 import { usePage } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
+import { useAuthStore } from '@/stores/auth'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Tag from 'primevue/tag'
@@ -547,6 +552,7 @@ import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import {
   fetchMapboxRoadRoute,
+  forwardGeocodeMapbox,
   requireMapboxToken,
   reverseGeocodeMapbox,
 } from '@/utils/mapbox'
@@ -555,12 +561,14 @@ const route = useRoute()
 const router = useRouter()
 const page = usePage()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const updating = ref(false)
 const sharingLocation = ref(false)
 const detail = ref<any>(null)
 const resolvedCurrentAddress = ref('')
+const resolvedSupplierPoint = ref<[number, number] | null>(null)
 
 const proofDialog = ref(false)
 const proofPhoto = ref<File | null>(null)
@@ -581,7 +589,7 @@ let locationTimer: number | null = null
 let lastLocationSentAt = 0
 
 const source = computed(() =>
-  String(route.params.source || (route.name === 'driver.replacements.detail' ? 'replacement' : '')).toLowerCase(),
+  String(route.params.source || (route.name === 'driver.replacements.detail' ? 'replacement' : route.name === 'logistics.supplier-pickups.detail' ? 'pickup' : '')).toLowerCase(),
 )
 
 const orderId = computed(() => String(route.params.orderId || route.params.id))
@@ -730,6 +738,23 @@ const returnPickupToCustomer = computed(() =>
 )
 
 const destinationPoint = computed<[number, number] | null>(() => {
+  if (isSupplierLeg.value) {
+    const portal = detail.value?.order?.supplier_quotation?.supplier_portal
+    const supplier = detail.value?.order?.supplier || {}
+    const candidates = [
+      [portal?.latitude, portal?.longitude],
+      [supplier.latitude, supplier.longitude],
+    ]
+    for (const [rawLatitude, rawLongitude] of candidates) {
+      const latitude = Number(rawLatitude)
+      const longitude = Number(rawLongitude)
+      if (Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0) {
+        return [latitude, longitude]
+      }
+    }
+    return resolvedSupplierPoint.value
+  }
+
   const branch = source.value === 'pickup'
     ? handoffBranch.value
     : detail.value?.order?.branch || {}
@@ -779,12 +804,24 @@ const vehicleLabel = computed(
 const currentDeliveryStatus = computed(() =>
   String(detail.value?.delivery?.status || '').toLowerCase(),
 )
+const isSupplierLeg = computed(() =>
+  source.value === 'pickup' && ['pending', 'en_route_to_supplier'].includes(currentDeliveryStatus.value),
+)
 
 const isAssignedDriver = computed(() => {
   const userId = Number((page.props as any)?.auth?.user?.id)
   const assignedDriverId = Number(detail.value?.delivery?.driver_user_id)
   return userId > 0 && assignedDriverId > 0 && userId === assignedDriverId
 })
+const canOperateDelivery = computed(() =>
+  isAssignedDriver.value
+  && (source.value !== 'pickup' || authStore.hasPermission('logistics.driver.supplier-pickups')),
+)
+const canShowDeliveryAction = computed(() =>
+  canOperateDelivery.value
+  && !!nextStatus.value
+  && (source.value === 'pickup' || currentDeliveryStatus.value === 'out_for_delivery'),
+)
 
 const returnDeliverySteps = [
   { label: 'Pickup', value: 'picked_up' },
@@ -805,7 +842,7 @@ const nextStatus = computed(() =>
     ? (
         {
           pending: 'en_route_to_supplier',
-          en_route_to_supplier: 'out_for_delivery',
+          en_route_to_supplier: 'in_transit',
           in_transit: 'out_for_delivery',
           out_for_delivery: 'delivered',
         } as any
@@ -825,6 +862,12 @@ const nextStatusLabel = computed(() => {
   if (source.value === 'pickup' && nextStatus.value === 'en_route_to_supplier') {
     return 'Start Route to Supplier'
   }
+  if (source.value === 'pickup' && nextStatus.value === 'in_transit') {
+    return 'Confirm Supplier Pickup'
+  }
+  if (source.value === 'pickup' && nextStatus.value === 'out_for_delivery') {
+    return 'Start Route to Store'
+  }
   if (source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned') {
     return 'Confirm Pickup & Start Delivery'
   }
@@ -834,7 +877,7 @@ const nextStatusLabel = computed(() => {
 
   if (nextStatus.value === 'delivered') {
     return source.value === 'pickup'
-      ? 'Confirm Arrival at Store'
+      ? 'Confirm Delivery to Store'
       : 'Mark Delivered'
   }
 
@@ -851,9 +894,11 @@ const proofPhotoLabel = computed(() =>
     : source.value === 'return_pickup' && nextStatus.value === 'delivered'
       ? 'Return delivered to branch photo'
       :
-  nextStatus.value === 'delivered'
+  source.value === 'pickup' && nextStatus.value === 'in_transit'
+    ? 'Supplier pickup photo'
+    : nextStatus.value === 'delivered'
     ? source.value === 'pickup'
-      ? 'Arrival at store photo'
+      ? 'Store handoff photo'
       : 'Delivered order photo'
     : source.value === 'pickup'
       ? 'Supplier pickup photo'
@@ -867,11 +912,13 @@ const proofInstruction = computed(() =>
     ? nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
       ? 'Attach a photo confirming the item was collected from the customer. Your GPS location will also be captured.'
       : 'Attach a photo confirming the returned item was delivered to the destination branch. Your final GPS location will be captured.'
+    : source.value === 'pickup' && nextStatus.value === 'in_transit'
+      ? 'Attach a photo confirming the goods were collected from the supplier. Driver location is included when available.'
     :
   nextStatus.value === 'delivered'
     ? `Attach a photo showing the ${
         source.value === 'pickup'
-          ? 'supplies arriving at the store'
+          ? 'goods handed off at the receiving store'
           : 'order delivered to the customer'
       }. Your final GPS location will be captured before tracking stops.`
     : `Attach a photo showing the ${
@@ -884,10 +931,10 @@ const proofInstruction = computed(() =>
 const proofSubmitLabel = computed(() =>
   source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
     ? 'Confirm Pickup & Start Delivery'
-    : source.value === 'pickup' && nextStatus.value === 'out_for_delivery'
-      ? 'Confirm Pickup & Start Delivery'
+    : source.value === 'pickup' && nextStatus.value === 'in_transit'
+      ? 'Confirm Supplier Pickup'
     : nextStatus.value === 'delivered'
-    ? 'Mark Delivered'
+    ? source.value === 'pickup' ? 'Confirm Delivery to Store' : 'Mark Delivered'
     : 'Mark In Transit',
 )
 
@@ -942,6 +989,25 @@ const reverseGeocode = async (point: {
 }) =>
   reverseGeocodeMapbox(point.latitude, point.longitude)
 
+const resolveSupplierDestination = async () => {
+  if (source.value !== 'pickup' || !isSupplierLeg.value || destinationPoint.value) return
+
+  const supplier = detail.value?.order?.supplier || {}
+  const supplierAddress = [
+    supplier.address,
+    supplier.barangay,
+    supplier.city,
+    supplier.province,
+    supplier.postal_code,
+    supplier.country || 'Philippines',
+  ].filter(Boolean).join(', ')
+
+  if (!supplierAddress) return
+
+  const geocoded = await forwardGeocodeMapbox(supplierAddress).catch(() => null)
+  if (geocoded) resolvedSupplierPoint.value = [geocoded.latitude, geocoded.longitude]
+}
+
 const load = async () => {
   loading.value = true
 
@@ -981,6 +1047,7 @@ const load = async () => {
 
     const delivery = detail.value?.delivery
     resolvedCurrentAddress.value = ''
+    resolvedSupplierPoint.value = null
 
     if (
       !delivery?.current_address &&
@@ -1001,6 +1068,11 @@ const load = async () => {
     // Mapbox rendering is independent from loading the delivery data. Do not
     // leave status buttons waiting if the map style or network is slow.
     void renderTrackingMap().catch(() => undefined)
+    void resolveSupplierDestination().then(async () => {
+      if (!resolvedSupplierPoint.value) return
+      await nextTick()
+      await renderTrackingMap().catch(() => undefined)
+    })
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -1031,7 +1103,7 @@ const selectPhoto = (event: Event) => {
 }
 
 const beginAdvance = async () => {
-  if (!isAssignedDriver.value || !nextStatus.value) return
+  if (!canOperateDelivery.value || !nextStatus.value) return
 
   const needsProof =
     ['pickup', 'ecommerce', 'sales', 'return_pickup', 'replacement'].includes(source.value) &&
@@ -1040,7 +1112,7 @@ const beginAdvance = async () => {
         : source.value === 'replacement'
           ? nextStatus.value === 'delivered'
       : source.value === 'pickup'
-        ? ['out_for_delivery', 'delivered'].includes(nextStatus.value)
+        ? ['in_transit', 'delivered'].includes(nextStatus.value)
         : ['in_transit', 'delivered'].includes(nextStatus.value))
 
   if (needsProof) {
@@ -1062,7 +1134,7 @@ const beginAdvance = async () => {
 }
 
 const updateRegularDelivery = async () => {
-  if (!isAssignedDriver.value) return
+  if (!canOperateDelivery.value) return
   const targetStatus = nextStatus.value
 
   if (!targetStatus) return
@@ -1134,7 +1206,7 @@ const updateRegularDelivery = async () => {
 }
 
 const submitPickupStatus = async () => {
-  if (!isAssignedDriver.value || !proofPhoto.value || !nextStatus.value) return
+  if (!canOperateDelivery.value || !proofPhoto.value || !nextStatus.value) return
 
   const targetStatus = nextStatus.value
   updating.value = true
@@ -1201,12 +1273,18 @@ const submitPickupStatus = async () => {
       severity: 'success',
       summary:
         targetStatus === 'delivered'
-          ? 'Delivery Completed'
+          ? source.value === 'pickup' ? 'Store Handoff Confirmed' : 'Delivery Completed'
+          : source.value === 'pickup' && targetStatus === 'in_transit'
+            ? 'Supplier Pickup Confirmed'
           : 'Delivery In Transit',
       detail:
         targetStatus === 'delivered'
-          ? 'The delivery proof was recorded and the order was marked delivered.'
-          : 'The proof photo was recorded and the delivery is now in transit.',
+          ? source.value === 'pickup'
+            ? 'The handoff photo was recorded and the goods were delivered to the receiving store.'
+            : 'The delivery proof was recorded and the order was marked delivered.'
+          : source.value === 'pickup' && targetStatus === 'in_transit'
+            ? 'The supplier pickup photo was recorded. Start the route to the store when you are ready.'
+            : 'The proof photo was recorded and the delivery is now in transit.',
       life: 3000,
     })
 
@@ -1297,27 +1375,40 @@ const updateTrackingState = () => {
 
   const shouldTrack =
     (source.value !== 'replacement' || isAssignedDriver.value) &&
+    (source.value !== 'pickup' || Number(detail.value?.delivery?.driver_user_id || 0) > 0) &&
     ['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup', 'replacement'].includes(
       source.value,
     ) &&
-    (source.value === 'return_pickup' ? ['assigned', 'picked_up', 'out_for_delivery'] : source.value === 'replacement' ? ['out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
+    (source.value === 'pickup'
+      ? ['pending', 'en_route_to_supplier', 'in_transit', 'out_for_delivery']
+      : source.value === 'return_pickup'
+        ? ['assigned', 'picked_up', 'out_for_delivery']
+        : source.value === 'replacement'
+          ? ['out_for_delivery']
+          : ['in_transit', 'out_for_delivery']).includes(
       status,
     )
 
   trackingActive.value = shouldTrack
 
-  if (shouldTrack && locationWatcher === null) {
+  const canSharePickupLocation = source.value !== 'pickup' || canOperateDelivery.value
+  if (shouldTrack && canSharePickupLocation && locationWatcher === null) {
     startLocationTracking()
   }
 
-  if (!shouldTrack && locationWatcher !== null) {
+  if ((!shouldTrack || !canSharePickupLocation) && locationWatcher !== null) {
     stopLocationTracking()
   }
 }
 
 const startLocationTracking = () => {
   if (source.value === 'replacement' && !isAssignedDriver.value) return
+  if (source.value === 'pickup' && !canOperateDelivery.value) return
   if (!navigator.geolocation || locationWatcher !== null) return
+
+  coordinates()
+    .then((point) => sendLiveLocation(point, true))
+    .catch(() => undefined)
 
   locationWatcher = navigator.geolocation.watchPosition(
     (position) => {
@@ -1327,7 +1418,7 @@ const startLocationTracking = () => {
       }).catch(() => undefined)
     },
     () => {
-      trackingActive.value = false
+      if (source.value !== 'pickup') trackingActive.value = false
     },
     {
       enableHighAccuracy: true,
@@ -1437,7 +1528,7 @@ const renderTrackingMap = async () => {
   if (destinationPoint.value) {
     const destinationElement = document.createElement('div')
     destinationElement.style.cssText = 'width:18px;height:18px;border:3px solid white;border-radius:50%;background:#2563eb;box-shadow:0 1px 5px #0008;'
-    const destinationLabel = returnPickupToCustomer.value ? 'Customer pickup location' : source.value === 'return_pickup' ? 'Drop-off branch' : ['ecommerce', 'sales'].includes(source.value) ? 'Delivery destination' : 'Store destination'
+    const destinationLabel = returnPickupToCustomer.value ? 'Customer pickup location' : isSupplierLeg.value ? 'Supplier pickup location' : source.value === 'return_pickup' ? 'Drop-off branch' : ['ecommerce', 'sales'].includes(source.value) ? 'Delivery destination' : 'Store destination'
     destinationMarker = new mapboxgl.Marker({ element: destinationElement, anchor: 'center' }).setLngLat([destinationPoint.value[1], destinationPoint.value[0]]).setPopup(new mapboxgl.Popup({ offset: 15 }).setText(destinationLabel)).addTo(trackingMap)
 
     let linePoints: [number, number][] = lastPoint
@@ -1476,7 +1567,47 @@ const renderTrackingMap = async () => {
   trackingMap.resize()
 }
 
-onMounted(load)
+let pickupTrackingRefreshTimer: number | null = null
+
+const refreshPickupTracking = async () => {
+  if (source.value !== 'pickup' || isAssignedDriver.value || !trackingActive.value || loading.value) return
+
+  try {
+    const response = await logisticsService.getDeliveryOrderDetail('pickup', orderId.value)
+    const latest = response?.data
+    if (!latest?.delivery || !detail.value) return
+
+    detail.value = {
+      ...detail.value,
+      order: latest.order || detail.value.order,
+      delivery: latest.delivery,
+      logs: latest.logs || detail.value.logs,
+    }
+    updateTrackingState()
+    await nextTick()
+    await renderTrackingMap()
+  } catch {
+    // Keep the last known pickup coordinates visible if a refresh is interrupted.
+  }
+}
+
+const startPickupTrackingRefresh = () => {
+  if (pickupTrackingRefreshTimer !== null) return
+  pickupTrackingRefreshTimer = window.setInterval(() => {
+    void refreshPickupTracking()
+  }, 5000)
+}
+
+const stopPickupTrackingRefresh = () => {
+  if (pickupTrackingRefreshTimer === null) return
+  window.clearInterval(pickupTrackingRefreshTimer)
+  pickupTrackingRefreshTimer = null
+}
+
+onMounted(() => {
+  void load()
+  startPickupTrackingRefresh()
+})
 
 watch(trackingActive, async (active) => {
   if (!active) return
@@ -1487,6 +1618,7 @@ watch(trackingActive, async (active) => {
 
 onActivated(() => {
   updateTrackingState()
+  startPickupTrackingRefresh()
   if (trackingActive.value) void renderTrackingMap().catch(() => undefined)
 })
 
@@ -1501,10 +1633,14 @@ const destroyMap = () => {
   destinationMarker = null
 }
 
-onDeactivated(destroyMap)
+onDeactivated(() => {
+  destroyMap()
+  stopPickupTrackingRefresh()
+})
 
 onBeforeUnmount(() => {
   destroyMap()
+  stopPickupTrackingRefresh()
 
   if (photoPreview.value) {
     URL.revokeObjectURL(photoPreview.value)

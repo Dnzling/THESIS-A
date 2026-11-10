@@ -110,6 +110,43 @@
                 <span v-if="productReviewCount" class="font-semibold text-slate-800">{{ averageRating }}</span>
                 <span class="text-slate-500">{{ productReviewCount ? `${productReviewCount} ${productReviewCount === 1 ? 'review' : 'reviews'}` : 'No ratings yet' }}</span>
               </div>
+              <div v-if="vouchersForProductStore.length" class="pt-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button
+                    ref="voucherPopoverTrigger"
+                    type="button"
+                    label="Shop Vouchers"
+                    severity="secondary"
+                    text
+                    size="small"
+                    class="!px-0 !font-medium"
+                    @click="toggleVoucherPopover($event)"
+                  />
+                  <span
+                    v-for="voucher in vouchersForProductStore.slice(0, 3)"
+                    :key="`voucher-chip-${voucher.id}`"
+                    class="rounded-sm border border-rose-100 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-600"
+                  >
+                    {{ voucherDiscountLabel(voucher) }}
+                  </span>
+                </div>
+                <Popover ref="voucherPopover" class="w-[min(24rem,calc(100vw-2rem))] p-0">
+                  <div class="border-b border-slate-100 px-4 py-3">
+                    <p class="font-semibold text-slate-900">Shop Vouchers</p>
+                    <p class="mt-1 text-xs leading-5 text-slate-500">Copy a code and apply it at checkout for this store.</p>
+                  </div>
+                  <div class="max-h-80 space-y-2 overflow-y-auto p-3">
+                    <div v-for="voucher in vouchersForProductStore" :key="`voucher-card-${voucher.id}`" class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                      <div class="min-w-0">
+                        <p class="font-semibold text-slate-900">{{ voucherDiscountLabel(voucher) }}</p>
+                        <p class="text-xs text-slate-600">Min. spend {{ formatCurrency(voucher.min_order_amount) }}</p>
+                        <p v-if="voucher.ends_at" class="text-[11px] text-slate-500">Valid until {{ formatVoucherDate(voucher.ends_at) }}</p>
+                      </div>
+                      <Button label="Copy code" size="small" severity="warn" @click="copyVoucherCode(voucher)" />
+                    </div>
+                  </div>
+                </Popover>
+              </div>
               <p class="text-xs font-medium text-slate-500"></p>
               <p class="text-sm text-slate-500">
                 <Tag v-if="!product?.variations?.length" :value="stockLabel" :severity="stockSeverity" />
@@ -489,6 +526,7 @@ import Skeleton from 'primevue/skeleton'
 import Carousel from 'primevue/carousel'
 import Dialog from 'primevue/dialog'
 import Drawer from 'primevue/drawer'
+import Popover from 'primevue/popover'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 const Model3DPreview = defineAsyncComponent(() => import('@/Components/merchandising/Model3DPreview.vue'))
@@ -515,6 +553,9 @@ const cartDrawerVisible = ref(false)
 const addingToCart = ref(false)
 const addedItem = ref<{ name: string; description: string; image: string | null; price: number; quantity: number; storeId: number } | null>(null)
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
+const storeVouchers = ref<any[]>([])
+const voucherPopover = ref<any>(null)
+const voucherPopoverTrigger = ref<any>(null)
 const show3DViewer = ref(false)
 const hasOpened3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
@@ -660,6 +701,10 @@ const primaryImage = computed(() => {
 })
 const storeRating = computed(() => Number(storeInfo.value?.rating_avg ?? 0))
 const storeRatingCount = computed(() => Number(storeInfo.value?.rating_count ?? 0))
+const vouchersForProductStore = computed(() => {
+  const storeId = Number(product.value?.store_id || 0)
+  return storeVouchers.value.filter((voucher) => Number(voucher.store_id) === storeId)
+})
 const reviews = computed(() => product.value?.reviews?.data || [])
 const topReviews = computed(() => reviews.value.slice(0, 3))
 const visibleAllReviews = computed(() => {
@@ -940,6 +985,47 @@ async function loadStoreInfo() {
   }
 }
 
+function voucherDiscountLabel(voucher: any): string {
+  return voucher.discount_type === 'percent'
+    ? `${Number(voucher.discount_value || 0)}% OFF`
+    : `${formatCurrency(voucher.discount_value)} OFF`
+}
+
+function formatVoucherDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function toggleVoucherPopover(event: Event) {
+  voucherPopover.value?.toggle(event)
+}
+
+async function copyVoucherCode(voucher: any) {
+  try {
+    await navigator.clipboard.writeText(String(voucher.code || ''))
+    voucherPopover.value?.hide()
+    showAlert({ severity: 'success', summary: 'Voucher code copied', detail: 'Apply this code at checkout for this store.' })
+  } catch {
+    showAlert({ severity: 'info', summary: 'Voucher code', detail: `Use ${voucher.code} at checkout for this store.` })
+  }
+}
+
+async function loadStoreVouchers() {
+  storeVouchers.value = []
+  const storeId = Number(product.value?.store_id || 0)
+  if (!storeId) return
+
+  try {
+    const response = await ecommerceService.getAvailableVouchers()
+    const vouchers = Array.isArray(response.data?.data) ? response.data.data : []
+    storeVouchers.value = vouchers.filter((voucher: any) => Number(voucher.store_id) === storeId)
+  } catch {
+    storeVouchers.value = []
+  }
+}
+
 async function addToCart() {
   if (!product.value?.id) return
   if (productHasVariations.value && !selectedVariationId.value) {
@@ -1064,7 +1150,7 @@ async function submitReport() {
 
 onMounted(async () => {
   await loadProduct()
-  await loadStoreInfo()
+  await Promise.all([loadStoreInfo(), loadStoreVouchers()])
   await loadRecommendedProducts()
 })
 watch(() => route.params.id, async () => {
@@ -1074,7 +1160,7 @@ watch(() => route.params.id, async () => {
   allReviews.value = []
   selectedReviewRating.value = null
   await loadProduct()
-  await loadStoreInfo()
+  await Promise.all([loadStoreInfo(), loadStoreVouchers()])
   await loadRecommendedProducts()
 })
 </script>

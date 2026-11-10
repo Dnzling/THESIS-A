@@ -125,6 +125,7 @@ const importProducts = async () => {
     }
   }
   importing.value = false
+  if (imported > 0) window.dispatchEvent(new Event('setup-attention-refresh'))
   toast.add({
     severity: failures.length ? 'warn' : 'success',
     summary: failures.length ? 'Import completed with errors' : 'Import complete',

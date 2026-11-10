@@ -236,6 +236,35 @@ class EcommerceController extends Controller
         ]);
     }
 
+    public function availableVouchers(): JsonResponse
+    {
+        $now = now();
+        $vouchers = EcommerceVoucher::query()
+            ->with('store:id,name')
+            ->where('is_active', true)
+            ->whereHas('store', fn ($query) => $query->acceptingNewSales())
+            ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
+            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', $now))
+            ->orderBy('store_id')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (EcommerceVoucher $voucher) => [
+                'id' => (int) $voucher->id,
+                'store_id' => (int) $voucher->store_id,
+                'store_name' => $voucher->store?->name ?? 'Store',
+                'voucher_name' => $voucher->voucher_name,
+                'code' => $voucher->code,
+                'discount_type' => $voucher->discount_type,
+                'discount_value' => (float) $voucher->discount_value,
+                'min_order_amount' => (float) ($voucher->min_order_amount ?? 0),
+                'max_discount_amount' => is_null($voucher->max_discount_amount) ? null : (float) $voucher->max_discount_amount,
+                'starts_at' => $voucher->starts_at,
+                'ends_at' => $voucher->ends_at,
+            ])->values();
+
+        return response()->json(['success' => true, 'data' => $vouchers]);
+    }
+
     public function storeProducts(Request $request, int $storeId)
     {
         $hasOrderItemsTable = Schema::hasTable('ecommerce_order_items');
@@ -1869,7 +1898,8 @@ class EcommerceController extends Controller
         if (!empty($validated['voucher_code'])) {
             $voucherResult = $this->validateVoucherCode(
                 (string) $validated['voucher_code'],
-                (float) $previewSubtotal + $shippingFee
+                (float) $previewSubtotal,
+                (int) $cart->store_id
             );
             $voucherDiscount = (float) $voucherResult['discount_amount'];
             $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
@@ -1904,7 +1934,7 @@ class EcommerceController extends Controller
 
             $subtotal = 0;
             $taxAmount = 0;
-            $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
+            $discountAmount = $voucherDiscount;
             $isPaymongo = in_array($validated['payment_method'], ['card', 'e_wallet'], true);
 
             $order = EcommerceOrder::create([
@@ -1927,7 +1957,8 @@ class EcommerceController extends Controller
                 'requested_fulfillment_window' => $validated['requested_fulfillment_window'],
                 'customer_latitude' => $customerLatitude,
                 'customer_longitude' => $customerLongitude,
-                'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
+                'voucher_code' => $appliedVoucherCode,
+                'notes' => trim((string) ($validated['notes'] ?? '')) ?: null,
                 'placed_at' => now(),
             ]);
 
@@ -3186,6 +3217,12 @@ class EcommerceController extends Controller
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 40));
 
+        $messages->getCollection()->each(function (EcommerceChatMessage $message): void {
+            if ($message->attachment_path) {
+                $message->setAttribute('attachment_url', route('ecommerce.chat-attachments', $message->id));
+            }
+        });
+
         EcommerceChatMessage::query()
             ->where('thread_id', $thread->id)
             ->where('sender_role', 'store')
@@ -3204,11 +3241,21 @@ class EcommerceController extends Controller
         ]);
     }
 
+    public function chatAttachment(Request $request, int $messageId)
+    {
+        $message = EcommerceChatMessage::query()->with('thread')->findOrFail($messageId);
+        abort_unless((int) $message->thread?->customer_user_id === (int) $request->user()->id, 404);
+        abort_unless($message->attachment_path && Storage::disk('private')->exists($message->attachment_path), 404);
+
+        return Storage::disk('private')->response($message->attachment_path, $message->attachment_name, [], 'inline');
+    }
+
     public function sendChatMessage(Request $request, int $storeId)
     {
         $validated = $request->validate([
-            'message' => ['required', 'string', 'max:2000'],
+            'message' => ['nullable', 'string', 'max:2000'],
             'order_id' => ['nullable', 'integer', 'exists:ecommerce_orders,id'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,csv,txt,zip'],
         ]);
 
         $user = Auth::user();
@@ -3219,7 +3266,8 @@ class EcommerceController extends Controller
             'customer_user_id' => $user->id,
         ]);
 
-        $messageBody = trim((string) $validated['message']);
+        $messageBody = trim((string) ($validated['message'] ?? ''));
+        abort_if($messageBody === '' && !$request->hasFile('attachment'), 422, 'Enter a message or attach a file.');
         if ($this->containsProfanity($messageBody)) {
             return response()->json([
                 'success' => false,
@@ -3227,11 +3275,16 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $file = $request->file('attachment');
         $message = EcommerceChatMessage::query()->create([
             'thread_id' => $thread->id,
             'sender_user_id' => $user->id,
             'sender_role' => 'customer',
-            'message' => $messageBody,
+            'message' => $messageBody ?: null,
+            'attachment_path' => $file?->store('customer-chat/' . $storeId, 'private'),
+            'attachment_name' => $file?->getClientOriginalName(),
+            'attachment_mime' => $file?->getMimeType(),
+            'attachment_size' => $file?->getSize(),
             'order_id' => $validated['order_id'] ?? null,
         ]);
 
@@ -3488,10 +3541,11 @@ class EcommerceController extends Controller
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:40'],
             'amount' => ['nullable', 'numeric', 'min:0'],
+            'store_id' => ['required', 'integer', 'exists:stores,id'],
         ]);
 
         $amount = (float) ($validated['amount'] ?? 0);
-        $result = $this->validateVoucherCode((string) $validated['code'], $amount);
+        $result = $this->validateVoucherCode((string) $validated['code'], $amount, (int) $validated['store_id']);
 
         return response()->json([
             'success' => true,
@@ -3804,6 +3858,7 @@ class EcommerceController extends Controller
             'tax_amount' => (float) $order->tax_amount,
             'shipping_fee' => (float) $order->shipping_fee,
             'discount_amount' => (float) $order->discount_amount,
+            'voucher_code' => $order->voucher_code,
             'total_amount' => (float) $order->total_amount,
             'placed_at' => $order->placed_at,
             'created_at' => $order->created_at,
@@ -4509,38 +4564,35 @@ class EcommerceController extends Controller
         return array_sum($scores) / count($scores);
     }
 
-    private function validateVoucherCode(string $code, float $orderAmount): array
+    private function validateVoucherCode(string $code, float $orderAmount, int $storeId): array
     {
-        $storeId = $this->resolveAuthenticatedStoreId();
         $normalized = strtoupper(trim($code));
 
         $voucher = EcommerceVoucher::query()
             ->where('code', $normalized)
-            ->where('is_active', true)
             ->where(function ($query) use ($storeId) {
                 $query->whereNull('store_id')->orWhere('store_id', $storeId);
-            })
-            ->where(function ($query) {
-                $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
-            })
-            ->where(function ($query) {
-                $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
             })
             ->first();
 
         if (!$voucher) {
-            abort(response()->json([
-                'success' => false,
-                'message' => 'Voucher does not exist or is inactive.',
-            ], 422));
+            throw ValidationException::withMessages(['code' => 'This voucher is not available for the selected store.']);
+        }
+        if (!$voucher->is_active) {
+            throw ValidationException::withMessages(['code' => 'This voucher is inactive.']);
+        }
+        if ($voucher->starts_at && $voucher->starts_at->isFuture()) {
+            throw ValidationException::withMessages(['code' => 'This voucher is not available yet.']);
+        }
+        if ($voucher->ends_at && $voucher->ends_at->isPast()) {
+            throw ValidationException::withMessages(['code' => 'This voucher has expired.']);
         }
 
         $minimum = (float) ($voucher->min_order_amount ?? 0);
         if ($minimum > 0 && $orderAmount < $minimum) {
-            abort(response()->json([
-                'success' => false,
-                'message' => "Minimum order amount is PHP {$minimum} for this voucher.",
-            ], 422));
+            throw ValidationException::withMessages([
+                'code' => 'Minimum order amount is PHP ' . number_format($minimum, 2) . ' for this voucher.',
+            ]);
         }
 
         $discount = $voucher->discount_type === 'percent'
@@ -4560,7 +4612,7 @@ class EcommerceController extends Controller
                 'discount_type' => $voucher->discount_type,
                 'discount_value' => (float) $voucher->discount_value,
             ],
-            'discount_amount' => $discount,
+            'discount_amount' => round(max(0, min($discount, $orderAmount)), 2),
         ];
     }
 

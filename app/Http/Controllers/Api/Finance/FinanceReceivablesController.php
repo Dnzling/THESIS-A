@@ -186,6 +186,7 @@ class FinanceReceivablesController extends Controller
                 'amounts' => [
                     'subtotal' => (float) ($order->subtotal ?? 0),
                     'discount' => (float) ($order->discount_amount ?? 0),
+                    'voucher_code' => $order->voucher_code,
                     'tax' => (float) ($order->tax_amount ?? 0),
                     'store_net' => (float) $order->total_amount,
                     'shipping_fee' => (float) ($order->shipping_fee ?? 0),

@@ -611,7 +611,7 @@
       </div>
       <template #footer>
         <Button label="Back to Trips" severity="secondary" outlined @click="createTripVisible = false" />
-        <Button label="Create and Add Delivery" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id || hasTripDateConflict(tripForm.scheduled_departure_at)" @click="createTripAndAddDelivery" />
+        <Button label="Create and Add Delivery" icon="pi pi-check" severity="warn" :loading="creatingTrip" :disabled="creatingTrip || loadingTripOptions || !tripForm.driver_user_id || !tripForm.vehicle_id || hasTripDateConflict(tripForm.scheduled_departure_at)" @click="createTripAndAddDelivery" />
       </template>
     </Dialog>
 
@@ -971,6 +971,10 @@ const customerName = computed(() => {
 const customerContact = computed(() => {
   if (source.value === 'pickup') {
     return order.value?.supplier?.phone
+  }
+
+  if (source.value === 'stock_transfer') {
+    return order.value?.branch?.contact_number
   }
 
   if (source.value === 'sales') {

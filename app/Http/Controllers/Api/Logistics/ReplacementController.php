@@ -49,6 +49,23 @@ class ReplacementController extends Controller
         abort_unless($allowed, 403);
     }
 
+    private function resolveSourceBranchId(EcommerceOrderReturn $return): int
+    {
+        if ($return->source_type === 'pos') {
+            $return->loadMissing(['salesOrder', 'salesOrderItem.branchInventory']);
+        } else {
+            $return->loadMissing(['order', 'orderItem.branchInventory']);
+        }
+
+        $item = $return->sourceOrderItem();
+        $order = $return->sourceOrder();
+
+        return (int) ($item?->branchInventory?->branch_id
+            ?: $order?->assigned_branch_id
+            ?: $order?->branch_id
+            ?: 0);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
@@ -72,7 +89,10 @@ class ReplacementController extends Controller
     {
         $return = $this->scopedReturn($request, $id);
         $return->load(['orderItem.product', 'orderItem.branchInventory.variation', 'salesOrderItem.product', 'salesOrderItem.variation', 'salesOrderItem.branchInventory.variation', 'pickup.destinationBranch', 'replacementProduct', 'replacementVariation', 'replacementInventory.product', 'replacementInventory.variation', 'replacementInventory.branch']);
+        $return->loadMissing('pickup:id,return_id,destination_branch_id');
+        $fulfillmentBranchId = (int) ($return->pickup?->destination_branch_id ?: $this->resolveSourceBranchId($return));
         $branches = Branch::query()->where('store_id', $return->store_id)->where('status', 'active')
+            ->whereKey($fulfillmentBranchId)
             ->get(['id', 'name', 'branch_type']);
         $originalItem = $return->sourceOrderItem();
         $originalInventory = $return->source_type === 'pos' ? $return->salesOrderItem?->branchInventory : $return->orderItem?->branchInventory;
@@ -168,7 +188,7 @@ class ReplacementController extends Controller
 
             $quantity = (int) $case->received_quantity;
             if ($quantity <= 0) {
-                throw ValidationException::withMessages(['replacement' => ['Inspect and receive the returned item before reserving a replacement.']]);
+                throw ValidationException::withMessages(['replacement' => ['Inspect and receive the returned item before reserving an alternative.']]);
             }
             $inventory = BranchInventory::query()->where('store_id', $case->store_id)
                 ->with(['product', 'variation', 'branch'])->lockForUpdate()->findOrFail($validated['inventory_id']);
@@ -262,6 +282,11 @@ class ReplacementController extends Controller
         $this->authorizeStock($request);
         $validated = $request->validate(['branch_id' => ['required', 'integer', 'exists:branches,id']]);
         $return = $this->scopedReturn($request, $id);
+        $return->loadMissing('pickup:id,return_id,destination_branch_id');
+        $fulfillmentBranchId = (int) ($return->pickup?->destination_branch_id ?: $this->resolveSourceBranchId($return));
+        if ($fulfillmentBranchId <= 0 || (int) $validated['branch_id'] !== $fulfillmentBranchId) {
+            throw ValidationException::withMessages(['branch_id' => ['Replacement stock must be reserved at the branch that fulfilled the original order.']]);
+        }
         Branch::query()->where('store_id', $return->store_id)->where('status', 'active')
             ->findOrFail($validated['branch_id']);
         if ($return->sourceOrderItem()?->branch_inventory_id && !$return->sourceOrderItem()?->branchInventory) {
@@ -270,7 +295,7 @@ class ReplacementController extends Controller
 
         $result = DB::transaction(function () use ($return, $validated) {
             $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
-            if ($case->status !== 'received' || !in_array($case->replacement_status, ['awaiting_stock', null], true)) {
+            if (!in_array($case->status, ['approved', 'received'], true) || !in_array($case->replacement_status, ['awaiting_stock', null], true)) {
                 throw ValidationException::withMessages(['replacement' => 'This case cannot be reserved again.']);
             }
             $originalItem = $return->sourceOrderItem();
@@ -280,7 +305,7 @@ class ReplacementController extends Controller
                 ->where('branch_id', $validated['branch_id'])->where('product_id', $originalItem?->product_id)
                 ->where('variation_id', $variationId)->lockForUpdate()->first();
             $case->replacement_branch_id = $validated['branch_id'];
-            $quantity = (int) $case->received_quantity;
+            $quantity = (int) ($case->received_quantity ?: $case->requested_quantity);
             if (!$inventory || $quantity <= 0 || max(0, (int) $inventory->quantity_on_hand - (int) $inventory->quantity_reserved - (int) $inventory->quantity_damaged) < $quantity) {
                 $case->replacement_status = 'awaiting_stock';
                 $case->save();
@@ -329,7 +354,7 @@ class ReplacementController extends Controller
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'location_address' => ['nullable', 'string', 'max:2000'],
         ]);
-        if ($return->status !== 'received' || $return->replacement_status !== 'out_for_delivery') {
+        if (!in_array($return->status, ['approved', 'received'], true) || $return->replacement_status !== 'out_for_delivery') {
             return response()->json(['message' => 'Only dispatched replacements can be delivered.'], 422);
         }
         $path = $validated['proof']->store("replacement-proofs/{$return->store_id}", 'public');
@@ -348,8 +373,10 @@ class ReplacementController extends Controller
                     $case->current_longitude = $validated['longitude'] ?? $case->current_longitude;
                     $case->current_address = $validated['location_address'] ?? $case->current_address;
                 }
-                $case->status = 'replaced';
-                $case->resolved_at = now();
+                if ($case->status === 'received') {
+                    $case->status = 'replaced';
+                    $case->resolved_at = now();
+                }
                 $case->save();
                 app(\App\Services\Logistics\CompleteDeliveryTrip::class)->afterDeliveryUpdate($case);
             });
@@ -365,7 +392,9 @@ class ReplacementController extends Controller
                 'entity_id' => (int) $return->id,
                 'action' => 'replacement_delivered',
                 'title' => 'Replacement delivered',
-                'message' => 'Your replacement has been delivered. Thank you for completing the return process.',
+                'message' => $return->status === 'received'
+                    ? 'Your replacement has been delivered. Thank you for completing the return process.'
+                    : 'Your replacement has been delivered. The returned item will be inspected when it reaches the branch.',
                 'severity' => 'success',
                 'store_id' => (int) $return->store_id,
                 'link' => '/orders/' . (int) $return->order_id,
@@ -427,7 +456,7 @@ class ReplacementController extends Controller
         $validated = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         DB::transaction(function () use ($return, $validated): void {
             $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
-            if ($case->status !== 'received' || $case->replacement_status !== 'out_for_delivery') {
+            if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'out_for_delivery') {
                 throw ValidationException::withMessages(['replacement' => 'Only an active delivery can be marked failed.']);
             }
             $case->replacement_status = 'delivery_failed';
@@ -444,7 +473,7 @@ class ReplacementController extends Controller
         $return = $this->scopedReturn($request, $id);
         DB::transaction(function () use ($return): void {
             $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
-            if ($case->status !== 'received' || $case->replacement_status !== 'delivery_failed' || !$case->replacement_driver_id) {
+            if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'delivery_failed' || !$case->replacement_driver_id) {
                 throw ValidationException::withMessages(['replacement' => 'This replacement cannot be reattempted.']);
             }
             $case->replacement_status = 'out_for_delivery';

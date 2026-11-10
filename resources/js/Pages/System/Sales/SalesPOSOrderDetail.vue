@@ -109,7 +109,7 @@
             <Column header="#" style="width: 4rem"><template #body="{ index }">{{ index + 1 }}</template></Column>
             <Column header="Product" style="min-width: 240px"><template #body="{ data }"><p class="font-medium text-gray-900">{{ data.product_name || data.product?.product_name || '-' }}</p><p class="mt-1 text-xs text-gray-500">SKU: {{ data.sku || data.variation?.variation_sku || data.product?.sku || '-' }}</p><p v-if="data.variation?.variation_name" class="mt-1 text-xs text-orange-600">{{ data.variation.variation_name }}</p><div v-if="data.customization_request" class="mt-2 rounded-lg border border-orange-100 bg-orange-50 p-2 text-xs"><p class="font-semibold text-orange-800"><i class="pi pi-palette mr-1" />Upholstery customization</p><p class="mt-1 whitespace-pre-line text-slate-700">{{ data.customization_request }}</p><p v-if="data.customization_lead_time_days" class="mt-1 text-slate-500">Estimated lead time: {{ data.customization_lead_time_days }} days</p></div></template></Column>
             <Column header="Quantity / Unit" style="min-width: 145px"><template #body="{ data }"><span class="font-medium">{{ Number(data.quantity || 0).toLocaleString() }} {{ data.product?.unit_of_measurement || 'unit' }}</span></template></Column>
-            <Column header="Unit Price" style="min-width: 145px"><template #body="{ data }"><p>{{ money(data.unit_price) }}</p><p v-if="Number(data.customization_fee || 0) > 0" class="mt-1 text-xs text-orange-700">+ {{ money(data.customization_fee) }} customization</p></template></Column>
+            <Column header="Unit Price" style="min-width: 145px"><template #body="{ data }"><div v-if="itemDiscount(data) > 0" class="flex flex-col"><del class="text-xs text-slate-400">{{ money(originalUnitPrice(data)) }}</del><span class="font-semibold text-slate-900">{{ money(data.unit_price) }}</span></div><span v-else>{{ money(data.unit_price) }}</span><p v-if="Number(data.customization_fee || 0) > 0" class="mt-1 text-xs text-orange-700">+ {{ money(data.customization_fee) }} customization</p></template></Column>
             <Column header="Line Total" style="min-width: 135px"><template #body="{ data }"><span class="font-semibold text-slate-900">{{ money(data.line_total) }}</span></template></Column>
             <template #empty><div class="py-8 text-center text-sm text-slate-500">No items recorded for this order.</div></template>
           </DataTable></div>
@@ -118,8 +118,9 @@
         <aside class="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
           <div class="mb-5 flex items-center gap-2"><i class="pi pi-calculator text-slate-500" /><h2 class="font-semibold text-slate-900">Order Cost Summary</h2></div>
           <div class="space-y-3 text-sm">
-            <div class="flex justify-between gap-4 text-slate-600"><span>Subtotal</span><span class="font-medium text-slate-900">{{ money(order.subtotal) }}</span></div>
-            <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between gap-4 text-slate-600"><span>Discount</span><span class="font-medium text-slate-900">- {{ money(order.discount_amount) }}</span></div>
+            <div class="flex justify-between gap-4 text-slate-600"><span>{{ productDiscountTotal > 0 ? 'Original subtotal' : 'Subtotal' }}</span><span class="font-medium text-slate-900">{{ money(order.subtotal) }}</span></div>
+            <div v-if="productDiscountTotal > 0" class="flex justify-between gap-4 text-rose-600"><span>Product discount</span><span class="font-medium">- {{ money(productDiscountTotal) }}</span></div>
+            <div v-if="orderLevelDiscount > 0" class="flex justify-between gap-4 text-rose-600"><span>Order discount</span><span class="font-medium">- {{ money(orderLevelDiscount) }}</span></div>
             <div v-if="Number(order.tax_amount || 0) > 0" class="flex justify-between gap-4 text-slate-600"><span>VAT</span><span class="font-medium text-slate-900">{{ money(order.tax_amount) }}</span></div>
             <div v-if="order.delivery_required" class="flex justify-between gap-4 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ money(order.shipping_fee) }}</span></div>
             <div class="flex justify-between gap-4 text-slate-600"><span>Payment Method</span><span class="font-medium text-slate-900">{{ formatLabel(order.payment?.payment_method || order.payment_method) }}</span></div>
@@ -210,6 +211,20 @@ const authStore = useAuthStore()
 const toast = useToast()
 const confirm = useConfirm()
 const order = ref<any>(null)
+const productDiscountTotal = computed(() => (order.value?.items || []).reduce(
+  (total: number, item: any) => total + Math.max(0, Number(item.line_discount || 0)), 0,
+))
+const orderLevelDiscount = computed(() => Math.max(0,
+  Number(order.value?.discount_amount || 0) - productDiscountTotal.value,
+))
+const originalUnitPrice = (item: any) => {
+  const currentPrice = Number(item?.unit_price || 0)
+  const storedOriginal = Number(item?.original_unit_price || 0)
+  if (storedOriginal > currentPrice) return storedOriginal
+  const quantity = Math.max(1, Number(item?.quantity || 1))
+  return currentPrice + Math.max(0, Number(item?.line_discount || 0)) / quantity
+}
+const itemDiscount = (item: any) => Math.max(0, Number(item?.line_discount || 0))
 const loading = ref(false)
 const sendingToLogistics = ref(false)
 const continuingPayment = ref(false)

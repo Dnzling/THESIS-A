@@ -8,7 +8,7 @@
             <h1 class="text-2xl font-semibold text-gray-900">Create Voucher</h1>
             <p class="text-sm text-gray-500">Create as draft first, then activate when ready.</p>
           </div>
-          <Button text icon="pi pi-arrow-left" label="Back" @click="router.visit('/crm/vouchers')" />
+          <Button text icon="pi pi-arrow-left" label="Back" @click="router.visit('/merchandising/vouchers')" />
         </div>
       </template>
     </Card>
@@ -65,7 +65,7 @@
         </div>
 
         <div class="mt-6 flex justify-end gap-2">
-          <Button text label="Cancel" @click="router.visit('/crm/vouchers')" />
+          <Button text label="Cancel" @click="router.visit('/merchandising/vouchers')" />
           <Button icon="pi pi-save" label="Create Voucher" :loading="submitting" @click="submit" />
         </div>
       </template>
@@ -160,10 +160,10 @@ const submit = async () => {
     })
     const id = res?.data?.id
     if (id) {
-      router.visit(`/crm/vouchers/${id}`)
+      router.visit(`/merchandising/vouchers/${id}`)
       return
     }
-    router.visit('/crm/vouchers')
+    router.visit('/merchandising/vouchers')
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Failed to create voucher.'
   } finally {

@@ -165,7 +165,7 @@
                 <Tag :value="statusLabel(order.primary_status || order.status)" severity="secondary" class="w-fit" />
 
                 <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                  <div><p class="text-xs text-slate-500">Unit price</p><p class="font-medium text-slate-800">{{ formatMoney(item.unit_price) }}</p></div>
+                  <div><p class="text-xs text-slate-500">Unit price</p><p v-if="hasItemDiscount(item)" class="flex flex-col"><del class="text-xs text-slate-400">{{ formatMoney(originalUnitPrice(item)) }}</del><span class="font-semibold text-slate-900">{{ formatMoney(item.unit_price) }}</span></p><p v-else class="font-medium text-slate-800">{{ formatMoney(item.unit_price) }}</p></div>
                   <div><p class="text-xs text-slate-500">Quantity</p><p class="font-medium text-slate-800">{{ item.quantity }}</p></div>
                   <div class="col-span-2 border-t border-slate-100 pt-2 sm:col-span-1 sm:border-0 sm:pt-0"><p class="text-xs text-slate-500">Item total</p><p class="text-base font-semibold text-slate-900">{{ formatMoney(item.line_total) }}</p></div>
                 </div>
@@ -297,7 +297,7 @@
               <span>Product discount</span><span>- {{ formatMoney(order.product_discount_amount) }}</span>
             </div>
             <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between text-rose-600">
-              <span>Order discount</span><span>- {{ formatMoney(order.discount_amount) }}</span>
+              <span>{{ order.voucher_code ? `Voucher (${order.voucher_code})` : 'Order discount' }}</span><span>- {{ formatMoney(order.discount_amount) }}</span>
             </div>
             <div v-if="hasOrderDiscount" class="flex justify-between font-semibold text-slate-900">
               <span>Discounted item price</span><span>{{ formatMoney(discountedItemSubtotal) }}</span>
@@ -702,6 +702,9 @@ function formatPickupDate(value: string | null) {
   if (Number.isNaN(date.getTime())) return 'To be scheduled'
   return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 }
+
+const originalUnitPrice = (item: any) => Math.max(Number(item?.unit_price || 0), Number(item?.original_unit_price || 0))
+const hasItemDiscount = (item: any) => originalUnitPrice(item) > Number(item?.unit_price || 0)
 
 function formatMoney(value: number | string | null | undefined) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))

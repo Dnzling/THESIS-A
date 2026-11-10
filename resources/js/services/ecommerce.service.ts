@@ -72,6 +72,10 @@ const ecommerceService = {
     return ecommerceClient.get('/api/ecommerce/stores', { params })
   },
 
+  getAvailableVouchers() {
+    return ecommerceClient.get('/api/ecommerce/vouchers/available')
+  },
+
   getStore(storeId: number | string) {
     return ecommerceClient.get(`/api/ecommerce/stores/${storeId}`)
   },
@@ -180,6 +184,7 @@ const ecommerceService = {
 
   validateVoucher(payload: {
     code: string
+    store_id: number
     amount?: number
   }) {
     return ecommerceClient.post('/api/ecommerce/vouchers/validate', payload)
@@ -340,7 +345,7 @@ const ecommerceService = {
     return ecommerceClient.get(`/api/ecommerce/chat/stores/${storeId}/messages`, { params })
   },
 
-  sendStoreChatMessage(storeId: number | string, payload: { message: string; order_id?: number }) {
+  sendStoreChatMessage(storeId: number | string, payload: FormData | { message: string; order_id?: number }) {
     return ecommerceClient.post(`/api/ecommerce/chat/stores/${storeId}/messages`, payload)
   },
 

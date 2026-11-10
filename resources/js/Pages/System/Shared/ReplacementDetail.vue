@@ -41,10 +41,10 @@
         </template>
       </Card>
 
-      <Card v-if="item.status === 'received' && ['awaiting_stock', null].includes(item.replacement_status) && !isLogistics">
+      <Card v-if="['approved', 'received'].includes(item.status) && ['awaiting_stock', null].includes(item.replacement_status) && !isLogistics">
         <template #title><span class="text-base">2. Reserve replacement stock</span></template>
         <template #content>
-          <p class="mb-3 text-xs text-slate-500">Choose any active store or warehouse branch with the same SKU and variant. No stock is deducted until dispatch.</p>
+          <p class="mb-3 text-xs text-slate-500">Reserve the same SKU and variant at the branch that fulfilled the order. The customer exchange can be dispatched before the returned item is inspected; stock is deducted when the trip is dispatched.</p>
           <Select v-model="selectedBranch" :options="branchOptions" optionLabel="label" optionValue="id" placeholder="Select fulfillment branch" size="small" fluid />
           <Button label="Reserve stock" severity="warn" size="small" class="mt-3" :disabled="!selectedBranch" :loading="saving" @click="reserve" />
         </template>
@@ -75,7 +75,7 @@
       <Card v-if="item.replacement_status === 'reserved' && canManageTrips" class="border border-slate-200 shadow-sm">
         <template #title><span class="text-base">3. Assign replacement to a trip</span></template>
         <template #content>
-          <p class="mb-3 text-xs text-slate-600">Add this replacement stop to a planned trip, or create a trip first. Trip capacity and delivery area are checked before assignment.</p>
+          <p class="mb-3 text-xs text-slate-600">Add this replacement to a planned trip. Its return pickup will be linked automatically, so the driver can exchange both items at the customer in one stop.</p>
           <Button label="Assign to Trip" icon="pi pi-truck" severity="warn" size="small" :loading="loadingCompatibleTrips" @click="openTripDialog" />
         </template>
       </Card>

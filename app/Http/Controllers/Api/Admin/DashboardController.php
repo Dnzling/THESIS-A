@@ -305,6 +305,7 @@ class DashboardController extends Controller
 
         $query = DB::table('paymongo_intents as pi')
             ->leftJoin('stores as s', 's.id', '=', 'pi.store_id')
+            ->where('pi.payable_type', 'subscription_upgrade')
             ->select([
                 'pi.payment_intent_id',
                 'pi.amount',

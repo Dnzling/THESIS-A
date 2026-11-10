@@ -754,9 +754,9 @@ class PurchaseRequisitionController extends Controller
                 return $requisition;
             }
 
-            if ($requisition->status !== 'pending') {
+            if (!in_array($requisition->status, ['pending', 'procurement_pending'], true)) {
                 throw ValidationException::withMessages([
-                    'status' => 'Only pending requisitions can be moved to procurement processing.',
+                    'status' => 'Only pending Procurement requisitions can be moved to sourcing.',
                 ]);
             }
 

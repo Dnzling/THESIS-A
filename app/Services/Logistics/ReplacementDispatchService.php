@@ -22,13 +22,13 @@ class ReplacementDispatchService
         DB::transaction(function () use ($return, $actor): void {
             $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
             $trip = DeliveryTrip::query()->findOrFail($case->replacement_trip_id);
-            if ($case->status !== 'received' || $case->replacement_status !== 'assigned' || $trip->status !== 'out_for_delivery') {
+            if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'assigned' || $trip->status !== 'out_for_delivery') {
                 throw ValidationException::withMessages(['replacement' => 'Only a reserved replacement assigned to a trip can be dispatched.']);
             }
 
             $inventory = BranchInventory::query()->where('store_id', $case->store_id)
                 ->lockForUpdate()->findOrFail($case->replacement_inventory_id);
-            $quantity = (int) $case->received_quantity;
+            $quantity = (int) ($case->received_quantity ?: $case->requested_quantity);
             if ($quantity <= 0 || (int) $inventory->quantity_reserved < $quantity || (int) $inventory->quantity_on_hand < $quantity) {
                 throw ValidationException::withMessages(['replacement' => 'Reserved stock is no longer available.']);
             }

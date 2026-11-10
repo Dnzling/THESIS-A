@@ -88,9 +88,17 @@
                 {{ form.latitude.toFixed(6) }}, {{ form.longitude.toFixed(6) }}
               </span>
             </div>
-            <div class="mb-2 flex flex-col gap-2 sm:flex-row">
-              <InputText v-model="locationSearch" class="min-w-0 flex-1" placeholder="Search your store address in Cavite" @keydown.enter.prevent="searchStoreLocation" />
+            <div class="relative mb-2 flex flex-col gap-2 sm:flex-row">
+              <InputText v-model="locationSearch" class="min-w-0 flex-1" placeholder="Search your store address in Cavite" autocomplete="off" @keydown.enter.prevent="searchStoreLocation" @focus="showLocationSuggestions = true" />
               <Button label="Find location" icon="pi pi-search" severity="secondary" outlined :loading="searchingLocation" @click="searchStoreLocation" />
+              <div v-if="showLocationSuggestions && (searchingLocation || locationSuggestions.length || locationSearch.trim().length >= 3)" class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:right-[9.25rem]">
+                <div v-if="searchingLocation" class="px-4 py-3 text-sm text-slate-500"><i class="pi pi-spin pi-spinner mr-2" />Finding addresses...</div>
+                <button v-for="suggestion in locationSuggestions" :key="suggestion.id" type="button" class="block w-full border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-orange-50" @click="selectLocationSuggestion(suggestion)">
+                  <span class="block text-sm font-medium text-slate-800">{{ suggestion.name }}</span>
+                  <span class="mt-0.5 block text-xs text-slate-500">{{ suggestion.address }}</span>
+                </button>
+                <div v-if="!searchingLocation && !locationSuggestions.length && locationSearch.trim().length >= 3" class="px-4 py-3 text-sm text-slate-500">No matching Cavite addresses found.</div>
+              </div>
             </div>
             <div ref="mapEl" class="h-72 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100" role="application" aria-label="Map for choosing store location" />
             <p v-if="mapError || pinError" class="mt-2 text-sm text-red-600" role="alert">{{ mapError || pinError }}</p>
@@ -125,7 +133,7 @@ import Textarea from 'primevue/textarea'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
 import { useAuthStore } from '@/stores/auth'
-import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
+import { requireMapboxToken } from '@/utils/mapbox'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -144,11 +152,16 @@ const pinError = ref('')
 const pinStatus = ref<'none' | 'checking' | 'valid' | 'invalid'>('none')
 const locationSearch = ref('')
 const searchingLocation = ref(false)
+const showLocationSuggestions = ref(false)
+const locationSuggestions = ref<Array<{ id: string; name: string; address: string; latitude: number; longitude: number }>>([])
 let map: MapboxMap | null = null
 let marker: MapboxMarker | null = null
 let mapboxLibrary: typeof import('mapbox-gl').default | null = null
 let locationRequest = 0
 let mapResizeTimer: ReturnType<typeof setTimeout> | null = null
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+let searchController: AbortController | null = null
+let skipSearchQuery = ''
 
 const businessTypeOptions = [
   { label: 'Retail', value: 'retail' },
@@ -228,22 +241,100 @@ const initMap = async () => {
   }
 }
 
+const fetchLocationSuggestions = async (query: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({
+    q: `${query}, Cavite, Philippines`,
+    limit: '5',
+    autocomplete: 'true',
+    country: 'PH',
+    language: 'en',
+    bbox: '120.4,13.8,121.2,14.6',
+    access_token: requireMapboxToken(),
+  })
+  const response = await fetch(`https://api.mapbox.com/search/geocode/v6/forward?${params}`, { signal })
+  if (!response.ok) throw new Error('Unable to find that address.')
+  const features = (await response.json())?.features || []
+  return features.flatMap((feature: any) => {
+    const coordinates = feature?.geometry?.coordinates
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return []
+    return [{
+      id: String(feature.id || `${coordinates[0]}-${coordinates[1]}`),
+      name: String(feature.properties?.name || feature.properties?.full_address || feature.place_name || query),
+      address: String(feature.properties?.full_address || feature.place_name || ''),
+      longitude: Number(coordinates[0]),
+      latitude: Number(coordinates[1]),
+    }]
+  })
+}
+
+const selectLocationSuggestion = async (suggestion: typeof locationSuggestions.value[number]) => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchController?.abort()
+  searchController = null
+  searchingLocation.value = false
+  const selectedAddress = suggestion.address || suggestion.name
+  skipSearchQuery = selectedAddress
+  locationSearch.value = selectedAddress
+  locationSuggestions.value = []
+  showLocationSuggestions.value = false
+  pinError.value = ''
+  if (!map) {
+    pinError.value = 'The map is not ready. Please try again.'
+    return
+  }
+  map.flyTo({ center: [suggestion.longitude, suggestion.latitude], zoom: 15, duration: 500 })
+  await selectPin(suggestion.latitude, suggestion.longitude)
+}
+
 const searchStoreLocation = async () => {
   if (!locationSearch.value.trim()) return
   searchingLocation.value = true
   pinError.value = ''
   try {
-    const result = await forwardGeocodeMapbox(`${locationSearch.value.trim()}, Cavite, Philippines`)
+    const results = await fetchLocationSuggestions(locationSearch.value.trim())
+    const result = results[0]
     if (!result) throw new Error('Location not found. Try a more specific address in Cavite.')
-    if (!map) throw new Error('The map is not ready. Please try again.')
-    map.flyTo({ center: [result.longitude, result.latitude], zoom: 15 })
-    await selectPin(result.latitude, result.longitude)
+    await selectLocationSuggestion(result)
   } catch (error: any) {
     pinError.value = error?.message || 'Unable to find that address.'
   } finally {
     searchingLocation.value = false
   }
 }
+
+watch(locationSearch, (query) => {
+  if (query === skipSearchQuery) {
+    skipSearchQuery = ''
+    return
+  }
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchController?.abort()
+  searchController = null
+  locationSuggestions.value = []
+  pinError.value = ''
+  const normalized = query.trim()
+  if (normalized.length < 3) {
+    searchingLocation.value = false
+    return
+  }
+
+  showLocationSuggestions.value = true
+  searchingLocation.value = true
+  searchDebounce = setTimeout(async () => {
+    const controller = new AbortController()
+    searchController = controller
+    try {
+      locationSuggestions.value = await fetchLocationSuggestions(normalized, controller.signal)
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        locationSuggestions.value = []
+        pinError.value = error?.message || 'Unable to search for that address.'
+      }
+    } finally {
+      if (searchController === controller) searchingLocation.value = false
+    }
+  }, 180)
+})
 
 const contactPerson = computed(() => {
   const user = authStore.currentUser as any
@@ -389,6 +480,8 @@ watch(welcomeVisible, async (visible) => {
 
 onBeforeUnmount(() => {
   locationRequest++
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchController?.abort()
   if (mapResizeTimer) clearTimeout(mapResizeTimer)
   marker?.remove()
   map?.remove()

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\CRM;
 
 use App\Http\Controllers\Controller;
 use App\Models\CRM\EcommerceVoucher;
+use App\Models\Ecommerce\EcommerceOrder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class VoucherController extends Controller
@@ -13,7 +15,7 @@ class VoucherController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $storeId = (int) ($user->store_id ?? 0);
+        $storeId = $this->storeId($user);
 
         if ($storeId <= 0) {
             return response()->json([
@@ -39,6 +41,33 @@ class VoucherController extends Controller
         }
 
         $rows = $query
+            ->select('ecommerce_vouchers.*');
+
+        if (Schema::hasColumn('ecommerce_orders', 'voucher_code')) {
+            $usedOrders = EcommerceOrder::query()
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('ecommerce_orders.store_id', 'ecommerce_vouchers.store_id')
+                ->whereColumn('ecommerce_orders.voucher_code', 'ecommerce_vouchers.code')
+                ->whereNotNull('ecommerce_orders.voucher_code')
+                ->whereNotIn('ecommerce_orders.status', ['cancelled'])
+                ->whereNotIn('ecommerce_orders.payment_status', ['failed', 'refunded']);
+
+            $usedCustomers = EcommerceOrder::query()
+                ->selectRaw('COUNT(DISTINCT ecommerce_orders.user_id)')
+                ->whereColumn('ecommerce_orders.store_id', 'ecommerce_vouchers.store_id')
+                ->whereColumn('ecommerce_orders.voucher_code', 'ecommerce_vouchers.code')
+                ->whereNotNull('ecommerce_orders.voucher_code')
+                ->whereNotNull('ecommerce_orders.user_id')
+                ->whereNotIn('ecommerce_orders.status', ['cancelled'])
+                ->whereNotIn('ecommerce_orders.payment_status', ['failed', 'refunded']);
+
+            $rows->selectSub($usedOrders, 'used_order_count')
+                ->selectSub($usedCustomers, 'used_customer_count');
+        } else {
+            $rows->selectRaw('0 as used_order_count, 0 as used_customer_count');
+        }
+
+        $rows = $rows
             ->orderByDesc('is_active')
             ->orderByDesc('starts_at')
             ->paginate((int) $request->input('per_page', 20));
@@ -61,7 +90,7 @@ class VoucherController extends Controller
     public function store(Request $request): JsonResponse
     {
         $user = $request->user();
-        $storeId = (int) ($user->store_id ?? 0);
+        $storeId = $this->storeId($user);
 
         if ($storeId <= 0) {
             return response()->json([
@@ -123,7 +152,7 @@ class VoucherController extends Controller
 
     public function show(Request $request, EcommerceVoucher $voucher): JsonResponse
     {
-        $storeId = (int) ($request->user()->store_id ?? 0);
+        $storeId = $this->storeId($request->user());
         if ((int) $voucher->store_id !== $storeId) {
             abort(404);
         }
@@ -155,7 +184,7 @@ class VoucherController extends Controller
 
     public function update(Request $request, EcommerceVoucher $voucher): JsonResponse
     {
-        $storeId = (int) ($request->user()->store_id ?? 0);
+        $storeId = $this->storeId($request->user());
         if ((int) $voucher->store_id !== $storeId) {
             abort(404);
         }
@@ -231,5 +260,10 @@ class VoucherController extends Controller
         }
 
         return Str::limit('VOUCHER-' . strtoupper(Str::random(6)), 40, '');
+    }
+
+    private function storeId($user): int
+    {
+        return (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
     }
 }

@@ -38,6 +38,8 @@ class Supplier extends Model
         'city',
         'province',
         'barangay',
+        'latitude',
+        'longitude',
         'postal_code',
         'country',
         'tin',
@@ -73,6 +75,8 @@ class Supplier extends Model
         'late_deliveries' => 'integer',
         'is_tax_exempt' => 'boolean',
         'default_tax_rate' => 'decimal:2',
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
         'payment_account_updated_at' => 'datetime',
     ];
 

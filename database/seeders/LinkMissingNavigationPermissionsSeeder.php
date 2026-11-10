@@ -61,6 +61,7 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'merchandising.assets.upload' => ['merchandising.assets.upload'],
             'merchandising.tags' => ['merchandising.tags.view'],
             'merchandising.pricing' => ['merchandising.pricing.view'],
+            'merchandising.vouchers' => ['merchandising.vouchers.view'],
             'merchandising.pricing.bulk' => ['merchandising.pricing.edit'],
             'merchandising.pricing-history' => ['merchandising.reports.view'],
         ];

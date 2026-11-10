@@ -59,12 +59,14 @@
                   </div>
                 </template>
                 <p v-if="editingMessageId !== message.id && message.message" class="whitespace-pre-wrap break-words">{{ message.message }}</p>
-                <img
-                  v-if="message.attachment_url && String(message.attachment_mime || '').startsWith('image/')"
+                <button v-if="message.attachment_url && String(message.attachment_mime || '').startsWith('image/')" type="button" class="mt-2 block w-fit overflow-hidden rounded-lg border border-white/20" @click="previewImage(message.attachment_url, message.attachment_name)">
+                  <img
                   :src="message.attachment_url"
                   :alt="message.attachment_name || 'Chat attachment'"
-                  class="mt-2 max-h-72 max-w-full rounded-lg object-contain"
-                />
+                  class="h-32 max-w-56 rounded-lg object-cover"
+                  loading="lazy"
+                  />
+                </button>
                 <a
                   v-else-if="message.attachment_url"
                   :href="message.attachment_url"
@@ -118,6 +120,9 @@
         </template>
       </Card>
     </div>
+    <Dialog v-model:visible="imagePreviewVisible" modal :header="imagePreviewName || 'Image attachment'" :style="{ width: 'min(900px, 92vw)' }">
+      <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewName || 'Chat image'" class="mx-auto max-h-[75vh] max-w-full object-contain" />
+    </Dialog>
   </div>
 </template>
 
@@ -133,6 +138,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Dialog from 'primevue/dialog'
 
 const route = useRoute()
 const toast = useToast()
@@ -150,6 +156,9 @@ const sending = ref(false)
 const editingMessageId = ref<number | string | null>(null)
 const editDraft = ref('')
 const editingMessageLoading = ref(false)
+const imagePreviewVisible = ref(false)
+const imagePreviewUrl = ref('')
+const imagePreviewName = ref('')
 let tempMessageSeed = 0
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 let refreshingChats = false
@@ -310,6 +319,12 @@ const retryMessage = async (message: any) => {
 }
 
 const dt = (value: string) => value ? new Date(value).toLocaleString('en-PH') : '-'
+
+const previewImage = (url: string, name?: string) => {
+  imagePreviewUrl.value = url
+  imagePreviewName.value = name || ''
+  imagePreviewVisible.value = true
+}
 
 const startEditMessage = (message: any) => {
   editingMessageId.value = message.id

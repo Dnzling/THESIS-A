@@ -56,6 +56,11 @@ class StockRequestsNavigationSeeder extends Seeder
             ['updated_at' => $now, 'created_at' => $now]
         );
 
+        // Supplier PRs and warehouse transfers are now accessed from one Stock Requests page.
+        DB::table('navigation_items')
+            ->where('name', 'Purchase Requisitions')
+            ->update(['is_active' => false, 'deleted_at' => $now, 'updated_at' => $now]);
+
         foreach (DB::table('subscription_plans')->pluck('id') as $planId) {
             DB::table('plan_permissions')->updateOrInsert(
                 ['plan_id' => $planId, 'permission_id' => $permissionId],
@@ -86,7 +91,7 @@ class StockRequestsNavigationSeeder extends Seeder
         }
 
         DB::table('navigation_items')
-            ->whereIn('name', ['Purchase Requisitions', 'inventory.transfers'])
+            ->where('name', 'inventory.transfers')
             ->update(['is_active' => false, 'deleted_at' => $now, 'updated_at' => $now]);
     }
 }

@@ -28,6 +28,8 @@ export interface SupplierPortal {
   user_id: number
   supplier_id?: number
   supplier?: any
+  latitude?: number | string | null
+  longitude?: number | string | null
   status: 'pending' | 'approved' | 'rejected'
   rejection_reason?: string
   verified_by?: number

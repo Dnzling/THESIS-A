@@ -8,7 +8,7 @@
             <p class="mt-1 text-sm text-slate-500">Review registered stores, their status, and plan information.</p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <Button label="Store Verification Directory" icon="pi pi-verified" severity="secondary" outlined size="small" @click="goToValidation" />
+            <Button label="Store Verification" icon="pi pi-verified" severity="contrast" rounded size="small" @click="goToValidation" />
           </div>
         </div>
       </template>

@@ -493,6 +493,8 @@ const savePermissions = async () => {
 
     const response = await axios.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
       permissions: selectedRolePermissions.value
+    }, {
+      headers: { 'X-Suppress-Success-Dialog': '1' }
     })
     selectedRolePermissions.value = (response.data?.permissions || []).map((permission: any) => Number(permission.id))
     permissionSaveMessage.value = response.data?.message || 'Role permissions were updated successfully.'

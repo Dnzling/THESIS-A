@@ -194,7 +194,8 @@ class UnifiedDeliveryController extends Controller
                     'delivery_status' => $pickup->status ?: 'pending',
                     'total_amount' => $po?->total_amount ?? 0,
                     'shipping_fee' => $po?->shipping_cost,
-                    'can_create_delivery' => false,
+                    'can_create_delivery' => !$pickup->trip_id && !in_array(strtolower((string) $pickup->status), ['delivered', 'cancelled'], true),
+                    'trip_id' => $pickup->trip_id,
                     'created_at' => $pickup->created_at,
                     'delivery_date' => $pickup->delivered_at ?? $pickup->created_at,
                     'expected_pickup_date' => $pickup->expected_delivery_date,
@@ -238,6 +239,7 @@ class UnifiedDeliveryController extends Controller
                     'quantity_items' => $this->orderItemsQuantity($po->items ?? []),
                     'weight_kg' => $this->orderItemsWeight($po->items ?? []),
                     'can_create_delivery' => true,
+                    'trip_id' => null,
                     'driver_user_id' => null,
                 ];
             })
@@ -254,7 +256,7 @@ class UnifiedDeliveryController extends Controller
         return EcommerceOrderReturn::query()
             ->where('store_id', $storeId)
             ->where('return_type', 'replacement')
-            ->where('status', 'received')
+            ->whereIn('status', ['approved', 'received'])
             ->whereIn('replacement_status', ['reserved', 'assigned', 'out_for_delivery', 'delivery_failed'])
             ->with([
                 'order:id,order_number,shipping_name,shipping_phone,shipping_address',
@@ -282,7 +284,7 @@ class UnifiedDeliveryController extends Controller
                 'total_amount' => 0,
                 'shipping_fee' => 0,
                 'created_at' => $case->created_at,
-                'quantity_items' => $case->received_quantity,
+                'quantity_items' => $case->received_quantity ?: $case->requested_quantity,
                 'can_create_delivery' => false,
                 'driver_user_id' => $case->replacement_driver_id,
                 'vehicle_id' => $case->replacement_vehicle_id,
@@ -581,8 +583,9 @@ class UnifiedDeliveryController extends Controller
             $storeId = $this->resolveStoreId($request);
             $transfer = StockTransfer::query()
                 ->with([
-                    'fromBranch:id,name,address,latitude,longitude,contact_number',
-                    'toBranch:id,name,address,latitude,longitude,contact_number',
+                    'store:id,phone',
+                    'fromBranch:id,store_id,name,address,latitude,longitude,contact_number',
+                    'toBranch:id,store_id,name,address,latitude,longitude,contact_number',
                     'items.product:id,product_name,sku,weight_kg,unit_of_measurement',
                     'items.variation:id,variation_name,variation_sku',
                     'driver:id,fname,lname,phone_number',
@@ -596,8 +599,9 @@ class UnifiedDeliveryController extends Controller
 
             $order = $transfer->toArray();
             $order['order_number'] = $transfer->transfer_number;
-            $order['branch'] = $transfer->toBranch;
-            $order['from_branch'] = $transfer->fromBranch;
+            $storeContact = $this->usableContactNumber($transfer->store?->phone);
+            $order['branch'] = $this->branchWithEffectiveContact($transfer->toBranch, $storeContact);
+            $order['from_branch'] = $this->branchWithEffectiveContact($transfer->fromBranch, $storeContact);
             $deliveryStatus = $transfer->delivery_status
                 ?: ($transfer->driver_user_id ? 'assigned' : 'ready_for_dispatch');
 
@@ -641,12 +645,21 @@ class UnifiedDeliveryController extends Controller
                     'items.product',
                     'items.variation',
                     'supplier',
-                    'branch',
+                    'supplierQuotation.supplierPortal',
+                    'store:id,phone',
+                    'branch:id,store_id,name,address,latitude,longitude,contact_number,email',
                     'purchaseRequisition:id,pr_number,status,branch_id',
                     'purchaseRequisition.branch:id,name,address,latitude,longitude,contact_number,email',
                 ])
                 ->where('store_id', $storeId)
                 ->findOrFail($orderId);
+
+            if ($purchaseOrder->branch) {
+                $purchaseOrder->branch->contact_number = $this->effectiveBranchContactNumber(
+                    $purchaseOrder->branch->contact_number,
+                    $purchaseOrder->store?->phone,
+                );
+            }
 
             abort_if($purchaseOrder->fulfillment_method === 'supplier_delivery', 422, 'This purchase order is delivered by the supplier, not collected by your store.');
             abort_unless(in_array($purchaseOrder->status, ['supplier_accepted', 'out_for_delivery', 'delivered', 'pending_receipt', 'partially_received', 'goods_received'], true), 422, 'This purchase order is not in the supplier pickup workflow.');
@@ -1129,7 +1142,7 @@ class UnifiedDeliveryController extends Controller
     {
         $source = strtolower($source);
         $targetStatus = strtolower((string) $request->input('status'));
-        $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['out_for_delivery', 'delivered'], true))
+        $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['in_transit', 'delivered'], true))
             || (in_array($source, ['ecommerce', 'sales'], true) && in_array($targetStatus, ['in_transit', 'delivered'], true));
         // GPS is best-effort for delivery milestones. A driver may submit the
         // required proof even when the device cannot provide a fresh position.
@@ -1146,6 +1159,13 @@ class UnifiedDeliveryController extends Controller
         ]);
 
         if ($source === 'pickup') {
+            abort_unless(
+                app(\App\Services\Core\PermissionService::class)->userHasPermission(
+                    $request->user(),
+                    'logistics.driver.supplier-pickups',
+                ),
+                403,
+            );
             if (!in_array($validated['status'], ['en_route_to_supplier', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid supplier pickup status.'], 422);
             }
@@ -1156,8 +1176,8 @@ class UnifiedDeliveryController extends Controller
             }
             $from = (string) $pickup->status;
             $allowedTransitions = [
-                'pending' => ['en_route_to_supplier', 'in_transit', 'cancelled'],
-                'en_route_to_supplier' => ['out_for_delivery', 'cancelled'],
+                'pending' => ['en_route_to_supplier', 'cancelled'],
+                'en_route_to_supplier' => ['in_transit', 'cancelled'],
                 'in_transit' => ['out_for_delivery', 'cancelled'],
                 'out_for_delivery' => ['delivered', 'cancelled'],
             ];
@@ -1642,10 +1662,17 @@ class UnifiedDeliveryController extends Controller
         }
 
         $pickup = $this->resolvePickupShipment($request, $orderId);
-        if ($request->user()->hasRole('driver') && (int) $pickup->driver_user_id !== (int) $request->user()->id) {
+        abort_unless(
+            app(\App\Services\Core\PermissionService::class)->userHasPermission(
+                $request->user(),
+                'logistics.driver.supplier-pickups',
+            ),
+            403,
+        );
+        if ((int) $pickup->driver_user_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
         }
-        if (!in_array(strtolower((string) $pickup->status), ['in_transit', 'out_for_delivery'], true)) {
+        if (!in_array(strtolower((string) $pickup->status), ['pending', 'en_route_to_supplier', 'in_transit', 'out_for_delivery'], true)) {
             return response()->json(['success' => false, 'message' => 'Live tracking is only available while the pickup is in transit.'], 422);
         }
 
@@ -2194,6 +2221,41 @@ class UnifiedDeliveryController extends Controller
             'proof_photo_url' => url("/api/logistics/delivery-orders/{$source}/{$orderId}/proof/photo"),
             'proof_signature_url' => url("/api/logistics/delivery-orders/{$source}/{$orderId}/proof/signature"),
         ]);
+    }
+
+    private function branchWithEffectiveContact($branch, ?string $storeContact): ?array
+    {
+        if (!$branch) {
+            return null;
+        }
+
+        $data = $branch->toArray();
+        $data['contact_number'] = $this->effectiveBranchContactNumber(
+            $branch->contact_number,
+            $storeContact,
+        );
+
+        return $data;
+    }
+
+    private function effectiveBranchContactNumber(?string $branchContact, ?string $storeContact): ?string
+    {
+        return $this->usableContactNumber($branchContact)
+            ?? $this->usableContactNumber($storeContact);
+    }
+
+    private function usableContactNumber(?string $contact): ?string
+    {
+        $contact = trim((string) $contact);
+        if ($contact === '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $contact);
+
+        return $digits !== '' && preg_match('/^0+$/', $digits) === 1
+            ? null
+            : $contact;
     }
 
     private function monitoringLogs(Collection $logs, ?array $delivery): Collection

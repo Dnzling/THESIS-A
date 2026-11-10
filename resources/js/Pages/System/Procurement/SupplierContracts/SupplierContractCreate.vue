@@ -495,11 +495,14 @@ const reviewHtml = computed(() => {
           
           /* Terms and Conditions styling */
           .terms-section {
+              box-sizing: border-box;
+              max-width: 100%;
               margin: 15px 0;
               padding: 12px;
               background: #fef9e6;
               border-left: 4px solid #f39c12;
               font-size: 9pt;
+              overflow-wrap: anywhere;
           }
           
           .terms-title {
@@ -512,6 +515,10 @@ const reviewHtml = computed(() => {
           .terms-content {
               white-space: pre-wrap;
               line-height: 1.5;
+              overflow-wrap: anywhere;
+              word-break: normal;
+              text-align: justify;
+              text-justify: inter-word;
           }
           
           .signature-section {

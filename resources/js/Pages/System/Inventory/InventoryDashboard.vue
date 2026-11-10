@@ -11,7 +11,7 @@
       <div class="dashboard-hero mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Inventory Dashboard</h1>
-          <p class="mt-1 text-sm text-gray-500">Stock health, movements, and replenishment priorities.</p>
+          <p class="mt-1 text-sm text-gray-500">Stock health and replenishment priorities.</p>
         </div>
         <IconField class="w-full sm:w-72">
           <InputIcon class="pi pi-search" />
@@ -19,7 +19,7 @@
             @keyup.enter="searchInventory" />
         </IconField>
       </div>
-      <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3" :class="canViewWarehouse ? 'xl:grid-cols-5' : 'xl:grid-cols-4'">
         <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md" @click="router.push({ name: 'inventory.items' })">
           <div class="flex items-start gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 ring-4 ring-blue-50/50"><i class="pi pi-box text-xl"></i></div>
@@ -53,7 +53,7 @@
             </div>
           </div>
         </section>
-        <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })">
+        <section v-if="canViewWarehouse" class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })">
           <div class="flex items-start gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-4 ring-violet-50/50"><i class="pi pi-truck text-xl"></i></div>
             <div class="min-w-0">
@@ -81,34 +81,8 @@
         <Card>
           <template #title><span class="text-sm font-semibold">Stock Health</span></template>
           <template #content>
-            <div class="space-y-3">
-              <div v-for="health in stockHealth" :key="health.label">
-                <div class="mb-1 flex justify-between text-xs">
-                  <span class="text-gray-600">{{ health.label }}</span>
-                  <span class="font-medium text-gray-900">{{ health.value }}</span>
-                </div>
-                <div class="h-1.5 rounded-full bg-gray-100">
-                  <div class="h-1.5 rounded-full" :class="health.color" :style="{ width: `${health.percent}%` }"></div>
-                </div>
-              </div>
-            </div>
-          </template>
-        </Card>
-
-        <Card>
-          <template #title>
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-semibold">Stock Movement</span>
-              <Select v-model="trendPeriod" :options="trendPeriods" optionLabel="label" optionValue="value" size="small" class="w-24 text-xs" />
-            </div>
-          </template>
-          <template #content>
-            <div class="flex h-32 items-end gap-2 border-b border-gray-100 px-2">
-              <div v-for="point in movementTrend" :key="point.label" class="flex min-w-0 flex-1 flex-col items-center gap-1">
-                <div class="w-full rounded-t bg-orange-400" :style="{ height: `${point.height}%` }"></div>
-                <span class="truncate text-[10px] text-gray-500">{{ point.label }}</span>
-              </div>
-            </div>
+            <Chart v-if="stockHealthTotal" type="pie" :data="stockHealthChartData" :options="stockHealthChartOptions" class="mx-auto h-56 max-w-md" />
+            <p v-else class="flex h-56 items-center justify-center text-sm text-slate-500">No stock health data available.</p>
           </template>
         </Card>
 
@@ -132,7 +106,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Card>
+        <Card :class="!canViewWarehouse ? 'xl:col-span-2' : ''">
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Adjustments awaiting review</span><p class="mt-1 text-xs font-normal text-slate-500">Stock changes that need an approval decision</p></div>
@@ -150,7 +124,7 @@
           </template>
         </Card>
 
-        <Card>
+        <Card v-if="canViewWarehouse">
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Transfers to follow up</span><p class="mt-1 text-xs font-normal text-slate-500">Requested or moving between branches</p></div>
@@ -333,13 +307,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 import inventoryService from '@/services/inventory.service'
+import { useAuthStore } from '@/stores/auth'
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canViewWarehouse = computed(() => authStore.hasPermission('warehouse.view') || authStore.hasPermission('warehouse.stock.view'))
 const loading = ref(true)
 const inventoryItems = ref<any[]>([])
 const lowStockItems = ref<any[]>([])
@@ -348,32 +327,29 @@ const pendingTransfers = ref<any[]>([])
 const inventoryItemsLoading = ref(false)
 const supportingDataLoading = ref(true)
 const stockSearchQuery = ref('')
-const trendPeriod = ref('daily')
-const trendPeriods = [
-  { label: 'Daily', value: 'daily' },
-  { label: 'Monthly', value: 'monthly' }
-]
-
 const stockHealth = computed(() => {
-  const total = Math.max(Number(dashboardData.value.inventory.total_items || 0), 1)
   return [
-    { label: 'In Stock', value: dashboardData.value.inventory.in_stock, color: 'bg-emerald-500', percent: Math.min(100, dashboardData.value.inventory.in_stock / total * 100) },
-    { label: 'Low Stock', value: dashboardData.value.inventory.low_stock, color: 'bg-amber-500', percent: Math.min(100, dashboardData.value.inventory.low_stock / total * 100) },
-    { label: 'Out of Stock', value: dashboardData.value.inventory.out_of_stock, color: 'bg-red-500', percent: Math.min(100, dashboardData.value.inventory.out_of_stock / total * 100) }
+    { label: 'In Stock', value: dashboardData.value.inventory.in_stock },
+    { label: 'Low Stock', value: dashboardData.value.inventory.low_stock },
+    { label: 'Out of Stock', value: dashboardData.value.inventory.out_of_stock }
   ]
 })
-
-const movementTrend = computed(() => {
-  const rows: any[] = Array.isArray(dashboardData.value.transaction_trends)
-    ? dashboardData.value.transaction_trends
-    : []
-  const values = rows.map((row) => Number(row.total_quantity || row.quantity || row.total || 0))
-  const max = Math.max(...values, 1)
-  return rows.slice(-7).map((row, index) => ({
-    label: row.date || row.period || row.label || `${index + 1}`,
-    height: Math.max(8, Number(row.total_quantity || row.quantity || row.total || 0) / max * 100)
-  }))
-})
+const stockHealthTotal = computed(() => stockHealth.value.reduce((sum, item) => sum + Number(item.value || 0), 0))
+const stockHealthChartData = computed(() => ({
+  labels: stockHealth.value.map((item) => item.label),
+  datasets: [{
+    data: stockHealth.value.map((item) => Number(item.value || 0)),
+    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+    hoverBackgroundColor: ['#059669', '#d97706', '#dc2626'],
+    borderColor: '#ffffff',
+    borderWidth: 2,
+  }],
+}))
+const stockHealthChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 18 } } },
+}
 
 const formatPhpCurrency = (value: any) => new Intl.NumberFormat('en-PH', {
   style: 'currency', currency: 'PHP'
@@ -494,8 +470,8 @@ const loadDashboard = async () => {
       inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'low_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
       inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'out_of_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
       inventoryService.getAdjustments({ page: 1, per_page: 5, status: 'pending_approval' }).catch(() => null),
-      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'requested' }).catch(() => null),
-      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'in_transit' }).catch(() => null)
+      canViewWarehouse.value ? inventoryService.getTransfers({ page: 1, per_page: 5, status: 'requested' }).catch(() => null) : Promise.resolve(null),
+      canViewWarehouse.value ? inventoryService.getTransfers({ page: 1, per_page: 5, status: 'in_transit' }).catch(() => null) : Promise.resolve(null)
     ])
 
     lowStockItems.value = [

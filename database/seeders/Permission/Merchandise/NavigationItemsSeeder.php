@@ -14,8 +14,9 @@ class NavigationItemsSeeder extends Seeder
             ['name' => 'merchandising.products', 'display_name' => 'Product Listings', 'route_name' => 'merchandising.products', 'route_path' => '/merchandising/products', 'icon' => 'pi pi-box', 'display_order' => 2, 'permission' => 'merchandising.products.view'],
             ['name' => 'merchandising.tags', 'display_name' => 'Collections', 'route_name' => 'merchandising.tags', 'route_path' => '/merchandising/tags', 'icon' => 'pi pi-th-large', 'display_order' => 3, 'permission' => 'merchandising.tags.view'],
             ['name' => 'merchandising.pricing', 'display_name' => 'Promotions & Discounts', 'route_name' => 'merchandising.pricing', 'route_path' => '/merchandising/pricing', 'icon' => 'pi pi-percentage', 'display_order' => 4, 'permission' => 'merchandising.pricing.view'],
-            ['name' => 'merchandising.assets', 'display_name' => '3D Product Models', 'route_name' => 'merchandising.3d-gallery', 'route_path' => '/merchandising/3d-gallery', 'icon' => 'pi pi-box', 'display_order' => 5, 'permission' => 'merchandising.assets.view'],
-            ['name' => 'merchandising.reports', 'display_name' => 'Reports', 'route_name' => 'merchandising.reports', 'route_path' => '/merchandising/reports', 'icon' => 'pi pi-chart-bar', 'display_order' => 6, 'permission' => 'merchandising.reports.view'],
+            ['name' => 'merchandising.vouchers', 'display_name' => 'Vouchers', 'route_name' => 'merchandising.vouchers', 'route_path' => '/merchandising/vouchers', 'icon' => 'pi pi-ticket', 'display_order' => 5, 'permission' => 'merchandising.vouchers.view'],
+            ['name' => 'merchandising.assets', 'display_name' => '3D Product Models', 'route_name' => 'merchandising.3d-gallery', 'route_path' => '/merchandising/3d-gallery', 'icon' => 'pi pi-box', 'display_order' => 6, 'permission' => 'merchandising.assets.view'],
+            ['name' => 'merchandising.reports', 'display_name' => 'Reports', 'route_name' => 'merchandising.reports', 'route_path' => '/merchandising/reports', 'icon' => 'pi pi-chart-bar', 'display_order' => 7, 'permission' => 'merchandising.reports.view'],
         ];
 
         $activeNames = array_column($items, 'name');
@@ -49,7 +50,7 @@ class NavigationItemsSeeder extends Seeder
         }
 
         $modulePermissionIds = DB::table('permissions')
-            ->whereIn('name', [...array_column($items, 'permission'), 'merchandising.reports.manage'])
+            ->whereIn('name', [...array_column($items, 'permission'), 'merchandising.pricing.edit', 'merchandising.vouchers.manage', 'merchandising.reports.manage'])
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->pluck('id');

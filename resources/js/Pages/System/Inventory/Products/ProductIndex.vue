@@ -15,6 +15,14 @@
         <Menu ref="productCreateMenu" :model="productCreateItems" popup />
       </div>
     </div>
+
+    <div v-if="!loading && totalRecords === 0 && !hasActiveFilters" class="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-start gap-3 text-amber-900">
+        <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span>
+        <div><p class="text-sm font-semibold">Add your first product</p><p class="mt-1 text-xs">Your inventory catalog is empty. Create a product to start tracking stock and sales.</p></div>
+      </div>
+      <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" class="shrink-0" @click="router.push({ name: 'inventory.products.create' })" />
+    </div>
   
     <Card class="border border-gray-200 shadow-sm">
       <template #content>

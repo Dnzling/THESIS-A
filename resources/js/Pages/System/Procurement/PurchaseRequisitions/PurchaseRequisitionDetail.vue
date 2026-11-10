@@ -590,7 +590,7 @@ const canManageReceiving = computed(() => authStore.hasPermission('procurement.r
 const canCreateSourceActions = computed(() => {
   return Boolean(
     detail.value &&
-    ['pending', 'warehouse_approved', 'branch_manager_approved', 'procurement_processing'].includes(normalize(detail.value.status)) &&
+    ['pending', 'procurement_pending', 'warehouse_approved', 'branch_manager_approved', 'procurement_processing'].includes(normalize(detail.value.status)) &&
     (canManageRfq.value || canManagePurchaseOrders.value),
   )
 })

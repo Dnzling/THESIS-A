@@ -5,7 +5,6 @@ use App\Http\Controllers\Api\CRM\CrmDashboardController;
 use App\Http\Controllers\Api\CRM\CrmLeadController;
 use App\Http\Controllers\Api\CRM\ReturnController;
 use App\Http\Controllers\Api\CRM\ReviewController;
-use App\Http\Controllers\Api\CRM\VoucherController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('crm')->group(function () {
@@ -44,13 +43,6 @@ Route::prefix('crm')->group(function () {
         Route::get('/', [ReviewController::class, 'index'])->middleware('can:crm.reviews.view');
         Route::get('/{review}', [ReviewController::class, 'show'])->middleware('can:crm.reviews.view');
         Route::put('/{review}/reply', [ReviewController::class, 'reply'])->middleware('can:crm.reviews.manage');
-    });
-
-    Route::prefix('vouchers')->group(function () {
-        Route::get('/', [VoucherController::class, 'index'])->middleware('can:crm.vouchers.view');
-        Route::post('/', [VoucherController::class, 'store'])->middleware('can:crm.vouchers.manage');
-        Route::get('/{voucher}', [VoucherController::class, 'show'])->middleware('can:crm.vouchers.view');
-        Route::put('/{voucher}', [VoucherController::class, 'update'])->middleware('can:crm.vouchers.manage');
     });
 
     Route::prefix('returns')->group(function () {

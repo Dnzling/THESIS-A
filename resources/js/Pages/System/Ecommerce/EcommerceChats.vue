@@ -75,7 +75,13 @@
                     <Button label="Save" size="small" severity="info" :loading="editingLoading" @click="saveEditMessage(msg)" />
                   </div>
                 </template>
-                <p v-else class="whitespace-pre-wrap break-words">{{ msg.message }}</p>
+                <p v-else-if="msg.message" class="whitespace-pre-wrap break-words">{{ msg.message }}</p>
+                <button v-if="msg.attachment_url && String(msg.attachment_mime || '').startsWith('image/')" type="button" class="mt-2 block overflow-hidden rounded-xl border border-slate-200" @click="previewImage(msg.attachment_url, msg.attachment_name)">
+                  <img :src="msg.attachment_url" :alt="msg.attachment_name || 'Chat image'" loading="lazy" class="max-h-64 max-w-full object-contain" />
+                </button>
+                <a v-else-if="msg.attachment_url" :href="msg.attachment_url" target="_blank" rel="noopener" class="mt-2 flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-sm text-slate-700 underline">
+                  <i class="pi pi-paperclip" /><span class="truncate">{{ msg.attachment_name || 'Download attachment' }}</span>
+                </a>
                 <div v-if="msg.sender_role === 'customer' && Number(msg.id) > 0 && msg.message !== '[Message unsent]' && editingMessageId !== msg.id" class="mt-1 flex items-center justify-end gap-2">
                   <button type="button" class="text-[11px] underline text-white/80 hover:text-white" @click="startEditMessage(msg)">Edit</button>
                   <button type="button" class="text-[11px] underline text-white/80 hover:text-white" @click="unsendMessage(msg)">Unsend</button>
@@ -87,13 +93,24 @@
         </div>
 
         <form v-if="activeStoreId" class="shrink-0 border-t border-orange-100 bg-white p-4" @submit.prevent="sendMessage">
+          <div v-if="attachment" class="mb-2 flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            <span class="truncate"><i class="pi pi-paperclip mr-2" />{{ attachment.name }}</span>
+            <button type="button" class="ml-2" aria-label="Remove attachment" @click="clearAttachment"><i class="pi pi-times" /></button>
+          </div>
           <div class="flex items-end gap-2">
             <Textarea v-model="draftMessage" autoResize rows="1" fluid class="flex-1" placeholder="Write a message" @keydown.enter.exact.prevent="sendMessage" />
-            <Button type="submit" icon="pi pi-send" label="Send" :loading="sending" :disabled="!draftMessage.trim() || sending" class="!border-orange-500 !bg-orange-500" />
+            <label class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50" title="Attach file">
+              <i class="pi pi-paperclip" />
+              <input ref="attachmentInput" type="file" class="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" @change="chooseAttachment" />
+            </label>
+            <Button type="submit" icon="pi pi-send" label="Send" :loading="sending" :disabled="(!draftMessage.trim() && !attachment) || sending" class="!border-orange-500 !bg-orange-500" />
           </div>
         </form>
       </section>
     </div>
+    <Dialog v-model:visible="imagePreviewVisible" modal :header="imagePreviewName || 'Image attachment'" :style="{ width: 'min(900px, 92vw)' }">
+      <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewName || 'Chat image'" class="mx-auto max-h-[75vh] max-w-full object-contain" />
+    </Dialog>
   </div>
 </template>
 
@@ -108,6 +125,7 @@ import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Dialog from 'primevue/dialog'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -121,6 +139,11 @@ const threadsLoading = ref(false)
 const messagesLoading = ref(false)
 const sending = ref(false)
 const draftMessage = ref('')
+const attachment = ref<File | null>(null)
+const attachmentInput = ref<HTMLInputElement | null>(null)
+const imagePreviewVisible = ref(false)
+const imagePreviewUrl = ref('')
+const imagePreviewName = ref('')
 const editingMessageId = ref<number | string | null>(null)
 const editDraftMessage = ref('')
 const editingLoading = ref(false)
@@ -194,11 +217,16 @@ async function openThread(storeId: number) {
 
 async function sendMessage() {
   const message = draftMessage.value.trim()
-  if (!message || !activeStoreId.value) return
+  const file = attachment.value
+  if ((!message && !file) || !activeStoreId.value) return
   sending.value = true
   try {
-    await ecommerceService.sendStoreChatMessage(activeStoreId.value, { message })
+    const payload = new FormData()
+    if (message) payload.append('message', message)
+    if (file) payload.append('attachment', file)
+    await ecommerceService.sendStoreChatMessage(activeStoreId.value, payload)
     draftMessage.value = ''
+    clearAttachment()
     await openThread(activeStoreId.value)
     await loadThreads()
   } catch (error: any) {
@@ -206,6 +234,21 @@ async function sendMessage() {
   } finally {
     sending.value = false
   }
+}
+
+function chooseAttachment(event: Event) {
+  attachment.value = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+function clearAttachment() {
+  attachment.value = null
+  if (attachmentInput.value) attachmentInput.value.value = ''
+}
+
+function previewImage(url: string, name?: string) {
+  imagePreviewUrl.value = url
+  imagePreviewName.value = name || ''
+  imagePreviewVisible.value = true
 }
 
 function startEditMessage(msg: any) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin\SubscriptionPlan;
+use App\Models\Store\Store;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ class SubscriptionPlanController extends Controller
         }
 
         $plans = SubscriptionPlan::query()
+            ->addSelect(['active_stores_count' => Store::query()
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('stores.subscription_tier', 'subscription_plans.id')
+                ->where('stores.status', 'active')])
             ->whereNull('deleted_at')
             ->orderBy('sort_order')
             ->orderBy('id')

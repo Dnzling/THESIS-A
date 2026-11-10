@@ -10,7 +10,7 @@
           </div>
           <div class="flex items-center gap-2">
             <Button icon="pi pi-pencil" label="Edit" @click="openEdit" />
-            <Button text icon="pi pi-arrow-left" label="Back to Vouchers" @click="router.visit('/crm/vouchers')" />
+            <Button text icon="pi pi-arrow-left" label="Back to Vouchers" @click="router.visit('/merchandising/vouchers')" />
           </div>
         </div>
       </template>

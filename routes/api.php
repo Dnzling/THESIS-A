@@ -73,6 +73,7 @@ require __DIR__ . '/job_portal_routes.php';
 
 // Public ecommerce browsing (guest-friendly)
 Route::prefix('ecommerce')->group(function () {
+    Route::get('/vouchers/available', [EcommerceController::class, 'availableVouchers']);
     Route::get('/products', [EcommerceController::class, 'products']);
     Route::get('/products/active-stock', [EcommerceActiveStockProductsController::class, 'index']);
     Route::get('/products/suggestions', [EcommerceActiveStockProductsController::class, 'suggestions']);
@@ -229,6 +230,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ownerSales']);
         Route::get('/attendance', [\App\Http\Controllers\Api\Store\BranchAttendanceController::class, 'index']);
         Route::get('/settings', [StoreSettingsController::class, 'show']);
+        Route::get('/setup-attention', [StoreSettingsController::class, 'setupAttention']);
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
         Route::put('/settings/payments', [StoreSettingsController::class, 'updatePaymentSettings']);

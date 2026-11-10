@@ -10,6 +10,14 @@
       </div>
     </div>
 
+    <div v-if="!loading && employees.length <= 1" class="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-start gap-3 text-amber-900">
+        <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span>
+        <div><p class="text-sm font-semibold">{{ employees.length === 1 ? 'Add another employee' : 'Add your first employee' }}</p><p class="mt-1 text-xs">{{ employees.length === 1 ? 'Only the store owner is recorded. Add an employee to build your staff directory and use attendance tracking.' : 'Add an employee to build your staff directory and use attendance tracking.' }}</p></div>
+      </div>
+      <Button label="Add Employee" icon="pi pi-plus" size="small" class="shrink-0" @click="openAddEmployee" />
+    </div>
+
     <Tabs v-model:value="tab">
       <TabList>
         <Tab value="attendance">Attendance</Tab>
@@ -211,6 +219,7 @@ async function addEmployee() {
     showAdd.value = false
     Object.assign(form, { fname: '', lname: '', email: '', phone_number: '', role_id: null, hire_date: new Date(), contract_end_date: null, employment_type: 'full_time', pay_type: 'daily', salary: null })
     await loadEmployees()
+    window.dispatchEvent(new Event('setup-attention-refresh'))
     toast.add({ severity: 'success', summary: 'Employee added', life: 2500 })
   } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to add employee', detail: String(errorText(error)), life: 4000 }) }
   finally { savingEmployee.value = false }

@@ -13,6 +13,14 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <Button
+            v-if="canCreateInventoryPo"
+            label="Create Inventory PO"
+            icon="pi pi-shopping-cart"
+            severity="warn"
+            size="small"
+            @click="createInventoryPo"
+          />
           <Button v-if="canEditDraft" label="Edit" icon="pi pi-pencil" severity="warn" size="small" outlined @click="editDraft" />
           <Button v-if="canEditDraft" label="Submit" severity="warn" size="small" :loading="submitting" @click="confirmSubmit" />
           <Button v-if="canEditDraft" label="Delete" severity="danger" size="small" text :loading="deleting" @click="confirmDelete" />
@@ -210,6 +218,9 @@ const canApprove = computed(() =>
   !props.warehouseMode && (authStore.hasPermission('inventory.requisitions.approve') ||
   authStore.hasPermission('inventory.requisites.approve'))
 )
+const canCreateInventoryPo = computed(() => !props.warehouseMode
+  && detail.value?.status === 'inventory_po_pending'
+  && authStore.hasPermission('inventory.purchase_orders.manage'))
 const canShowApprovalActions = computed(() => {
   const s = String(detail.value?.status || '').toLowerCase()
   return ['pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
@@ -226,6 +237,10 @@ const canGenerateReceipt = computed(() => {
 
 const id = computed(() => String(route.params.id || ''))
 const editDraft = () => router.push({ name: 'inventory.stock-requests.edit', params: { id: id.value } })
+const createInventoryPo = () => {
+  if (!canCreateInventoryPo.value) return
+  router.push(`/inventory/purchase-orders/create?requisition_id=${encodeURIComponent(id.value)}`)
+}
 const confirmDelete = () => confirm.require({
   header: 'Delete Draft PR?',
   message: `Delete ${detail.value?.pr_number || 'this draft'}? This cannot be undone.`,
@@ -281,7 +296,10 @@ const formatMoney = (value: any) => {
 
 const statusSeverity = (status: string) => {
   const s = String(status || '').toLowerCase()
-  if (['procurement_processing', 'approved', 'completed'].includes(s)) return 'success'
+  if (['approved', 'completed', 'po_created'].includes(s)) return 'success'
+  if (s === 'procurement_pending') return 'warn'
+  if (s === 'procurement_processing') return 'info'
+  if (s === 'inventory_po_pending') return 'warn'
   if (['rejected', 'cancelled'].includes(s)) return 'danger'
   if (s === 'draft') return 'secondary'
   return 'warning'
@@ -301,14 +319,18 @@ const priorityLabel = (priority: any) => {
 }
 
 const formatStatus = (status: any) => {
-  const s = String(status || '').replace(/_/g, ' ').trim()
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'inventory_po_pending') return 'Approved - Ready for Inventory PO'
+  if (normalized === 'procurement_pending') return 'Procurement Pending'
+  if (normalized === 'procurement_processing') return 'Sourcing in Progress'
+  const s = normalized.replace(/_/g, ' ').trim()
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'
 }
 
 const goBack = () => {
   const fallback = props.warehouseMode ? 'warehouse.purchase-requisitions' : 'inventory.stock-requests'
   if (window.history.state?.back) router.back()
-  else router.push({ name: fallback })
+  else router.push(props.warehouseMode ? { name: fallback } : { name: fallback, query: { type: 'purchase' } })
 }
 const generateReceipt = () => {
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)

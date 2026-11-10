@@ -5,7 +5,7 @@
         <h1 class="text-xl font-semibold text-slate-900">Suppliers</h1>
         <p class="mt-1 text-sm text-slate-500">Platform-wide supplier directory and procurement performance.</p>
       </div>
-      <Button label="Supplier Verification Directory" icon="pi pi-verified" severity="secondary" outlined size="small" @click="router.push('/admin/verification/suppliers')" />
+      <Button label="Supplier Verification" icon="pi pi-verified" severity="contrast" rounded size="small" @click="router.push('/admin/verification/suppliers')" />
     </div>
 
     <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

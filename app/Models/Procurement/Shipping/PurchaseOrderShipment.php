@@ -8,6 +8,7 @@ use App\Models\Store\Branch;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
+use App\Models\Logistics\DeliveryTrip;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,6 +17,7 @@ class PurchaseOrderShipment extends Model
 {
     protected $fillable = [
         'purchase_order_id',
+        'trip_id',
         'supplier_id',
         'branch_id',
         'created_by',
@@ -64,6 +66,11 @@ class PurchaseOrderShipment extends Model
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryTrip::class, 'trip_id');
     }
 
     public function supplier(): BelongsTo

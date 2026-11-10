@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
@@ -149,6 +150,7 @@ class PurchaseOrderController extends Controller
             ->where('status', 'active');
         $validated = $request->validate([
             'submit' => ['sometimes', 'boolean'],
+            'purchase_requisition_id' => ['nullable', 'integer', 'exists:purchase_requisitions,id'],
             'reorder_suggestion_id' => ['nullable', 'integer', 'exists:reorder_suggestions,id'],
             'reorder_suggestion_ids' => ['nullable', 'array', 'min:1', 'max:100'],
             'reorder_suggestion_ids.*' => ['required', 'integer', 'distinct', 'exists:reorder_suggestions,id'],
@@ -199,6 +201,30 @@ class PurchaseOrderController extends Controller
             }
         }
 
+        $sourceRequisition = null;
+        if (!empty($validated['purchase_requisition_id'])) {
+            $sourceRequisition = PurchaseRequisition::query()
+                ->with('items')
+                ->where('store_id', $storeId)
+                ->where('branch_id', $assignedBranchId)
+                ->where('status', 'inventory_po_pending')
+                ->findOrFail((int) $validated['purchase_requisition_id']);
+
+            $requestedItems = $sourceRequisition->items;
+            if ($requestedItems->count() !== count($validated['items'])) {
+                throw ValidationException::withMessages(['items' => 'The PO must contain exactly the items from the approved supplier request.']);
+            }
+            foreach ($requestedItems as $requestedItem) {
+                $matching = collect($validated['items'])->first(fn ($item) =>
+                    (int) $item['product_id'] === (int) $requestedItem->product_id
+                    && (int) ($item['variation_id'] ?? 0) === (int) ($requestedItem->variation_id ?? 0)
+                );
+                if (!$matching || (int) $matching['quantity_ordered'] < (int) $requestedItem->quantity_requested) {
+                    throw ValidationException::withMessages(['items' => 'Keep every requested product and order at least its approved quantity.']);
+                }
+            }
+        }
+
         $lines = collect($validated['items'])->map(function ($item) use ($supplier) {
             $item['unit_cost'] = (float) DB::table('supplier_products')
                 ->where('supplier_id', $supplier->id)
@@ -214,6 +240,19 @@ class PurchaseOrderController extends Controller
         $shipping = 0;
 
         $order = DB::transaction(function () use ($validated, $storeId, $employee, $supplier, $lines, $subtotal, $discount, $taxRate, $taxAmount, $shipping) {
+            $sourceRequisition = null;
+            if (!empty($validated['purchase_requisition_id'])) {
+                $sourceRequisition = PurchaseRequisition::query()
+                    ->with('items')
+                    ->where('store_id', $storeId)
+                    ->where('branch_id', $validated['branch_id'])
+                    ->where('status', 'inventory_po_pending')
+                    ->lockForUpdate()
+                    ->findOrFail((int) $validated['purchase_requisition_id']);
+                if ($sourceRequisition->items->count() !== $lines->count()) {
+                    throw ValidationException::withMessages(['purchase_requisition_id' => 'This request no longer matches the PO items.']);
+                }
+            }
             $suggestionIds = $validated['reorder_suggestion_ids'] ?? (empty($validated['reorder_suggestion_id']) ? [] : [$validated['reorder_suggestion_id']]);
             $linkedSuggestions = collect();
             if ($suggestionIds) {
@@ -247,6 +286,7 @@ class PurchaseOrderController extends Controller
                 'store_id' => $storeId,
                 'branch_id' => $validated['branch_id'],
                 'supplier_id' => $supplier->id,
+                'purchase_requisition_id' => $sourceRequisition?->id,
                 'status' => 'draft',
                 'subtotal' => $subtotal,
                 'discount_amount' => $discount,
@@ -264,7 +304,12 @@ class PurchaseOrderController extends Controller
             ]);
 
             foreach ($lines as $line) {
+                $sourceItem = $sourceRequisition?->items->first(fn ($item) =>
+                    (int) $item->product_id === (int) $line['product_id']
+                    && (int) ($item->variation_id ?? 0) === (int) ($line['variation_id'] ?? 0)
+                );
                 $order->items()->create([
+                    'purchase_requisition_item_id' => $sourceItem?->id,
                     'product_id' => $line['product_id'],
                     'variation_id' => $line['variation_id'] ?? null,
                     'quantity_ordered' => $line['quantity_ordered'],
@@ -279,6 +324,10 @@ class PurchaseOrderController extends Controller
 
             if ($validated['submit'] ?? false) {
                 $order->submitForReceipt();
+            }
+
+            if ($sourceRequisition) {
+                $sourceRequisition->update(['status' => 'po_created']);
             }
 
             foreach ($linkedSuggestions as $suggestion) {

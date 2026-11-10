@@ -72,6 +72,8 @@ class QuickSupplierController extends Controller
             'city' => ['required', 'string', 'max:100'],
             'barangay' => ['required', 'string', 'max:150'],
             'address' => ['required', 'string', 'max:500'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
             'supplier_type' => ['required', Rule::in(['manufacturer', 'wholesaler', 'distributor', 'importer', 'local_artisan'])],
             'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'remove_logo' => ['nullable', 'boolean'],
@@ -96,6 +98,8 @@ class QuickSupplierController extends Controller
                 'city' => trim($validated['city']),
                 'barangay' => trim($validated['barangay']),
                 'address' => trim($validated['address']),
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
                 'country' => 'Philippines',
                 'supplier_type' => $validated['supplier_type'],
             ];

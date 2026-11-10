@@ -624,6 +624,7 @@ const handleSubmit = async () => {
       createdProductId.value = Number(response?.data?.id || response?.data?.data?.id) || null
       createdHasVariants.value = form.has_variants
       successVisible.value = true
+      window.dispatchEvent(new Event('setup-attention-refresh'))
     }
   } catch (error: any) {
     const apiErrors = error.response?.data?.errors || {}

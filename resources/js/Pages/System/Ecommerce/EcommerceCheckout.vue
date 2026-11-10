@@ -148,6 +148,20 @@
         </Card>
         <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
           <template #content>
+            <label for="checkout-voucher" class="block text-sm font-semibold text-slate-900">Voucher code</label>
+            <p class="mt-1 text-xs text-slate-500">Voucher must be valid for {{ checkoutStoreName || 'this store' }} and meet its minimum order and validity period.</p>
+            <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+              <InputText id="checkout-voucher" v-model.trim="voucherCode" fluid size="small" placeholder="Enter voucher code" :disabled="applyingVoucher" />
+              <Button v-if="!appliedVoucher" label="Apply" severity="warn" size="small" :loading="applyingVoucher" :disabled="!voucherCode.trim()" @click="applyVoucher" />
+              <Button v-else label="Remove" icon="pi pi-times" severity="secondary" outlined size="small" :disabled="applyingVoucher" @click="clearVoucher" />
+            </div>
+            <p v-if="voucherFeedback" class="mt-2 text-xs" :class="voucherFeedback.success ? 'text-emerald-700' : 'text-red-600'" role="status">
+              {{ voucherFeedback.message }}
+            </p>
+          </template>
+        </Card>
+        <Card v-if="checkoutStep === 3" class="border border-slate-200 shadow-none">
+          <template #content>
             <h2 class="text-base font-semibold text-slate-900">Billing address</h2>
             <p class="mt-1 text-xs text-slate-500">Used for your payment receipt, not for delivery.</p>
             <label class="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
@@ -226,16 +240,9 @@
               </div>
             </div>
 
-            <!-- <div class="rounded-lg border border-slate-200 p-3">
-              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Voucher</label>
-              <div class="flex flex-col gap-2 sm:flex-row">
-                <InputText v-model="voucherCode" fluid placeholder="Enter voucher code" />
-                <Button label="Apply" size="small" severity="warn" class="w-full sm:w-auto" :loading="applyingVoucher" @click="applyVoucher" />
-              </div>
-              <p v-if="appliedVoucher" class="mt-1 text-xs text-emerald-600">
-                Applied: {{ appliedVoucher.code }} ({{ voucherLabel }})
-              </p>
-            </div> -->
+            <div v-if="appliedVoucher" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              Voucher <strong>{{ appliedVoucher.code }}</strong> applied: {{ voucherLabel }} off.
+            </div>
 
             <Divider />
             <div class="flex justify-between"><span>Items</span><span>{{ formatNumber(itemsCount) }}</span></div>
@@ -875,6 +882,7 @@ async function loadAvailablePaymentMethods() {
 const voucherCode = ref('')
 const appliedVoucher = ref<AppliedVoucher | null>(null)
 const validatedDiscountAmount = ref(0)
+const voucherFeedback = ref<{ success: boolean; message: string } | null>(null)
 
 const selectedAddress = computed(() => addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null)
 const selectedAddressSummary = computed(() =>
@@ -1117,15 +1125,17 @@ function toggleCustomization(itemId: number) {
 
 async function applyVoucher() {
   if (!voucherCode.value.trim()) {
-    showAlert({ severity: 'warn', summary: 'Voucher', detail: 'Enter voucher code first.' })
+    voucherFeedback.value = { success: false, message: 'Enter a voucher code first.' }
     return
   }
 
   applyingVoucher.value = true
+  voucherFeedback.value = null
   try {
     const response = await ecommerceService.validateVoucher({
       code: voucherCode.value.trim(),
-      amount: subtotal.value + shippingFeeTotal.value,
+      store_id: Number(checkoutItems.value[0]?.store_id || currentQueuedGroup.value?.store_id || 0),
+      amount: subtotal.value,
     })
 
     const voucher = response.data?.data?.voucher
@@ -1137,14 +1147,22 @@ async function applyVoucher() {
       discount_value: Number(voucher?.discount_value || 0),
     }
     validatedDiscountAmount.value = discount
-    showAlert({ severity: 'success', summary: 'Voucher Applied', detail: 'Voucher has been applied.' })
+    voucherFeedback.value = { success: true, message: `Voucher applied. You save ₱${formatNumber(discount, 2)} on this order.` }
   } catch (error: any) {
     appliedVoucher.value = null
     validatedDiscountAmount.value = 0
-    showAlert({ severity: 'error', summary: 'Invalid Voucher', detail: error?.response?.data?.message || 'Voucher does not exist.' })
+    const fieldMessage = error?.response?.data?.errors?.code?.[0]
+    voucherFeedback.value = { success: false, message: fieldMessage || error?.response?.data?.message || 'This voucher cannot be applied to this order.' }
   } finally {
     applyingVoucher.value = false
   }
+}
+
+function clearVoucher() {
+  appliedVoucher.value = null
+  validatedDiscountAmount.value = 0
+  voucherCode.value = ''
+  voucherFeedback.value = null
 }
 
 async function estimateShippingFee() {
@@ -1482,9 +1500,7 @@ async function placeOrder() {
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value),
       fulfillment_method: serviceMethod.value,
       requested_fulfillment_date: fulfillmentDateString.value,
-      discount_amount: discountAmount.value,
       voucher_code: appliedVoucher.value?.code,
-      notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
       customization_requests: Object.fromEntries(
         checkoutItems.value

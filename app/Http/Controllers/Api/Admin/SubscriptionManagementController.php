@@ -19,7 +19,7 @@ class SubscriptionManagementController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $query = Store::query()->withCount(['users', 'products']);
+        $query = Store::query()->with('subscriptionPlan')->withCount(['users', 'products']);
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -42,7 +42,7 @@ class SubscriptionManagementController extends Controller
 
         $stores = $query
             ->orderByDesc('created_at')
-            ->paginate((int) $request->input('per_page', 20));
+            ->paginate(min(max((int) $request->input('per_page', 10), 1), 100));
 
         $stores->getCollection()->transform(function (Store $store) {
             return $this->formatStore($store);

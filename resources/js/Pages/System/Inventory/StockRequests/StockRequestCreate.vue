@@ -4,7 +4,7 @@
       <Button icon="pi pi-arrow-left" text rounded aria-label="Go back to stock requests" @click="router.push({ name: 'inventory.stock-requests' })" />
       <div>
         <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Create Stock Request</h1>
-        <p class="mt-1 text-sm text-slate-500">Choose where the stock should come from. The request will continue through that team's workflow.</p>
+        <p class="mt-1 text-sm text-slate-500">Choose a supplier request or a warehouse transfer. Each follows its own approval workflow.</p>
       </div>
     </header>
 
@@ -15,10 +15,10 @@
     <div v-else class="grid gap-4 md:grid-cols-2">
       <button v-if="canCreatePurchase" type="button"
         class="group rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
-        @click="goToPurchaseOrder">
+        @click="selectedType = 'purchase'">
         <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><i class="pi pi-shopping-bag text-lg" /></span>
-        <h2 class="mt-4 text-base font-semibold text-slate-900">Create Purchase Order</h2>
-        <p class="mt-1 text-sm leading-6 text-slate-600">Create a direct order from a supplier in Inventory. It will not be routed to Procurement.</p>
+        <h2 class="mt-4 text-base font-semibold text-slate-900">Request from Supplier</h2>
+        <p class="mt-1 text-sm leading-6 text-slate-600">Submit replenishment items for approval. Approved requests continue to Procurement when enabled, or to an Inventory PO.</p>
         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-orange-700">Continue <i class="pi pi-arrow-right text-xs" /></span>
       </button>
       <button v-if="canCreateTransfer" type="button"
@@ -37,9 +37,10 @@
 
   <div v-else class="space-y-3">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-      <p class="text-xs font-medium text-slate-500">Stock Request <span class="mx-1">/</span> Warehouse Transfer</p>
+    <p class="text-xs font-medium text-slate-500">Stock Request <span class="mx-1">/</span> {{ selectedType === 'purchase' ? 'Supplier Request' : 'Warehouse Transfer' }}</p>
     </div>
     <PurchaseRequisitionCreate v-if="isLegacyPrEdit" :key="`legacy-purchase-${route.params.id}`" />
+    <PurchaseRequisitionCreate v-else-if="selectedType === 'purchase'" key="supplier-request-create" />
     <TransferCreate v-else :key="`transfer-${route.params.id || 'new'}`" />
   </div>
 </template>
@@ -47,7 +48,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { router as inertiaRouter } from '@inertiajs/vue3'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
 import PurchaseRequisitionCreate from '@/Pages/System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate.vue'
@@ -58,7 +58,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const checkingWarehouse = ref(true)
 const hasWarehouseBranch = ref(false)
-const canCreatePurchase = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canCreatePurchase = computed(() => authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage'))
 const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
 const isLegacyPrEdit = computed(() => route.name === 'inventory.stock-requests.edit' && Boolean(route.params.id))
 const availableType = (type: unknown) => {
@@ -69,17 +69,9 @@ const availableType = (type: unknown) => {
 const routeRequestType = () => route.name === 'inventory.stock-requests.edit' ? 'purchase' : route.params.type || route.query.type
 const selectedType = ref(routeRequestType() === 'transfer' ? availableType('transfer') : '')
 
-const goToPurchaseOrder = () => {
-  if (canCreatePurchase.value) inertiaRouter.visit('/inventory/purchase-orders/create')
-}
-
 watch(() => [route.name, route.params.type, route.query.type], () => {
   if (checkingWarehouse.value) return
-  if (!isLegacyPrEdit.value && routeRequestType() === 'purchase' && canCreatePurchase.value) {
-    goToPurchaseOrder()
-    return
-  }
-  selectedType.value = isLegacyPrEdit.value ? 'purchase' : availableType(routeRequestType() === 'transfer' ? 'transfer' : '')
+  selectedType.value = isLegacyPrEdit.value ? 'purchase' : availableType(routeRequestType())
 })
 
 onMounted(async () => {
@@ -95,11 +87,10 @@ onMounted(async () => {
   }
 
   const requestedType = routeRequestType()
-  if (!isLegacyPrEdit.value && requestedType === 'purchase' && canCreatePurchase.value) {
-    goToPurchaseOrder()
-    return
-  }
   selectedType.value = isLegacyPrEdit.value ? 'purchase' : availableType(requestedType)
-  if (!hasWarehouseBranch.value && canCreatePurchase.value && !selectedType.value) goToPurchaseOrder()
+  if (!selectedType.value) {
+    if (canCreatePurchase.value && !canCreateTransfer.value) selectedType.value = 'purchase'
+    else if (canCreateTransfer.value && !canCreatePurchase.value) selectedType.value = 'transfer'
+  }
 })
 </script>
