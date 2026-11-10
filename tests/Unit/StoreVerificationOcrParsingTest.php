@@ -33,9 +33,9 @@ it('reads the reference and expiry data printed on the demo permit fixtures', fu
     $bir = $fixture('tax_permit.html');
     $mayor = $fixture('mayors_permit.html');
 
-    expect($ocr->extractDocumentReference($dti, 'registration'))->toBe('DTI-2026-0-1234567')
-        ->and($ocr->extractDocumentExpiration($dti))->toBe('2031-07-09')
-        ->and($ocr->extractDocumentReference($bir, 'bir'))->toBe('123-456-789-000')
-        ->and($ocr->extractDocumentReference($mayor, 'mayor'))->toBe('2026-0126752')
+    expect($ocr->extractDocumentReference($dti, 'registration'))->toBe('DTI-2026-07-8452193')
+        ->and($ocr->extractDocumentExpiration($dti))->toBe('2031-02-15')
+        ->and($ocr->extractDocumentReference($bir, 'bir'))->toBe('487-219-635-000')
+        ->and($ocr->extractDocumentReference($mayor, 'mayor'))->toBe('2026-0458917')
         ->and($ocr->extractDocumentExpiration($mayor))->toBe('2026-12-31');
 });

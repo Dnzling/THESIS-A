@@ -6,7 +6,7 @@
     <Card v-for="request in requests" :key="request.id" class="rounded-3xl border border-slate-200 shadow-sm">
       <template #content>
         <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs uppercase tracking-wide text-slate-500">{{ request.reference_number || `Request #${request.id}` }}</p><h2 class="mt-1 font-semibold text-slate-900">{{ request.product?.product_name || 'Product' }}</h2><p class="text-sm text-slate-500">{{ request.product?.sku || '-' }}</p></div><Tag :value="statusLabel(request.status)" :severity="severity(request.status)" /></div>
-        <div class="mt-4 grid gap-3 text-sm sm:grid-cols-2"><p>Materials: {{ request.materials || '—' }}</p><p>Dimensions: {{ formatDimensions(request) }}</p><p class="sm:col-span-2">{{ request.notes || 'No notes' }}</p></div>
+        <div class="mt-4 grid gap-3 text-sm sm:grid-cols-2"><p>Materials: {{ request.materials || '—' }}</p><p>Dimensions: {{ formatDimensions(request) }}</p><p class="font-medium text-slate-800">Estimated finish: <span class="font-normal">{{ formatDate(request.estimated_completion_date) || (['in_production', 'changes_requested'].includes(request.status) ? 'Pending update' : 'Not scheduled yet') }}</span></p><p class="sm:col-span-2">{{ request.notes || 'No notes' }}</p></div>
         <div v-if="request.revision_reason" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><p class="font-semibold text-amber-900">Revision requested</p><p class="mt-1 whitespace-pre-wrap text-amber-800">{{ request.revision_reason }}</p></div>
         <div class="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
           <Button v-if="request.model_path" label="View 3D Model" icon="pi pi-eye" outlined @click="previewing = request" />
@@ -53,6 +53,11 @@ const formatDimensions = (request: any) => {
     .filter(([key]) => request?.[key] != null)
     .map(([key, name]) => `${name}: ${Number(request[key]).toLocaleString('en-PH')} cm`)
   return values.join(', ') || 'Not provided'
+}
+const formatDate = (value?: string) => {
+  if (!value) return ''
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 const severity = (status: string) => status === 'published' ? 'success' : status === 'ready_for_review' ? 'info' : status === 'changes_requested' ? 'warn' : 'secondary'
 const fileUrl = (path: string) => `/storage/${path}`

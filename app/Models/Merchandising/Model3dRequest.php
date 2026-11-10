@@ -8,9 +8,9 @@ class Model3dRequest extends Model
 {
     protected $table = 'model_3d_requests';
 
-    protected $fillable = ['reference_number', 'owner_store_id', 'product_id', 'requested_by', 'status', 'length_cm', 'width_cm', 'height_cm', 'depth_cm', 'materials', 'notes', 'reference_photos', 'quoted_price', 'included_revisions', 'quote_notes', 'revision_reason', 'model_path', 'product_asset_id'];
+    protected $fillable = ['reference_number', 'owner_store_id', 'product_id', 'requested_by', 'status', 'estimated_completion_date', 'length_cm', 'width_cm', 'height_cm', 'depth_cm', 'materials', 'notes', 'reference_photos', 'quoted_price', 'included_revisions', 'quote_notes', 'revision_reason', 'model_path', 'product_asset_id'];
 
-    protected $casts = ['reference_photos' => 'array', 'quoted_price' => 'decimal:2'];
+    protected $casts = ['reference_photos' => 'array', 'quoted_price' => 'decimal:2', 'estimated_completion_date' => 'date:Y-m-d'];
 
     public function product() { return $this->belongsTo(\App\Models\ProductCatalog\Product::class); }
     public function store() { return $this->belongsTo(\App\Models\Store\Store::class, 'owner_store_id'); }

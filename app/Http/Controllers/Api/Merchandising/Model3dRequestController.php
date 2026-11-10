@@ -136,7 +136,13 @@ class Model3dRequestController extends Controller
     {
         $this->authorizeAdmin($request);
         $data = $request->validate([
-            'action' => ['required', Rule::in(['start', 'upload_model'])],
+            'action' => ['required', Rule::in(['start', 'upload_model', 'update_estimate'])],
+            'estimated_completion_date' => [
+                Rule::requiredIf(in_array($request->input('action'), ['start', 'update_estimate'], true)),
+                'nullable',
+                'date',
+                'after_or_equal:today',
+            ],
             'model' => ['required_if:action,upload_model', 'file', 'max:51200', function ($attribute, $file, $fail) {
                 if (!$file || strtolower($file->getClientOriginalExtension()) !== 'glb') {
                     $fail('Select a .glb model file.');
@@ -156,7 +162,13 @@ class Model3dRequestController extends Controller
         ]);
         if ($data['action'] === 'start') {
             abort_unless(in_array($modelRequest->status, ['submitted', 'changes_requested', 'accepted', 'quoted'], true), 422);
-            $modelRequest->update(['status' => 'in_production']);
+            $modelRequest->update([
+                'status' => 'in_production',
+                'estimated_completion_date' => $data['estimated_completion_date'],
+            ]);
+        } elseif ($data['action'] === 'update_estimate') {
+            abort_unless($modelRequest->status === 'in_production', 422);
+            $modelRequest->update(['estimated_completion_date' => $data['estimated_completion_date']]);
         } else {
             abort_unless(in_array($modelRequest->status, ['in_production', 'changes_requested'], true), 422);
             $path = $request->file('model')->store("3d-requests/{$modelRequest->owner_store_id}/models", 'public');
