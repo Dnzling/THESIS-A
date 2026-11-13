@@ -175,6 +175,8 @@ class ProductVariationController extends BaseController
                 return $this->errorResponse('Product not found or does not belong to this store', 404);
             }
 
+            $this->assertUniqueVariationAttributes($product, $validated);
+
             $effectiveBasePrice = (float) ($validated['base_price'] ?? $product->current_price ?? 0);
             if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
                 throw ValidationException::withMessages(['discounted_price' => ['Discounted price must be lower than the variant selling price or inherited product price.']]);
@@ -377,6 +379,8 @@ class ProductVariationController extends BaseController
                 'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
             ]);
+
+            $this->assertUniqueVariationAttributes($variation->product, $validated, $variation);
 
             $effectiveBasePrice = (float) ($validated['base_price'] ?? $variation->base_price ?? $variation->product?->current_price ?? 0);
             if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
@@ -688,6 +692,12 @@ class ProductVariationController extends BaseController
             'product_id' => $product->id,
             'variation_sku' => $baselineSku,
             'variation_name' => 'Standard',
+            'is_baseline' => true,
+            'color' => $product->variation_attributes['color'] ?? null,
+            'size' => $product->variation_attributes['size'] ?? null,
+            'material' => $product->variation_attributes['material'] ?? null,
+            'texture' => $product->variation_attributes['texture'] ?? null,
+            'finish' => $product->variation_attributes['finish'] ?? null,
             'price_adjustment' => 0,
             'base_price' => $product->base_price,
             'discounted_price' => $product->discounted_price,
@@ -724,6 +734,47 @@ class ProductVariationController extends BaseController
         $columns = array_flip(Schema::getColumnListing('product_variations'));
 
         return array_intersect_key($data, $columns);
+    }
+
+    private function assertUniqueVariationAttributes(Product $product, array $candidate, ?ProductVariation $current = null): void
+    {
+        $keys = ['color', 'size', 'material', 'texture', 'finish'];
+        $attributes = [];
+        foreach ($keys as $key) {
+            $attributes[$key] = array_key_exists($key, $candidate)
+                ? $candidate[$key]
+                : ($current?->{$key} ?? '');
+        }
+        $signature = $this->variationAttributeSignature($attributes, $keys);
+
+        if ($current && $signature === $this->variationAttributeSignature($current->only($keys), $keys)) {
+            return;
+        }
+
+        if (!$current?->is_baseline && $signature === $this->variationAttributeSignature($product->variation_attributes ?? [], $keys)) {
+            throw ValidationException::withMessages([
+                'variation_attributes' => ['This variant duplicates the standard product. Change at least one attribute.'],
+            ]);
+        }
+
+        $existing = $product->variations()
+            ->when($current, fn ($query) => $query->where('id', '!=', $current->id))
+            ->get($keys);
+        foreach ($existing as $variation) {
+            if ($signature === $this->variationAttributeSignature($variation->only($keys), $keys)) {
+                throw ValidationException::withMessages([
+                    'variation_attributes' => ['A variant with this full attribute combination already exists.'],
+                ]);
+            }
+        }
+    }
+
+    private function variationAttributeSignature(array $attributes, array $keys): string
+    {
+        return json_encode(array_map(
+            fn ($key) => mb_strtolower(trim((string) ($attributes[$key] ?? ''))),
+            $keys,
+        ), JSON_UNESCAPED_UNICODE);
     }
 
     private function seedVariationOpeningStock(ProductVariation $variation, int $quantity): void

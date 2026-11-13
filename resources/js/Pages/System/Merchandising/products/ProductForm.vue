@@ -251,7 +251,7 @@
               </div>
             </section>
 
-            <section v-if="showInventoryFields && form.product_type === 'finished_good' && form.has_variants" class="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+            <section v-if="showInventoryFields && form.product_type === 'finished_good'" class="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
               <div><h2 class="text-base font-semibold text-gray-900">Standard Product Variation Attributes</h2><p class="mt-1 text-sm text-gray-500">Set the standard values first. New variants are prefilled with these attributes; change at least one value to make a distinct variant.</p></div>
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <div v-for="attribute in variationAttributeFields" :key="attribute.key" class="space-y-1.5"><label class="text-xs font-medium text-gray-600">{{ attribute.label }}</label><InputText v-model="form.variation_attributes[attribute.key]" :placeholder="attribute.placeholder" class="w-full" fluid /></div>
@@ -526,6 +526,7 @@
                         <Tag v-if="data.color" :value="data.color" severity="info" />
                         <Tag v-if="data.size" :value="data.size" severity="secondary" />
                         <Tag v-if="data.material" :value="data.material" severity="success" />
+                        <Tag v-if="data.texture" :value="data.texture" severity="secondary" />
                         <Tag v-if="data.finish" :value="data.finish" severity="warn" />
                       </div>
                     </template>
@@ -2167,7 +2168,7 @@ const handleSubmit = async () => {
         is_active: form.value.is_active,
         tag_ids: form.value.tag_ids,
         has_variants: form.value.product_type === 'finished_good' && form.value.has_variants,
-        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
+        variation_attributes: form.value.product_type === 'finished_good' ? form.value.variation_attributes : null,
         reorder_point: form.value.reorder_point,
         reorder_quantity: form.value.reorder_quantity,
         reorder_scope: 'store',
@@ -2186,7 +2187,7 @@ const handleSubmit = async () => {
       activateSaveStage('storefront')
       await merchandisingService.updateProduct(productId, {
         collection_name: form.value.collection_name,
-        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
+        variation_attributes: form.value.product_type === 'finished_good' ? form.value.variation_attributes : null,
         room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
         is_customizable: form.value.is_customizable,
         is_featured: form.value.is_featured,
@@ -2215,7 +2216,7 @@ const handleSubmit = async () => {
         reorder_point: Number(form.value.reorder_point ?? 0),
         is_active: form.value.is_active,
         tag_ids: form.value.tag_ids,
-        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
+        variation_attributes: form.value.product_type === 'finished_good' ? form.value.variation_attributes : null,
         length_cm: form.value.length_cm,
         width_cm: form.value.width_cm,
         height_cm: form.value.height_cm,

@@ -212,9 +212,9 @@ class ProductController extends BaseController
                 'additional_measurements.*.label' => 'required|string|max:80',
                 'additional_measurements.*.value' => 'required|numeric|gt:0',
                 'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
-                'variation_attributes' => 'nullable|array',
-                'variation_attributes.color' => 'nullable|string|max:100',
-                'variation_attributes.size' => 'nullable|string|max:100',
+                'variation_attributes' => 'nullable|array:color,size,material,texture,finish',
+                'variation_attributes.color' => 'nullable|string|max:50',
+                'variation_attributes.size' => 'nullable|string|max:50',
                 'variation_attributes.material' => 'nullable|string|max:100',
                 'variation_attributes.texture' => 'nullable|string|max:100',
                 'variation_attributes.finish' => 'nullable|string|max:100',
@@ -556,9 +556,9 @@ class ProductController extends BaseController
                 'additional_measurements.*.label' => 'required|string|max:80',
                 'additional_measurements.*.value' => 'required|numeric|gt:0',
                 'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
-                'variation_attributes' => 'sometimes|nullable|array',
-                'variation_attributes.color' => 'nullable|string|max:100',
-                'variation_attributes.size' => 'nullable|string|max:100',
+                'variation_attributes' => 'sometimes|nullable|array:color,size,material,texture,finish',
+                'variation_attributes.color' => 'nullable|string|max:50',
+                'variation_attributes.size' => 'nullable|string|max:50',
                 'variation_attributes.material' => 'nullable|string|max:100',
                 'variation_attributes.texture' => 'nullable|string|max:100',
                 'variation_attributes.finish' => 'nullable|string|max:100',
@@ -575,6 +575,13 @@ class ProductController extends BaseController
                 'published_at' => 'nullable|date',
                 'price_change_reason' => 'nullable|string|max:500'
             ]);
+
+            if (array_key_exists('variation_attributes', $validated) && is_array($validated['variation_attributes'])) {
+                if ($this->variationAttributeSignature($validated['variation_attributes'], ['color', 'size', 'material', 'texture', 'finish'])
+                    !== $this->variationAttributeSignature($product->variation_attributes ?? [], ['color', 'size', 'material', 'texture', 'finish'])) {
+                    $this->assertProductVariationAttributesUnique($product, $validated['variation_attributes']);
+                }
+            }
 
             if (array_key_exists('discounted_price', $validated) && !is_null($validated['discounted_price'])) {
                 $sellingPrice = (float) ($validated['base_price'] ?? $product->base_price ?? 0);
@@ -987,6 +994,32 @@ class ProductController extends BaseController
         }
 
         return false;
+    }
+
+    private function assertProductVariationAttributesUnique(Product $product, array $attributes): void
+    {
+        $keys = ['color', 'size', 'material', 'texture', 'finish'];
+        $signature = $this->variationAttributeSignature($attributes, $keys);
+        $variations = $product->variations()->get(array_merge($keys, ['variation_name', 'is_baseline']));
+
+        foreach ($variations as $variation) {
+            if ($variation->is_baseline || strcasecmp((string) $variation->variation_name, 'standard') === 0) {
+                continue;
+            }
+            if ($signature === $this->variationAttributeSignature($variation->only($keys), $keys)) {
+                throw ValidationException::withMessages([
+                    'variation_attributes' => ['The standard product attributes match an existing variant. Change one or more attribute values.'],
+                ]);
+            }
+        }
+    }
+
+    private function variationAttributeSignature(array $attributes, array $keys): string
+    {
+        return json_encode(array_map(
+            fn ($key) => mb_strtolower(trim((string) ($attributes[$key] ?? ''))),
+            $keys,
+        ), JSON_UNESCAPED_UNICODE);
     }
 
     /**

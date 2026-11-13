@@ -33,6 +33,7 @@ class ProductVariation extends Model
         'unit_of_measurement',
         'custom_3d_model_id',
         'custom_image_id',
+        'is_baseline',
         'length_cm',
         'width_cm',
         'height_cm',
@@ -54,7 +55,8 @@ class ProductVariation extends Model
         'depth_cm' => 'decimal:2',
         'weight_kg' => 'decimal:2',
         'additional_measurements' => 'array',
-        'is_active' => 'boolean'
+        'is_active' => 'boolean',
+        'is_baseline' => 'boolean',
     ];
 
     // Relationships

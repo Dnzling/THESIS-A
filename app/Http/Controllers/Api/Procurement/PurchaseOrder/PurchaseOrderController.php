@@ -608,6 +608,17 @@ class PurchaseOrderController extends Controller
                         ], 422);
                     }
 
+                    if (!empty($item['variation_id']) && !ProductVariation::query()
+                        ->where('id', (int) $item['variation_id'])
+                        ->where('product_id', (int) $item['product_id'])
+                        ->where('store_id', (int) $storeId)
+                        ->where('is_active', true)
+                        ->exists()) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.variation_id" => 'This supplier variant is archived and cannot be ordered.',
+                        ]);
+                    }
+
                     $product = Product::find($item['product_id']);
                     $variation = !empty($item['variation_id'])
                         ? ProductVariation::where('product_id', $item['product_id'])->find($item['variation_id'])
@@ -655,6 +666,7 @@ class PurchaseOrderController extends Controller
                             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
                             ->where('supplier_products.supplier_id', (int) $validated['supplier_id'])
                             ->where('supplier_products.product_id', (int) $item['product_id'])
+                            ->where('supplier_products.availability_status', '!=', 'out_of_stock')
                             ->where('suppliers.store_id', (int) $storeId)
                             ->whereNull('suppliers.deleted_at')
                             ->first([
@@ -996,6 +1008,17 @@ class PurchaseOrderController extends Controller
                                 ],
                             ],
                         ], 422);
+                    }
+
+                    if (!empty($item['variation_id']) && !ProductVariation::query()
+                        ->where('id', (int) $item['variation_id'])
+                        ->where('product_id', (int) $item['product_id'])
+                        ->where('store_id', (int) $storeId)
+                        ->where('is_active', true)
+                        ->exists()) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.variation_id" => 'This supplier variant is archived and cannot be ordered.',
+                        ]);
                     }
 
                     $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
@@ -1741,6 +1764,7 @@ class PurchaseOrderController extends Controller
             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.supplier_id', $supplierId)
             ->where('supplier_products.product_id', $productId)
+            ->where('supplier_products.availability_status', '!=', 'out_of_stock')
             ->where('suppliers.store_id', $storeId)
             ->exists();
     }
@@ -1973,6 +1997,7 @@ class PurchaseOrderController extends Controller
             ->where('id', (int) $variationId)
             ->where('product_id', $productId)
             ->where('store_id', $storeId)
+            ->where('is_active', true)
             ->exists();
     }
 

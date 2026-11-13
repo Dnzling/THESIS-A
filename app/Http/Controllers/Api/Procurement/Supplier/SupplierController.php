@@ -766,6 +766,7 @@ class SupplierController extends Controller
             ->with([
                 'category:id,category_name',
                 'subcategory:id,category_name',
+                'variations' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
             ])
             ->select(
                 'products.id', 'products.product_name',
@@ -789,9 +790,11 @@ class SupplierController extends Controller
                         $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
                     }
                 })
-                ->pluck('rfq_item.product_id');
+                ->select('rfq_item.product_id', 'rfq_item.variation_id')
+                ->get()
+                ->map(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
 
-            $approvedProductIds = $approvedFeedbacks->map(fn ($id) => (int) $id)->unique();
+            $approvedProductIds = $approvedFeedbacks->unique();
         }
 
         $assets = ProductAsset::query()
@@ -804,13 +807,10 @@ class SupplierController extends Controller
             ->keyBy('product_id');
 
         $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
-        $products = $productModels->map(function ($product) use ($assets, $taxRate, $supplier, $approvedProductIds) {
+        $products = $productModels->flatMap(function ($product) use ($assets, $taxRate, $supplier, $approvedProductIds) {
             $baseCost = round((float) $product->pivot->supplier_price, 2);
-            $taxAmount = round($baseCost * ($taxRate / 100), 2);
-
-            return [
-                'id' => (int) $product->id,
-                'product_name' => $product->product_name,
+            $common = [
+                'product_id' => (int) $product->id,
                 'category_id' => $product->category_id,
                 'category_name' => $product->category?->category_name,
                 'subcategory_name' => $product->subcategory?->category_name,
@@ -819,15 +819,46 @@ class SupplierController extends Controller
                 'availability_status' => $product->pivot->availability_status ?? 'available',
                 'minimum_order_quantity' => (int) ($product->pivot->minimum_order_quantity ?? 1),
                 'lead_time_days' => (int) ($product->pivot->lead_time_days ?? 7),
-                'base_cost' => $baseCost,
                 'tax_rate' => round($taxRate, 2),
-                'tax_amount' => $taxAmount,
-                'cost_including_tax' => round($baseCost + $taxAmount, 2),
                 'is_tax_exempt' => (bool) $supplier->is_tax_exempt,
-                'is_active' => (bool) $product->is_active,
-                'is_acquired' => $approvedProductIds->contains((int) $product->id),
+                'is_active' => (bool) $product->is_active && ($product->pivot->availability_status ?? 'available') !== 'out_of_stock',
                 'image_url' => $assets->get($product->id)?->thumbnail_url,
             ];
+
+            if ($product->variations->isNotEmpty()) {
+                return $product->variations->map(function ($variation) use ($common, $baseCost) {
+                    $cost = $variation->cost_price !== null ? round((float) $variation->cost_price, 2) : $baseCost;
+                    $tax = round($cost * ($common['tax_rate'] / 100), 2);
+                    $attributes = collect([$variation->color, $variation->size, $variation->material, $variation->texture, $variation->finish])->filter()->implode(' · ');
+                    return array_merge($common, [
+                        'id' => (int) $variation->id,
+                        'variation_id' => (int) $variation->id,
+                        'product_name' => $product->product_name . ' — ' . $variation->variation_name,
+                        'variation_name' => $variation->variation_name,
+                        'variation_sku' => $variation->variation_sku,
+                        'variation_attributes' => $attributes,
+                        'is_active' => $common['is_active'] && (bool) $variation->is_active,
+                        'is_acquired' => $approvedProductIds->contains((int) $product->id . ':' . (int) $variation->id),
+                        'base_cost' => $cost,
+                        'tax_amount' => $tax,
+                        'cost_including_tax' => round($cost + $tax, 2),
+                    ]);
+                });
+            }
+
+            $taxAmount = round($baseCost * ($taxRate / 100), 2);
+            return [array_merge($common, [
+                'id' => (int) $product->id,
+                'variation_id' => null,
+                'product_name' => $product->product_name,
+                'variation_name' => null,
+                'variation_sku' => null,
+                'variation_attributes' => null,
+                'is_acquired' => $approvedProductIds->contains((int) $product->id . ':0'),
+                'base_cost' => $baseCost,
+                'tax_amount' => $taxAmount,
+                'cost_including_tax' => round($baseCost + $taxAmount, 2),
+            ])];
         })->values();
 
         return response()->json([

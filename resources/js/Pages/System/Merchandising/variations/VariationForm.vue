@@ -169,7 +169,8 @@
               <div class="flex flex-col gap-2"><label class="text-sm font-semibold text-gray-700">Texture</label><InputText v-model="form.texture" placeholder="e.g., Smooth, Woven" /></div>
               <div class="flex flex-col gap-2"><label class="text-sm font-semibold text-gray-700">Finish</label><InputText v-model="form.finish" placeholder="e.g., Matte, Glossy" /></div>
             </div>
-            <p class="rounded-lg bg-slate-50 p-2 text-xs text-slate-500">Only enter attributes that distinguish this SKU from the standard product.</p>
+            <small v-if="errors.variation_attributes" class="block text-red-600">{{ errors.variation_attributes }}</small>
+            <p class="rounded-lg bg-slate-50 p-2 text-xs text-slate-500">New variants start with the standard product attributes. Change at least one attribute. The full attribute combination must be unique.</p>
 
           </div>
         </template>
@@ -567,6 +568,13 @@ const unitOptions = computed(() => {
 })
 
 const errors = ref<Record<string, string>>({})
+const variationAttributeKeys = ['color', 'size', 'material', 'texture', 'finish'] as const
+const normalizeVariationAttributes = (attributes: any) => Object.fromEntries(
+  variationAttributeKeys.map((key) => [key, String(attributes?.[key] || '').trim()])
+)
+const variationAttributeSignature = (attributes: any) => JSON.stringify(
+  variationAttributeKeys.map((key) => String(attributes?.[key] || '').trim().toLocaleLowerCase())
+)
 
 const colorHexValue = computed({
   get: () => String(form.color_hex || '').replace('#', ''),
@@ -594,6 +602,7 @@ watch(() => form.product_id, (newVal) => {
     selectedProduct.value = products.value.find((p: any) => p.id === newVal)
       || (Number(embeddedProduct.value?.id) === Number(newVal) ? embeddedProduct.value : null)
     if (!isEditMode.value && selectedProduct.value) {
+      Object.assign(form, normalizeVariationAttributes(selectedProduct.value.variation_attributes))
       form.base_price = null
       form.discounted_price = null
       form.unit_of_measurement = selectedProduct.value.unit_of_measurement || ''
@@ -953,6 +962,20 @@ const validateForm = () => {
   if (!isEditMode.value && !variantImageFile.value && !proposal.value?.image_urls?.length) {
     errors.value.custom_image_id = 'Variation photo is required'
   }
+
+  if (!isEditMode.value && !proposalId.value) {
+    const standardAttributes = selectedProduct.value?.variation_attributes || embeddedProduct.value?.variation_attributes || {}
+    const currentSignature = variationAttributeSignature(form)
+    if (currentSignature === variationAttributeSignature(standardAttributes)) {
+      errors.value.variation_attributes = 'This variant duplicates the standard product. Change at least one attribute.'
+    }
+
+    const existingVariations = embeddedProduct.value?.variations || selectedProduct.value?.variations || []
+    const duplicate = existingVariations.some((variation: any) => variationAttributeSignature(variation) === currentSignature)
+    if (duplicate) {
+      errors.value.variation_attributes = 'A variant with this full attribute combination already exists.'
+    }
+  }
   
   return Object.keys(errors.value).length === 0
 }
@@ -1049,6 +1072,7 @@ onMounted(() => {
     if (embeddedVariation.value?.id) {
       loadVariation()
     } else {
+      Object.assign(form, normalizeVariationAttributes(embeddedProduct.value?.variation_attributes))
       generateSKU()
     }
     return

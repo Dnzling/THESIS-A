@@ -106,7 +106,7 @@ class DeliveryTripController extends Controller
         $replacementWeight = 0.0;
         if ($source === 'ecommerce') {
             $order = EcommerceOrder::query()
-                ->with(['delivery', 'items.product:id,weight_kg'])
+                ->with(['delivery', 'items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
                 ->where('store_id', $storeId)
                 ->where('status', 'ready_for_dispatch')
                 ->findOrFail((int) $validated['order_id']);
@@ -116,7 +116,7 @@ class DeliveryTripController extends Controller
             $orderWeight = $this->orderWeight($order->items ?? []);
         } elseif ($source === 'sales') {
             $order = SalesOrder::query()
-                ->with(['delivery', 'items.product:id,weight_kg'])
+                ->with(['delivery', 'items.product:id,weight_kg', 'items.variation:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
                 ->where('store_id', $storeId)
                 ->where('delivery_required', true)
                 ->where(function ($query) {
@@ -130,7 +130,13 @@ class DeliveryTripController extends Controller
             $orderWeight = $this->orderWeight($order->items ?? []);
         } elseif ($source === 'return_pickup') {
             $order = ReturnPickup::query()
-                ->with(['returnRequest.orderItem.product:id,weight_kg'])
+                ->with([
+                    'returnRequest.orderItem.product:id,weight_kg',
+                    'returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+                    'returnRequest.salesOrderItem.product:id,weight_kg',
+                    'returnRequest.salesOrderItem.variation:id,weight_kg',
+                    'returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
+                ])
                 ->where('store_id', $storeId)
                 ->whereNull('trip_id')
                 ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
@@ -140,7 +146,7 @@ class DeliveryTripController extends Controller
             $orderWeight = $this->returnPickupWeight($order);
         } elseif ($source === 'stock_transfer') {
             $order = \App\Models\Inventory\StockTransfer::query()
-                ->with(['items.product:id,weight_kg', 'toBranch:id,address,city,province'])
+                ->with(['items.product:id,weight_kg', 'items.variation:id,weight_kg', 'toBranch:id,address,city,province'])
                 ->where('store_id', $storeId)
                 ->whereNull('trip_id')
                 ->where('status', 'in_transit')
@@ -179,15 +185,22 @@ class DeliveryTripController extends Controller
             'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
             'driver:id,fname,lname,email',
             'ecommerceDeliveries.order.items.product:id,weight_kg',
+            'ecommerceDeliveries.order.items.branchInventory.variation:id,weight_kg',
             'salesDeliveries.order.items.product:id,weight_kg',
+            'salesDeliveries.order.items.variation:id,weight_kg',
+            'salesDeliveries.order.items.branchInventory.variation:id,weight_kg',
             'returnPickups.returnRequest.orderItem.product:id,weight_kg',
             'stockTransfers.fromBranch:id,name,address,latitude,longitude',
             'stockTransfers.toBranch:id,name,address,latitude,longitude',
             'stockTransfers.items.product:id,weight_kg',
+            'stockTransfers.items.variation:id,weight_kg',
             'replacementReturns.order:id,shipping_address,customer_latitude,customer_longitude',
             'replacementReturns.salesOrder',
             'replacementReturns.orderItem.product:id,weight_kg',
+            'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
             'replacementReturns.salesOrderItem.product:id,weight_kg',
+            'replacementReturns.salesOrderItem.variation:id,weight_kg',
+            'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
             'replacementReturns.replacementInventory:id,product_id,variation_id',
             'replacementReturns.replacementInventory.product:id,weight_kg',
             'replacementReturns.replacementInventory.variation:id,weight_kg',
@@ -277,10 +290,10 @@ class DeliveryTripController extends Controller
                 'replacementReturns.order:id,order_number,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude',
                 'replacementReturns.orderItem:id,product_id,branch_inventory_id,product_name,sku,quantity',
                 'replacementReturns.orderItem.product:id,weight_kg',
+                'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
                 'replacementReturns.salesOrder:id,order_number,customer_name,customer_phone,delivery_address,delivery_latitude,delivery_longitude',
                 'replacementReturns.salesOrderItem:id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity',
                 'replacementReturns.salesOrderItem.product:id,weight_kg',
-                'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
                 'replacementReturns.salesOrderItem.variation:id,weight_kg',
                 'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
                 'replacementReturns.replacementInventory:id,product_id,variation_id',
@@ -292,8 +305,9 @@ class DeliveryTripController extends Controller
                 'purchaseOrderShipments.purchaseOrder:id,po_number,supplier_id,branch_id,status,total_amount,expected_delivery_date',
                 'purchaseOrderShipments.purchaseOrder.supplier:id,supplier_name,address',
                 'purchaseOrderShipments.purchaseOrder.branch:id,name,address,city,province',
-                'purchaseOrderShipments.purchaseOrder.items:id,purchase_order_id,product_id,quantity_ordered,unit_cost',
+                'purchaseOrderShipments.purchaseOrder.items:id,purchase_order_id,product_id,variation_id,quantity_ordered,unit_cost,weight_kg',
                 'purchaseOrderShipments.purchaseOrder.items.product:id,product_name,sku,weight_kg',
+                'purchaseOrderShipments.purchaseOrder.items.variation:id,weight_kg',
             ]);
 
         $this->applyTenantScope($request, $query);
@@ -350,13 +364,17 @@ class DeliveryTripController extends Controller
                 'replacementReturns.orderItem:id,product_id,branch_inventory_id,product_name,sku,quantity',
                 'replacementReturns.salesOrderItem:id,product_id,variation_id,branch_inventory_id,product_name,sku,quantity',
                 'replacementReturns.orderItem.product:id,weight_kg',
+                'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
                 'replacementReturns.salesOrderItem.product:id,weight_kg',
+                'replacementReturns.salesOrderItem.variation:id,weight_kg',
+                'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
                 'replacementReturns.replacementBranch:id,name',
                 'purchaseOrderShipments.purchaseOrder:id,po_number,supplier_id,branch_id',
                 'purchaseOrderShipments.purchaseOrder.supplier:id,supplier_name',
                 'purchaseOrderShipments.purchaseOrder.branch:id,name,address,city,province',
-                'purchaseOrderShipments.purchaseOrder.items:id,purchase_order_id,product_id,quantity_ordered',
+                'purchaseOrderShipments.purchaseOrder.items:id,purchase_order_id,product_id,variation_id,quantity_ordered,weight_kg',
                 'purchaseOrderShipments.purchaseOrder.items.product:id,weight_kg',
+                'purchaseOrderShipments.purchaseOrder.items.variation:id,weight_kg',
             ]);
 
         $this->applyTenantScope($request, $query);
@@ -441,7 +459,7 @@ class DeliveryTripController extends Controller
                 'address' => collect([$order->branch?->address, $order->branch?->city, $order->branch?->province])->filter()->implode(', ') ?: '-',
                 'date' => $shipment->expected_delivery_date,
                 'status' => $shipment->status,
-                'weight' => collect($order->items ?? [])->sum(fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0)),
+                'weight' => $this->purchaseOrderWeight($order->items ?? []),
             ]);
         }
 
@@ -978,7 +996,7 @@ class DeliveryTripController extends Controller
 
     private function ecommerceSuggestionRows(DeliveryTrip $trip): array
     {
-        return EcommerceOrder::query()->with(['delivery', 'assignedBranch:id,latitude,longitude', 'items.product:id,weight_kg'])
+        return EcommerceOrder::query()->with(['delivery', 'assignedBranch:id,latitude,longitude', 'items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
             ->where('store_id', $trip->store_id)->where('status', 'ready_for_dispatch')
             ->where(fn ($q) => $q->whereDoesntHave('delivery')->orWhereHas('delivery', fn ($d) => $d
                 ->whereNull('trip_id')->whereIn('status', ['pending', 'ready_for_dispatch'])))
@@ -996,7 +1014,7 @@ class DeliveryTripController extends Controller
 
     private function salesSuggestionRows(DeliveryTrip $trip): array
     {
-        return SalesOrder::query()->with(['delivery', 'branch:id,latitude,longitude', 'items.product:id,weight_kg'])
+        return SalesOrder::query()->with(['delivery', 'branch:id,latitude,longitude', 'items.product:id,weight_kg', 'items.variation:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
             ->where('store_id', $trip->store_id)->where('delivery_required', true)
             ->where('status', 'ready_for_dispatch')
             ->where(fn ($q) => $q->whereDoesntHave('delivery')->orWhereHas('delivery', fn ($d) => $d
@@ -1015,7 +1033,14 @@ class DeliveryTripController extends Controller
 
     private function returnPickupSuggestionRows(DeliveryTrip $trip): array
     {
-        return ReturnPickup::query()->with(['returnRequest.orderItem.product:id,weight_kg', 'destinationBranch:id,latitude,longitude'])
+        return ReturnPickup::query()->with([
+            'returnRequest.orderItem.product:id,weight_kg',
+            'returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+            'returnRequest.salesOrderItem.product:id,weight_kg',
+            'returnRequest.salesOrderItem.variation:id,weight_kg',
+            'returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
+            'destinationBranch:id,latitude,longitude',
+        ])
             ->where('store_id', $trip->store_id)->whereNull('trip_id')
             ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
             ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
@@ -1034,7 +1059,7 @@ class DeliveryTripController extends Controller
     private function supplierPickupSuggestionRows(DeliveryTrip $trip): array
     {
         return PurchaseOrder::query()
-            ->with(['supplier:id,supplier_name,address,latitude,longitude', 'branch:id,name,address,city,province,latitude,longitude', 'items.product:id,weight_kg', 'shipment'])
+            ->with(['supplier:id,supplier_name,address,latitude,longitude', 'branch:id,name,address,city,province,latitude,longitude', 'items.product:id,weight_kg', 'items.variation:id,weight_kg', 'shipment'])
             ->where('store_id', $trip->store_id)
             ->where('status', 'supplier_accepted')
             ->where(fn ($query) => $query->whereNull('fulfillment_method')->orWhere('fulfillment_method', '!=', 'supplier_delivery'))
@@ -1043,7 +1068,7 @@ class DeliveryTripController extends Controller
             ->get()
             ->map(function (PurchaseOrder $order): array {
                 $address = collect([$order->branch?->address, $order->branch?->city, $order->branch?->province])->filter()->implode(', ');
-                $weight = $order->items->sum(fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0));
+                $weight = $this->purchaseOrderWeight($order->items);
                 return [
                     'id' => 'pickup-'.$order->id,
                     'source_type' => 'pickup',
@@ -1064,7 +1089,7 @@ class DeliveryTripController extends Controller
     private function stockTransferSuggestionRows(DeliveryTrip $trip): array
     {
         return \App\Models\Inventory\StockTransfer::query()
-            ->with(['toBranch:id,address,latitude,longitude,city,province', 'fromBranch:id,latitude,longitude', 'items.product:id,weight_kg'])
+            ->with(['toBranch:id,address,latitude,longitude,city,province', 'fromBranch:id,latitude,longitude', 'items.product:id,weight_kg', 'items.variation:id,weight_kg'])
             ->where('store_id', $trip->store_id)
             ->whereNull('trip_id')
             ->where('status', 'in_transit')
@@ -1229,7 +1254,7 @@ class DeliveryTripController extends Controller
         DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers) {
             if ($validated['source_type'] === 'ecommerce') {
                 $orders = EcommerceOrder::query()
-                    ->with(['items.product:id,weight_kg'])
+                    ->with(['items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->get();
@@ -1310,7 +1335,7 @@ class DeliveryTripController extends Controller
                 }
             } elseif ($validated['source_type'] === 'sales') {
                 $orders = SalesOrder::query()
-                    ->with(['items.product:id,weight_kg'])
+                    ->with(['items.product:id,weight_kg', 'items.variation:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->where('delivery_required', true)
@@ -1385,7 +1410,13 @@ class DeliveryTripController extends Controller
                     $currentStops++;
                 }
             } elseif ($validated['source_type'] === 'return_pickup') {
-                $pickups = ReturnPickup::query()->with(['returnRequest.orderItem.product:id,weight_kg'])
+                $pickups = ReturnPickup::query()->with([
+                    'returnRequest.orderItem.product:id,weight_kg',
+                    'returnRequest.orderItem.branchInventory.variation:id,weight_kg',
+                    'returnRequest.salesOrderItem.product:id,weight_kg',
+                    'returnRequest.salesOrderItem.variation:id,weight_kg',
+                    'returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
+                ])
                     ->whereIn('id', $validated['order_ids'])->where('store_id', $trip->store_id)
                     ->whereNull('trip_id')->whereIn('status', ['ready_for_dispatch', 'scheduled'])
                     ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
@@ -1472,7 +1503,7 @@ class DeliveryTripController extends Controller
                 }
             } elseif ($validated['source_type'] === 'pickup') {
                 $orders = PurchaseOrder::query()
-                    ->with(['supplier', 'branch', 'items.product', 'shipment'])
+                    ->with(['supplier', 'branch', 'items.product:id,weight_kg', 'items.variation:id,weight_kg', 'shipment'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->where('status', 'supplier_accepted')
@@ -1486,7 +1517,7 @@ class DeliveryTripController extends Controller
                     if ($shipment && (string) $shipment->status !== 'pending') { $skipped++; continue; }
                     if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
 
-                    $weight = (float) $order->items->sum(fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0));
+                    $weight = $this->purchaseOrderWeight($order->items);
                     if ($capacityKg > 0 && ($currentWeight + $weight) > $capacityKg) { $overCapacity++; continue; }
                     $driver = User::query()->with('employee')->find($trip->driver_user_id);
                     $shipment = $shipment ?: new PurchaseOrderShipment(['purchase_order_id' => $order->id]);
@@ -1526,7 +1557,7 @@ class DeliveryTripController extends Controller
                 }
             } else {
                 $transfers = \App\Models\Inventory\StockTransfer::query()
-                    ->with(['fromBranch:id,name,latitude,longitude', 'toBranch:id,name,address,latitude,longitude,city,province', 'items.product:id,weight_kg'])
+                    ->with(['fromBranch:id,name,latitude,longitude', 'toBranch:id,name,address,latitude,longitude,city,province', 'items.product:id,weight_kg', 'items.variation:id,weight_kg'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->whereNull('trip_id')
@@ -1791,7 +1822,6 @@ class DeliveryTripController extends Controller
             'stockTransfers.items.variation:id,weight_kg',
             'replacementReturns.orderItem.product:id,weight_kg',
             'replacementReturns.orderItem.branchInventory.variation:id,weight_kg',
-            'replacementReturns.salesOrderItem.variation:id,weight_kg',
             'replacementReturns.salesOrderItem.product:id,weight_kg',
             'replacementReturns.salesOrderItem.variation:id,weight_kg',
             'replacementReturns.salesOrderItem.branchInventory.variation:id,weight_kg',
@@ -1801,7 +1831,10 @@ class DeliveryTripController extends Controller
         ]);
 
         if ($this->supportsSupplierPickupTrips()) {
-            $trip->loadMissing('purchaseOrderShipments.purchaseOrder.items.product:id,weight_kg');
+            $trip->loadMissing([
+                'purchaseOrderShipments.purchaseOrder.items.product:id,weight_kg',
+                'purchaseOrderShipments.purchaseOrder.items.variation:id,weight_kg',
+            ]);
         }
 
         foreach ($trip->ecommerceDeliveries as $delivery) {
@@ -1841,9 +1874,7 @@ class DeliveryTripController extends Controller
         if ($this->supportsSupplierPickupTrips()) {
             foreach ($trip->purchaseOrderShipments as $shipment) {
                 if (in_array(strtolower((string) $shipment->status), ['delivered', 'cancelled'], true)) continue;
-                $weight += collect($shipment->purchaseOrder?->items ?? [])->sum(
-                    fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0)
-                );
+                $weight += $this->purchaseOrderWeight($shipment->purchaseOrder?->items ?? []);
             }
         }
 
@@ -1871,11 +1902,17 @@ class DeliveryTripController extends Controller
     private function itemUnitWeight($item): float
     {
         return (float) (
-            $item?->branchInventory?->variation?->weight_kg
+            $item?->weight_kg
+            ?? $item?->branchInventory?->variation?->weight_kg
             ?? $item?->variation?->weight_kg
             ?? $item?->product?->weight_kg
             ?? 0
         );
+    }
+
+    private function purchaseOrderWeight($items): float
+    {
+        return collect($items)->sum(fn ($item) => $this->itemUnitWeight($item) * (float) ($item->quantity_ordered ?? 0));
     }
 
     public function unavailableDepartureDates(Request $request): JsonResponse

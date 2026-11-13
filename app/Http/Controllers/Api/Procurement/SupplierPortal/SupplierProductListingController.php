@@ -397,6 +397,7 @@ class SupplierProductListingController extends Controller
                 ->whereNull('variation_id')
                 ->orderByDesc('is_primary')->orderBy('display_order');
         }, 'variations' => function ($query) {
+            $query->orderBy('id');
             $query->with(['assets' => function ($assetQuery) {
                 $assetQuery->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
                     ->orderByDesc('is_primary')->orderBy('display_order');
@@ -429,7 +430,10 @@ class SupplierProductListingController extends Controller
                 'color' => $variation->color,
                 'size' => $variation->size,
                 'material' => $variation->material,
+                'texture' => $variation->texture,
+                'finish' => $variation->finish,
                 'base_cost' => (float) $variation->cost_price,
+                'is_active' => (bool) $variation->is_active,
                 'dimensions' => [
                     'length_cm' => $variation->length_cm,
                     'width_cm' => $variation->width_cm,
@@ -442,6 +446,38 @@ class SupplierProductListingController extends Controller
             ])->values(),
             'offers' => $offers,
         ]]);
+    }
+
+    public function archiveVariant(Request $request, int $listingId, int $variationId): JsonResponse
+    {
+        $portal = SupplierPortal::query()->where('user_id', $request->user()->id)->firstOrFail();
+        $supplierIds = $portal->linkedSupplierIds();
+        $listing = DB::table('supplier_products')
+            ->whereIn('supplier_id', $supplierIds)
+            ->where('id', $listingId)
+            ->first();
+
+        abort_unless($listing, 404);
+
+        $variation = ProductVariation::query()
+            ->where('product_id', (int) $listing->product_id)
+            ->where('store_id', (int) DB::table('suppliers')->whereIn('id', $supplierIds)->where('id', $listing->supplier_id)->value('store_id'))
+            ->whereKey($variationId)
+            ->firstOrFail();
+
+        DB::transaction(function () use ($variation): void {
+            $locked = ProductVariation::query()
+                ->where('store_id', $variation->store_id)
+                ->where('product_id', $variation->product_id)
+                ->whereKey($variation->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($locked->is_active) {
+                $locked->forceFill(['is_active' => false])->save();
+            }
+        });
+
+        return response()->json(['success' => true, 'message' => 'Variant archived and removed from Procurement availability.']);
     }
 
     public function update(Request $request, int $listingId): JsonResponse
@@ -505,7 +541,8 @@ class SupplierProductListingController extends Controller
 
         $allowed = ['color', 'size', 'material', 'texture', 'finish'];
         foreach ($attributes as $key => $value) {
-            if (!in_array($key, $allowed, true) || (!is_string($value) && $value !== null) || mb_strlen((string) $value) > 100) {
+            $maxLength = in_array($key, ['color', 'size'], true) ? 50 : 100;
+            if (!in_array($key, $allowed, true) || (!is_string($value) && $value !== null) || mb_strlen((string) $value) > $maxLength) {
                 throw ValidationException::withMessages(['variation_attributes' => ['Enter valid values for the variation attribute fields.']]);
             }
         }
@@ -520,7 +557,8 @@ class SupplierProductListingController extends Controller
             $attributes = [];
             foreach (['color', 'size', 'material', 'texture', 'finish'] as $field) {
                 $value = $variant[$field] ?? '';
-                if (!is_string($value) || mb_strlen($value) > 100) {
+                $maxLength = in_array($field, ['color', 'size'], true) ? 50 : 100;
+                if (!is_string($value) || mb_strlen($value) > $maxLength) {
                     throw ValidationException::withMessages(["variants.{$index}.{$field}" => ['Enter a valid variation attribute (maximum 100 characters).']]);
                 }
                 $attributes[$field] = $value;

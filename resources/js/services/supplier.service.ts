@@ -308,6 +308,11 @@ class SupplierService {
     return response.data
   }
 
+  async archiveProductVariant(listingId: number | string, variationId: number | string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/products/${listingId}/variants/${variationId}/archive`)
+    return response.data
+  }
+
   async getLinkedStores() {
     const response = await axiosClient.get(`${this.portalBaseUrl}/stores/linked`)
     return response.data

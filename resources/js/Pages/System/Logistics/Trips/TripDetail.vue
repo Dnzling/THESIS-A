@@ -462,7 +462,7 @@ const assignedOrders = computed(() => {
       delivery_date: shipment.expected_delivery_date || trip.value.scheduled_departure_at,
       status: shipment.status || 'pending',
       distance_km: trip.value.route_distances?.[`pickup:${order?.id}`],
-      weight_kg: items.reduce((total: number, item: any) => total + Number(item.product?.weight_kg || 0) * Number(item.quantity_ordered || 0), 0),
+      weight_kg: items.reduce((total: number, item: any) => total + unitWeight(item) * Number(item.quantity_ordered || 0), 0),
       order_id: order?.id,
       is_return: false,
     }
@@ -883,7 +883,8 @@ const calcWeight = (items: any[]) => {
 }
 
 const unitWeight = (item: any) => Number(
-  item?.branch_inventory?.variation?.weight_kg
+  item?.weight_kg
+  ?? item?.branch_inventory?.variation?.weight_kg
   ?? item?.variation?.weight_kg
   ?? item?.product?.weight_kg
   ?? 0,

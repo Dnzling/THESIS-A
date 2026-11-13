@@ -31,6 +31,8 @@ Route::prefix('supplier-portal')->group(function () {
         Route::post('/product-categories', [SupplierProductListingController::class, 'createCategory']);
         Route::get('/products/{listingId}', [SupplierProductListingController::class, 'show'])->whereNumber('listingId');
         Route::put('/products/{listingId}', [SupplierProductListingController::class, 'update'])->whereNumber('listingId');
+        Route::post('/products/{listingId}/variants/{variationId}/archive', [SupplierProductListingController::class, 'archiveVariant'])
+            ->whereNumber(['listingId', 'variationId']);
         Route::get('/stores/linked', [SupplierPortalController::class, 'getLinkedStores']);
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
         Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);

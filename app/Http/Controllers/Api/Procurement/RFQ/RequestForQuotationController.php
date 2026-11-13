@@ -777,7 +777,29 @@ class RequestForQuotationController extends Controller
                     ]);
                 }
 
-                $alreadyApproved = DB::table('supplier_rfq_feedbacks as feedback')
+                if (($listing->availability_status ?? 'available') === 'out_of_stock') {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This supplier has marked the product unavailable.',
+                    ]);
+                }
+
+                $activeVariants = ProductVariation::query()
+                    ->where('store_id', $storeId)
+                    ->where('product_id', (int) $item['product_id'])
+                    ->where('is_active', true);
+                if ($activeVariants->exists()) {
+                    if (empty($item['variation_id']) || !$activeVariants->whereKey((int) $item['variation_id'])->exists()) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.variation_id" => 'Select an active supplier variant for this product.',
+                        ]);
+                    }
+                } elseif (!empty($item['variation_id'])) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.variation_id" => 'The selected variant is not available for this product.',
+                    ]);
+                }
+
+                $alreadyApprovedQuery = DB::table('supplier_rfq_feedbacks as feedback')
                     ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
                     ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
                     ->where('rfq.store_id', $storeId)
@@ -789,8 +811,15 @@ class RequestForQuotationController extends Controller
                         if ($supplier->supplier_portal_id) {
                             $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
                         }
-                    })
-                    ->exists();
+                    });
+
+                if (!empty($item['variation_id'])) {
+                    $alreadyApprovedQuery->where('rfq_item.variation_id', (int) $item['variation_id']);
+                } else {
+                    $alreadyApprovedQuery->whereNull('rfq_item.variation_id');
+                }
+
+                $alreadyApproved = $alreadyApprovedQuery->exists();
 
                 if ($alreadyApproved) {
                     throw ValidationException::withMessages([

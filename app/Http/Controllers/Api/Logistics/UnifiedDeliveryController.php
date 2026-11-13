@@ -185,7 +185,7 @@ class UnifiedDeliveryController extends Controller
             return collect();
         }
 
-        $shipments = PurchaseOrderShipment::with(['purchaseOrder.supplier', 'purchaseOrder.branch', 'purchaseOrder.items.product', 'vehicle:id,vehicle_name,plate_number,vehicle_type'])
+        $shipments = PurchaseOrderShipment::with(['purchaseOrder.supplier', 'purchaseOrder.branch', 'purchaseOrder.items.product', 'purchaseOrder.items.variation', 'vehicle:id,vehicle_name,plate_number,vehicle_type'])
             ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
             ->get()
             ->map(function (PurchaseOrderShipment $pickup): array {
@@ -220,7 +220,7 @@ class UnifiedDeliveryController extends Controller
             ->toBase();
 
         $awaitingAssignment = PurchaseOrder::query()
-            ->with(['supplier', 'branch', 'items.product'])
+            ->with(['supplier', 'branch', 'items.product', 'items.variation'])
             ->where('store_id', $storeId)
             ->where('status', 'supplier_accepted')
             ->where(function ($query) {
@@ -321,12 +321,15 @@ class UnifiedDeliveryController extends Controller
                 'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,status,return_type,replacement_trip_id,created_at',
                 'returnRequest.order:id,order_number,assigned_branch_id,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude,created_at',
                 'returnRequest.order.assignedBranch:id,name,latitude,longitude',
-                'returnRequest.orderItem:id,order_id,product_id,quantity,unit_price',
+                'returnRequest.orderItem:id,order_id,product_id,branch_inventory_id,quantity,unit_price',
                 'returnRequest.orderItem.product:id,weight_kg',
+                'returnRequest.orderItem.branchInventory.variation:id,weight_kg',
                 'returnRequest.salesOrder:id,order_number,branch_id,customer_name,customer_phone,delivery_email,delivery_address,delivery_latitude,delivery_longitude,created_at',
                 'returnRequest.salesOrder.branch:id,name,address,latitude,longitude',
                 'returnRequest.salesOrderItem:id,product_id,variation_id,branch_inventory_id,quantity,unit_price',
                 'returnRequest.salesOrderItem.product:id,weight_kg',
+                'returnRequest.salesOrderItem.variation:id,weight_kg',
+                'returnRequest.salesOrderItem.branchInventory.variation:id,weight_kg',
                 'returnRequest.user:id,fname,lname,email',
             ])
             ->where('store_id', $storeId)
@@ -373,7 +376,12 @@ class UnifiedDeliveryController extends Controller
                     'delivery_status' => $deliveryStatus,
                     'tracking_number' => null,
                     'can_create_delivery' => $deliveryStatus === 'ready_for_dispatch',
-                    'weight_kg' => (float) ($orderItem?->product?->weight_kg ?? 0) * $quantity,
+                    'weight_kg' => (float) (
+                        $orderItem?->branchInventory?->variation?->weight_kg
+                        ?? $orderItem?->variation?->weight_kg
+                        ?? $orderItem?->product?->weight_kg
+                        ?? 0
+                    ) * $quantity,
                     'quantity_items' => $quantity,
                     'delivery_date' => $pickup->picked_up_at ?? $pickup->scheduled_at ?? $pickup->created_at,
                     'expected_pickup_date' => $pickup->scheduled_at,
@@ -399,6 +407,7 @@ class UnifiedDeliveryController extends Controller
                 'toBranch:id,name,address,latitude,longitude,contact_number',
                 'items:id,transfer_id,product_id,variation_id,requested_quantity,approved_quantity',
                 'items.product:id,weight_kg',
+                'items.variation:id,weight_kg',
             ])
             ->where('store_id', $storeId)
             ->whereIn('status', ['sender_approved', 'in_transit', 'out_for_delivery'])
@@ -1982,8 +1991,9 @@ class UnifiedDeliveryController extends Controller
                 'assignedBranch:id,name,address,latitude,longitude',
                 'delivery:id,order_id,tracking_number,status,driver_user_id,vehicle_id,estimated_delivery_at,delivered_at,created_at,updated_at',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type',
-                'items:id,order_id,product_id,quantity',
+                'items:id,order_id,product_id,branch_inventory_id,quantity',
                 'items.product:id,weight_kg',
+                'items.branchInventory.variation:id,weight_kg',
             ])
             ->select([
                 'id',
@@ -2051,8 +2061,10 @@ class UnifiedDeliveryController extends Controller
                 'branch:id,name,latitude,longitude',
                 'delivery:id,sales_order_id,tracking_number,status,driver_user_id,scheduled_delivery_at,delivered_at,created_at,updated_at',
                 'delivery.logs:id,delivery_id,event_type,meta,created_at',
-                'items:id,order_id,product_id,quantity',
+                'items:id,order_id,product_id,variation_id,branch_inventory_id,quantity',
                 'items.product:id,weight_kg',
+                'items.variation:id,weight_kg',
+                'items.branchInventory.variation:id,weight_kg',
             ])
             ->select([
                 'id',
@@ -2423,7 +2435,11 @@ class UnifiedDeliveryController extends Controller
     {
         $total = 0.0;
         foreach ($items as $item) {
-            $weight = (float) ($item->product?->weight_kg ?? 0);
+            $weight = (float) ($item->weight_kg
+                ?? $item->branchInventory?->variation?->weight_kg
+                ?? $item->variation?->weight_kg
+                ?? $item->product?->weight_kg
+                ?? 0);
             $quantity = (int) ($item->quantity ?? $item->quantity_ordered ?? $item->approved_quantity ?? $item->requested_quantity ?? 0);
             $total += $weight * $quantity;
         }
