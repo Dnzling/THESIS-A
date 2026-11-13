@@ -16,7 +16,9 @@ class ProductObserver
     public function created(Product $product): void
     {
         $branches = Branch::where('store_id', $product->store_id)->get();
-        $reorderPoint = (int) ($product->reorder_point ?? 10);
+        // Reorder thresholds are branch-scoped; a new catalog product has no
+        // threshold until its branch inventory or reorder rule is configured.
+        $reorderPoint = 0;
 
         foreach ($branches as $branch) {
             $exists = BranchInventory::where('branch_id', $branch->id)
@@ -39,8 +41,8 @@ class ProductObserver
                 'quantity_damaged'  => 0,
                 'quantity_incoming' => 0,
                 'reorder_point'     => $reorderPoint,
-                'reorder_quantity'  => 10,
-                'safety_stock'      => 5,
+                'reorder_quantity'  => 0,
+                'safety_stock'      => 0,
                 'maximum_stock'     => 0,
                 'stock_status'      => 'out_of_stock',
             ]);
@@ -61,7 +63,7 @@ class ProductObserver
                     'alert_type'                 => 'out_of_stock',
                     'current_quantity'           => 0,
                     'reorder_point'              => $reorderPoint,
-                    'recommended_order_quantity' => 10,
+                    'recommended_order_quantity' => 0,
                     'status'                     => 'active',
                 ]);
             }

@@ -597,9 +597,9 @@ class ReturnPickupController extends Controller
 
     public function updateLocation(Request $request, ReturnPickup $pickup): JsonResponse
     {
-        if ((int) $pickup->store_id !== (int) $request->user()->store_id || ($request->user()->hasRole('driver') && (int) $pickup->driver_user_id !== (int) $request->user()->id)) abort(403);
+        if ((int) $pickup->store_id !== (int) $request->user()->store_id || (int) $pickup->driver_user_id !== (int) $request->user()->id) abort(403);
         $data = $request->validate(['latitude' => 'required|numeric|between:-90,90', 'longitude' => 'required|numeric|between:-180,180', 'location_address' => 'nullable|string|max:2000']);
-        if (!in_array($pickup->status, ['assigned', 'picked_up', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is only available while the return pickup is assigned or in transit.'], 422);
+        if (!in_array($pickup->status, ['picked_up', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is available after the return pickup has started.'], 422);
         $pickup->update(['current_latitude' => $data['latitude'], 'current_longitude' => $data['longitude'], 'current_address' => $data['location_address'] ?? $pickup->current_address]);
         return response()->json(['success' => true, 'data' => $pickup->fresh()]);
     }

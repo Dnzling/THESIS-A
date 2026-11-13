@@ -1608,7 +1608,7 @@ class UnifiedDeliveryController extends Controller
             if (!$delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
             }
-            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
             $deliveryStatus = strtolower((string) $delivery->status);
@@ -1648,7 +1648,7 @@ class UnifiedDeliveryController extends Controller
             if (!$delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
             }
-            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $delivery->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
             $deliveryStatus = strtolower((string) $delivery->status);
@@ -1673,7 +1673,7 @@ class UnifiedDeliveryController extends Controller
             $transfer = StockTransfer::query()
                 ->where('store_id', $this->resolveStoreId($request))
                 ->findOrFail($orderId);
-            if ($request->user()->hasRole('driver') && (int) $transfer->driver_user_id !== (int) $request->user()->id) {
+            if ((int) $transfer->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
             if (!in_array(strtolower((string) $transfer->delivery_status), ['in_transit', 'out_for_delivery'], true)) {
@@ -1706,7 +1706,7 @@ class UnifiedDeliveryController extends Controller
         if ((int) $pickup->driver_user_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
         }
-        if (!in_array(strtolower((string) $pickup->status), ['pending', 'en_route_to_supplier', 'in_transit', 'out_for_delivery'], true)) {
+        if (!in_array(strtolower((string) $pickup->status), ['en_route_to_supplier', 'in_transit', 'out_for_delivery'], true)) {
             return response()->json(['success' => false, 'message' => 'Live tracking is only available while the pickup is in transit.'], 422);
         }
 

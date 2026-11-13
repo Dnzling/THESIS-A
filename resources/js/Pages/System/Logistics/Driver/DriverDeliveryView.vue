@@ -813,6 +813,22 @@ const isAssignedDriver = computed(() => {
   const assignedDriverId = Number(detail.value?.delivery?.driver_user_id)
   return userId > 0 && assignedDriverId > 0 && userId === assignedDriverId
 })
+const canTrackOwnLocation = computed(() => {
+  if (!isAssignedDriver.value) return false
+
+  const status = currentDeliveryStatus.value
+  if (source.value === 'pickup') {
+    return ['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(status)
+  }
+  if (source.value === 'return_pickup') {
+    return ['picked_up', 'out_for_delivery'].includes(status)
+  }
+  if (source.value === 'replacement') return status === 'out_for_delivery'
+  if (['ecommerce', 'sales', 'stock_transfer'].includes(source.value)) {
+    return ['in_transit', 'out_for_delivery'].includes(status)
+  }
+  return false
+})
 const canOperateDelivery = computed(() =>
   isAssignedDriver.value
   && (source.value !== 'pickup' || authStore.hasPermission('logistics.driver.supplier-pickups')),
@@ -1232,7 +1248,9 @@ const submitPickupStatus = async () => {
       : NaN
     let hasTrackedLocation = Number.isFinite(latitude) && Number.isFinite(longitude)
 
-    if (['return_pickup', 'replacement'].includes(source.value) && !hasTrackedLocation) {
+    const canCaptureActionLocation = source.value === 'replacement'
+      || (source.value === 'return_pickup' && currentDeliveryStatus.value !== 'assigned')
+    if (canCaptureActionLocation && !hasTrackedLocation) {
       const point = await coordinates()
       latitude = point.latitude
       longitude = point.longitude
@@ -1315,6 +1333,8 @@ const submitPickupStatus = async () => {
 }
 
 const shareLocation = async () => {
+  if (!canTrackOwnLocation.value) return
+
   sharingLocation.value = true
 
   try {
@@ -1342,6 +1362,7 @@ const sendLiveLocation = async (
   refresh = false,
 ) => {
   if (
+    !canTrackOwnLocation.value ||
     !['pickup', 'ecommerce', 'sales', 'stock_transfer', 'return_pickup', 'replacement'].includes(
       source.value,
     ) ||
@@ -1390,9 +1411,9 @@ const updateTrackingState = () => {
       source.value,
     ) &&
     (source.value === 'pickup'
-      ? ['pending', 'en_route_to_supplier', 'in_transit', 'out_for_delivery']
+      ? ['en_route_to_supplier', 'in_transit', 'out_for_delivery']
       : source.value === 'return_pickup'
-        ? ['assigned', 'picked_up', 'out_for_delivery']
+        ? ['picked_up', 'out_for_delivery']
         : source.value === 'replacement'
           ? ['out_for_delivery']
           : ['in_transit', 'out_for_delivery']).includes(
@@ -1401,19 +1422,17 @@ const updateTrackingState = () => {
 
   trackingActive.value = shouldTrack
 
-  const canSharePickupLocation = source.value !== 'pickup' || canOperateDelivery.value
-  if (shouldTrack && canSharePickupLocation && locationWatcher === null) {
+  if (shouldTrack && canTrackOwnLocation.value && locationWatcher === null) {
     startLocationTracking()
   }
 
-  if ((!shouldTrack || !canSharePickupLocation) && locationWatcher !== null) {
+  if ((!shouldTrack || !canTrackOwnLocation.value) && locationWatcher !== null) {
     stopLocationTracking()
   }
 }
 
 const startLocationTracking = () => {
-  if (source.value === 'replacement' && !isAssignedDriver.value) return
-  if (source.value === 'pickup' && !canOperateDelivery.value) return
+  if (!canTrackOwnLocation.value) return
   if (!navigator.geolocation || locationWatcher !== null) return
 
   coordinates()

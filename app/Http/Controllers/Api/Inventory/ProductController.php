@@ -123,9 +123,6 @@ class ProductController extends Controller
             'unit_of_measurement' => $data['unit_of_measurement'] ?? null,
             'supplier_name' => $data['supplier_name'] ?? null,
             'initial_stock' => $data['initial_stock'] ?? null,
-            'reorder_point' => array_key_exists('reorder_point', $data)
-                ? (int) $data['reorder_point']
-                : 10,
             'created_by' => auth()->id(),
         ];
 
@@ -632,13 +629,7 @@ class ProductController extends Controller
 
             DB::beginTransaction();
 
-            $productPayload = $this->buildProductPayload($validated, $context['store_id']);
-            if ($reorderScope === 'branch') {
-                // Do not apply a branch-only threshold as a store-wide fallback
-                // to inventory rows in the other branches.
-                $productPayload['reorder_point'] = 0;
-            }
-            $product = Product::create($productPayload);
+            $product = Product::create($this->buildProductPayload($validated, $context['store_id']));
             if (array_key_exists('tag_ids', $validated)) {
                 $this->syncProductTags($product, $validated['tag_ids'] ?? [], $context['store_id']);
             }

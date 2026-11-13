@@ -259,6 +259,7 @@ class ProductController extends BaseController
             }
 
             $data = $validated;
+            unset($data['reorder_point'], $data['reorder_quantity']);
             $data['store_id'] = $this->getStoreId();
             $data['stock_status'] = 'In Stock';
             $data['product_type'] = $validated['product_type'] ?? 'finished_good';
@@ -273,7 +274,7 @@ class ProductController extends BaseController
                 $this->ensureBranchInventoryRowsForProduct(
                     $product->id,
                     (int) $this->getStoreId(),
-                    (int) ($product->reorder_point ?? 0),
+                    (int) ($validated['reorder_point'] ?? 0),
                     (int) ($validated['reorder_quantity'] ?? 25),
                 );
 
@@ -627,6 +628,7 @@ class ProductController extends BaseController
             try {
                 $data = $validated;
                 unset($data['room_ids']);
+                unset($data['reorder_point'], $data['reorder_quantity']);
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
                 if ($isPriceUpdateRequested) {
                     $data['base_price'] = $validated['base_price'] ?? $product->pending_base_price ?? $product->base_price;
@@ -652,6 +654,13 @@ class ProductController extends BaseController
                     $branchIds = Branch::query()
                         ->where('store_id', (int) $this->getStoreId())
                         ->pluck('id');
+
+                    BranchInventory::query()
+                        ->where('store_id', (int) $this->getStoreId())
+                        ->where('product_id', (int) $product->id)
+                        ->whereIn('branch_id', $branchIds)
+                        ->whereNull('variation_id')
+                        ->update(['reorder_point' => (int) ($validated['reorder_point'] ?? 0)]);
 
                     ReorderRule::query()
                         ->where('product_id', (int) $product->id)
