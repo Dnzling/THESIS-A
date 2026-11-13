@@ -174,11 +174,20 @@ class PositionSetupController extends Controller
             return;
         }
 
-        $plan = $store->subscriptionPlan;
-        abort_unless($plan && StoreSubscriptionAgreement::query()
+        $subscription = DB::table('stores')
+            ->where('id', $store->id)
+            ->first(['subscription_tier', 'subscription_status']);
+        $planId = (int) ($subscription->subscription_tier ?? 0);
+        $subscriptionStatus = strtolower(trim((string) ($subscription->subscription_status ?? '')));
+        $planKey = $planId > 0
+            ? DB::table('subscription_plans')->where('id', $planId)->value('plan_key')
+            : null;
+
+        abort_unless($planKey && in_array($subscriptionStatus, ['trial', 'paid'], true)
+            && StoreSubscriptionAgreement::query()
             ->where('store_id', $store->id)
-            ->where('plan_key', $plan->plan_key)
-            ->where('status', 'active')
-            ->exists(), 403, 'Sign and activate the store subscription agreement before continuing setup.');
+            ->where('plan_key', $planKey)
+            ->whereIn('status', ['active', 'pending_activation'])
+            ->exists(), 403, 'An active trial and signed subscription agreement are required before continuing setup.');
     }
 }
