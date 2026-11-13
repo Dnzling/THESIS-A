@@ -1,20 +1,23 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
+  <div class="space-y-6 p-4 text-sm md:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Budgets</h1>
-        <p class="text-gray-500 mt-1">Set and track budget allocations</p>
+        <h1 class="text-xl font-semibold tracking-tight text-slate-900">Budgets</h1>
+        <p class="mt-0.5 text-sm text-slate-500">Set and track budget allocations.</p>
       </div>
       <Button label="New Budget" icon="pi pi-plus" @click="showCreate = true" />
     </div>
 
-    <Card>
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
       <template #content>
-        <DataTable :value="budgets" :loading="loading" stripedRows responsiveLayout="scroll">
+        <DataTable :value="budgets" :loading="loading" rowHover paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]" responsiveLayout="scroll" class="p-datatable-sm text-xs">
+          <Column field="period_start" header="Date" sortable style="min-width: 145px">
+            <template #body="{ data }">{{ formatDate(data.period_start) }}</template>
+          </Column>
           <Column field="department" header="Department" />
           <Column field="category" header="Category" />
-          <Column field="period_start" header="Period">
-            <template #body="{ data }">{{ formatDate(data.period_start) }} - {{ formatDate(data.period_end) }}</template>
+          <Column field="period_end" header="Period End" sortable>
+            <template #body="{ data }">{{ formatDate(data.period_end) }}</template>
           </Column>
           <Column field="amount" header="Amount">
             <template #body="{ data }">₱ {{ formatMoney(data.amount) }}</template>
@@ -24,7 +27,7 @@
           </Column>
           <Column field="status" header="Status">
             <template #body="{ data }">
-              <Tag :value="data.status" :severity="data.status === 'active' ? 'success' : 'secondary'" />
+              <Badge :value="formatStatus(data.status)" :severity="data.status === 'active' ? 'success' : 'secondary'" />
             </template>
           </Column>
           <template #empty>
@@ -72,7 +75,7 @@ import { onMounted, ref } from 'vue'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -101,6 +104,8 @@ const formatDate = (date: string) => {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+const formatStatus = (status: string) => String(status || '').replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 
 const loadBudgets = async () => {
   loading.value = true

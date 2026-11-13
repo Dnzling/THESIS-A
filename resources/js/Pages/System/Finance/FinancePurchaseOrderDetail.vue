@@ -19,23 +19,6 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <div v-if="detail?.status === 'pending_finance_approval'" class="flex items-center gap-2">
-   
-          <button
-            @click="confirmReject"
-            class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-          >
-            <i class="pi pi-times text-sm"></i>
-            <span>Reject</span>
-          </button>
-                 <button
-            @click="confirmApprove"
-            class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <i class="pi pi-check text-sm"></i>
-            <span>Approve</span>
-          </button>
-        </div>
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="text-xs" />
       </div>
     </div>
@@ -84,11 +67,11 @@
 
     
 
-        <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
+        <div class="bg-gradient-to-br from-orange-600 to-orange-700 rounded-2xl p-5 shadow-lg">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Total Amount</span>
-            <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-              <i class="pi pi-credit-card text-white text-sm"></i>
+            <div class="w-10 h-8 rounded-full flex items-center justify-center">
+              <i class="pi pi-credit-card text-white text-xl"></i>
             </div>
           </div>
           <p class="text-2xl font-bold text-white tracking-tight">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</p>
@@ -225,7 +208,7 @@
             </p>
           </div>
   
-        <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
+        <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
           <p class="text-xs text-blue-100 font-medium uppercase tracking-wider mb-2">Total Amount</p>
           <p class="text-3xl font-bold text-white">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</p>
         </div>
@@ -294,6 +277,23 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div v-if="detail?.status === 'pending_finance_approval'" class="flex justify-end gap-2 border-t border-gray-200 pt-5">
+        <button
+          @click="confirmReject"
+          class="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+        >
+          <i class="pi pi-times text-sm"></i>
+          <span>Reject</span>
+        </button>
+        <button
+          @click="confirmApprove"
+          class="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700"
+        >
+          <i class="pi pi-check text-sm"></i>
+          <span>Approve</span>
+        </button>
       </div>
     </div>
   
@@ -517,13 +517,17 @@ const approvePO = async () => {
       life: 2000
     })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to approve purchase order', error)
+    const serverMessage = error?.response?.data?.message
+    const isSelfApprovalBlocked = String(serverMessage || '').toLowerCase().includes('self-approval')
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to approve purchase order',
-      life: 3000
+      summary: isSelfApprovalBlocked ? 'Approval Not Allowed' : 'Error',
+      detail: isSelfApprovalBlocked
+        ? 'You created this purchase order, and workflow settings do not allow self-approval for this amount. Ask another authorized finance approver to approve it.'
+        : serverMessage || 'Failed to approve purchase order',
+      life: 5000
     })
   }
 }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StockReturnRequest;
 use App\Models\Inventory\StockReturn;
 use App\Models\Inventory\StockReturnItem;
+use App\Models\Hr\Employee;
 use App\Services\Inventory\StockReturnService;
 use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
@@ -34,10 +35,27 @@ class StockReturnController extends Controller
      */
     private function getUserContext(): array
     {
+        $user = auth()->user();
+        $employee = $user && (!$user->store_id || !$user->branch_id)
+            ? Employee::query()->where('user_id', $user->id)->first(['store_id', 'branch_id'])
+            : null;
         return [
-            'store_id' => auth()->user()->store_id,
-            'branch_id' => auth()->user()->branch_id,
+            'store_id' => (int) ($user?->store_id ?? $employee?->store_id ?? 0),
+            'branch_id' => (int) ($user?->branch_id ?? $employee?->branch_id ?? 0),
         ];
+    }
+
+    private function requireAnyPermission(array $permissions): void
+    {
+        $user = auth()->user();
+        $storeId = (int) $this->getUserContext()['store_id'];
+        foreach ($permissions as $permission) {
+            $aliases = [$permission, str_replace('_', '-', $permission), str_replace('-', '_', $permission)];
+            foreach (array_unique($aliases) as $alias) {
+                if ($user && $user->hasPermissionTo($alias, $storeId)) return;
+            }
+        }
+        abort(403, 'You do not have permission to access this stock return action.');
     }
 
     /**
@@ -46,6 +64,7 @@ class StockReturnController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.view', 'inventory.stock_returns.manage']);
         try {
             $context = $this->getUserContext();
 
@@ -53,7 +72,7 @@ class StockReturnController extends Controller
                 'fromBranch',
                 'toBranch',
                 'supplier',
-                'requestedBy',
+                'requestedBy.user',
                 'approvedBy',
                 'items.product'
             ])
@@ -99,8 +118,10 @@ class StockReturnController extends Controller
             }
 
             // Sorting
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
+            $sortBy = in_array($request->get('sort_by'), ['requested_date', 'created_at'], true)
+                ? $request->get('sort_by')
+                : 'created_at';
+            $sortOrder = $request->get('sort_order') === 'asc' ? 'asc' : 'desc';
             $query->orderBy($sortBy, $sortOrder);
 
             $returns = $query->paginate($request->get('per_page', 15));
@@ -129,6 +150,7 @@ class StockReturnController extends Controller
      */
     public function store(StockReturnRequest $request): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.manage']);
         try {
             DB::beginTransaction();
 
@@ -136,6 +158,7 @@ class StockReturnController extends Controller
             $data = $request->validated();
             $data['store_id'] = $context['store_id'];
             $data['requested_by'] = EmployeeContext::currentEmployeeId();
+            abort_unless((int) $context['store_id'] > 0, 403, 'A store context is required to create a stock return.');
 
             $return = $this->stockReturnService->createReturn($data);
 
@@ -161,6 +184,7 @@ class StockReturnController extends Controller
      */
     public function show(StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.view', 'inventory.stock_returns.manage']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -207,6 +231,7 @@ class StockReturnController extends Controller
      */
     public function update(StockReturnRequest $request, StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.manage']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -252,6 +277,7 @@ class StockReturnController extends Controller
      */
     public function destroy(StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.manage']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -290,6 +316,7 @@ class StockReturnController extends Controller
      */
     public function approve(Request $request, StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.approve']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -328,6 +355,7 @@ class StockReturnController extends Controller
      */
     public function reject(Request $request, StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.approve']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -365,6 +393,7 @@ class StockReturnController extends Controller
      */
     public function ship(Request $request, StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.manage']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -406,6 +435,7 @@ class StockReturnController extends Controller
      */
     public function receive(Request $request, StockReturn $return): JsonResponse
     {
+        $this->requireAnyPermission(['inventory.stock_returns.manage']);
         try {
             // Check if user has access to this return
             $context = $this->getUserContext();
@@ -416,8 +446,16 @@ class StockReturnController extends Controller
                 ], 403);
             }
 
+            $validated = $request->validate([
+                'supplier_resolution' => $return->return_type === 'supplier_return'
+                    ? 'required|in:replacement,credit,repair,rejected,other'
+                    : 'nullable|in:replacement,credit,repair,rejected,other',
+                'supplier_resolution_notes' => 'nullable|string|max:2000',
+            ]);
+
             $return = $this->stockReturnService->receiveReturn($return, [
                 'received_by' => EmployeeContext::currentEmployeeId(),
+                ...$validated,
             ]);
 
             return response()->json([

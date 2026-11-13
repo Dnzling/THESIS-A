@@ -1,21 +1,16 @@
 <template>
-  <div :class="embedded ? 'space-y-6' : 'max-w-4xl mx-auto space-y-6 pb-6'">
+  <div :class="embedded ? 'space-y-4' : 'mx-auto max-w-7xl space-y-4 pb-6 text-sm'">
+    <ConfirmDialog />
     <!-- Header -->
-    <div v-if="!embedded" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div v-if="!embedded" class="flex flex-col gap-3 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 to-white p-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">
+        <h2 class="text-xl font-semibold text-slate-950">
           {{ isEditMode ? 'Edit Variation' : 'Add New Variation' }}
         </h2>
         <p class="text-sm text-gray-500 mt-1">
           {{ isEditMode ? 'Update variation details' : 'Create a new product variation' }}
         </p>
       </div>
-      <Button 
-        label="Back" 
-        icon="pi pi-arrow-left" 
-        text 
-        @click="$router.push({ name: 'merchandising.variations' })" 
-      />
     </div>
 
     <!-- Loading Skeleton -->
@@ -26,12 +21,12 @@
 
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit">
+      <div class="space-y-4">
       
       <!-- Basic Information Card -->
-      <Card class="mb-6">
+      <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-info-circle text-blue-600"></i>
             <span>Basic Information</span>
           </div>
         </template>
@@ -39,7 +34,7 @@
           <div class="space-y-4">
             
             <!-- Product Selection -->
-            <div v-if="!embedded" class="flex flex-col gap-2">
+            <div v-if="!embedded && !isInventoryContext" class="flex flex-col gap-2">
               <label for="product_id" class="text-sm font-semibold text-gray-700">
                 Product <span class="text-red-500">*</span>
               </label>
@@ -53,14 +48,16 @@
                 :class="{ 'p-invalid': errors.product_id }"
                 :loading="loadingProducts"
                 filter
+                size="small"
                 @change="onProductChange"
               />
               <small v-if="errors.product_id" class="text-red-500">{{ errors.product_id }}</small>
             </div>
 
-            <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <p class="text-sm font-semibold text-gray-800">{{ embeddedProduct?.product_name || 'Selected Product' }}</p>
-              <p class="text-xs text-gray-500 mt-1">SKU: <span class="font-mono font-semibold">{{ embeddedProduct?.sku || '—' }}</span></p>
+            <div v-else class="rounded-xl border border-orange-100 bg-orange-50 p-3">
+              <p class="text-xs font-medium text-orange-700">Standard product</p>
+              <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedProduct?.product_name || embeddedProduct?.product_name || 'Loading product...' }}</p>
+              <p class="mt-1 text-xs text-slate-500">SKU: <span class="font-mono font-semibold">{{ selectedProduct?.sku || embeddedProduct?.sku || '-' }}</span></p>
             </div>
 
             <!-- Variation SKU (Auto-generated) -->
@@ -90,6 +87,7 @@
                 v-model="form.variation_name" 
                 placeholder="e.g., Navy Blue - Large, Oak Wood Finish" 
                 :class="{ 'p-invalid': errors.variation_name }"
+                @input="generateSKU"
               />
               <small v-if="errors.variation_name" class="text-red-500">{{ errors.variation_name }}</small>
             </div>
@@ -99,10 +97,10 @@
       </Card>
 
       <!-- Attributes Card -->
-      <Card class="mb-6">
+      <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-palette text-purple-600"></i>
+
             <span>Variation Attributes</span>
           </div>
         </template>
@@ -167,80 +165,67 @@
               </div>
             </div>
 
-            <!-- Finish & Pattern -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="flex flex-col gap-2">
-                <label for="finish" class="text-sm font-semibold text-gray-700">
-                  Finish
-                </label>
-                <InputText 
-                  id="finish"
-                  v-model="form.finish" 
-                  placeholder="e.g., Matte, Glossy, Satin" 
-                  @input="generateSKU"
-                />
-              </div>
-
-              <div class="flex flex-col gap-2">
-                <label for="pattern" class="text-sm font-semibold text-gray-700">
-                  Pattern
-                </label>
-                <InputText 
-                  id="pattern"
-                  v-model="form.pattern" 
-                  placeholder="e.g., Solid, Striped, Checkered" 
-                />
-              </div>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="flex flex-col gap-2"><label class="text-sm font-semibold text-gray-700">Texture</label><InputText v-model="form.texture" placeholder="e.g., Smooth, Woven" /></div>
+              <div class="flex flex-col gap-2"><label class="text-sm font-semibold text-gray-700">Finish</label><InputText v-model="form.finish" placeholder="e.g., Matte, Glossy" /></div>
             </div>
+            <small v-if="errors.variation_attributes" class="block text-red-600">{{ errors.variation_attributes }}</small>
+            <p class="rounded-lg bg-slate-50 p-2 text-xs text-slate-500">New variants start with the standard product attributes. Change at least one attribute. The full attribute combination must be unique.</p>
 
           </div>
         </template>
       </Card>
 
       <!-- Pricing Card -->
-      <Card class="mb-6">
+      <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-dollar text-green-600"></i>
             <span>Pricing</span>
           </div>
         </template>
         <template #content>
-          <div class="space-y-4">
-            
-            <div v-if="basePrice" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p class="text-sm font-semibold text-blue-900">Base Product Price: ₱{{ formatPrice(basePrice) }}</p>
-            </div>
-
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
-              <label for="price_adjustment" class="text-sm font-semibold text-gray-700">
-                Price Adjustment (₱)
-              </label>
-              <InputNumber 
-                id="price_adjustment"
-                v-model="form.price_adjustment" 
-                mode="currency" 
-                currency="PHP" 
-                locale="en-PH"
-                :minFractionDigits="2"
-                fluid
+              <label for="base_price" class="text-sm font-semibold text-gray-700">Selling Price Override</label>
+              <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" :class="{ 'p-invalid': errors.base_price }" />
+              <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
+              <small class="text-slate-500">Leave blank to inherit the parent selling price ({{ formatMoney(selectedProduct?.discounted_price ?? selectedProduct?.base_price) }}).</small>
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="discounted_price" class="text-sm font-semibold text-gray-700">Discounted Price</label>
+              <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" :class="{ 'p-invalid': errors.discounted_price }" />
+              <small v-if="errors.discounted_price" class="text-red-500">{{ errors.discounted_price }}</small>
+              <small class="text-slate-500">Optional and must be lower than the selling price.</small>
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="cost_price" class="text-sm font-semibold text-gray-700">Unit Cost Price</label>
+              <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" />
+              <small class="text-slate-500">Leave blank to use the parent cost. A value here overrides it for this variant.</small>
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="unit_of_measurement" class="text-sm font-semibold text-gray-700">Unit of Measurement</label>
+              <Select
+                id="unit_of_measurement"
+                v-model="form.unit_of_measurement"
+                :options="unitOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select unit"
+                filter
+                disabled
+                size="small"
+                class="w-full"
               />
-              <small class="text-gray-500">Add or subtract from base price. Use negative values for discounts.</small>
+              <small class="text-slate-500">Inherited from the parent product.</small>
             </div>
-
-            <div v-if="finalPrice !== null" class="bg-green-50 border border-green-200 rounded-lg p-4">
-              <p class="text-sm font-semibold text-green-900">Final Price: ₱{{ formatPrice(finalPrice) }}</p>
-            </div>
-
           </div>
         </template>
       </Card>
 
       <!-- Variant 3D Model Card -->
-      <Card class="mb-6">
+      <Card v-if="!proposalId && canUse3d" class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-box text-orange-600"></i>
             <span>Variant 3D Model</span>
           </div>
         </template>
@@ -324,6 +309,17 @@
               <small v-if="variantModelFile" class="text-blue-600">
                 Ready: {{ variantModelFile.name }}
               </small>
+              <Button
+                v-if="variantModelFile || form.custom_3d_model_id"
+                type="button"
+                label="Remove 3D model"
+                icon="pi pi-trash"
+                severity="danger"
+                outlined
+                size="small"
+                class="self-start"
+                @click="confirmRemoveModel"
+              />
               <small class="text-gray-500">If uploaded, this will be linked automatically to the variant.</small>
             </div>
 
@@ -341,21 +337,30 @@
               />
             </div>
 
-            <!-- Active Status -->
-            <div class="flex items-center gap-2 pt-3 border-t border-gray-200">
-              <Checkbox v-model="form.is_active" inputId="is_active" :binary="true" />
-              <label for="is_active" class="text-sm font-semibold text-gray-700 cursor-pointer">Active</label>
-            </div>
-
           </div>
         </template>
       </Card>
 
+      <!-- <Card v-else-if="!proposalId" class="h-fit border border-amber-200 bg-amber-50 shadow-sm">
+        <template #content>
+          <div class="flex items-start gap-3">
+            <i class="pi pi-lock mt-1 text-orange-600"></i>
+            <div>
+              <p class="font-semibold text-gray-900">Variant 3D models are locked</p>
+              <p class="mt-1 text-sm text-gray-600">
+                {{ upgradePlanName
+                  ? `Upgrade to ${upgradePlanName} to manage 3D models.`
+                  : 'No active subscription plan currently includes 3D management.' }}
+              </p>
+            </div>
+          </div>
+        </template>
+      </Card> -->
+
       <!-- Variant Photo Card -->
-      <Card class="mb-6">
+      <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-image text-sky-600"></i>
             <span>Variant Photo</span>
           </div>
         </template>
@@ -379,20 +384,29 @@
             <div v-if="variantImagePreviewUrl" class="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
               <img :src="variantImagePreviewUrl" alt="Variation photo preview" class="w-full aspect-square object-cover" />
             </div>
+            <Button
+              v-if="variantImageFile || form.custom_image_id"
+              type="button"
+              label="Remove photo"
+              icon="pi pi-trash"
+              severity="danger"
+              outlined
+              size="small"
+              @click="confirmRemoveImage"
+            />
           </div>
         </template>
       </Card>
 
       <!-- Variant Specs Card -->
-      <Card class="mb-6">
+      <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-ruler text-indigo-600"></i>
             <span>Variant Specs</span>
           </div>
         </template>
         <template #content>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-xs font-semibold text-gray-700">Length (cm)</label>
               <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
@@ -406,12 +420,19 @@
               <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
             </div>
             <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Depth (cm)</label>
+              <InputNumber v-model="form.depth_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
+            </div>
+            <div class="flex flex-col gap-2">
               <label class="text-xs font-semibold text-gray-700">Weight (kg)</label>
               <InputNumber v-model="form.weight_kg" :minFractionDigits="2" suffix=" kg" :min="0" fluid />
             </div>
           </div>
+          <p class="mt-3 text-xs text-slate-500">Leave dimensions blank to use the parent product's shipping dimensions. Enter only values that differ for this variant.</p>
         </template>
       </Card>
+
+      </div>
 
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3 pt-6 border-t border-gray-200">
@@ -419,11 +440,14 @@
           label="Cancel" 
           severity="secondary" 
           outlined 
-          @click="embedded ? emit('cancel') : $router.push({ name: 'merchandising.variations' })" 
+          size="small"
+          @click="embedded ? emit('cancel') : goBack()"
         />
         <Button 
           :label="isEditMode ? 'Update Variation' : 'Create Variation'" 
-          icon="pi pi-check" 
+          icon="pi pi-check"
+          severity="warn"
+          size="small"
           @click="handleSubmit"
           :loading="submitting"
         />
@@ -436,22 +460,26 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import merchandisingService from '../../../../services/merchandising.service'
+import inventoryService from '../../../../services/inventory.service'
 
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import Checkbox from 'primevue/checkbox'
 import Skeleton from 'primevue/skeleton'
 import ColorPicker from 'primevue/colorpicker'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
+import { useAuthStore } from '../../../../stores/auth'
 
 const props = withDefaults(defineProps<{
   embedded?: boolean
   embeddedProduct?: any
   embeddedVariation?: any
+  canManage3d?: boolean
 }>(), {
   embedded: false,
   embeddedProduct: null,
@@ -466,10 +494,14 @@ const emit = defineEmits<{
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
+const authStore = useAuthStore()
+const canUse3d = computed(() => props.canManage3d ?? authStore.hasPermission('merchandising.3d.manage'))
 
 const embedded = computed(() => !!props.embedded)
 const embeddedProduct = computed(() => props.embeddedProduct)
 const embeddedVariation = computed(() => props.embeddedVariation)
+const isInventoryContext = computed(() => String(route.name || '').startsWith('inventory.'))
 
 const isEditMode = computed(() => {
   if (embedded.value) return !!embeddedVariation.value?.id
@@ -482,10 +514,12 @@ const loadingProductModels = ref(false)
 const uploadingModel = ref(false)
 const products = ref([])
 const product3DModels = ref<any[]>([])
-const selectedProduct = ref(null)
+const selectedProduct = ref<any>(null)
 const variantModelFile = ref<File | null>(null)
 const variantImageFile = ref<File | null>(null)
 const variantImagePreviewUrl = ref('')
+const proposalId = computed(() => Number(route.query.proposal_id || 0) || null)
+const proposal = ref<any>(null)
 
 const form = reactive({
   product_id: null,
@@ -495,9 +529,12 @@ const form = reactive({
   color_hex: '#3B82F6',
   size: '',
   material: '',
+  texture: '',
   finish: '',
-  pattern: '',
-  price_adjustment: 0,
+  base_price: null as number | null,
+  discounted_price: null as number | null,
+  cost_price: null as number | null,
+  unit_of_measurement: '',
   custom_3d_model_id: null as number | null,
   custom_image_id: null as number | null,
   default_camera_angle_x: 0,
@@ -506,20 +543,31 @@ const form = reactive({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  depth_cm: null as number | null,
   weight_kg: null as number | null,
   is_active: true
 })
 
+const formatMoney = (value: any) => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const fallbackUnits = ['pcs', 'set', 'piece', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
+const unitOptions = computed(() => {
+  const source = fallbackUnits.map((unit) => ({ label: unit, value: unit }))
+  const current = form.unit_of_measurement
+  if (current && !source.some((option: any) => option.value === current)) {
+    source.unshift({ label: current, value: current })
+  }
+  return source
+})
+
 const errors = ref<Record<string, string>>({})
-
-const basePrice = computed(() => {
-  return selectedProduct.value?.base_price || 0
-})
-
-const finalPrice = computed(() => {
-  if (!basePrice.value) return null
-  return basePrice.value + (form.price_adjustment || 0)
-})
+const variationAttributeKeys = ['color', 'size', 'material', 'texture', 'finish'] as const
+const normalizeVariationAttributes = (attributes: any) => Object.fromEntries(
+  variationAttributeKeys.map((key) => [key, String(attributes?.[key] || '').trim()])
+)
+const variationAttributeSignature = (attributes: any) => JSON.stringify(
+  variationAttributeKeys.map((key) => String(attributes?.[key] || '').trim().toLocaleLowerCase())
+)
 
 const colorHexValue = computed({
   get: () => String(form.color_hex || '').replace('#', ''),
@@ -545,6 +593,19 @@ const selected3DModel = computed(() => {
 watch(() => form.product_id, (newVal) => {
   if (newVal) {
     selectedProduct.value = products.value.find((p: any) => p.id === newVal)
+      || (Number(embeddedProduct.value?.id) === Number(newVal) ? embeddedProduct.value : null)
+    if (!isEditMode.value && selectedProduct.value) {
+      Object.assign(form, normalizeVariationAttributes(selectedProduct.value.variation_attributes))
+      form.base_price = null
+      form.discounted_price = null
+      form.unit_of_measurement = selectedProduct.value.unit_of_measurement || ''
+      form.cost_price = null
+      form.length_cm = null
+      form.width_cm = null
+      form.height_cm = null
+      form.depth_cm = null
+      form.weight_kg = null
+    }
     generateSKU()
     loadProductModels(newVal)
   } else {
@@ -579,6 +640,10 @@ const loadProducts = async () => {
 }
 
 const loadProductModels = async (productId: number) => {
+  if (!canUse3d.value) {
+    product3DModels.value = []
+    return
+  }
   if (!productId) return
 
   loadingProductModels.value = true
@@ -616,22 +681,27 @@ const loadVariation = async () => {
       color_hex: variation.color_hex || '#3B82F6',
       size: variation.size || '',
       material: variation.material || '',
+      texture: variation.texture || '',
       finish: variation.finish || '',
-      pattern: variation.pattern || '',
-      price_adjustment: variation.price_adjustment || 0,
+      base_price: variation.base_price == null ? null : Number(variation.base_price),
+      discounted_price: variation.discounted_price == null ? null : Number(variation.discounted_price),
+      cost_price: variation.cost_price == null ? null : Number(variation.cost_price),
+      unit_of_measurement: variation.unit_of_measurement || variation.product?.unit_of_measurement || '',
       custom_3d_model_id: variation.custom_3d_model_id || null,
       custom_image_id: variation.custom_image_id || null,
       default_camera_angle_x: Number(variation?.custom_3d_model?.default_camera_angle_x ?? 0),
       default_camera_angle_y: Number(variation?.custom_3d_model?.default_camera_angle_y ?? 15),
       default_zoom_level: Number(variation?.custom_3d_model?.default_zoom_level ?? 1.5),
-      length_cm: variation.length_cm ?? null,
-      width_cm: variation.width_cm ?? null,
-      height_cm: variation.height_cm ?? null,
-      weight_kg: variation.weight_kg ?? null,
+      length_cm: variation.length_cm == null ? null : Number(variation.length_cm),
+      width_cm: variation.width_cm == null ? null : Number(variation.width_cm),
+      height_cm: variation.height_cm == null ? null : Number(variation.height_cm),
+      depth_cm: variation.depth_cm == null ? null : Number(variation.depth_cm),
+      weight_kg: variation.weight_kg == null ? null : Number(variation.weight_kg),
       is_active: variation.is_active
     })
 
     selectedProduct.value = variation.product
+    variantImagePreviewUrl.value = getModelUrl(variation.custom_image)
     if (variation.product_id) {
       await loadProductModels(variation.product_id)
     }
@@ -643,7 +713,11 @@ const loadVariation = async () => {
       life: 5000
     })
     if (!embedded.value) {
-      router.push({ name: 'merchandising.variations' })
+      if (isInventoryContext.value) {
+        router.push({ name: 'inventory.product-variations' })
+      } else {
+        router.push({ name: 'merchandising.variations' })
+      }
     }
   } finally {
     loadingData.value = false
@@ -655,6 +729,7 @@ const onProductChange = () => {
 }
 
 const handleVariantModelSelect = (event: Event) => {
+  if (!canUse3d.value) return
   const input = event.target as HTMLInputElement
   const file = input?.files?.[0] || null
   if (file && file.size > 100 * 1024 * 1024) {
@@ -684,6 +759,48 @@ const handleVariantImageSelect = (event: Event) => {
   if (file) {
     variantImagePreviewUrl.value = URL.createObjectURL(file)
   }
+}
+
+const clearImagePreview = () => {
+  if (variantImagePreviewUrl.value?.startsWith('blob:')) {
+    URL.revokeObjectURL(variantImagePreviewUrl.value)
+  }
+  variantImagePreviewUrl.value = ''
+}
+
+const confirmRemoveModel = () => {
+  confirm.require({
+    header: 'Remove 3D model?',
+    message: 'The 3D model will be unlinked from this variation after you save.',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Keep',
+    acceptLabel: 'Remove',
+    acceptClass: 'p-button-danger',
+    accept: () => {
+      variantModelFile.value = null
+      form.custom_3d_model_id = null
+      const input = document.getElementById('variant_model_upload') as HTMLInputElement | null
+      if (input) input.value = ''
+    },
+  })
+}
+
+const confirmRemoveImage = () => {
+  confirm.require({
+    header: 'Remove photo?',
+    message: 'The photo will be unlinked from this variation after you save.',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Keep',
+    acceptLabel: 'Remove',
+    acceptClass: 'p-button-danger',
+    accept: () => {
+      variantImageFile.value = null
+      form.custom_image_id = null
+      clearImagePreview()
+      const input = document.getElementById('variant_image_upload') as HTMLInputElement | null
+      if (input) input.value = ''
+    },
+  })
 }
 
 const uploadVariantModelIfNeeded = async (): Promise<number | null> => {
@@ -763,7 +880,9 @@ const generateSKU = () => {
     form.color?.substring(0, 3).toUpperCase(),
     form.size?.substring(0, 2).toUpperCase(),
     form.material?.substring(0, 3).toUpperCase(),
-    form.finish?.substring(0, 2).toUpperCase()
+    !form.color && !form.size && !form.material
+      ? form.variation_name?.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase()
+      : ''
   ].filter(Boolean).join('-')
   
   form.variation_sku = attributes ? `${baseSKU}-${attributes}` : baseSKU
@@ -813,8 +932,32 @@ const validateForm = () => {
     errors.value.variation_sku = 'Variation SKU is required'
   }
 
-  if (!isEditMode.value && !variantImageFile.value) {
+  if (form.base_price != null && Number(form.base_price) < 0) {
+    errors.value.base_price = 'Selling price cannot be negative'
+  }
+
+  const inheritedPrice = Number(selectedProduct.value?.discounted_price ?? selectedProduct.value?.base_price ?? 0)
+  const effectiveBasePrice = Number(form.base_price ?? inheritedPrice)
+  if (form.discounted_price != null && Number(form.discounted_price) >= effectiveBasePrice) {
+    errors.value.discounted_price = 'Discounted price must be lower than the selling price'
+  }
+
+  if (!isEditMode.value && !variantImageFile.value && !proposal.value?.image_urls?.length) {
     errors.value.custom_image_id = 'Variation photo is required'
+  }
+
+  if (!isEditMode.value && !proposalId.value) {
+    const standardAttributes = selectedProduct.value?.variation_attributes || embeddedProduct.value?.variation_attributes || {}
+    const currentSignature = variationAttributeSignature(form)
+    if (currentSignature === variationAttributeSignature(standardAttributes)) {
+      errors.value.variation_attributes = 'This variant duplicates the standard product. Change at least one attribute.'
+    }
+
+    const existingVariations = embeddedProduct.value?.variations || selectedProduct.value?.variations || []
+    const duplicate = existingVariations.some((variation: any) => variationAttributeSignature(variation) === currentSignature)
+    if (duplicate) {
+      errors.value.variation_attributes = 'A variant with this full attribute combination already exists.'
+    }
   }
   
   return Object.keys(errors.value).length === 0
@@ -841,9 +984,9 @@ const handleSubmit = async () => {
 
     const submitData = {
       ...form,
+      proposal_id: proposalId.value,
       custom_3d_model_id: uploadedModelId,
-      custom_image_id: uploadedImageId,
-      final_price: finalPrice.value
+      custom_image_id: uploadedImageId
     }
 
     if (isEditMode.value) {
@@ -856,7 +999,7 @@ const handleSubmit = async () => {
         life: 3000
       })
     } else {
-      await merchandisingService.createVariation(submitData)
+      await merchandisingService.createVariation(submitData as any)
       toast.add({
         severity: 'success',
         summary: 'Success',
@@ -870,7 +1013,7 @@ const handleSubmit = async () => {
       return
     }
 
-    router.push({ name: 'merchandising.variations' })
+    router.push({ name: 'inventory.products.detail', params: { id: form.product_id } })
   } catch (error: any) {
     console.error('Form submission error:', error)
     
@@ -892,11 +1035,12 @@ const handleSubmit = async () => {
   }
 }
 
-const formatPrice = (price: number) => {
-  return new Intl.NumberFormat('en-PH', { 
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2 
-  }).format(price)
+const goBack = () => {
+  if (form.product_id) {
+    router.push({ name: 'inventory.products.detail', params: { id: form.product_id } })
+    return
+  }
+  router.push({ name: 'inventory.product-variations' })
 }
 
 onMounted(() => {
@@ -910,17 +1054,45 @@ onMounted(() => {
     if (embeddedVariation.value?.id) {
       loadVariation()
     } else {
+      Object.assign(form, normalizeVariationAttributes(embeddedProduct.value?.variation_attributes))
       generateSKU()
     }
     return
   }
 
   Promise.resolve(loadProducts()).then(async () => {
-    const productFromQuery = route.query.product_id ? Number(route.query.product_id) : null
+    const productFromQuery = route.query.product_id
+      ? Number(route.query.product_id)
+      : (route.params.productId ? Number(route.params.productId) : null)
     if (!isEditMode.value && productFromQuery) {
       form.product_id = productFromQuery
       selectedProduct.value = products.value.find((p: any) => p.id === productFromQuery) || null
       await loadProductModels(productFromQuery)
+    }
+    if (!isEditMode.value && proposalId.value) {
+      const response = await merchandisingService.getVariationRequests()
+      const rows = response?.data || []
+      proposal.value = rows.find((item: any) => Number(item.id) === Number(proposalId.value)) || null
+      if (proposal.value) {
+        const p = proposal.value
+        form.product_id = Number(p.rfq_item?.product_id || p.rfq_item?.product?.id)
+        selectedProduct.value = products.value.find((item: any) => Number(item.id) === Number(form.product_id)) || p.rfq_item?.product || null
+        form.variation_name = p.variant_name || ''
+        form.color = p.variant_color || ''
+        form.size = p.variant_size || ''
+        form.material = p.variant_material || ''
+        form.texture = p.variant_texture || ''
+        form.finish = p.variant_finish || ''
+        form.base_price = null
+        form.unit_of_measurement = p.unit_of_measurement || ''
+        form.length_cm = Number(p.length_cm || 0) || null
+        form.width_cm = Number(p.width_cm || 0) || null
+        form.height_cm = Number(p.height_cm || 0) || null
+        form.depth_cm = Number(p.depth_cm || 0) || null
+        form.weight_kg = Number(p.weight_kg || 0) || null
+        variantImagePreviewUrl.value = p.image_urls?.[0] || ''
+        generateSKU()
+      }
     }
     await loadVariation()
   })
@@ -940,6 +1112,13 @@ onBeforeUnmount(() => {
 }
 
 :deep(.p-card-content) {
-  padding-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+:deep(.p-inputtext),
+:deep(.p-select-label),
+:deep(.p-inputnumber-input),
+:deep(.p-button) {
+  font-size: 0.8125rem;
 }
 </style>

@@ -7,27 +7,79 @@ use App\Models\Hr\Employee;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
+use App\Services\Ecommerce\PromotionPricingService;
 use App\Models\ProductCatalog\PricingHistory;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Store\Branch;
 use App\Models\Inventory\ReorderRule;
+use App\Services\Core\PermissionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ProductController extends BaseController
 {
+    private function hasProductPermission(array $permissions): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+
+        $permissionService = app(PermissionService::class);
+        foreach ($permissions as $permission) {
+            if ($permissionService->userHasPermission($user, $permission, (int) $this->getStoreId())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function productPermissionDenied(string $permission): JsonResponse
+    {
+        return $this->errorResponse("You do not have permission to {$permission} products.", 403);
+    }
+
     /**
      * Display a listing of products.
      */
     public function index(Request $request)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
+            $storeId = (int) $this->getStoreId();
+            $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+            $branches = Branch::query()->where('store_id', $storeId)
+                ->where('branch_type', 'storefront')->where('status', 'active')
+                ->orderBy('name')->get(['id', 'name']);
+            if ($branchId !== null && !$branches->contains('id', $branchId)) {
+                throw ValidationException::withMessages(['branch_id' => 'Select an active storefront branch from this store.']);
+            }
             $query = Product::byStore($this->getStoreId())
-                           ->with(['category:id,category_name', 'subcategory:id,category_name'])
+                           ->with([
+                               'category:id,category_name',
+                               'subcategory:id,category_name',
+                               'suppliers:id,supplier_code,supplier_name,company_name,logo_path',
+                               'assets:id,product_id,asset_type,file_name,file_path,is_primary,display_order,alt_text',
+                           ])
                            ->withCount(['variations', 'assets']);
+
+            if ($request->boolean('include_variations')) {
+                $query->with('variations:id,product_id,variation_name');
+            }
 
             // Filters
             if ($request->has('category_id')) {
@@ -90,7 +142,25 @@ class ProductController extends BaseController
 
             $products = $query->paginate($request->get('per_page', 15));
 
-            return $this->successResponse($products, 'Products retrieved successfully');
+            $pricingService = app(PromotionPricingService::class);
+            $products->getCollection()->each(function (Product $product) use ($pricingService, $branchId): void {
+                $pricing = $pricingService->price($product, null, 0, $branchId);
+                $product->setAttribute('effective_price', $pricing['price']);
+                $product->setAttribute('regular_price', $pricing['regular_price']);
+                $product->setAttribute('discount_percentage', $pricing['regular_price'] > 0
+                    ? (int) round(($pricing['regular_price'] - $pricing['price']) / $pricing['regular_price'] * 100)
+                    : 0);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Products retrieved successfully',
+                'data' => $products,
+                'branches' => $branches,
+            ]);
+
+        } catch (ValidationException $e) {
+            throw $e;
 
         } catch (\Exception $e) {
             Log::error('Failed to retrieve products', [
@@ -112,25 +182,44 @@ class ProductController extends BaseController
      */
     public function store(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
-                'sku' => 'required|string|max:50',
+                'sku' => 'nullable|string|max:50',
                 'product_name' => 'required|string|max:200',
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'unit_id' => 'nullable|exists:units,id',
+                'unit_of_measurement' => 'nullable|string|max:50',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
+                'reorder_quantity' => 'nullable|integer|min:1',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
+                'variation_attributes' => 'nullable|array:color,size,material,texture,finish',
+                'variation_attributes.color' => 'nullable|string|max:50',
+                'variation_attributes.size' => 'nullable|string|max:50',
+                'variation_attributes.material' => 'nullable|string|max:100',
+                'variation_attributes.texture' => 'nullable|string|max:100',
+                'variation_attributes.finish' => 'nullable|string|max:100',
                 'assembly_required' => 'boolean',
+                'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
                 'is_new_arrival' => 'boolean',
                 'is_bestseller' => 'boolean',
@@ -150,6 +239,10 @@ class ProductController extends BaseController
             DB::beginTransaction();
 
             try {
+                $validated['sku'] = filled($validated['sku'] ?? null)
+                    ? strtoupper(trim($validated['sku']))
+                    : $this->generateUniqueProductSku((int) $this->getStoreId());
+
                 // Check if SKU is unique for this store
                 $exists = Product::byStore($this->getStoreId())
                                 ->where('sku', $validated['sku'])
@@ -166,15 +259,24 @@ class ProductController extends BaseController
             }
 
             $data = $validated;
+            unset($data['reorder_point'], $data['reorder_quantity']);
             $data['store_id'] = $this->getStoreId();
             $data['stock_status'] = 'In Stock';
             $data['product_type'] = $validated['product_type'] ?? 'finished_good';
+            // Selling prices entered by merchandising are effective immediately;
+            // do not leave newly created products waiting for finance approval.
+            $data['price_approval_status'] = 'approved';
             $data = $this->applyTypeSpecificDefaults($data);
                 
                 $product = Product::create($data);
 
                 // Auto-register the new product in branch inventory for all active branches (zero stock).
-                $this->ensureBranchInventoryRowsForProduct($product->id, (int) $this->getStoreId());
+                $this->ensureBranchInventoryRowsForProduct(
+                    $product->id,
+                    (int) $this->getStoreId(),
+                    (int) ($validated['reorder_point'] ?? 0),
+                    (int) ($validated['reorder_quantity'] ?? 25),
+                );
 
                 // Create pricing history entry
             if (!is_null($product->base_price)) {
@@ -260,11 +362,32 @@ class ProductController extends BaseController
         }
     }
 
+    private function generateUniqueProductSku(int $storeId): string
+    {
+        do {
+            $sku = 'FG-' . Str::upper(Str::random(6)) . '-' . now()->format('YmdHis');
+        } while (Product::withTrashed()
+            ->where('store_id', $storeId)
+            ->where('sku', $sku)
+            ->exists());
+
+        return $sku;
+    }
+
     /**
      * Display the specified product.
      */
     public function show($id)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())
                              ->with([
@@ -278,7 +401,8 @@ class ProductController extends BaseController
                                  'variations' => function($query) {
                                      $query->active()->with('custom3dModel');
                                  },
-                                 'tags'
+                                 'tags',
+                                 'shoppingRooms:id,name'
             ])
             ->withCount(['variations', 'assets'])
             ->findOrFail($id);
@@ -320,9 +444,18 @@ class ProductController extends BaseController
      */
     public function get3dData($id)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())
-                             ->select('id', 'sku', 'product_name', 'description', 'length_cm', 'width_cm', 'height_cm')
+                             ->select('id', 'sku', 'product_name', 'description', 'length_cm', 'width_cm', 'height_cm', 'depth_cm')
                              ->with(['assets' => function($query) {
                                  $query->whereIn('asset_type', ['3D_Model', '3D_Thumbnail'])
                                        ->orderBy('is_primary', 'desc')
@@ -340,6 +473,7 @@ class ProductController extends BaseController
                     'length' => $product->length_cm,
                     'width' => $product->width_cm,
                     'height' => $product->height_cm,
+                    'depth' => $product->depth_cm,
                     'formatted' => $product->dimensions
                 ],
                 'primary_model' => $product->primary_3d_model ? [
@@ -388,6 +522,10 @@ class ProductController extends BaseController
      */
     public function update(Request $request, $id)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())->findOrFail($id);
 
@@ -395,20 +533,38 @@ class ProductController extends BaseController
                 'sku' => 'sometimes|string|max:50|unique:products,sku,' . $id . ',id,store_id,' . $this->getStoreId(),
                 'product_name' => 'sometimes|string|max:200',
                 'description' => 'nullable|string',
-                'category_id' => 'sometimes|exists:categories,id',
+                'category_id' => 'sometimes|nullable|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'unit_id' => 'nullable|exists:units,id',
+                'unit_of_measurement' => 'nullable|string|max:50',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
+                'room_ids' => 'sometimes|array|max:5',
+                'room_ids.*' => 'integer|distinct|exists:shopping_rooms,id',
+                'tag_ids' => 'sometimes|nullable|array|max:3',
+                'tag_ids.*' => 'integer|distinct|exists:tags,id',
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
-                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'discounted_price' => 'nullable|numeric|gt:0',
+                'reorder_point' => 'nullable|integer|min:0',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'sometimes|nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
+                'variation_attributes' => 'sometimes|nullable|array:color,size,material,texture,finish',
+                'variation_attributes.color' => 'nullable|string|max:50',
+                'variation_attributes.size' => 'nullable|string|max:50',
+                'variation_attributes.material' => 'nullable|string|max:100',
+                'variation_attributes.texture' => 'nullable|string|max:100',
+                'variation_attributes.finish' => 'nullable|string|max:100',
                 'assembly_required' => 'boolean',
+                'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
                 'is_new_arrival' => 'boolean',
                 'is_bestseller' => 'boolean',
@@ -418,8 +574,24 @@ class ProductController extends BaseController
                 'meta_description' => 'nullable|string',
                 'meta_keywords' => 'nullable|string',
                 'published_at' => 'nullable|date',
-                'price_change_reason' => 'required_if:base_price,changed|string|nullable'
+                'price_change_reason' => 'nullable|string|max:500'
             ]);
+
+            if (array_key_exists('variation_attributes', $validated) && is_array($validated['variation_attributes'])) {
+                if ($this->variationAttributeSignature($validated['variation_attributes'], ['color', 'size', 'material', 'texture', 'finish'])
+                    !== $this->variationAttributeSignature($product->variation_attributes ?? [], ['color', 'size', 'material', 'texture', 'finish'])) {
+                    $this->assertProductVariationAttributesUnique($product, $validated['variation_attributes']);
+                }
+            }
+
+            if (array_key_exists('discounted_price', $validated) && !is_null($validated['discounted_price'])) {
+                $sellingPrice = (float) ($validated['base_price'] ?? $product->base_price ?? 0);
+                if ((float) $validated['discounted_price'] >= $sellingPrice) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'discounted_price' => 'Discounted price must be less than the selling price.',
+                    ]);
+                }
+            }
 
             // If category changed, verify it belongs to store
             if (isset($validated['category_id'])) {
@@ -431,79 +603,87 @@ class ProductController extends BaseController
                 }
             }
 
+            if (!empty($validated['subcategory_id'])) {
+                $subcategory = \App\Models\ProductCatalog\Category::byStore($this->getStoreId())
+                    ->find($validated['subcategory_id']);
+                $parentCategoryId = $validated['category_id'] ?? $product->category_id;
+                if (!$subcategory || (int) $subcategory->parent_category_id !== (int) $parentCategoryId) {
+                    throw ValidationException::withMessages([
+                        'subcategory_id' => 'The selected subcategory does not belong to the selected category.',
+                    ]);
+                }
+            }
+
+            if (array_key_exists('tag_ids', $validated)) {
+                $tagIds = $validated['tag_ids'] ?? [];
+                $validTagCount = DB::table('tags')->where('store_id', (int) $this->getStoreId())
+                    ->whereNull('deleted_at')->whereIn('id', $tagIds)->count();
+                if ($validTagCount !== count($tagIds)) {
+                    throw ValidationException::withMessages(['tag_ids' => 'One or more selected tags are invalid.']);
+                }
+            }
+
             DB::beginTransaction();
 
             try {
-                $oldPrice = $product->base_price;
                 $data = $validated;
+                unset($data['room_ids']);
+                unset($data['reorder_point'], $data['reorder_quantity']);
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
                 if ($isPriceUpdateRequested) {
-                    $data = $this->removeLivePriceFields($data);
-                    $data['pending_base_price'] = array_key_exists('base_price', $validated)
-                        ? $validated['base_price']
-                        : $product->pending_base_price;
-                    $data['pending_discounted_price'] = array_key_exists('discounted_price', $validated)
+                    $data['base_price'] = $validated['base_price'] ?? $product->pending_base_price ?? $product->base_price;
+                    $data['discounted_price'] = array_key_exists('discounted_price', $validated)
                         ? $validated['discounted_price']
-                        : $product->pending_discounted_price;
-                    $data['price_approval_status'] = 'pending';
-                    $data['price_proposed_by'] = $this->getUserId();
-                    $data['price_proposed_at'] = now();
-                    $data['price_approved_by'] = null;
-                    $data['price_approved_at'] = null;
-                    $data['price_rejected_by'] = null;
-                    $data['price_rejected_at'] = null;
-                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
+                        : ($product->pending_discounted_price ?? $product->discounted_price);
+                    // Selling price changes take effect immediately; no finance approval workflow.
+                    $data['price_approval_status'] = 'approved';
+                    $data['pending_base_price'] = null;
+                    $data['pending_discounted_price'] = null;
                 }
 
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
+                if (array_key_exists('tag_ids', $validated)) {
+                    $tagSync = collect($validated['tag_ids'] ?? [])->mapWithKeys(fn ($tagId) => [
+                        (int) $tagId => ['store_id' => (int) $this->getStoreId()],
+                    ])->all();
+                    $product->tags()->sync($tagSync);
+                }
+                if (array_key_exists('reorder_point', $validated)) {
+                    $branchIds = Branch::query()
+                        ->where('store_id', (int) $this->getStoreId())
+                        ->pluck('id');
 
-                // If the acting user can approve pricing, auto-approve immediately
-                if ($this->isFinancePriceApprover()) {
-                    DB::beginTransaction();
-                    try {
-                        $oldPrice = $product->base_price;
+                    BranchInventory::query()
+                        ->where('store_id', (int) $this->getStoreId())
+                        ->where('product_id', (int) $product->id)
+                        ->whereIn('branch_id', $branchIds)
+                        ->whereNull('variation_id')
+                        ->update(['reorder_point' => (int) ($validated['reorder_point'] ?? 0)]);
 
-                        $product->update([
-                            'base_price' => $product->pending_base_price ?? $product->base_price,
-                            'discounted_price' => $product->pending_discounted_price,
-                            'price_approval_status' => 'approved',
-                            'price_approved_by' => $this->getUserId(),
-                            'price_approved_at' => now(),
-                            'price_rejected_by' => null,
-                            'price_rejected_at' => null,
-                            'price_approval_notes' => $data['price_approval_notes'] ?? $product->price_approval_notes,
-                            'pending_base_price' => null,
-                            'pending_discounted_price' => null,
-                        ]);
-
-                        if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
-                            \App\Models\ProductCatalog\PricingHistory::create([
-                                'store_id' => $this->getStoreId(),
-                                'product_id' => $product->id,
-                                'old_price' => $oldPrice ?? 0,
-                                'new_price' => $product->base_price,
-                                'price_type' => 'Base',
-                                'reason' => $data['price_approval_notes'] ?? 'Auto-approved by finance permission',
-                                'effective_date' => now(),
-                                'created_by' => $this->getActorEmployeeId()
-                            ]);
-                        }
-
-                        DB::commit();
-                    } catch (\Exception $e) {
-                        DB::rollBack();
-                        throw $e;
+                    ReorderRule::query()
+                        ->where('product_id', (int) $product->id)
+                        ->whereIn('branch_id', $branchIds)
+                        ->where('basis_type', 'reorder_point')
+                        ->update(['reorder_point' => (int) ($validated['reorder_point'] ?? 0)]);
+                }
+                if (array_key_exists('room_ids', $validated)) {
+                    if ($product->product_type !== 'finished_good' && $validated['room_ids']) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['room_ids' => 'Rooms are only available for finished goods.']);
                     }
+                    $roomIds = \App\Models\ProductCatalog\ShoppingRoom::where('is_active', true)
+                        ->whereIn('id', $validated['room_ids'])->pluck('id')->all();
+                    if (count($roomIds) !== count($validated['room_ids'])) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['room_ids' => 'Select only active rooms.']);
+                    }
+                    $product->shoppingRooms()->sync($roomIds);
                 }
 
                 DB::commit();
 
-                $fresh = $product->fresh(['category', 'subcategory']);
-                $message = $isPriceUpdateRequested
-                    ? 'Price change submitted for finance approval'
-                    : 'Product updated successfully';
+                $fresh = $product->fresh(['category', 'subcategory', 'shoppingRooms']);
+                $message = 'Product updated successfully';
 
                 return $this->successResponse(
                     $fresh,
@@ -541,97 +721,77 @@ class ProductController extends BaseController
         }
     }
 
-    public function approvePrice(Request $request, $id)
+    public function approvePrice(Request $request, int $id): JsonResponse
     {
-        try {
-            if (!$this->isFinancePriceApprover()) {
-                return $this->errorResponse('You do not have permission to approve product pricing.', 403);
-            }
-
-            $validated = $this->validateRequest($request, [
-                'notes' => 'nullable|string|max:500',
-            ]);
-
-            $product = Product::byStore($this->getStoreId())->findOrFail($id);
-            if ($product->price_approval_status !== 'pending') {
-                return $this->errorResponse('No pending price request to approve.', 422);
-            }
-
-            DB::beginTransaction();
-            try {
-                $oldPrice = $product->base_price;
-
-                $product->update([
-                    'base_price' => $product->pending_base_price ?? $product->base_price,
-                    'discounted_price' => $product->pending_discounted_price,
-                    'price_approval_status' => 'approved',
-                    'price_approved_by' => $this->getUserId(),
-                    'price_approved_at' => now(),
-                    'price_rejected_by' => null,
-                    'price_rejected_at' => null,
-                    'price_approval_notes' => $validated['notes'] ?? $product->price_approval_notes,
-                    'pending_base_price' => null,
-                    'pending_discounted_price' => null,
-                ]);
-
-                if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $product->id,
-                        'old_price' => $oldPrice ?? 0,
-                        'new_price' => $product->base_price,
-                        'price_type' => 'Base',
-                        'reason' => $validated['notes'] ?? 'Finance approved price change',
-                        'effective_date' => now(),
-                        'created_by' => $this->getActorEmployeeId()
-                    ]);
-                }
-
-                DB::commit();
-
-                return $this->successResponse($product->fresh(), 'Price change approved');
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Product not found', 404);
-        } catch (\Exception $e) {
-            return $this->errorResponse('Failed to approve price change: ' . $e->getMessage(), 500, [], $e);
+        if (!$this->hasProductPermission(['merchandising.products.approve'])) {
+            return $this->productPermissionDenied('approve price changes for');
         }
+
+        $product = Product::byStore($this->getStoreId())->findOrFail($id);
+        if ($product->price_approval_status !== 'pending') {
+            return $this->errorResponse('This product has no pending price change.', 422);
+        }
+
+        DB::transaction(function () use ($product, $request): void {
+            $oldPrice = (float) $product->base_price;
+            if ($product->pending_base_price !== null) {
+                $product->base_price = $product->pending_base_price;
+            }
+            if ($product->pending_discounted_price !== null) {
+                $product->discounted_price = $product->pending_discounted_price;
+            }
+
+            $product->price_approval_status = 'approved';
+            $product->price_approved_by = $this->getEmployeeId();
+            $product->price_approved_at = now();
+            $product->price_approval_notes = $request->input('notes');
+            $product->pending_base_price = null;
+            $product->pending_discounted_price = null;
+            $product->save();
+
+            if ($oldPrice !== (float) $product->base_price) {
+                PricingHistory::create([
+                    'store_id' => $this->getStoreId(),
+                    'product_id' => $product->id,
+                    'old_price' => $oldPrice,
+                    'new_price' => $product->base_price,
+                    'price_type' => 'Base',
+                    'reason' => $request->input('notes', 'Product price change approved'),
+                    'effective_date' => now(),
+                    'created_by' => $this->getEmployeeId(),
+                ]);
+            }
+        });
+
+        return $this->successResponse(
+            Product::byStore($this->getStoreId())->findOrFail($id),
+            'Product price change approved.'
+        );
     }
 
-    public function rejectPrice(Request $request, $id)
+    public function rejectPrice(Request $request, int $id): JsonResponse
     {
-        try {
-            if (!$this->isFinancePriceApprover()) {
-                return $this->errorResponse('You do not have permission to reject product pricing.', 403);
-            }
-
-            $validated = $this->validateRequest($request, [
-                'reason' => 'required|string|max:500',
-            ]);
-
-            $product = Product::byStore($this->getStoreId())->findOrFail($id);
-            if ($product->price_approval_status !== 'pending') {
-                return $this->errorResponse('No pending price request to reject.', 422);
-            }
-
-            $product->update([
-                'price_approval_status' => 'rejected',
-                'price_rejected_by' => $this->getUserId(),
-                'price_rejected_at' => now(),
-                'price_approval_notes' => $validated['reason'],
-                'pending_base_price' => null,
-                'pending_discounted_price' => null,
-            ]);
-
-            return $this->successResponse($product->fresh(), 'Price change rejected');
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Product not found', 404);
-        } catch (\Exception $e) {
-            return $this->errorResponse('Failed to reject price change: ' . $e->getMessage(), 500, [], $e);
+        if (!$this->hasProductPermission(['merchandising.products.approve'])) {
+            return $this->productPermissionDenied('reject price changes for');
         }
+
+        $validated = $this->validateRequest($request, [
+            'reason' => 'required|string|max:500',
+        ]);
+        $product = Product::byStore($this->getStoreId())->findOrFail($id);
+        if ($product->price_approval_status !== 'pending') {
+            return $this->errorResponse('This product has no pending price change.', 422);
+        }
+
+        $product->price_approval_status = 'rejected';
+        $product->price_rejected_by = $this->getEmployeeId();
+        $product->price_rejected_at = now();
+        $product->price_approval_notes = $validated['reason'];
+        $product->pending_base_price = null;
+        $product->pending_discounted_price = null;
+        $product->save();
+
+        return $this->successResponse($product, 'Product price change rejected.');
     }
 
     /**
@@ -639,6 +799,10 @@ class ProductController extends BaseController
      */
     public function destroy($id)
     {
+        if (!$this->hasProductPermission(['merchandising.products.delete'])) {
+            return $this->productPermissionDenied('delete');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())->findOrFail($id);
 
@@ -684,6 +848,10 @@ class ProductController extends BaseController
      */
     public function bulkStatus(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
                 'product_ids' => 'required|array',
@@ -748,6 +916,10 @@ class ProductController extends BaseController
      */
     public function bulkDelete(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.delete'])) {
+            return $this->productPermissionDenied('delete');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
                 'product_ids' => 'required|array',
@@ -833,22 +1005,30 @@ class ProductController extends BaseController
         return false;
     }
 
-    private function removeLivePriceFields(array $data): array
+    private function assertProductVariationAttributesUnique(Product $product, array $attributes): void
     {
-        unset($data['base_price'], $data['discounted_price'], $data['price_change_reason']);
-        return $data;
+        $keys = ['color', 'size', 'material', 'texture', 'finish'];
+        $signature = $this->variationAttributeSignature($attributes, $keys);
+        $variations = $product->variations()->get(array_merge($keys, ['variation_name', 'is_baseline']));
+
+        foreach ($variations as $variation) {
+            if ($variation->is_baseline || strcasecmp((string) $variation->variation_name, 'standard') === 0) {
+                continue;
+            }
+            if ($signature === $this->variationAttributeSignature($variation->only($keys), $keys)) {
+                throw ValidationException::withMessages([
+                    'variation_attributes' => ['The standard product attributes match an existing variant. Change one or more attribute values.'],
+                ]);
+            }
+        }
     }
 
-    private function isFinancePriceApprover(): bool
+    private function variationAttributeSignature(array $attributes, array $keys): string
     {
-        return $this->userHasAnyPermission([
-            'finance.all.approve',
-            'finance.settings.approve.store',
-            'finance.settings.approve.all',
-            'finance.purchase-orders.approve',
-            'finance.pricing.approve',
-            'finance.price-approvals.approve',
-        ]);
+        return json_encode(array_map(
+            fn ($key) => mb_strtolower(trim((string) ($attributes[$key] ?? ''))),
+            $keys,
+        ), JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -873,7 +1053,7 @@ class ProductController extends BaseController
      * Ensure each active branch has a base branch_inventory row for this product.
      * Stock starts at 0 and must move through inventory transactions.
      */
-    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId): void
+    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId, int $reorderPoint, int $reorderQuantity): void
     {
         $branches = Branch::query()
             ->where('store_id', $storeId)
@@ -896,16 +1076,17 @@ class ProductController extends BaseController
                     'quantity_incoming' => 0,
                     // Reorder settings now live in reorder_rules (primary).
                     // Keep these columns as legacy/fallback only.
-                    'reorder_point' => 0,
-                    'reorder_quantity' => 0,
+                    'reorder_point' => $reorderPoint,
+                    'reorder_quantity' => $reorderQuantity,
                     'maximum_stock' => 1000,
                     'safety_stock' => 5,
                     'stock_status' => 'out_of_stock',
-                    'unit_cost' => 0,
-                    'average_cost' => 0,
-                    'total_value' => 0,
                 ]
             );
+
+            $inventory->reorder_point = $reorderPoint;
+            $inventory->reorder_quantity = $reorderQuantity;
+            $inventory->save();
 
             ReorderRule::query()->firstOrCreate(
                 [
@@ -913,16 +1094,23 @@ class ProductController extends BaseController
                     'branch_id' => (int) $branchId,
                 ],
                 [
-                    'rule_type' => 'manual',
+                    'rule_type' => 'automatic',
                     'trigger_type' => 'reorder_point',
                     'basis_type' => 'reorder_point',
-                    'reorder_point' => 20,
-                    'reorder_quantity' => 25,
+                    'reorder_point' => $reorderPoint,
+                    'reorder_quantity' => $reorderQuantity,
                     'priority' => 'medium',
                     'auto_generate_po' => false,
                     'is_active' => true,
                 ]
             );
+
+            $suggestionResult = app(\App\Services\Inventory\ReorderSuggestionService::class)
+                ->generateSuggestions($storeId, (int) $branchId, (int) $inventory->id);
+            foreach (($suggestionResult['suggestions'] ?? []) as $suggestion) {
+                app(\App\Services\Inventory\ReorderSuggestionNotificationService::class)
+                    ->notify($suggestion, 'product_created');
+            }
         }
     }
 

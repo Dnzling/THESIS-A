@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Models\ProductCatalog\ProductAsset;
 
 class SupplierController extends Controller
 {
@@ -70,59 +71,9 @@ class SupplierController extends Controller
             });
         }
 
-        $store = Auth::user()->store;
-        $isFreePlan = strtolower((string) ($store?->subscription_tier ?? '')) === 'free';
-
         $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail) {
             return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
         })->values();
-
-        // For free-plan stores, hide marketplace suppliers and return two ready-made placeholders
-        if ($isFreePlan) {
-            $placeholders = [
-                [
-                    'supplier_portal_id' => null,
-                    'supplier_id' => null,
-                    'linked_supplier_id' => null,
-                    'supplier_name' => 'Starter Supplier A',
-                    'company_name' => 'Starter Supplier A Co.',
-                    'contact_person' => 'Supplier Rep A',
-                    'email' => 'starter-a@example.com',
-                    'phone' => '',
-                    'address' => null,
-                    'city' => null,
-                    'province' => null,
-                    'country' => 'Philippines',
-                    'payment_terms' => 'net_30',
-                    'supplier_type' => 'verified_placeholder',
-                    'verified_at' => now()->toDateTimeString(),
-                    'already_linked' => false,
-                ],
-                [
-                    'supplier_portal_id' => null,
-                    'supplier_id' => null,
-                    'linked_supplier_id' => null,
-                    'supplier_name' => 'Starter Supplier B',
-                    'company_name' => 'Starter Supplier B Co.',
-                    'contact_person' => 'Supplier Rep B',
-                    'email' => 'starter-b@example.com',
-                    'phone' => '',
-                    'address' => null,
-                    'city' => null,
-                    'province' => null,
-                    'country' => 'Philippines',
-                    'payment_terms' => 'net_30',
-                    'supplier_type' => 'verified_placeholder',
-                    'verified_at' => now()->toDateTimeString(),
-                    'already_linked' => false,
-                ],
-            ];
-
-            return response()->json([
-                'success' => true,
-                'data' => collect($placeholders)->take($limit)->values(),
-            ]);
-        }
 
         if ($request->boolean('available_only', true)) {
             $rows = $rows->where('already_linked', false)->values();
@@ -189,7 +140,42 @@ class SupplierController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('store_id', Auth::user()->store_id);
+        $contractStatusQuery = $this->contractStatusQuery();
+        $query = Supplier::where('store_id', Auth::user()->store_id)
+            ->select('suppliers.*')
+            ->selectSub($contractStatusQuery, 'contract_status');
+
+        if ($request->filled('contract_status')) {
+            $status = $request->input('contract_status');
+            $query->whereRaw(
+                'COALESCE((' . $this->contractStatusQuery()->toSql() . "), 'no_contract') = ?",
+                [...$this->contractStatusQuery()->getBindings(), $status]
+            );
+        }
+
+        if ($request->boolean('active_contract_only')) {
+            $query->whereHas('contracts', function ($contractQuery) {
+                $contractQuery->active();
+            });
+        }
+
+        $productIds = $request->input('product_ids', []);
+        if (!is_array($productIds)) {
+            $productIds = explode(',', (string) $productIds);
+        }
+        $productIds = collect($productIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        // When a PO has listed products, only return suppliers linked to every
+        // product so the form cannot create a mixed-supplier PO.
+        foreach ($productIds as $productId) {
+            $query->whereHas('products', function ($productQuery) use ($productId) {
+                $productQuery->where('products.id', $productId);
+            });
+        }
 
         // Filters
         if ($request->has('status')) {
@@ -233,19 +219,35 @@ class SupplierController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $supplier = Supplier::with([
+        $supplier = Supplier::where('store_id', Auth::user()->store_id)->with([
             'store:id,name,store_code,city,province,address',
-            'contracts',
+            'contracts.rejectedBy:id,fname,lname',
             'products',
             'purchaseOrders' => function ($query) {
                 $query->latest()->limit(10);
             }
-        ])->findOrFail($id);
+        ])->select('suppliers.*')
+            ->selectSub($this->contractStatusQuery(), 'contract_status')
+            ->withCount(['contracts as active_contracts_count' => fn ($query) => $query->active()])
+            ->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $supplier,
         ]);
+    }
+
+    private function contractStatusQuery()
+    {
+        $today = now()->toDateString();
+
+        return \Illuminate\Support\Facades\DB::table('supplier_contracts')
+            ->select('status')
+            ->whereColumn('supplier_contracts.supplier_id', 'suppliers.id')
+            ->orderByRaw("CASE WHEN status = 'active' AND start_date <= ? AND end_date >= ? THEN 0 ELSE 1 END", [$today, $today])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(1);
     }
 
     /**
@@ -290,6 +292,18 @@ class SupplierController extends Controller
                 ->first();
 
             if ($existing) {
+                if ($existing->supplier_portal_id && (int) $existing->supplier_portal_id !== (int) $portal->id) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This supplier record is already linked to another supplier portal account.',
+                    ], 409);
+                }
+
+                if (!$existing->supplier_portal_id) {
+                    $existing->supplier_portal_id = $portal->id;
+                    $existing->save();
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Supplier already linked to this store.',
@@ -305,6 +319,7 @@ class SupplierController extends Controller
 
             $supplier = Supplier::create([
                 'store_id' => Auth::user()->store_id,
+                'supplier_portal_id' => $portal->id,
                 'supplier_code' => $this->generateSupplierCode(),
                 'supplier_name' => $supplierName ?: 'Unnamed Supplier',
                 'company_name' => $sourceSupplier?->company_name ?: $supplierName,
@@ -359,6 +374,26 @@ class SupplierController extends Controller
             'phone' => $validated['phone'] ?? '',
         ];
 
+        // A store may enter a supplier manually instead of linking it from the
+        // verified directory. Associate it with a portal account only when the
+        // normalized email identifies exactly one approved account.
+        $normalizedEmail = strtolower(trim($validated['email']));
+        $matchingPortals = SupplierPortal::query()
+            ->approved()
+            ->where(function ($query) use ($normalizedEmail) {
+                $query->whereHas('user', function ($userQuery) use ($normalizedEmail) {
+                    $userQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
+                })->orWhereHas('supplier', function ($supplierQuery) use ($normalizedEmail) {
+                    $supplierQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
+                });
+            })
+            ->limit(2)
+            ->pluck('id');
+
+        if ($matchingPortals->count() === 1) {
+            $data['supplier_portal_id'] = $matchingPortals->first();
+        }
+
         \Log::info('[Supplier] Creating supplier record', ['supplier_code' => $supplierCode]);
         $supplier = Supplier::create($data);
         \Log::info('[Supplier] Supplier created successfully', ['supplier_id' => $supplier->id, 'supplier_code' => $supplierCode]);
@@ -386,7 +421,7 @@ class SupplierController extends Controller
 
             \Log::info('[Supplier] Attempting to create user account for contact person', [
                 'email' => $validated['email'],
-                'user_id' => $supplierCode,
+                'user_id' => User::generateUserId(),
                 'fname' => $contactFirstName,
                 'lname' => $contactLastName
             ]);
@@ -665,31 +700,58 @@ class SupplierController extends Controller
      */
     public function products(int $id, Request $request): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
         $branchId = $request->get('branch_id');
 
         $productsQuery = $supplier->products()
             ->with([
                 'category:id,category_name',
+                'variations' => fn ($query) => $query->active(),
                 'inventory' => function ($q) use ($branchId) {
                     if ($branchId) {
                         $q->where('branch_id', $branchId);
                     }
                 }
             ])
-            ->select('products.id', 'products.product_name', 'products.sku', 'products.category_id', 'products.cost_price');
+            ->select(
+                'products.id', 'products.product_name', 'products.sku',
+                'products.category_id', 'products.cost_price', 'products.unit_of_measurement'
+            );
 
-        $products = $productsQuery->get()->map(function ($product) use ($branchId) {
-            $inv = $branchId ? $product->inventory->first() : null;
-            return [
+        $products = $productsQuery->get()->flatMap(function ($product) use ($branchId) {
+            if ($product->variations->isNotEmpty()) {
+                return $product->variations->map(function ($variation) use ($product, $branchId) {
+                    $inventory = $branchId
+                        ? $product->inventory->firstWhere('variation_id', $variation->id)
+                        : null;
+
+                    return [
+                        'id' => $product->id,
+                        'product_name' => "{$product->product_name} — {$variation->variation_name}",
+                        'sku' => $variation->variation_sku ?: $product->sku,
+                        'category_id' => $product->category_id,
+                        'variation_id' => $variation->id,
+                        'variation' => $variation,
+                        'unit_of_measurement' => $variation->unit_of_measurement ?: $product->unit_of_measurement,
+                        'stock_level' => $inventory?->quantity_available ?? 0,
+                        'unit_cost' => $variation->cost_price ?? $product->getRawOriginal('cost_price'),
+                    ];
+                });
+            }
+
+            $inventory = $branchId ? $product->inventory->first() : null;
+            return [[
                 'id' => $product->id,
                 'product_name' => $product->product_name,
                 'sku' => $product->sku,
                 'category_id' => $product->category_id,
-                'stock_level' => $inv?->quantity_available ?? 0,
+                'variation_id' => null,
+                'variation' => null,
+                'unit_of_measurement' => $product->unit_of_measurement,
+                'stock_level' => $inventory?->quantity_available ?? 0,
                 'unit_cost' => $product->getRawOriginal('cost_price'),
-            ];
-        });
+            ]];
+        })->values();
 
         return response()->json([
             'success' => true,
@@ -697,13 +759,146 @@ class SupplierController extends Controller
         ]);
     }
 
+    public function availableProducts(int $id, Request $request): JsonResponse
+    {
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+        $productModels = $supplier->products()
+            ->with([
+                'category:id,category_name',
+                'subcategory:id,category_name',
+                'variations' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
+            ])
+            ->select(
+                'products.id', 'products.product_name',
+                'products.category_id', 'products.subcategory_id', 'products.product_type',
+                'products.unit_of_measurement', 'products.is_active'
+            )
+            ->get();
+
+        $approvedProductIds = collect();
+        if ($productModels->isNotEmpty()) {
+            $approvedFeedbacks = DB::table('supplier_rfq_feedbacks as feedback')
+                ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
+                ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
+                ->where('rfq.store_id', $supplier->store_id)
+                ->whereNull('rfq.deleted_at')
+                ->where('feedback.status', 'approved')
+                ->whereIn('rfq_item.product_id', $productModels->pluck('id'))
+                ->where(function ($query) use ($supplier) {
+                    $query->where('feedback.supplier_id', $supplier->id);
+                    if ($supplier->supplier_portal_id) {
+                        $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
+                    }
+                })
+                ->select('rfq_item.product_id', 'rfq_item.variation_id')
+                ->get()
+                ->map(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
+
+            $approvedProductIds = $approvedFeedbacks->unique();
+        }
+
+        $assets = ProductAsset::query()
+            ->whereIn('product_id', $productModels->pluck('id'))
+            ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
+            ->orderByDesc('is_primary')
+            ->orderBy('display_order')
+            ->get()
+            ->unique('product_id')
+            ->keyBy('product_id');
+
+        $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
+        $products = $productModels->flatMap(function ($product) use ($assets, $taxRate, $supplier, $approvedProductIds) {
+            $baseCost = round((float) $product->pivot->supplier_price, 2);
+            $common = [
+                'product_id' => (int) $product->id,
+                'category_id' => $product->category_id,
+                'category_name' => $product->category?->category_name,
+                'subcategory_name' => $product->subcategory?->category_name,
+                'product_type' => $product->product_type,
+                'unit_of_measurement' => $product->unit_of_measurement,
+                'availability_status' => $product->pivot->availability_status ?? 'available',
+                'minimum_order_quantity' => (int) ($product->pivot->minimum_order_quantity ?? 1),
+                'lead_time_days' => (int) ($product->pivot->lead_time_days ?? 7),
+                'tax_rate' => round($taxRate, 2),
+                'is_tax_exempt' => (bool) $supplier->is_tax_exempt,
+                'is_active' => (bool) $product->is_active && ($product->pivot->availability_status ?? 'available') !== 'out_of_stock',
+                'image_url' => $assets->get($product->id)?->thumbnail_url,
+            ];
+
+            if ($product->variations->isNotEmpty()) {
+                return $product->variations->map(function ($variation) use ($common, $baseCost) {
+                    $cost = $variation->cost_price !== null ? round((float) $variation->cost_price, 2) : $baseCost;
+                    $tax = round($cost * ($common['tax_rate'] / 100), 2);
+                    $attributes = collect([$variation->color, $variation->size, $variation->material, $variation->texture, $variation->finish])->filter()->implode(' · ');
+                    return array_merge($common, [
+                        'id' => (int) $variation->id,
+                        'variation_id' => (int) $variation->id,
+                        'product_name' => $product->product_name . ' — ' . $variation->variation_name,
+                        'variation_name' => $variation->variation_name,
+                        'variation_sku' => $variation->variation_sku,
+                        'variation_attributes' => $attributes,
+                        'is_active' => $common['is_active'] && (bool) $variation->is_active,
+                        'is_acquired' => $approvedProductIds->contains((int) $product->id . ':' . (int) $variation->id),
+                        'base_cost' => $cost,
+                        'tax_amount' => $tax,
+                        'cost_including_tax' => round($cost + $tax, 2),
+                    ]);
+                });
+            }
+
+            $taxAmount = round($baseCost * ($taxRate / 100), 2);
+            return [array_merge($common, [
+                'id' => (int) $product->id,
+                'variation_id' => null,
+                'product_name' => $product->product_name,
+                'variation_name' => null,
+                'variation_sku' => null,
+                'variation_attributes' => null,
+                'is_acquired' => $approvedProductIds->contains((int) $product->id . ':0'),
+                'base_cost' => $baseCost,
+                'tax_amount' => $taxAmount,
+                'cost_including_tax' => round($baseCost + $taxAmount, 2),
+            ])];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'supplier' => [
+                    'id' => (int) $supplier->id,
+                    'supplier_name' => $supplier->supplier_name,
+                    'contract_status' => $supplier->hasActiveContract() ? 'active' : 'inactive',
+                ],
+                'products' => $products,
+            ],
+        ]);
+    }
+
     /**
      * Get supplier performance metrics
      * GET /api/procurement/suppliers/{id}/performance
      */
-    public function performance(int $id): JsonResponse
+    public function performance(Request $request, int $id): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+        $evaluations = $supplier->performanceEvaluations();
+        $evaluationAverages = (clone $evaluations)->selectRaw('
+            AVG(quality_score) as quality,
+            AVG(quantity_accuracy_score) as quantity_accuracy,
+            AVG(delivery_timeliness_score) as delivery_timeliness,
+            AVG(packaging_condition_score) as packaging_condition,
+            AVG(overall_rating) as overall
+        ')->first();
+
+        $recentEvaluations = (clone $evaluations)
+            ->with([
+                'goodsReceipt:id,grn_number,receipt_date',
+                'purchaseOrder:id,po_number',
+                'evaluator:id,fname,lname',
+            ])
+            ->latest()
+            ->limit(10)
+            ->get();
 
         $performance = [
             'rating' => $supplier->rating,
@@ -717,6 +912,15 @@ class SupplierController extends Controller
             'credit_limit' => $supplier->credit_limit,
             'credit_available' => $supplier->credit_limit - $supplier->current_balance,
             'active_contracts' => $supplier->contracts()->active()->count(),
+            'evaluation_count' => (clone $evaluations)->count(),
+            'evaluation_averages' => [
+                'quality' => $evaluationAverages?->quality !== null ? round((float) $evaluationAverages->quality, 2) : null,
+                'quantity_accuracy' => $evaluationAverages?->quantity_accuracy !== null ? round((float) $evaluationAverages->quantity_accuracy, 2) : null,
+                'delivery_timeliness' => $evaluationAverages?->delivery_timeliness !== null ? round((float) $evaluationAverages->delivery_timeliness, 2) : null,
+                'packaging_condition' => $evaluationAverages?->packaging_condition !== null ? round((float) $evaluationAverages->packaging_condition, 2) : null,
+                'overall' => $evaluationAverages?->overall !== null ? round((float) $evaluationAverages->overall, 2) : null,
+            ],
+            'recent_evaluations' => $recentEvaluations,
         ];
 
         return response()->json([

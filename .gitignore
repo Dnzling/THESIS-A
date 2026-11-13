@@ -4,16 +4,19 @@
 /node_modules
 /vendor
 /storage/logs
+/storage/logs/frontend-debug.log
 /storage/framework/cache
 /storage/framework/sessions
 /storage/framework/views
 /android
 /public/build
+/public/hot
 /public/capacitor
 .htaccess
 /public/.htaccess
 /public/storage
 /storage/app/public
+/resources/views/permits
 *.zip
 .gradle
 .pnpm-store
@@ -28,3 +31,4 @@ _tmp_*.php
 test_*.php
 verify_*.php
 tmp_*.txt
+/PsySH/

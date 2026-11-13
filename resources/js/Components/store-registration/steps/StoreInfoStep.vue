@@ -69,7 +69,7 @@
       </div>
       <!-- Navigation Buttons -->
       <div class="flex justify-end mt-8 pt-6 border-t border-gray-200">
-        <Button type="submit" class="w-1/5" severity="contrast" label="Next" />
+        <Button type="button" class="w-1/5" severity="contrast" label="Next" @click="handleNext" />
       </div>
     </form>
   </div>

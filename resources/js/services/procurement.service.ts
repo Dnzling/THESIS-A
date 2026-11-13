@@ -154,6 +154,7 @@ export interface SupplierPayment {
 
 class ProcurementService {
   private baseUrl = '/api/procurement'
+  private inventoryBaseUrl = '/api/inventory'
 
   // ==================== DASHBOARD & ANALYTICS ====================
   async getDashboardStats(params?: any) {
@@ -168,6 +169,11 @@ class ProcurementService {
 
   async getReorderSuggestions(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/analytics/reorder-suggestions`, { params })
+    return response.data
+  }
+
+  async getForecasting(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/analytics/forecasting`, { params })
     return response.data
   }
 
@@ -235,6 +241,11 @@ class ProcurementService {
 
   async getSupplierProducts(id: number, params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/products`, { params })
+    return response.data
+  }
+
+  async getSupplierAvailableProducts(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/available-products`)
     return response.data
   }
 
@@ -380,57 +391,6 @@ class ProcurementService {
     return response.data
   }
 
-  // ==================== INVOICES & 3-WAY MATCHING ====================
-  async getInvoices(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices`, { params })
-    return response.data
-  }
-
-  async getInvoice(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/${id}`)
-    return response.data
-  }
-
-  async createInvoice(data: Invoice) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices`, data)
-    return response.data
-  }
-
-  async updateInvoice(id: number, data: Partial<Invoice>) {
-    const response = await axiosClient.put(`${this.baseUrl}/invoices/${id}`, data)
-    return response.data
-  }
-
-  async performInvoiceMatch(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/match`)
-    return response.data
-  }
-
-  async approveInvoice(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/approve`)
-    return response.data
-  }
-
-  async scheduleInvoicePayment(id: number, data: { payment_date: string }) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/schedule-payment`, data)
-    return response.data
-  }
-
-  async markInvoiceAsPaid(id: number, data: { payment_method: string; payment_amount: number }) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/mark-paid`, data)
-    return response.data
-  }
-
-  async getPendingInvoiceMatch(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/pending/match`, { params })
-    return response.data
-  }
-
-  async getInvoiceExceptions(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/exceptions`, { params })
-    return response.data
-  }
-
   // ==================== BARCODE SCANNING ====================
   async lookupBarcode(code: string) {
     const response = await axiosClient.get(`${this.baseUrl}/barcode/lookup`, { params: { code } })
@@ -481,6 +441,13 @@ class ProcurementService {
   async approvePurchaseRequisition(id: number, data?: { notes?: string }) {
     // Suppress global response dialog for this action; UI will handle notifications
     const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, data || {}, { headers: { 'X-Suppress-Dialog': '1' } })
+    return response.data
+  }
+
+  async startPurchaseRequisitionProcessing(id: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/start-processing`, {}, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
     return response.data
   }
 
@@ -580,6 +547,11 @@ class ProcurementService {
     return response.data
   }
 
+  async recordOfflineQuotation(rfqId: number, data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/rfqs/${rfqId}/offline-quotation`, data)
+    return response.data
+  }
+
   async negotiatePortalFeedback(rfqId: number, feedbackId: number, data: { counter_price: number; notes?: string }) {
     const response = await axiosClient.post(`${this.baseUrl}/rfqs/${rfqId}/portal-feedbacks/${feedbackId}/negotiate`, data)
     return response.data
@@ -598,6 +570,13 @@ class ProcurementService {
 
   async getPurchaseOrder(id: number) {
     const response = await axiosClient.get(`${this.baseUrl}/purchase-orders/${id}`)
+    return response.data
+  }
+
+  async estimatePurchaseOrderShipping(data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/shipping-estimate`, data, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     return response.data
   }
 
@@ -631,6 +610,21 @@ class ProcurementService {
     return response.data
   }
 
+  async markPurchaseOrderSentOffline(id: number, data: { response_channel: string; sent_at: string; notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/mark-sent`, data)
+    return response.data
+  }
+
+  async recordPurchaseOrderSupplierResponse(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/supplier-response`, data)
+    return response.data
+  }
+
+  async updateSupplierDeliveryStatus(id: number, data: { status: 'out_for_delivery' | 'delivered'; notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/supplier-delivery-status`, data)
+    return response.data
+  }
+
   async cancelPurchaseOrder(id: number, reason?: string) {
     const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/cancel`, { reason })
     return response.data
@@ -642,33 +636,59 @@ class ProcurementService {
   }
 
   // ==================== GOODS RECEIPTS ====================
-  async getGoodsReceipts(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts`, { params })
+  async getGoodsReceipts(params?: any, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts`, { params })
     return response.data
   }
 
-  async getGoodsReceipt(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts/${id}`)
+  async getGoodsReceiptSummary(params?: any, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/summary`, { params })
+    return response.data
+  }
+
+  async getGoodsReceipt(id: number, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/${id}`)
+    return response.data
+  }
+
+  async getGoodsReceiptResolution(id: number, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/${id}/resolution`)
+    return response.data
+  }
+
+  async flagGoodsReceiptResolution(id: number, data: any) {
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/resolution`, data)
     return response.data
   }
 
   async createGoodsReceipt(data: GoodsReceipt) {
-    const response = await axiosClient.post(`${this.baseUrl}/goods-receipts`, data)
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts`, data)
     return response.data
   }
 
   async updateGoodsReceipt(id: number, data: Partial<GoodsReceipt>) {
-    const response = await axiosClient.put(`${this.baseUrl}/goods-receipts/${id}`, data)
+    const response = await axiosClient.put(`${this.inventoryBaseUrl}/goods-receipts/${id}`, data)
     return response.data
   }
 
   async deleteGoodsReceipt(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/goods-receipts/${id}`)
+    const response = await axiosClient.delete(`${this.inventoryBaseUrl}/goods-receipts/${id}`)
     return response.data
   }
 
   async verifyGoodsReceipt(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/goods-receipts/${id}/verify`)
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/verify`)
+    return response.data
+  }
+
+  async saveSupplierEvaluation(id: number, data: {
+    quality_score: number
+    quantity_accuracy_score: number
+    delivery_timeliness_score: number
+    packaging_condition_score: number
+    remarks?: string | null
+  }) {
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/supplier-evaluation`, data)
     return response.data
   }
 
@@ -744,29 +764,33 @@ class ProcurementService {
   }
 
   async activateSupplierContract(id: string | number) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`)
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`, { supplier_confirmed: true })
     return response.data
   }
 
-  async terminateSupplierContract(id: string | number) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/terminate`)
+  async terminateSupplierContract(id: string | number, reason?: string) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/terminate`, { reason })
+    return response.data
+  }
+
+  async reportSupplierContract(id: string | number, data: FormData | Record<string, any>) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/report`, data, {
+      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {}
+    })
     return response.data
   }
 
   // ==================== REPORTS ====================
   async getSpendAnalysisReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/spend-analysis`, { params })
-    return response.data
+    return this.getSpendAnalytics(params)
   }
 
   async getSupplierPerformanceReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/supplier-performance`, { params })
-    return response.data
+    return this.getSupplierPerformanceAnalytics(params)
   }
 
   async getProcurementCycleTimeReport(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/reports/cycle-time`, { params })
-    return response.data
+    return this.getLeadTimeAnalysis(params)
   }
 
   // ==================== PRINT & EMAIL ====================
@@ -783,7 +807,7 @@ class ProcurementService {
   }
 
   async generateGRPdf(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts/${id}/print`, {
+    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}/print`, {
       responseType: 'blob'
     })
     return response

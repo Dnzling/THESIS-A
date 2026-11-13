@@ -8,6 +8,7 @@ use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,43 @@ use Illuminate\Support\Facades\Log;
 
 class FinanceInvoiceController extends Controller
 {
+    public function store(Request $request, \App\Http\Controllers\Api\Procurement\InvoiceController $procurementInvoices): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        abort_unless($storeId > 0, 403);
+        abort_unless(PurchaseOrder::query()->where('store_id', $storeId)->whereKey($request->input('purchase_order_id'))->exists(), 404);
+
+        return $procurementInvoices->store($request);
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $invoice = Invoice::query()
+            ->where('store_id', (int) $request->user()->store_id)
+            ->findOrFail($id);
+        abort_unless($invoice->status === 'draft', 422, 'Cannot update invoice that is not in draft status.');
+
+        $validated = $request->validate([
+            'invoice_number' => ['nullable', 'string', 'max:100', 'unique:invoices,invoice_number,' . $id],
+            'due_date' => ['nullable', 'date'],
+            'invoice_amount' => ['nullable', 'numeric', 'min:0'],
+            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+            'shipping_cost' => ['nullable', 'numeric', 'min:0'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'remarks' => ['nullable', 'string'],
+        ]);
+
+        $invoice->update($validated);
+        if (array_intersect(array_keys($validated), ['invoice_amount', 'tax_amount', 'shipping_cost', 'discount_amount'])) {
+            $invoice->update(['net_amount' => (float) ($validated['invoice_amount'] ?? $invoice->invoice_amount)
+                + (float) ($validated['tax_amount'] ?? $invoice->tax_amount ?? 0)
+                + (float) ($validated['shipping_cost'] ?? $invoice->shipping_cost ?? 0)
+                - (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0)]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Invoice updated successfully', 'data' => $invoice->fresh()]);
+    }
+
     /**
      * List invoices for finance
      * GET /api/finance/invoices
@@ -158,6 +196,7 @@ class FinanceInvoiceController extends Controller
             ], 404);
         }
     }
+
 
     /**
      * Perform 3-way matching

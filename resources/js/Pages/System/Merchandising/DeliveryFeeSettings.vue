@@ -23,14 +23,11 @@
           <div>
             <label class="text-sm text-gray-600">Base Fee</label>
             <InputNumber v-model="form.base_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+            <small class="mt-1 block text-xs text-gray-500">This is the minimum delivery charge before distance and other fees.</small>
           </div>
           <div>
             <label class="text-sm text-gray-600">Per KM Fee</label>
             <InputNumber v-model="form.per_km_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
-          </div>
-          <div>
-            <label class="text-sm text-gray-600">Minimum Delivery Fee</label>
-            <InputNumber v-model="form.min_delivery_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
           </div>
           <div>
             <label class="text-sm text-gray-600">Free Shipping Min Order (optional)</label>
@@ -114,7 +111,6 @@ const form = reactive<any>({
   is_active: true,
   base_fee: 100,
   per_km_fee: 10,
-  min_delivery_fee: 80,
   free_shipping_min_order: null,
   bulky_item_surcharge: 0,
   remote_area_surcharge: 0,

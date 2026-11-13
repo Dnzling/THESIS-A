@@ -5,18 +5,66 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
+use App\Models\ProductCatalog\Product;
 use App\Models\Admin\ViolationReport;
 use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Store\Branch;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\Store\CaviteLocationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class StoreSettingsController extends Controller
 {
+    public function setupAttention(Request $request)
+    {
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+
+        $store->loadMissing('subscriptionPlan:id,plan_key');
+        $mainBranch = $store->branches()
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->first(['id', 'logo_path']);
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $hours = $settings['simple_operating_hours'] ?? [];
+        $windows = $settings['fulfillment_windows'] ?? [];
+        $isSimplePlan = in_array(strtolower((string) ($store->subscriptionPlan?->plan_key ?? $store->subscription_tier)), ['free', 'simple'], true);
+
+        $hasValidWindow = static function ($window): bool {
+            return is_array($window)
+                && !empty($window['days'])
+                && !empty($window['start'])
+                && !empty($window['end'])
+                && (string) $window['end'] > (string) $window['start'];
+        };
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'setup_attention' => [
+                    'photo_upload' => empty($mainBranch?->logo_path),
+                    'operating_hours' => $isSimplePlan && (
+                        !is_array($hours)
+                        || empty($hours['days'])
+                        || empty($hours['opens_at'])
+                        || empty($hours['closes_at'])
+                        || (string) $hours['closes_at'] <= (string) $hours['opens_at']
+                    ),
+                    'fulfillment_windows' => !$hasValidWindow($windows['pickup'] ?? null)
+                        || !$hasValidWindow($windows['delivery'] ?? null),
+                    'pickup_window' => !$hasValidWindow($windows['pickup'] ?? null),
+                    'delivery_window' => !$hasValidWindow($windows['delivery'] ?? null),
+                    'employees' => Employee::query()->where('store_id', $store->id)->count() <= 1,
+                    'products' => Product::query()->where('store_id', $store->id)->count() === 0,
+                ],
+            ],
+        ]);
+    }
+
     public function show(Request $request)
     {
         $user = $request->user();
@@ -107,8 +155,8 @@ class StoreSettingsController extends Controller
                     ]) ?? [],
                 'attendance' => $this->resolveAttendanceSettings($store?->id),
                 'subscription' => [
-                    'tier' => $subscriptionPlan?->plan_key ?? 'free',
-                    'plan_label' => $subscriptionPlan?->name ?? 'Free',
+                    'tier' => $subscriptionPlan?->plan_key,
+                    'plan_label' => $subscriptionPlan?->name ?? 'No plan',
                     'ends_at' => $endsAt?->toDateString(),
                     'modules' => $enabledModules,
                 ],
@@ -160,6 +208,46 @@ class StoreSettingsController extends Controller
         ]);
     }
 
+    public function cancelSubscriptionAtPeriodEnd(Request $request)
+    {
+        $role = $request->user()?->role;
+        $roleName = is_object($role) ? ($role->name ?? $role->slug ?? '') : (string) $role;
+        abort_unless(strtolower($roleName) === 'owner', 403, 'Only the store owner can cancel the subscription.');
+
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+
+        return DB::transaction(function () use ($store) {
+            $lockedStore = Store::query()->lockForUpdate()->findOrFail($store->id);
+            $endsAt = $lockedStore->subscription_ends_at;
+            $plan = $lockedStore->subscriptionPlan;
+            $isPaidPlan = $plan && strtolower((string) $plan->plan_key) !== 'free';
+            $isCurrent = strtolower((string) $lockedStore->subscription_status) === 'paid'
+                && $isPaidPlan
+                && $endsAt
+                && $endsAt->copy()->startOfDay()->greaterThanOrEqualTo(now()->startOfDay());
+
+            abort_unless($isCurrent, 422, 'Only an active paid subscription can be cancelled.');
+
+            $settings = is_array($lockedStore->settings) ? $lockedStore->settings : [];
+            $existing = $settings['subscription_cancellation'] ?? null;
+            if (!is_array($existing) || empty($existing['effective_at'])) {
+                $settings['subscription_cancellation'] = [
+                    'requested_at' => now()->toIso8601String(),
+                    'effective_at' => $endsAt?->toDateString(),
+                ];
+                $lockedStore->settings = $settings;
+                $lockedStore->save();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Your plan is scheduled to end on its current due date.',
+                'data' => ['cancellation' => $settings['subscription_cancellation']],
+            ]);
+        });
+    }
+
     public function updateProfile(Request $request)
     {
         $validated = $request->validate([
@@ -168,9 +256,9 @@ class StoreSettingsController extends Controller
             'phone' => 'sometimes|nullable|string|max:50',
             'address' => 'sometimes|nullable|string|max:255',
             'city' => 'sometimes|nullable|string|max:255',
+            'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
-            'store_code' => 'sometimes|nullable|string|max:50',
             'contact_person' => 'sometimes|nullable|string|max:255',
         ]);
 
@@ -184,6 +272,7 @@ class StoreSettingsController extends Controller
             ], 404);
         }
 
+        abort_unless($user?->hasRole('owner'), 403);
         $store->fill(collect($validated)->except('contact_person')->toArray());
 
         $settings = is_array($store->settings) ? $store->settings : [];
@@ -204,6 +293,7 @@ class StoreSettingsController extends Controller
                     'phone' => $store->phone,
                     'address' => $store->address,
                     'city' => $store->city,
+                    'barangay' => $store->barangay,
                     'province' => $store->province,
                     'type' => $store->type,
                     'store_code' => $store->store_code,
@@ -218,10 +308,10 @@ class StoreSettingsController extends Controller
     {
         if (!$store) {
             return [
-                'store_status' => 'pending',
+                'store_status' => 'unverified',
                 'is_verified' => false,
                 'is_under_review' => false,
-                'is_pending' => true,
+                'is_pending' => false,
                 'is_rejected' => false,
                 'submitted_at' => null,
                 'reviewed_at' => null,
@@ -233,27 +323,26 @@ class StoreSettingsController extends Controller
         $store->loadMissing('verification');
         $verification = $store->verification;
 
-        $workflowStatus = 'pending';
-        if ($verification) {
-            if (!is_null($verification->reviewed_at) && !is_null($verification->rejection_reason)) {
-                $workflowStatus = 'rejected';
-            } elseif (!is_null($verification->reviewed_at)) {
-                $workflowStatus = 'approved';
-            } else {
-                $workflowStatus = 'reviewing';
-            }
+        $workflowStatus = 'unverified';
+        if ($verification?->submitted_at) {
+            $workflowStatus = 'reviewing';
+        }
+        if ($verification?->reviewed_at && $verification?->rejection_reason) {
+            $workflowStatus = 'rejected';
+        } elseif ($verification?->reviewed_at) {
+            $workflowStatus = 'approved';
         }
 
         return [
             'store_status' => $workflowStatus,
             'is_verified' => $workflowStatus === 'approved',
             'is_under_review' => $workflowStatus === 'reviewing',
-            'is_pending' => $workflowStatus === 'pending',
+            'is_pending' => $workflowStatus === 'unverified',
             'is_rejected' => $workflowStatus === 'rejected',
             'submitted_at' => $verification->submitted_at ?? null,
             'reviewed_at' => $verification->reviewed_at ?? null,
             'rejection_reason' => $verification->rejection_reason ?? null,
-            'documents_submitted' => (bool) $verification,
+            'documents_submitted' => (bool) $verification?->submitted_at,
         ];
     }
 
@@ -330,6 +419,7 @@ class StoreSettingsController extends Controller
                 'latitude' => null,
                 'longitude' => null,
                 'geofence_radius_m' => 5,
+                'geofence_enabled' => false,
             ];
         }
 
@@ -349,16 +439,8 @@ class StoreSettingsController extends Controller
             'latitude' => $branch?->latitude,
             'longitude' => $branch?->longitude,
             'geofence_radius_m' => $branch?->geofence_radius_m ?? 5,
-            'geofence_enabled' => $this->resolveGeofenceEnabled($storeId),
+            'geofence_enabled' => (bool) ($branch?->geofence_enabled ?? false),
         ];
-    }
-
-    private function resolveGeofenceEnabled(?int $storeId): bool
-    {
-        if (!$storeId) return true;
-        $store = \App\Models\Store\Store::find($storeId);
-        $settings = is_array($store?->settings) ? $store->settings : [];
-        return (bool) ($settings['attendance_geofence_enabled'] ?? true);
     }
 
     private function resolveTrialTier(?Store $store): string
@@ -450,6 +532,12 @@ class StoreSettingsController extends Controller
             'data' => [
                 'daily_interview_limit' => (int) ($settings['hr_interview_daily_limit'] ?? 10),
                 'leave_defaults' => array_merge($defaultLeaveSettings, $leaveDefaults),
+                'leave_settings' => $settings['hr_leave_settings'] ?? [],
+                'workforce_rules' => $settings['hr_workforce_rules'] ?? [],
+                'payroll_settings' => $settings['hr_payroll_settings'] ?? [],
+                'recruitment_settings' => $settings['hr_recruitment_settings'] ?? [],
+                'attendance_rules' => $settings['hr_attendance_rules'] ?? [],
+                'payroll_configuration' => $settings['hr_payroll_configuration'] ?? [],
             ],
         ]);
     }
@@ -460,6 +548,38 @@ class StoreSettingsController extends Controller
             'daily_interview_limit' => 'sometimes|integer|min:1|max:50',
             'leave_defaults' => 'sometimes|array',
             'leave_defaults.*' => 'nullable|numeric|min:0',
+            'leave_settings' => 'sometimes|array',
+            'leave_settings.paidLeave' => 'nullable|boolean',
+            'workforce_rules' => 'sometimes|array',
+            'workforce_rules.dailyHours' => 'nullable|numeric|min:1|max:24',
+            'workforce_rules.weeklyDays' => 'nullable|integer|min:1|max:7',
+            'workforce_rules.overtimeEnabled' => 'nullable|boolean',
+            'workforce_rules.breakMinutes' => 'nullable|integer|min:0|max:480',
+            'payroll_settings' => 'sometimes|array',
+            'payroll_settings.paidHours' => 'nullable|numeric|min:1|max:24',
+            'payroll_settings.frequency' => 'nullable|in:weekly,biweekly,monthly',
+            'payroll_settings.overtimeMultiplier' => 'nullable|numeric|min:1|max:5',
+            'payroll_settings.salaryBasis' => 'nullable|in:hourly,monthly',
+            'payroll_settings.deductionRule' => 'nullable|in:per_minute,per_hour,disabled',
+            'payroll_settings.governmentContributions' => 'nullable|boolean',
+            'recruitment_settings' => 'sometimes|array',
+            'recruitment_settings.interviewDuration' => 'nullable|integer|min:15|max:240',
+            'recruitment_settings.schedulingNoticeHours' => 'nullable|integer|min:0|max:168',
+            'recruitment_settings.statusOptions' => 'nullable|string|max:500',
+            'attendance_rules' => 'sometimes|array',
+            'attendance_rules.geofenceEnabled' => 'nullable|boolean',
+            'attendance_rules.radiusMeters' => 'nullable|integer|min:0|max:1000',
+            'attendance_rules.lateThreshold' => 'nullable|integer|min:0|max:240',
+            'attendance_rules.gracePeriod' => 'nullable|integer|min:0|max:240',
+            'attendance_rules.timezone' => 'nullable|string|max:64',
+            'payroll_configuration' => 'sometimes|array',
+            'payroll_configuration.workStart' => 'nullable|date_format:H:i',
+            'payroll_configuration.workEnd' => 'nullable|date_format:H:i',
+            'payroll_configuration.lunchBreak' => 'nullable|integer|min:0|max:480',
+            'payroll_configuration.lunchDuration' => 'nullable|integer|min:0|max:480',
+            'payroll_configuration.paidHours' => 'nullable|numeric|min:1|max:24',
+            'payroll_configuration.lateDeductionEnabled' => 'sometimes|boolean',
+            'payroll_configuration.lateDeductionRate' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $user = $request->user();
@@ -480,6 +600,24 @@ class StoreSettingsController extends Controller
             $cleanDefaults = array_filter($validated['leave_defaults'], fn($value) => $value !== null);
             $settings['hr_leave_defaults'] = $cleanDefaults;
         }
+        if (array_key_exists('leave_settings', $validated)) {
+            $settings['hr_leave_settings'] = $validated['leave_settings'];
+        }
+        if (array_key_exists('workforce_rules', $validated)) {
+            $settings['hr_workforce_rules'] = $validated['workforce_rules'];
+        }
+        if (array_key_exists('payroll_settings', $validated)) {
+            $settings['hr_payroll_settings'] = $validated['payroll_settings'];
+        }
+        if (array_key_exists('recruitment_settings', $validated)) {
+            $settings['hr_recruitment_settings'] = $validated['recruitment_settings'];
+        }
+        if (array_key_exists('attendance_rules', $validated)) {
+            $settings['hr_attendance_rules'] = $validated['attendance_rules'];
+        }
+        if (array_key_exists('payroll_configuration', $validated)) {
+            $settings['hr_payroll_configuration'] = $validated['payroll_configuration'];
+        }
         $store->settings = $settings;
         $store->save();
 
@@ -489,11 +627,17 @@ class StoreSettingsController extends Controller
             'data' => [
                 'daily_interview_limit' => (int) ($settings['hr_interview_daily_limit'] ?? 10),
                 'leave_defaults' => $settings['hr_leave_defaults'] ?? [],
+                'leave_settings' => $settings['hr_leave_settings'] ?? [],
+                'workforce_rules' => $settings['hr_workforce_rules'] ?? [],
+                'payroll_settings' => $settings['hr_payroll_settings'] ?? [],
+                'recruitment_settings' => $settings['hr_recruitment_settings'] ?? [],
+                'attendance_rules' => $settings['hr_attendance_rules'] ?? [],
+                'payroll_configuration' => $settings['hr_payroll_configuration'] ?? [],
             ],
         ]);
     }
 
-    public function updateAttendanceSettings(Request $request)
+    public function updateAttendanceSettings(Request $request, CaviteLocationService $locationService)
     {
         $validated = $request->validate([
             'branch_id' => 'nullable|exists:branches,id',
@@ -515,6 +659,18 @@ class StoreSettingsController extends Controller
                 'success' => false,
                 'message' => 'Store not found for this user.',
             ], 404);
+        }
+
+        try {
+            if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Choose an attendance location inside Cavite province.',
+                    'errors' => ['latitude' => ['Choose an attendance location inside Cavite province.']],
+                ], 422);
+            }
+        } catch (\RuntimeException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 503);
         }
 
         $branchQuery = Branch::query()->where('store_id', $store->id);
@@ -539,22 +695,10 @@ class StoreSettingsController extends Controller
             'latitude' => $validated['latitude'],
             'longitude' => $validated['longitude'],
             'geofence_radius_m' => $validated['geofence_radius_m'] ?? $branch->geofence_radius_m ?? 5,
+            'geofence_enabled' => array_key_exists('geofence_enabled', $validated)
+                ? (bool) $validated['geofence_enabled']
+                : (bool) $branch->geofence_enabled,
         ]);
-
-        $store->update([
-            'address' => $branch->address,
-            'city' => $branch->city,
-            'province' => $branch->province,
-            'latitude' => $branch->latitude,
-            'longitude' => $branch->longitude,
-        ]);
-
-        if (array_key_exists('geofence_enabled', $validated)) {
-            $settings = is_array($store->settings) ? $store->settings : [];
-            $settings['attendance_geofence_enabled'] = (bool) $validated['geofence_enabled'];
-            $store->settings = $settings;
-            $store->save();
-        }
 
         return response()->json([
             'success' => true,

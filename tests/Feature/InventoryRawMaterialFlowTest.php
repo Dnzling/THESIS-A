@@ -39,6 +39,7 @@ class InventoryRawMaterialFlowTest extends TestCase
             'unit_cost' => 125.5,
             'supplier_name' => 'Wood Supply Co',
             'initial_stock' => 10,
+            'reorder_point' => 20,
         ]);
 
         $response->assertCreated();
@@ -46,6 +47,7 @@ class InventoryRawMaterialFlowTest extends TestCase
         $response->assertJsonPath('data.unit_of_measurement', 'sheet');
         $response->assertJsonPath('data.supplier_name', 'Wood Supply Co');
         $response->assertJsonPath('data.initial_stock', '10.00');
+        $response->assertJsonPath('data.reorder_point', 20);
         $this->assertNotEmpty($response->json('data.sku'));
         $this->assertSame($category->id, $response->json('data.category_id'));
         $this->assertDatabaseHas('products', [
@@ -54,6 +56,41 @@ class InventoryRawMaterialFlowTest extends TestCase
             'store_id' => $user->store_id,
             'unit_of_measurement' => 'sheet',
             'supplier_name' => 'Wood Supply Co',
+            'reorder_point' => 20,
+        ]);
+
+        $this->assertDatabaseHas('branch_inventory', [
+            'product_id' => $response->json('data.id'),
+            'branch_id' => $user->branch_id,
+            'reorder_point' => 20,
+        ]);
+    }
+
+    public function test_non_variant_product_cannot_be_created_with_zero_stock(): void
+    {
+        $user = User::create([
+            'fname' => 'Inventory',
+            'lname' => 'Admin',
+            'email' => 'inventory-zero-stock@example.com',
+            'password' => bcrypt('password123'),
+            'store_id' => 1,
+            'branch_id' => 1,
+            'role_id' => 2,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($user)->postJson('/api/inventory/products', [
+            'product_name' => 'Zero Stock Material',
+            'product_type' => 'raw_material',
+            'unit_of_measurement' => 'piece',
+            'initial_stock' => 0,
+            'reorder_point' => 20,
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('initial_stock');
+        $this->assertDatabaseMissing('products', [
+            'product_name' => 'Zero Stock Material',
         ]);
     }
 }

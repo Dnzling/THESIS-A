@@ -12,12 +12,13 @@
           <span class="portal-brand">FURNISYNC JOBS</span>
         </button>
   
-        <!-- Authenticated User View -->
-        <div v-if="portalAuth.isAuthenticated" class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <Button label="Back to Home" icon="pi pi-arrow-left" severity="secondary" text @click="goToHome" />
+
           <Tag v-if="hiredApplication" severity="success"
             :value="`Currently hired: ${hiredApplication.jobPosting?.title || 'Employee'}`" />
   
-          <Button severity="contrast" rounded text class="h-10 w-10" @click="toggleProfileMenu">
+          <Button v-if="portalAuth.isAuthenticated" severity="contrast" rounded text class="h-10 w-10" @click="toggleProfileMenu">
             <template #icon>
               <Avatar shape="circle" class="bg-blue-600 text-white" :label="userInitials" />
             </template>
@@ -25,13 +26,6 @@
           <Menu ref="profileMenu" :model="profileItems" popup />
         </div>
   
-        <!-- Guest User View - Hide on auth pages -->
-        <div v-else-if="!isAuthPage" class="flex flex-wrap items-center gap-2">
-          <Button label="Applicant Login" severity="warn" outlined 
-            @click="router.push({ name: 'job-portal.login' })" />
-          <Button label="Create Account" severity="warn" 
-            @click="router.push({ name: 'job-portal.register' })" />
-        </div>
       </div>
     </header>
   
@@ -61,9 +55,6 @@ const profileMenu = ref()
 const applications = ref<any[]>([])
 
 // Computed
-const isAuthPage = computed(() => 
-  ['job-portal.login', 'job-portal.register'].includes(route.name as string)
-)
 
 const hiredApplication = computed(() =>
   applications.value.find((item) => String(item.status || '').toLowerCase() === 'hired')
@@ -128,6 +119,10 @@ const openJobPosts = () => {
 
 const toggleProfileMenu = (event: Event) => {
   profileMenu.value?.toggle(event)
+}
+
+const goToHome = () => {
+  window.location.href = '/'
 }
 
 const loadApplications = async () => {

@@ -33,4 +33,9 @@ class FinanceCashflowTransaction extends Model
     {
         return $this->belongsTo(FinanceAccount::class, 'finance_account_id');
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Core\User::class, 'created_by');
+    }
 }

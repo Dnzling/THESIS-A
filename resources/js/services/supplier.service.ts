@@ -28,6 +28,8 @@ export interface SupplierPortal {
   user_id: number
   supplier_id?: number
   supplier?: any
+  latitude?: number | string | null
+  longitude?: number | string | null
   status: 'pending' | 'approved' | 'rejected'
   rejection_reason?: string
   verified_by?: number
@@ -60,6 +62,11 @@ export interface SupplierRFQFeedback {
   rfq_id: number
   rfq_item_id: number
   quoted_price: number
+  available_quantity?: number
+  length_cm?: number
+  width_cm?: number
+  height_cm?: number
+  weight_kg?: number
   description?: string
   submitted_at: string
   created_at: string
@@ -71,6 +78,7 @@ export interface SupplierPOFeedback {
   supplier_portal_id: number
   purchase_order_id: number
   response: 'accepted' | 'rejected'
+  fulfillment_method?: 'store_pickup' | 'supplier_delivery'
   rejection_reason?: string
   receipt_status: 'pending' | 'confirmed'
   expected_delivery_date?: string
@@ -270,6 +278,41 @@ class SupplierService {
     return response.data
   }
 
+  async getProductListings(params?: { search?: string; store_id?: number; status?: 'active' | 'inactive'; per_page?: number; page?: number }) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products`, { params })
+    return response.data
+  }
+
+  async getProductListingOptions() {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products/options`)
+    return response.data
+  }
+
+  async createProductListing(data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/products`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return response.data
+  }
+
+  async createProductCategory(categoryName: string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/product-categories`, { category_name: categoryName })
+    return response.data
+  }
+
+  async updateProductListing(id: number | string, data: Record<string, unknown>) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/products/${id}`, data)
+    return response.data
+  }
+
+  async getProductListing(id: number | string) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products/${id}`)
+    return response.data
+  }
+
+  async archiveProductVariant(listingId: number | string, variationId: number | string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/products/${listingId}/variants/${variationId}/archive`)
+    return response.data
+  }
+
   async getLinkedStores() {
     const response = await axiosClient.get(`${this.portalBaseUrl}/stores/linked`)
     return response.data
@@ -307,6 +350,11 @@ class SupplierService {
     return response.data
   }
 
+  async submitVerification(): Promise<{ success: boolean; message: string; data: SupplierPortal }> {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/submit-verification`)
+    return response.data
+  }
+
   async downloadDocument(documentId: number) {
     const response = await axiosClient.get(`${this.portalBaseUrl}/documents/${documentId}/download`, {
       responseType: 'blob',
@@ -329,9 +377,46 @@ class SupplierService {
     rfq_id: number
     rfq_item_id: number
     quoted_price: number
+    available_quantity: number
+    length_cm: number
+    width_cm: number
+    height_cm: number
+    weight_kg: number
+    estimated_delivery_date: string
+    quotation_valid_until: string
+    attachment?: File | null
+    product_specifications?: string
+    additional_notes?: string
     description?: string
+    has_variant?: boolean
+    variant_name?: string
+    supplier_sku?: string
+    variant_size?: string
+    variant_color?: string
+    variant_texture?: string
+    variant_finish?: string
+    variant_material?: string
+    unit_of_measurement?: string
+    variant_images?: File[]
+    additional_variants?: Record<string, string>[]
   }) {
-    const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, data)
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'variant_images' && Array.isArray(value)) {
+        value.forEach((file) => formData.append('variant_images[]', file))
+        return
+      }
+      if (key === 'additional_variants' && Array.isArray(value)) {
+        value.forEach((variant, index) => Object.entries(variant).forEach(([field, fieldValue]) => {
+          formData.append(`additional_variants[${index}][${field}]`, fieldValue || '')
+        }))
+        return
+      }
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, value instanceof File ? value : typeof value === 'boolean' ? (value ? '1' : '0') : String(value))
+      }
+    })
+    const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, formData)
     return response.data
   }
 
@@ -361,14 +446,37 @@ class SupplierService {
     return response.data
   }
 
+  async getReceiptResolutions(poId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/pos/${poId}/receipt-resolutions`)
+    return response.data
+  }
+
+  async acceptReceiptResolution(id: number) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/accept`)
+    return response.data
+  }
+
+  async rejectReceiptResolution(id: number, reason: string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/reject`, { reason })
+    return response.data
+  }
+
+  async submitResolutionDelivery(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/delivery`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
   async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id?: number | null; submitted_by_supplier?: boolean }) {
-    const response = await axiosClient.post(`/api/procurement/invoices/from-grn`, data)
+    const response = await axiosClient.post(`${this.portalBaseUrl}/invoices/from-grn`, data)
     return response.data
   }
 
   async submitPOFeedback(data: {
     purchase_order_id: number
     response: 'accepted' | 'rejected'
+    fulfillment_method?: 'store_pickup' | 'supplier_delivery'
     rejection_reason?: string
     expected_delivery_date?: string
     delivery_quantity?: number

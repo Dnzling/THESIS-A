@@ -1,13 +1,13 @@
 <template>
   <div class="min-h-screen">
-    <div class="mx-auto min-w-7xl px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Supplier Profile</p>
-          <h1 class="text-2xl font-semibold text-slate-900">Supplier Portal</h1>
-          <p class="text-sm text-slate-500">Manage your verification and supplier details.</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Supplier Portal</p>
+          <h1 class="mt-1 text-xl font-semibold text-slate-900">{{ isPaymentAccountView ? 'Payment History' : 'Supplier Profile' }}</h1>
+          <p class="mt-1 text-sm text-slate-500">{{ isPaymentAccountView ? 'Review payments recorded by your partner stores.' : 'Manage your verification and supplier details.' }}</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="!isPaymentAccountView" class="flex flex-wrap gap-2">
           <Button :label="verificationLabel" icon="pi pi-check-circle" severity="success" class="small-pill"
             :disabled="isVerified" @click="goToVerification" />
         </div>
@@ -94,61 +94,97 @@
             </div>
           </section>
 
-          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4 lg:col-span-2">
-            <div>
-              <p class="text-lg font-semibold text-slate-900">Payment Account Records</p>
-              <p class="text-xs text-slate-500">Payment history only.</p>
+          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-900">Supplier pickup location</h2>
+                <p class="mt-1 text-xs text-slate-500">Set the map pin drivers should use when collecting purchase orders from your business.</p>
+              </div>
+              <Button label="Use Current Location" icon="pi pi-map-marker" size="small" severity="secondary" outlined :loading="locatingCoordinates" @click="useCurrentLocation" />
             </div>
 
-            <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="text-xs text-slate-500">Supplier Balance (Total)</div>
-              <div class="mt-1 text-lg font-semibold text-slate-900">PHP {{ formatMoney(supplier?.current_balance || 0) }}</div>
+            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+              <InputText v-model="locationSearch" class="w-full flex-1" placeholder="Search your supplier address or a nearby place" @keyup.enter.prevent="searchLocation" />
+              <Button label="Search" icon="pi pi-search" size="small" severity="warn" :loading="searchingLocation" @click="searchLocation" />
             </div>
 
-            <div class="rounded-xl border border-slate-100 bg-white p-4">
-              <div class="flex items-center justify-between mb-3">
-                <p class="text-sm font-semibold text-slate-800">Payment History</p>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-slate-500">Latest payments from finance and other payers</span>
-                  <Button
-                    label="Refresh"
-                    size="small"
-                    text
-                    :loading="loadingPaymentHistory"
-                    @click="loadPaymentHistory"
-                  />
+            <div ref="mapContainer" class="mt-3 h-80 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"></div>
+            <p class="mt-2 text-xs text-slate-500">Click the map or drag the pin to set your pickup location.</p>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p v-if="hasSelectedCoordinates" class="text-xs text-slate-600">
+                Pin: {{ Number(locationCoordinates.latitude).toFixed(6) }}, {{ Number(locationCoordinates.longitude).toFixed(6) }}
+                <span v-if="coordinatesSaved" class="ml-2 text-green-700">Saved</span>
+                <span v-else class="ml-2 text-orange-700">Unsaved changes</span>
+              </p>
+              <p v-else class="text-xs text-amber-700">Choose a point on the map to set your supplier coordinates.</p>
+              <Button label="Save Coordinates" icon="pi pi-check" size="small" severity="warn" :disabled="!hasSelectedCoordinates || coordinatesSaved" :loading="savingCoordinates" @click="saveCoordinates" />
+            </div>
+            <Message v-if="locationError" class="mt-3" severity="error" :closable="false">{{ locationError }}</Message>
+            <Message v-else-if="locationMessage" class="mt-3" severity="success" :closable="false">{{ locationMessage }}</Message>
+            <Message v-if="mapError" class="mt-3" severity="error" :closable="false">{{ mapError }}</Message>
+          </section>
+
+          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="space-y-4 lg:col-span-2">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Supplier Balance</p>
+                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">₱{{ formatMoney(supplier?.current_balance || 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Current balance recorded for your supplier account</p>
+                  </div>
+                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                    <i class="pi pi-wallet" />
+                  </span>
                 </div>
               </div>
-              <DataTable
-                :value="paymentHistoryRows"
-                :loading="loadingPaymentHistory"
-                responsiveLayout="scroll"
-                stripedRows
-                size="small"
-                class="text-sm"
-              >
-                <Column field="payer" header="Store Name" style="min-width: 180px" />
-                <Column field="invoice" header="Invoice" style="min-width: 130px" />
-                <Column field="method" header="Method" style="min-width: 120px" />
-                <Column header="Amount" style="min-width: 120px">
-                  <template #body="{ data }">
-                    <span class="font-semibold text-slate-800">PHP {{ formatMoney(data.amount) }}</span>
-                  </template>
-                </Column>
-                <Column header="Status" style="min-width: 120px">
-                  <template #body="{ data }">
-                    <Tag :value="String(data.status || 'pending').toUpperCase()" :severity="paymentStatusSeverity(data.status)" rounded />
-                  </template>
-                </Column>
-                <Column header="Date" style="min-width: 150px">
-                  <template #body="{ data }">
-                    {{ formatDateTime(data.created_at) }}
-                  </template>
-                </Column>
-                <template #empty>
-                  <div class="py-4 text-center text-slate-500 text-xs">No payment records yet.</div>
-                </template>
-              </DataTable>
+              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Payment Records</p>
+                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ paymentHistoryRows.length }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Recent payments loaded for this account</p>
+                  </div>
+                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                    <i class="pi pi-receipt" />
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+                <div>
+                  <h2 class="text-sm font-semibold text-slate-900">Payment Records</h2>
+                  <p class="mt-0.5 text-xs text-slate-500">Latest payments received from partner stores.</p>
+                </div>
+                <Button label="Refresh" icon="pi pi-refresh" size="small" severity="secondary" outlined rounded
+                  :loading="loadingPaymentHistory" @click="loadPaymentHistory" />
+              </div>
+              <div class="overflow-x-auto">
+                <DataTable :value="paymentHistoryRows" :loading="loadingPaymentHistory" rowHover size="small" class="text-sm">
+                  <Column field="created_at" header="Date" sortable style="min-width: 175px">
+                    <template #body="{ data }"><span class="whitespace-nowrap text-slate-700">{{ formatDateTime(data.created_at) }}</span></template>
+                  </Column>
+                  <Column field="payer" header="Store" style="min-width: 180px">
+                    <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.payer }}</span></template>
+                  </Column>
+                  <Column field="invoice" header="Invoice" style="min-width: 140px">
+                    <template #body="{ data }"><span class="font-mono text-xs text-slate-600">{{ data.invoice }}</span></template>
+                  </Column>
+                  <Column field="method" header="Method" style="min-width: 130px">
+                    <template #body="{ data }"><span class="capitalize text-slate-700">{{ String(data.method || '—').replaceAll('_', ' ') }}</span></template>
+                  </Column>
+                  <Column field="amount" header="Amount" style="min-width: 130px">
+                    <template #body="{ data }"><span class="whitespace-nowrap font-semibold text-slate-900">₱{{ formatMoney(data.amount) }}</span></template>
+                  </Column>
+                  <Column field="status" header="Status" style="min-width: 120px">
+                    <template #body="{ data }"><Badge :value="formatPaymentStatus(data.status)" :severity="paymentStatusSeverity(data.status)" /></template>
+                  </Column>
+                  <template #empty><div class="py-10 text-center text-sm text-slate-500">No payment records yet.</div></template>
+                </DataTable>
+              </div>
             </div>
           </section>
   
@@ -159,14 +195,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, nextTick, onBeforeUnmount, watch } from 'vue'
+import { computed, onMounted, ref, nextTick, onBeforeUnmount, reactive } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useAuthStore } from '@/stores/auth'
 import supplierService from '@/services/supplier.service'
 import SystemLayout from '@/Layouts/SystemLayout.vue'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
+import Message from 'primevue/message'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
 defineOptions({ layout: SystemLayout })
 
@@ -178,7 +220,29 @@ const paymentAccountSectionEl = ref<HTMLElement | null>(null)
 const loadingPaymentHistory = ref(false)
 const paymentHistoryRows = ref<any[]>([])
 const paymentHistoryPolling = ref<ReturnType<typeof setInterval> | null>(null)
+const mapContainer = ref<HTMLElement | null>(null)
+const locationSearch = ref('')
+const searchingLocation = ref(false)
+const locatingCoordinates = ref(false)
+const savingCoordinates = ref(false)
+const mapError = ref('')
+const locationError = ref('')
+const locationMessage = ref('')
+const locationCoordinates = reactive<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null })
+let map: MapboxMap | null = null
+let marker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const user = computed(() => authStore.user)
+const hasSelectedCoordinates = computed(() => locationCoordinates.latitude !== null && locationCoordinates.longitude !== null)
+const coordinatesSaved = computed(() => {
+  const savedLatitude = Number(portal.value?.latitude)
+  const savedLongitude = Number(portal.value?.longitude)
+  return hasSelectedCoordinates.value
+    && Number.isFinite(savedLatitude)
+    && Number.isFinite(savedLongitude)
+    && Math.abs(savedLatitude - Number(locationCoordinates.latitude)) < 0.0000001
+    && Math.abs(savedLongitude - Number(locationCoordinates.longitude)) < 0.0000001
+})
 
 const isSupplier = computed(() => String(authStore.user?.role || '').toLowerCase().includes('supplier'))
 const isPaymentAccountView = computed(() => {
@@ -246,12 +310,124 @@ const loadPortal = async () => {
     }
     portal.value = response.data
     supplier.value = response.data?.supplier || null
+    locationSearch.value = [
+      supplier.value?.address || response.data?.address,
+      supplier.value?.city || response.data?.city,
+      supplier.value?.province || response.data?.province,
+      supplier.value?.country || response.data?.country,
+    ].filter(Boolean).join(', ')
+    locationCoordinates.latitude = response.data?.latitude == null ? null : Number(response.data.latitude)
+    locationCoordinates.longitude = response.data?.longitude == null ? null : Number(response.data.longitude)
     await loadPaymentHistory()
   } catch (error) {
     router.visit('/supplier-portal/registration')
   } finally {
     loading.value = false
     await nextTick()
+  }
+}
+
+const setCoordinates = (latitude: number, longitude: number, recenter = true) => {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return
+  locationCoordinates.latitude = latitude
+  locationCoordinates.longitude = longitude
+  locationError.value = ''
+  locationMessage.value = ''
+  if (!map || !mapboxgl) return
+  if (!marker) {
+    marker = new mapboxgl.Marker({ draggable: true }).setLngLat([longitude, latitude]).addTo(map)
+    marker.on('dragend', () => {
+      const point = marker!.getLngLat()
+      setCoordinates(point.lat, point.lng, false)
+    })
+  } else {
+    marker.setLngLat([longitude, latitude])
+  }
+  if (recenter) map.easeTo({ center: [longitude, latitude], zoom: 15 })
+}
+
+const initializeMap = async () => {
+  if (!mapContainer.value || map || isPaymentAccountView.value) return
+  try {
+    mapError.value = ''
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    const hasCoords = hasSelectedCoordinates.value
+    map = new mapboxgl.Map({
+      container: mapContainer.value,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: hasCoords
+        ? [Number(locationCoordinates.longitude), Number(locationCoordinates.latitude)]
+        : [122, 12],
+      zoom: hasCoords ? 14 : 5.5,
+    })
+    map.on('load', () => {
+      if (hasSelectedCoordinates.value) setCoordinates(Number(locationCoordinates.latitude), Number(locationCoordinates.longitude), false)
+      setTimeout(() => map?.resize(), 100)
+    })
+    map.on('click', (event) => setCoordinates(event.lngLat.lat, event.lngLat.lng))
+    map.on('error', (event) => { mapError.value = event.error?.message || 'Mapbox could not load the map.' })
+  } catch (error: any) {
+    mapError.value = error?.message || 'Unable to load the map.'
+  }
+}
+
+const searchLocation = async () => {
+  if (!locationSearch.value.trim()) return
+  searchingLocation.value = true
+  locationError.value = ''
+  try {
+    const result = await forwardGeocodeMapbox(locationSearch.value.trim())
+    if (!result) {
+      locationError.value = 'Mapbox could not find that address. Try a more specific location.'
+      return
+    }
+    setCoordinates(result.latitude, result.longitude)
+  } catch (error: any) {
+    locationError.value = error?.message || 'Unable to search for that address.'
+  } finally {
+    searchingLocation.value = false
+  }
+}
+
+const useCurrentLocation = () => {
+  if (!navigator.geolocation) {
+    locationError.value = 'This browser does not support location access.'
+    return
+  }
+  locatingCoordinates.value = true
+  locationError.value = ''
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      locatingCoordinates.value = false
+      setCoordinates(position.coords.latitude, position.coords.longitude)
+    },
+    () => {
+      locatingCoordinates.value = false
+      locationError.value = 'Allow location access in your browser and try again.'
+    },
+    { enableHighAccuracy: true, timeout: 15000 },
+  )
+}
+
+const saveCoordinates = async () => {
+  if (!hasSelectedCoordinates.value || savingCoordinates.value) return
+  savingCoordinates.value = true
+  locationError.value = ''
+  locationMessage.value = ''
+  try {
+    const response = await supplierService.updatePortalCoordinates({
+      latitude: Number(locationCoordinates.latitude),
+      longitude: Number(locationCoordinates.longitude),
+    })
+    portal.value = { ...portal.value, ...(response?.data || {}) }
+    locationCoordinates.latitude = Number(response?.data?.latitude ?? locationCoordinates.latitude)
+    locationCoordinates.longitude = Number(response?.data?.longitude ?? locationCoordinates.longitude)
+    locationMessage.value = 'Supplier pickup coordinates saved.'
+  } catch (error: any) {
+    locationError.value = error?.response?.data?.message || 'Unable to save the supplier coordinates.'
+  } finally {
+    savingCoordinates.value = false
   }
 }
 
@@ -323,9 +499,13 @@ const paymentStatusSeverity = (status: string) => {
   const normalized = String(status || '').toLowerCase()
   if (normalized === 'paid' || normalized === 'processed' || normalized === 'completed') return 'success'
   if (normalized === 'cancelled' || normalized === 'failed' || normalized === 'rejected') return 'danger'
-  if (normalized === 'pending' || normalized === 'pending_approval') return 'warning'
+  if (normalized === 'pending' || normalized === 'pending_approval') return 'warn'
   return 'info'
 }
+
+const formatPaymentStatus = (status: string) => String(status || 'pending')
+  .replaceAll('_', ' ')
+  .replace(/\b\w/g, letter => letter.toUpperCase())
 
 onMounted(async () => {
   if (!isSupplier.value) {
@@ -343,16 +523,15 @@ onMounted(async () => {
         loadPaymentHistory()
       }, 12000)
     }
+  } else {
+    await initializeMap()
   }
 })
 
-watch(isPaymentAccountView, async (isActive) => {
-  if (!isActive) return
-  await nextTick()
-  await loadPaymentHistory()
-})
-
 onBeforeUnmount(() => {
+  map?.remove()
+  map = null
+  marker = null
   if (paymentHistoryPolling.value) {
     clearInterval(paymentHistoryPolling.value)
     paymentHistoryPolling.value = null

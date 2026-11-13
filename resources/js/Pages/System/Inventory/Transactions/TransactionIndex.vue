@@ -1,58 +1,23 @@
 <template>
-  <div class="p-4 min-h-screen space-y-4">
-    <div class="flex items-center justify-between">
+  <div class="mx-auto x-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">Inventory Transactions</h1>
-        <p class="text-xs text-gray-500 mt-0.5">Compact movement log with quick detail preview.</p>
+        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Inventory Transactions</h1>
+        <p class="mt-1 text-sm text-gray-500">A history of stock received, issued, sold, and adjusted.</p>
       </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs text-gray-500">Total</p>
-            <p class="text-xl font-bold text-gray-800">{{ summary.total_transactions || 0 }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs text-gray-500">Moved Value</p>
-            <p class="text-xl font-bold text-green-600">{{ formatCurrency(summary.total_value_moved) }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs text-gray-500">Today</p>
-            <p class="text-xl font-bold text-blue-600">{{ summary.today_transactions || 0 }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-xs text-gray-500">Products Affected</p>
-            <p class="text-xl font-bold text-purple-600">{{ summary.unique_products_affected || 0 }}</p>
-          </div>
-        </template>
-      </Card>
     </div>
 
     <Card>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-          <div class="md:col-span-2">
+        <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+          <div class="w-full lg:max-w-xs">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Search</label>
             <IconField>
               <InputIcon class="pi pi-search" />
               <InputText v-model="filters.search" placeholder="Reference, notes, product" class="w-full p-inputtext-sm" />
             </IconField>
           </div>
-          <div>
+          <div class="w-full lg:w-44">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Type</label>
             <Select
               v-model="filters.transaction_type"
@@ -64,7 +29,7 @@
               class="w-full"
             />
           </div>
-          <div>
+          <div class="w-full lg:w-52">
             <label class="block text-xs font-semibold text-gray-700 mb-1">Product</label>
             <Select
               v-model="filters.product_id"
@@ -77,35 +42,19 @@
               class="w-full"
             />
           </div>
-            <div class="md:col-span-2">
+            <div class="w-full lg:w-64">
               <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
-              <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon :showButtonBar="false" />
+              <DatePicker v-model="dateRange" selectionMode="range" dateFormat="M d, yy" :manualInput="false" class="w-full" showIcon :showButtonBar="false" placeholder="Select dates" />
             </div>
+          <Button v-if="hasActiveFilters()" size="small" icon="pi pi-filter-slash" label="Clear Filter" severity="danger" outlined @click="resetFilters" />
         </div>
-        <div class="mt-3 flex justify-end">
-          <Button size="small" icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined @click="resetFilters" />
-        </div>
-      </template>
-    </Card>
-
-    <Card>
-      <template #content>
+        <hr class="my-4 border-slate-200" />
         <div v-if="loading" class="space-y-3">
-          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
+          <div class="grid grid-cols-9 gap-3 text-xs text-gray-400">
+            <Skeleton v-for="column in 9" :key="`header-${column}`" height="24px" />
           </div>
-          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
+          <div v-for="i in 8" :key="i" class="grid grid-cols-9 gap-3">
+            <Skeleton v-for="column in 9" :key="column" height="20px" />
           </div>
         </div>
 
@@ -113,8 +62,8 @@
           v-else
           :value="transactions"
           paginator
-          stripedRows
-          class="p-datatable-sm p-datatable-fluid"
+          rowHover
+          class="p-datatable-sm text-sm"
           :rows="filters.per_page"
           :totalRecords="totalRecords"
           :lazy="true"
@@ -123,25 +72,23 @@
           @sort="onSort"
           :sortField="filters.sort_field"
           :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
-          @row-click="onRowClick"
-          :rowClass="rowClass"
         >
-          <Column field="transaction_date" header="Date" sortable style="width: 130px">
+          <Column field="transaction_date" header="Date" sortable style="min-width: 145px">
             <template #body="{ data }">
-              <div class="text-xs">
-                <div>{{ formatDate(data.transaction_date) }}</div>
-                <div class="text-gray-500">{{ formatTime(data.transaction_date) }}</div>
+              <div>
+                <div class="font-medium text-gray-900">{{ formatDate(data.transaction_date) }}</div>
+                <div class="text-xs text-gray-500">{{ formatTime(data.transaction_date) }}</div>
               </div>
             </template>
           </Column>
 
-          <Column field="transaction_number" header="Reference" sortable style="width: 170px">
+          <Column field="transaction_number" header="Reference" sortable style="min-width: 185px">
             <template #body="{ data }">
-              <span class="font-mono text-xs">{{ data.transaction_number || '-' }}</span>
+              <span class="font-mono text-xs font-semibold text-gray-900">{{ data.transaction_number || '—' }}</span>
             </template>
           </Column>
 
-          <Column field="transaction_type" header="Type" style="width: 120px">
+          <Column field="transaction_type" header="Type" style="min-width: 120px">
             <template #body="{ data }">
               <Tag :value="formatTransactionType(data.transaction_type)" :severity="getTransactionTypeSeverity(data.transaction_type)" />
             </template>
@@ -149,44 +96,40 @@
 
           <Column header="Product" style="min-width: 220px">
             <template #body="{ data }">
-              <div class="text-sm">
-                <div class="font-medium">{{ data.product?.product_name || '-' }}</div>
-                <div class="text-xs text-gray-500">
-                  {{ data.variation?.variation_name ? `Variant: ${data.variation.variation_name}` : 'No variant' }}
-                </div>
+              <div>
+                <div class="font-medium text-gray-900">{{ data.product?.product_name || 'Product unavailable' }}</div>
+                <div class="text-xs text-gray-500">{{ data.variation?.variation_name || data.product?.sku || 'No variant' }}</div>
               </div>
             </template>
+          </Column>
+
+          <Column header="Branch" style="min-width: 140px">
+            <template #body="{ data }">{{ data.branch?.name || '—' }}</template>
           </Column>
 
           <Column header="Qty" style="width: 120px">
             <template #body="{ data }">
               <div :class="Number(data.quantity_change) >= 0 ? 'text-green-600' : 'text-red-600'" class="font-semibold">
-                {{ Number(data.quantity_change) >= 0 ? '+' : '' }}{{ data.quantity_change ?? 0 }}
+                {{ signedQuantity(data.quantity_change) }}
               </div>
             </template>
           </Column>
 
-          <Column field="total_value" header="Value" style="width: 130px">
+          <Column field="total_value" header="Value" style="width: 150px">
             <template #body="{ data }">
-              <div class="text-sm">{{ formatCurrency(data.total_value) }}</div>
+              <div class="font-medium text-gray-800">{{ formatCurrency(data.total_value) }}</div>
             </template>
           </Column>
 
-          <Column field="reference_type" header="Source" style="width: 140px">
+          <Column header="Created By" style="min-width: 150px">
             <template #body="{ data }">
-              <div class="text-xs">
-                <div>{{ formatReferenceType(data.reference_type) }}</div>
-                <div class="text-gray-500">ID: {{ data.reference_id || '-' }}</div>
-              </div>
+              <span class="text-slate-700">{{ employeeName(data.created_by) }}</span>
             </template>
           </Column>
 
-          <Column header="Actions" style="width: 110px">
+          <Column style="width: 100px">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-eye" size="small" severity="info" text rounded @click="openQuickDetail(data)" />
-                <Button icon="pi pi-external-link" size="small" severity="secondary" text rounded @click="openDetailPage(data.id)" />
-              </div>
+              <Button icon="pi pi-eye" size="small" label="View" outlined rounded aria-label="View transaction" @click="openDetailPage(data.id)" />
             </template>
           </Column>
 
@@ -232,12 +175,12 @@
         </div>
         <div>
           <p class="text-xs text-gray-500">Quantity Before/After</p>
-          <p>{{ selectedTransaction.quantity_before ?? 0 }} -> {{ selectedTransaction.quantity_after ?? 0 }}</p>
+          <p>{{ formatQuantity(selectedTransaction.quantity_before) }} → {{ formatQuantity(selectedTransaction.quantity_after) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500">Change</p>
           <p :class="Number(selectedTransaction.quantity_change) >= 0 ? 'text-green-600' : 'text-red-600'" class="font-semibold">
-            {{ Number(selectedTransaction.quantity_change) >= 0 ? '+' : '' }}{{ selectedTransaction.quantity_change ?? 0 }}
+            {{ signedQuantity(selectedTransaction.quantity_change) }}
           </p>
         </div>
         <div>
@@ -250,11 +193,11 @@
         </div>
         <div>
           <p class="text-xs text-gray-500">Source</p>
-          <p>{{ formatReferenceType(selectedTransaction.reference_type) }} ({{ selectedTransaction.reference_id || '-' }})</p>
+          <p>{{ formatReferenceType(selectedTransaction.reference_type) }}{{ selectedTransaction.reference_id ? ` #${selectedTransaction.reference_id}` : '' }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500">Created By</p>
-          <p>{{ selectedTransaction.created_by ? `${selectedTransaction.created_by.fname} ${selectedTransaction.created_by.lname}` : '-' }}</p>
+          <p>{{ employeeName(selectedTransaction.created_by) }}</p>
         </div>
         <div class="md:col-span-2">
           <p class="text-xs text-gray-500">Notes</p>
@@ -281,7 +224,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
-import Calendar from 'primevue/calendar'
+import DatePicker from 'primevue/datepicker'
 
 const router = useRouter()
 const toast = useToast()
@@ -290,12 +233,6 @@ const loading = ref(false)
 const transactions = ref<any[]>([])
 const products = ref<any[]>([])
 const totalRecords = ref(0)
-const summary = ref({
-  total_transactions: 0,
-  total_value_moved: 0,
-  today_transactions: 0,
-  unique_products_affected: 0,
-})
 
 const quickDetailVisible = ref(false)
 const quickDetailLoading = ref(false)
@@ -325,12 +262,14 @@ const transactionTypes = [
   { label: 'Receive', value: 'receive' },
 ]
 
-const formatDateParam = (date: Date) => date.toISOString().split('T')[0]
-
-const rowClass = (data: any) => {
-  return {
-    'cursor-pointer hover:bg-gray-50': true,
-  }
+const formatDateParam = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const hasActiveFilters = () => Boolean(filters.search || filters.transaction_type || filters.product_id || filters.from_date || filters.to_date)
+const formatQuantity = (value: string | number | null | undefined) => Number(value || 0).toLocaleString('en-PH')
+const signedQuantity = (value: string | number | null | undefined) => `${Number(value || 0) > 0 ? '+' : ''}${formatQuantity(value)}`
+const employeeName = (employee: any) => {
+  if (!employee) return '—'
+  const name = [employee.fname || employee.user?.fname, employee.lname || employee.user?.lname].filter(Boolean).join(' ')
+  return name || `Employee #${employee.id ?? employee}`
 }
 
 const loadTransactions = async () => {
@@ -373,18 +312,6 @@ const loadTransactions = async () => {
   }
 }
 
-const loadSummary = async () => {
-  try {
-    const params: any = {}
-    if (filters.from_date) params.from_date = formatDateParam(filters.from_date)
-    if (filters.to_date) params.to_date = formatDateParam(filters.to_date)
-    const response = await inventoryService.getTransactionSummary(params)
-    if (response.success && response.data) summary.value = response.data
-  } catch {
-    // no-op
-  }
-}
-
 const loadProducts = async () => {
   try {
     const response = await inventoryService.getProducts({ per_page: 1000 })
@@ -408,20 +335,15 @@ const onSort = (event: any) => {
   loadTransactions()
 }
 
-const onRowClick = (event: any) => {
-  const row = event.data
-  if (row?.id) openDetailPage(row.id)
-}
-
 const resetFilters = () => {
   filters.search = ''
   filters.transaction_type = null
   filters.product_id = null
   filters.from_date = null
   filters.to_date = null
+  dateRange.value = null
   filters.page = 1
   loadTransactions()
-  loadSummary()
 }
 
 const openQuickDetail = async (row: any) => {
@@ -442,8 +364,8 @@ const openDetailPage = (id: number) => {
   router.push({ name: 'inventory.transactions.detail', params: { id } })
 }
 
-const formatTransactionType = (type: string) => (type ? type.replace(/_/g, ' ') : 'N/A')
-const formatReferenceType = (type: string) => (type ? type.replace(/_/g, ' ') : 'N/A')
+const formatTransactionType = (type: string) => (type ? type.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '—')
+const formatReferenceType = (type: string) => (type ? type.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '—')
 
 const getTransactionTypeSeverity = (type: string) => {
   switch (type) {
@@ -467,19 +389,19 @@ const getTransactionTypeSeverity = (type: string) => {
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const formatTime = (value?: string) => {
   if (!value) return '-'
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
 }
 
 const formatDateTime = (value?: string) => {
   if (!value) return '-'
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 const formatCurrency = (value: string | number | null | undefined) => {
@@ -499,7 +421,6 @@ watch(
     if (filterTimer) clearTimeout(filterTimer)
     filterTimer = setTimeout(() => {
       loadTransactions()
-      loadSummary()
     }, 250)
   },
 )
@@ -517,7 +438,6 @@ watch(dateRange, (val) => {
 
 onMounted(() => {
   loadTransactions()
-  loadSummary()
   loadProducts()
 })
 </script>

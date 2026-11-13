@@ -64,7 +64,7 @@ class TagController extends BaseController
         try {
             $validated = $this->validateRequest($request, [
                 'tag_name' => 'required|string|max:50',
-                'tag_type' => 'required|in:Style,Room,Promotion,Feature',
+                'tag_type' => 'required|in:Style,Promotion,Feature',
                 'is_active' => 'boolean'
             ]);
 
@@ -159,10 +159,13 @@ class TagController extends BaseController
     {
         try {
             $tag = Tag::byStore($this->getStoreId())->findOrFail($id);
+            if ($tag->tag_type === 'Room') {
+                return $this->errorResponse('Room tags are read-only. Assign preset rooms in the product form.', 422);
+            }
 
             $validated = $this->validateRequest($request, [
                 'tag_name' => 'sometimes|string|max:50|unique:tags,tag_name,' . $id . ',id,store_id,' . $this->getStoreId(),
-                'tag_type' => 'sometimes|in:Style,Room,Promotion,Feature',
+                'tag_type' => 'sometimes|in:Style,Promotion,Feature',
                 'is_active' => 'boolean'
             ]);
 
@@ -256,7 +259,7 @@ class TagController extends BaseController
         try {
             $validated = $this->validateRequest($request, [
                 'product_id' => 'required|exists:products,id',
-                'tag_ids' => 'required|array',
+                'tag_ids' => 'present|array|max:3',
                 'tag_ids.*' => 'required|exists:tags,id'
             ]);
 
@@ -280,8 +283,14 @@ class TagController extends BaseController
             DB::beginTransaction();
 
             try {
-                // Sync tags (attach only new ones)
-                $product->tags()->syncWithoutDetaching($validated['tag_ids']);
+                // Keep the product's tag set aligned with the form selection.
+                // product_tags.store_id is required even though it is not part
+                // of Laravel's default belongsToMany pivot payload.
+                $storeId = (int) $this->getStoreId();
+                $syncPayload = collect($validated['tag_ids'])
+                    ->mapWithKeys(fn ($tagId) => [(int) $tagId => ['store_id' => $storeId]])
+                    ->all();
+                $product->tags()->sync($syncPayload);
 
                 DB::commit();
 

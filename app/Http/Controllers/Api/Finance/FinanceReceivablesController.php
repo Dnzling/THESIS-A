@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesReceipt;
+use App\Models\Core\User;
 use Illuminate\Support\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class FinanceReceivablesController extends Controller
 {
@@ -27,6 +29,8 @@ class FinanceReceivablesController extends Controller
         if (in_array($source, ['all', 'ecommerce'], true)) {
             $rows = $rows->merge($this->ecommerceRows($request));
         }
+
+        $summary = $this->outstandingPeriodSummary($rows);
 
         if ($search !== '') {
             $needle = strtolower($search);
@@ -49,7 +53,37 @@ class FinanceReceivablesController extends Controller
         return response()->json([
             'success' => true,
             'data' => $rows,
+            'summary' => $summary,
         ]);
+    }
+
+    private function outstandingPeriodSummary(Collection $rows): array
+    {
+        $today = Carbon::today();
+        $currentStart = $today->copy()->subDays(27);
+        $previousStart = $currentStart->copy()->subDays(28);
+        $previousEnd = $currentStart->copy()->subSecond();
+
+        $sumOpenReceivables = static function (Carbon $start, Carbon $end) use ($rows): float {
+            return (float) $rows
+                ->filter(function (array $row) use ($start, $end): bool {
+                    if (!in_array($row['status'] ?? '', ['pending', 'partial'], true) || empty($row['created_at'])) {
+                        return false;
+                    }
+
+                    return Carbon::parse($row['created_at'])->betweenIncluded($start, $end);
+                })
+                ->sum(fn (array $row): float => (float) ($row['amount'] ?? 0));
+        };
+
+        return [
+            'current' => [
+                'outstanding_amount' => $sumOpenReceivables($currentStart, $today->copy()->endOfDay()),
+            ],
+            'previous' => [
+                'outstanding_amount' => $sumOpenReceivables($previousStart, $previousEnd),
+            ],
+        ];
     }
 
     public function show(Request $request, string $source, int $id): JsonResponse
@@ -75,6 +109,12 @@ class FinanceReceivablesController extends Controller
                     'order_reference' => $order->order_number,
                     'status' => $this->mapPaymentStatus($order->payment_status, $order->status),
                     'order_status' => $order->status,
+                    'branch' => [
+                        'id' => $order->branch?->id,
+                        'name' => $order->branch?->name,
+                    ],
+                    'processed_by' => $this->userDisplayName($order->creator),
+                    'marked_for_dispatch_by' => $this->userDisplayName($order->delivery?->readyForDispatchLogs?->first()?->creator),
                     'receipt' => [
                         'id' => $receipt?->id,
                         'receipt_number' => $receipt?->receipt_number,
@@ -108,6 +148,12 @@ class FinanceReceivablesController extends Controller
                         'subtotal' => (float) ($order->subtotal ?? 0),
                         'discount' => (float) ($order->discount_amount ?? 0),
                         'tax' => (float) ($order->tax_amount ?? 0),
+                        'commission_percentage' => (float) ($order->commission_percentage ?? 0),
+                        'commission_base' => (float) ($order->commission_base_amount ?? 0),
+                        'commission' => (float) ($order->commission_amount ?? 0),
+                        'store_net' => (float) $order->store_net_amount > 0
+                            ? (float) $order->store_net_amount
+                            : max(0, (float) $order->total_amount - (float) $order->commission_amount),
                         'shipping_fee' => 0,
                         'total' => (float) ($order->total_amount ?? 0),
                     ],
@@ -147,6 +193,10 @@ class FinanceReceivablesController extends Controller
                 'reference' => $order->order_number ?: ('EC-' . $order->id),
                 'status' => $this->mapPaymentStatus($order->payment_status, $order->status),
                 'order_status' => $order->status,
+                'branch' => [
+                    'id' => $order->assignedBranch?->id,
+                    'name' => $order->assignedBranch?->name,
+                ],
                 'customer' => [
                     'name' => $order->shipping_name ?: 'Ecommerce Customer',
                     'phone' => $order->shipping_phone,
@@ -169,7 +219,9 @@ class FinanceReceivablesController extends Controller
                 'amounts' => [
                     'subtotal' => (float) ($order->subtotal ?? 0),
                     'discount' => (float) ($order->discount_amount ?? 0),
+                    'voucher_code' => $order->voucher_code,
                     'tax' => (float) ($order->tax_amount ?? 0),
+                    'store_net' => (float) $order->total_amount,
                     'shipping_fee' => (float) ($order->shipping_fee ?? 0),
                     'total' => (float) ($order->total_amount ?? 0),
                 ],
@@ -205,10 +257,17 @@ class FinanceReceivablesController extends Controller
         $this->applySalesTenantScope($request, $query);
 
         return $query
+            ->with([
+                'branch:id,name',
+                'creator:id,fname,lname',
+                'delivery.readyForDispatchLogs.creator:id,fname,lname',
+            ])
             ->select([
                 'id',
+                'branch_id',
                 'order_number',
                 'customer_name',
+                'created_by',
                 'total_amount',
                 'payment_status',
                 'status',
@@ -225,6 +284,9 @@ class FinanceReceivablesController extends Controller
                     'id' => $order->id,
                     'reference' => $order->order_number ?: ('SO-' . $order->id),
                     'customer' => $order->customer_name ?: 'Walk-in Customer',
+                    'branch' => $order->branch?->name,
+                    'processed_by' => $this->userDisplayName($order->creator),
+                    'marked_for_dispatch_by' => $this->userDisplayName($order->delivery?->readyForDispatchLogs?->first()?->creator),
                     'amount' => (float) ($order->total_amount ?? 0),
                     'due_date' => $dueDate?->toDateString(),
                     'status' => $this->mapPaymentStatus($order->payment_status, $order->status),
@@ -240,8 +302,10 @@ class FinanceReceivablesController extends Controller
         $this->applyEcommerceTenantScope($request, $query);
 
         return $query
+            ->with('assignedBranch:id,name')
             ->select([
                 'id',
+                'assigned_branch_id',
                 'order_number',
                 'shipping_name',
                 'total_amount',
@@ -260,6 +324,9 @@ class FinanceReceivablesController extends Controller
                     'id' => $order->id,
                     'reference' => $order->order_number ?: ('EC-' . $order->id),
                     'customer' => $order->shipping_name ?: 'Ecommerce Customer',
+                    'branch' => $order->assignedBranch?->name,
+                    'processed_by' => null,
+                    'marked_for_dispatch_by' => null,
                     'amount' => (float) ($order->total_amount ?? 0),
                     'due_date' => $dueDate?->toDateString(),
                     'status' => $this->mapPaymentStatus($order->payment_status, $order->status),
@@ -346,7 +413,12 @@ class FinanceReceivablesController extends Controller
 
     private function findSalesOrder(Request $request, int $id): SalesOrder
     {
-        $query = SalesOrder::query()->with(['items', 'delivery']);
+        $query = SalesOrder::query()->with([
+            'items',
+            'branch:id,name',
+            'creator:id,fname,lname',
+            'delivery.readyForDispatchLogs.creator:id,fname,lname',
+        ]);
         $this->applySalesTenantScope($request, $query);
 
         return $query->findOrFail($id);
@@ -354,7 +426,12 @@ class FinanceReceivablesController extends Controller
 
     private function findSalesReceipt(Request $request, int $id): ?SalesReceipt
     {
-        $query = SalesReceipt::query()->with(['order.items', 'order.delivery']);
+        $query = SalesReceipt::query()->with([
+            'order.items',
+            'order.branch:id,name',
+            'order.creator:id,fname,lname',
+            'order.delivery.readyForDispatchLogs.creator:id,fname,lname',
+        ]);
 
         $storeId = $this->resolveStoreId($request);
         if ($storeId) {
@@ -371,9 +448,20 @@ class FinanceReceivablesController extends Controller
 
     private function findEcommerceOrder(Request $request, int $id): EcommerceOrder
     {
-        $query = EcommerceOrder::query()->with(['items', 'delivery']);
+        $query = EcommerceOrder::query()->with(['items', 'delivery', 'assignedBranch:id,name']);
         $this->applyEcommerceTenantScope($request, $query);
 
         return $query->findOrFail($id);
+    }
+
+    private function userDisplayName(?User $user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        $name = trim(implode(' ', array_filter([$user->fname, $user->lname])));
+
+        return $name !== '' ? $name : $user->email;
     }
 }

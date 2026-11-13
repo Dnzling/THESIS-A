@@ -1,11 +1,12 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <!-- Toast notifications -->
     <Toast />
 
     <!-- Header -->
     <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.goods-receipts' })" />
+      <Button label="Back" text @click="router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Goods Receipt</h2>
         <p class="text-sm text-gray-500 mt-1">Receive and verify purchased items from supplier</p>
@@ -14,143 +15,45 @@
 
     <Card>
       <template #content>
-        <form class="space-y-6" @submit.prevent="submitForm">
-          <!-- Section 1: PO Selection -->
+        <form class="space-y-6" @submit.prevent="requestReceiptConfirmation(false)">
+          <!-- Section 1: Purchase Order -->
           <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-link text-blue-600"></i>
-              Reference Purchase Order
-            </h3>
-
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <!-- PO Selection -->
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Select Purchase Order
-                </label>
-                <Select
-                  v-model="form.purchase_order_id"
-                  :options="approvedPOs"
-                  option-label="po_number"
-                  option-value="id"
-                  placeholder="Select an approved PO..."
-                  class="w-full"
-                  @change="onPoSelected"
-                  :loading="loadingPOs"
-                />
-                <p class="text-xs text-gray-500 mt-1">Only approved purchase orders are available</p>
-              </div>
-
-            <!-- Receipt Date -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Date
-                </label>
-                <DatePicker fluid v-model="form.receipt_date" date-format="yy-mm-dd" class="w-full" show-icon />
-              </div>
-
-              <!-- Receipt Time -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Time
-                </label>
-                <InputText v-model="form.receipt_time" placeholder="HH:mm:ss" class="w-full" />
-              </div>
-
-              <!-- Receipt Status -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Type
-                </label>
-                <Select
-                  v-model="form.receipt_status"
-                  :options="receiptStatusOptions"
-                  option-label="label"
-                  option-value="value"
-                  class="w-full"
-                />
-              </div>
-            </div>
+            <h3 class="mb-4 text-lg font-semibold text-gray-800">Reference Purchase Order</h3>
 
             <!-- PO Details Summary -->
-            <div v-if="selectedPO" class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <p class="text-xs text-blue-600 font-semibold">Supplier</p>
-                <p class="text-gray-800 font-semibold">{{ selectedPO.supplier?.supplier_name }}</p>
+            <div v-if="selectedPO" class="grid grid-cols-1 gap-3 rounded-xl border border-slate-300 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">PO Number</p>
+                <p class="mt-1 break-words font-semibold text-slate-950">{{ selectedPO.po_number }}</p>
               </div>
-              <div class="bg-green-50 p-4 rounded-lg border border-green-200">
-                <p class="text-xs text-green-600 font-semibold">Total Items</p>
-                <p class="text-gray-800 font-semibold">{{ selectedPO.items?.length || 0 }} items</p>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Supplier</p>
+                <p class="mt-1 break-words font-semibold text-slate-950">{{ selectedPO.supplier?.supplier_name || '—' }}</p>
               </div>
-              <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                <p class="text-xs text-purple-600 font-semibold">PO Total</p>
-                <p class="text-gray-800 font-semibold">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Total Items</p>
+                <p class="mt-1 font-semibold text-slate-950">{{ selectedPO.items?.length || 0 }} items</p>
               </div>
+              <div class="min-w-0 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">PO Total</p>
+                <p class="mt-1 font-semibold text-slate-950">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
+              </div>
+            </div>
+            <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Open this form from a submitted purchase order when the goods arrive.
             </div>
           </div>
 
-          <!-- Section 2: Barcode Scanner / Quick Add -->
-          <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-barcode text-purple-600"></i>
-              Receive Items
-            </h3>
-
-            <div class="space-y-4">
-              <!-- Barcode Input -->
-              <div>
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  Barcode Scanner / Product Search
-                </label>
-                <div class="flex gap-2">
-                  <InputText
-                    v-model="barcodeInput"
-                    placeholder="Scan barcode or type product name..."
-                    class="flex-1"
-                    @keyup.enter="addByBarcode"
-                  />
-                  <Button
-                    icon="pi pi-search"
-                    :loading="scanningBarcode"
-                    @click="addByBarcode"
-                    v-tooltip="'Or press Enter'"
-                  />
-                </div>
-                <p class="text-xs text-gray-500 mt-1">🔍 Barcode scanner will auto-populate product and any custom quantity</p>
-              </div>
-
-              <!-- Quick Add from PO Items -->
-              <div v-if="selectedPO?.items?.length" class="p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
-                <p class="text-sm font-semibold text-gray-700 mb-3">📦 Quick Add from PO:</p>
-                <div class="flex gap-2 flex-wrap">
-                  <Button
-                    v-for="item in selectedPO.items"
-                    :key="item.id"
-                    :label="`${item.product?.product_name} (${item.quantity_ordered})`"
-                    size="small"
-                    severity="secondary"
-                    outlined
-                    @click="quickAddItem(item)"
-                    class="text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 3: Received Items Table -->
+          <!-- Received Items Table -->
           <div class="border-b pb-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <i class="pi pi-inbox text-green-600"></i>
-                Received Items ({{ receivedItems.length }})
-              </h3>
+              <h3 class="text-lg font-semibold text-gray-800">Received Items ({{ receivedItems.length }})</h3>
             </div>
 
             <!-- Discrepancy Alert -->
             <div v-if="hasDiscrepancies" class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 rounded">
               <p class="text-sm font-semibold text-red-800">
-                ⚠️ Discrepancies Detected - Review items below
+                Discrepancies detected. Review the items below.
               </p>
             </div>
 
@@ -165,7 +68,7 @@
                     <th class="text-center p-3">Variance</th>
                     <th class="text-center p-3">Status</th>
                     <th class="text-center p-3">Remarks</th>
-                    <th class="text-center p-3">Action</th>
+                   
                   </tr>
                 </thead>
                 <tbody>
@@ -194,15 +97,20 @@
                     <td class="p-3 text-center">{{ item.quantity_ordered }}</td>
                     <td class="p-3 text-center">
                       <InputNumber
-                        v-model="item.quantity_received"
+                        :modelValue="item.quantity_received"
                         :min="0" fluid
                         class="w-16 text-center"
-                        @input="calculateVariance(index)"
+                        @update:modelValue="onReceivedQuantityUpdate(index, $event)"
+                        @blur="onReceivedQuantityBlur(index)"
                       />
+                      <p v-if="item.quantityError" class="mt-1 text-xs text-red-600">{{ item.quantityError }}</p>
                     </td>
                     <td class="p-3 text-center font-semibold" :class="getVarianceColor(item)">
-                      {{ item.variance }}
-                      <span class="text-xs">({{ item.variance_percent }}%)</span>
+                      <template v-if="item.varianceTouched">
+                        {{ item.variance }}
+                        <span class="text-xs">({{ item.variance_percent }}%)</span>
+                      </template>
+                      <span v-else class="text-gray-400">—</span>
                     </td>
                     <td class="p-3 text-center">
                       <Select
@@ -221,26 +129,17 @@
                         class="w-full text-xs"
                       />
                     </td>
-                    <td class="p-3 text-center">
-                      <Button
-                        icon="pi pi-trash"
-                        text
-                        severity="danger"
-                        size="small"
-                        @click="removeReceivedItem(index)"
-                      />
-                    </td>
+                  
                   </tr>
                 </tbody>
               </table>
             </div>
             <div v-else class="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded">
-              <i class="pi pi-inbox text-gray-400 text-3xl mb-2"></i>
-              <p class="text-gray-500">No items received yet. Use barcode scanner or quick add buttons above.</p>
+              <p class="text-gray-500">No purchase-order items are available to receive.</p>
             </div>
           </div>
 
-          <!-- Section 4: Verification Summary -->
+          <!-- Verification Summary -->
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card class="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
               <template #content>
@@ -280,6 +179,7 @@
               v-model="form.notes"
               rows="3"
               placeholder="Add any special notes about this receipt..."
+              fluid
             />
           </div>
 
@@ -290,21 +190,20 @@
               severity="secondary"
               text
               type="button"
-              @click="router.push({ name: 'inventory.goods-receipts' })"
+              @click="router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })"
             />
             <Button
               label="Save as Draft"
-              icon="pi pi-download"
-              severity="info"
+              severity="secondary"
+              type="button"
               :loading="saving"
-              @click="saveDraft = true; submitForm()"
+              @click="requestReceiptConfirmation(true)"
             />
             <Button
               label="Complete Receipt"
-              icon="pi pi-check"
-              severity="success"
+              type="button"
               :loading="saving"
-              @click="saveDraft = false; submitForm()"
+              @click="requestReceiptConfirmation(false)"
             />
           </div>
         </form>
@@ -314,42 +213,37 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import inventoryService from '../../../../services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
+import axiosClient from '@/axios'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
+const isInventoryFlow = window.location.pathname.startsWith('/inventory/')
+const isWarehouseFlow = window.location.pathname.startsWith('/warehouse/')
+const receiptApiBase = isWarehouseFlow ? '/api/warehouse/goods-receipts' : '/api/inventory/goods-receipts'
 
 // Form State
 const form = reactive({
   purchase_order_id: null as number | null,
   branch_id: null as number | null,
-  receipt_date: new Date(),
-  receipt_time: new Date().toTimeString().split(' ')[0],
-  receipt_status: 'full' as 'full' | 'partial' | 'damaged' | 'rejected',
   notes: ''
 })
 
 // UI State
 const saving = ref(false)
 const saveDraft = ref(false)
-const loadingPOs = ref(false)
-const scanningBarcode = ref(false)
-const barcodeInput = ref('')
-const approvedPOs = ref<any[]>([])
 const selectedPO = ref<any>(null)
 const receivedItems = ref<any[]>([])
-
-const receiptStatusOptions = [
-  { label: 'Full Receipt', value: 'full' },
-  { label: 'Partial Receipt', value: 'partial' },
-  { label: 'Damaged Items', value: 'damaged' },
-  { label: 'Rejected', value: 'rejected' }
-]
+const draftId = ref<number | null>(null)
 
 const itemStatusOptions = [
   { label: 'Complete', value: 'complete' },
@@ -360,7 +254,7 @@ const itemStatusOptions = [
 
 // Computed
 const hasDiscrepancies = computed(() => {
-  return receivedItems.value.some((item) => item.status !== 'complete' || item.variance !== 0)
+  return receivedItems.value.some((item) => item.varianceTouched && (item.status !== 'complete' || item.variance !== 0))
 })
 
 const totalOrdered = computed(() => {
@@ -368,11 +262,11 @@ const totalOrdered = computed(() => {
 })
 
 const totalReceived = computed(() => {
-  return receivedItems.value.reduce((sum, item) => sum + item.quantity_received, 0)
+  return receivedItems.value.reduce((sum, item) => sum + Number(item.confirmedQuantityReceived ?? 0), 0)
 })
 
 const totalVariance = computed(() => {
-  return totalReceived.value - totalOrdered.value
+  return receivedItems.value.reduce((sum, item) => sum + (item.varianceTouched ? item.variance : 0), 0)
 })
 
 const completionPercent = computed(() => {
@@ -382,10 +276,18 @@ const completionPercent = computed(() => {
 
 // Methods
 onMounted(async () => {
-  await loadApprovedPOs()
-
+  const draftIdFromQuery = Number(new URLSearchParams(window.location.search).get('draft_id') || 0)
+  if ((isInventoryFlow || isWarehouseFlow) && draftIdFromQuery > 0) {
+    await prefillFromDraft(draftIdFromQuery)
+    return
+  }
   // If PO ID provided in query, auto-select and prefill
-  const poIdFromQuery = Number(route.query.po_id || 0)
+  const poIdFromQuery = Number(new URLSearchParams(window.location.search).get('po_id') || route.query.po_id || 0)
+  const warehousePrId = Number(route.query.warehouse_pr_id || 0)
+  if (isWarehouseFlow && warehousePrId > 0 && poIdFromQuery > 0) {
+    await prefillFromWarehouseRequisition(warehousePrId, poIdFromQuery)
+    return
+  }
   if (poIdFromQuery > 0) {
     await prefillFromPurchaseOrder(poIdFromQuery)
     if (selectedPO.value) return
@@ -402,34 +304,37 @@ const hydrateReceiptFromPO = (po: any) => {
   selectedPO.value = po
   form.branch_id = po?.branch_id ?? null
   receivedItems.value = (po?.items || []).map((item: any) => ({
+    remaining: Math.max(0, Number(item.quantity_ordered || 0) - Number(item.quantity_received || 0) - Number(item.quantity_rejected || 0)),
+    ...item,
+  })).filter((item: any) => item.remaining > 0).map((item: any) => ({
     id: item.id,
     purchase_order_item_id: item.id,
     product_id: item.product_id,
     product: item.product,
     variation_id: item.variation_id,
-    quantity_ordered: item.quantity_ordered,
-    quantity_expected: item.quantity_ordered,
-    quantity_received: item.quantity_ordered,
+    quantity_ordered: item.remaining,
+    quantity_expected: item.remaining,
+    quantity_received: isInventoryFlow || isWarehouseFlow ? 0 : item.remaining,
+    confirmedQuantityReceived: isInventoryFlow || isWarehouseFlow ? 0 : item.remaining,
     quantity_damaged: 0,
-    variance: 0,
-    variance_percent: 0,
-    status: 'complete',
+    variance: isInventoryFlow || isWarehouseFlow ? -item.remaining : 0,
+    variance_percent: isInventoryFlow || isWarehouseFlow ? -100 : 0,
+    varianceTouched: false,
+    quantityError: '',
+    status: isInventoryFlow || isWarehouseFlow ? 'short' : 'complete',
     remarks: ''
   }))
 }
 
 const prefillFromPurchaseOrder = async (poId: number) => {
   try {
-    const response = await procurementService.getPurchaseOrder(poId)
+    const response = isInventoryFlow
+      ? await axiosClient.get(`/api/inventory/purchase-orders/${poId}`)
+      : await WarehouseService.purchaseOrder(poId)
     const payload = response?.data ?? response
     const po = payload?.data ?? payload ?? null
     if (!po?.id) return
 
-    // Ensure selected value exists in options so Select can display it.
-    const existing = approvedPOs.value.find((o: any) => String(o?.id) === String(po.id))
-    if (!existing) {
-      approvedPOs.value = [po, ...approvedPOs.value]
-    }
     form.purchase_order_id = po.id
     hydrateReceiptFromPO(po)
   } catch (error) {
@@ -437,9 +342,51 @@ const prefillFromPurchaseOrder = async (poId: number) => {
   }
 }
 
+const prefillFromWarehouseRequisition = async (requisitionId: number, purchaseOrderId: number) => {
+  try {
+    const requisition = await WarehouseService.purchaseRequisition(requisitionId)
+    const purchaseOrders = Array.isArray(requisition?.purchase_orders)
+      ? requisition.purchase_orders
+      : (Array.isArray(requisition?.purchaseOrders) ? requisition.purchaseOrders : [])
+    const po = purchaseOrders.find((item: any) => Number(item.id) === purchaseOrderId)
+    if (!po) {
+      toast.add({ severity: 'error', summary: 'Purchase order unavailable', detail: 'This PO is not linked to the selected warehouse requisition.', life: 3500 })
+      return
+    }
+
+    form.purchase_order_id = Number(po.id)
+    hydrateReceiptFromPO(po)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load requisition', detail: error?.response?.data?.message || 'Could not load the linked PO items.', life: 3500 })
+  }
+}
+
+const prefillFromDraft = async (id: number) => {
+  try {
+    const response = await axiosClient.get(`${receiptApiBase}/${id}`)
+    const draft = response?.data?.data ?? response?.data
+    if (draft?.receipt_status !== 'draft' || !draft.purchase_order_id) return
+    await prefillFromPurchaseOrder(Number(draft.purchase_order_id))
+    if (!selectedPO.value) return
+    draftId.value = id
+    form.notes = draft.quality_notes || ''
+    for (const item of receivedItems.value) {
+      const saved = draft.items?.find((entry: any) => Number(entry.purchase_order_item_id) === Number(item.purchase_order_item_id))
+      if (saved) {
+        item.quantity_received = Number(saved.quantity_received || 0)
+        calculateVariance(receivedItems.value.indexOf(item))
+      }
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Draft unavailable', detail: 'Unable to load this draft receipt.', life: 3000 })
+  }
+}
+
 const prefillFromRequisition = async (prId: number) => {
   try {
-    const response = await inventoryService.getPurchaseRequisition(prId)
+    const response = isWarehouseFlow
+      ? await WarehouseService.purchaseRequisition(prId)
+      : await inventoryService.getPurchaseRequisition(prId)
     const requisition = response?.data ?? response
     const data = requisition?.data ?? requisition
     const purchaseOrders = Array.isArray(data?.purchase_orders)
@@ -469,151 +416,37 @@ const prefillFromRequisition = async (prId: number) => {
   }
 }
 
-const loadApprovedPOs = async () => {
-  loadingPOs.value = true
-  try {
-    const response = await procurementService.getApprovedPurchaseOrders?.({ per_page: 100 })
-      .catch(() => ({ data: [] }))
-    approvedPOs.value = response?.data?.data || response?.data || []
-  } catch (error) {
-    console.error('Failed to load approved POs', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load purchase orders',
-      life: 3000
-    })
-  } finally {
-    loadingPOs.value = false
-  }
-}
-
-const onPoSelected = async () => {
-  if (!form.purchase_order_id) {
-    selectedPO.value = null
-    receivedItems.value = []
-    return
-  }
-
-  try {
-      const response = await procurementService.getPurchaseOrder(Number(form.purchase_order_id))
-      const payload = response?.data ?? response
-      const po = payload?.data ?? payload ?? null
-      hydrateReceiptFromPO(po)
-  } catch (error) {
-    console.error('Failed to load PO details', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load purchase order details',
-      life: 3000
-    })
-  }
-}
-
-const quickAddItem = (item: any) => {
-  // Check if already added
-  const exists = receivedItems.value.find((ri) => ri.product_id === item.product_id)
-  if (!exists && selectedPO.value?.items) {
-    const poItem = selectedPO.value.items.find((i: any) => i.product_id === item.product_id)
-    if (poItem) {
-      receivedItems.value.push({
-        id: poItem.id,
-        purchase_order_item_id: poItem.id,
-        product_id: item.product_id,
-        product: item.product,
-        variation_id: poItem.variation_id,
-        quantity_ordered: item.quantity_ordered,
-        quantity_expected: item.quantity_ordered,
-        quantity_received: item.quantity_ordered,
-        quantity_damaged: 0,
-        variance: 0,
-        variance_percent: 0,
-        status: 'complete',
-        remarks: ''
-      })
-      toast.add({
-        severity: 'success',
-        summary: 'Added',
-        detail: `${item.product?.product_name} added`,
-        life: 2000
-      })
-    }
-  }
-}
-
-const addByBarcode = async () => {
-  if (!barcodeInput.value.trim()) return
-
-  scanningBarcode.value = true
-  try {
-    // Simulate barcode lookup - in real scenario, call API
-    // For now, search in PO items
-    const matchedItem = selectedPO.value?.items?.find((item: any) =>
-      item.product?.sku?.includes(barcodeInput.value) ||
-      item.product?.product_name?.toLowerCase().includes(barcodeInput.value.toLowerCase())
-    )
-
-    if (matchedItem) {
-      const exists = receivedItems.value.find((ri) => ri.product_id === matchedItem.product_id)
-      if (!exists) {
-        receivedItems.value.push({
-          id: matchedItem.id,
-          purchase_order_item_id: matchedItem.id,
-          product_id: matchedItem.product_id,
-          product: matchedItem.product,
-          variation_id: matchedItem.variation_id,
-          quantity_ordered: matchedItem.quantity_ordered,
-          quantity_expected: matchedItem.quantity_ordered,
-          quantity_received: 1, // Start with 1 for barcode scans
-          quantity_damaged: 0,
-          variance: 1 - matchedItem.quantity_ordered,
-          variance_percent: Math.round(
-            ((1 - matchedItem.quantity_ordered) / matchedItem.quantity_ordered) * 100
-          ),
-          status: 'complete',
-          remarks: ''
-        })
-        toast.add({
-          severity: 'success',
-          summary: 'Scanned',
-          detail: `${matchedItem.product?.product_name} detected`,
-          life: 2000
-        })
-      } else {
-        toast.add({
-          severity: 'warn',
-          summary: 'Already Added',
-          detail: 'Product already in receipt list',
-          life: 2000
-        })
-      }
-    } else {
-      toast.add({
-        severity: 'warn',
-        summary: 'Not Found',
-        detail: 'Product not found in this PO',
-        life: 2000
-      })
-    }
-
-    barcodeInput.value = ''
-  } finally {
-    scanningBarcode.value = false
-  }
-}
-
   const calculateVariance = (index: number) => {
     const item = receivedItems.value[index]
-    item.variance = item.quantity_received - item.quantity_ordered
+    if (!item) return
+    const received = Number(item.quantity_received ?? 0)
+    item.varianceTouched = true
+    item.quantityError = !Number.isInteger(received) || received < 0
+      ? 'Enter a valid quantity.'
+      : received > item.quantity_ordered
+        ? 'Received quantity cannot exceed the outstanding quantity.'
+        : ''
+    if (item.quantityError) return
+    item.confirmedQuantityReceived = received
+    item.variance = received - item.quantity_ordered
     item.variance_percent = item.quantity_ordered > 0
       ? Math.round((item.variance / item.quantity_ordered) * 100)
       : 0
+    if (item.status === 'short' || item.status === 'complete') item.status = item.variance === 0 ? 'complete' : 'short'
   }
 
-const removeReceivedItem = (index: number) => {
-  receivedItems.value.splice(index, 1)
-}
+  const onReceivedQuantityUpdate = (index: number, value: number | null) => {
+    const item = receivedItems.value[index]
+    if (!item) return
+    item.quantity_received = value
+    calculateVariance(index)
+  }
+
+  const onReceivedQuantityBlur = async (index: number) => {
+    await nextTick()
+    calculateVariance(index)
+  }
+
 
   const getVarianceColor = (item: any) => {
     if (item.variance === 0) return 'text-green-600'
@@ -635,10 +468,33 @@ const removeReceivedItem = (index: number) => {
     return 'good'
   }
 
+const requestReceiptConfirmation = (asDraft: boolean) => {
+  confirm.require({
+    header: asDraft ? 'Save receipt as draft?' : 'Complete this goods receipt?',
+    message: asDraft
+      ? 'The receipt will be saved as a draft and will not update inventory yet.'
+      : 'Confirm the received quantities and complete this receipt. Inventory will be updated based on the verified quantities.',
+    icon: asDraft ? 'pi pi-save' : 'pi pi-check-circle',
+    acceptLabel: asDraft ? 'Save Draft' : 'Complete Receipt',
+    rejectLabel: 'Review Again',
+    acceptProps: { severity: asDraft ? 'secondary' : 'warn' },
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: () => {
+      saveDraft.value = asDraft
+      submitForm()
+    },
+  })
+}
+
 const submitForm = async () => {
+  receivedItems.value.forEach((_, index) => calculateVariance(index))
+  if (receivedItems.value.some((item) => item.quantityError)) {
+    toast.add({ severity: 'error', summary: 'Invalid Quantity', detail: 'Correct the received quantities before continuing.', life: 3000 })
+    return
+  }
   // Validation
   if (!form.purchase_order_id) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Please select a purchase order', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Purchase Order Required', detail: 'Open this form from a submitted purchase order.', life: 3000 })
     return
   }
 
@@ -649,18 +505,10 @@ const submitForm = async () => {
 
   saving.value = true
   try {
-    // Convert Date to ISO string date for API
-    const receiptDate = (form.receipt_date instanceof Date
-      ? form.receipt_date.toISOString().split('T')[0]
-      : form.receipt_date) || new Date().toISOString().split('T')[0]
-
       const payload: Record<string, any> = {
         purchase_order_id: form.purchase_order_id,
         branch_id: form.branch_id,
-        receipt_date: receiptDate,
-        receipt_time: form.receipt_time || new Date().toTimeString().split(' ')[0],
-        receipt_status: form.receipt_status,
-        notes: form.notes,
+        quality_notes: form.notes,
         items: receivedItems.value.map((item) => ({
           purchase_order_item_id: item.purchase_order_item_id,
           product_id: item.product_id,
@@ -674,7 +522,16 @@ const submitForm = async () => {
         status: saveDraft.value ? 'draft' : 'completed'
       }
 
-    await procurementService.createGoodsReceipt(payload as any)
+    if ((isInventoryFlow || isWarehouseFlow) && draftId.value) {
+      await axiosClient.put(`${receiptApiBase}/${draftId.value}`, payload)
+      if (!saveDraft.value) {
+        await axiosClient.post(`${receiptApiBase}/${draftId.value}/verify`)
+      }
+    } else if (isInventoryFlow || isWarehouseFlow) {
+      await axiosClient.post(receiptApiBase, payload)
+    } else {
+      await procurementService.createGoodsReceipt(payload as any)
+    }
 
     toast.add({
       severity: 'success',
@@ -684,14 +541,14 @@ const submitForm = async () => {
     })
 
     setTimeout(() => {
-      router.push({ name: 'inventory.goods-receipts' })
+      router.push({ name: isWarehouseFlow ? 'warehouse.receiving' : 'inventory.goods-receipts' })
     }, 1500)
   } catch (error) {
     console.error('Failed to create goods receipt', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to create goods receipt',
+      detail: (error as any)?.response?.data?.message || 'Failed to create goods receipt',
       life: 3000
     })
   } finally {

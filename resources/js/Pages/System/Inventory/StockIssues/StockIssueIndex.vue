@@ -1,123 +1,64 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
-    <div class="max-w-7xl mx-auto">
-      <div class="mb-6">
+  <div class="min-h-screen p-4">
+    <div>
+      <div class="mb-4">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Stock Issues</h1>
-            <p class="text-gray-600 mt-1">Manage stock issue transactions</p>
+            <h1 class="text-xl font-bold text-gray-800">Stock Issuance</h1>
           </div>
-          <Button
-            label="Issue Stock"
-            @click="createStockIssue"
-            class="bg-blue-600 hover:bg-blue-700"
-          />
+          <div class="flex items-center gap-2">
+            <Button label="New Stock Issuance" icon="pi pi-plus" size="small" class="text-sm"
+              @click="createStockIssue" />
+          </div>
         </div>
       </div>
 
       <Card>
         <template #content>
           <!-- Filters -->
-          <div class="mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
-                <InputText
-                  v-model="filters.search"
-                  placeholder="Search issues..."
-                  class="w-full"
-                  @input="onFilter"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <Select
-                  v-model="filters.status"
-                  :options="statusOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="All Status"
-                  class="w-full"
-                  showClear
-                  @change="onFilter"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Type</label>
-                <Select
-                  v-model="filters.type"
-                  :options="typeOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="All Types"
-                  class="w-full"
-                  showClear
-                  @change="onFilter"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse</label>
-                <Select
-                  v-model="filters.warehouse_id"
-                  :options="warehouses"
-                  optionLabel="name"
-                  optionValue="id"
-                  placeholder="All Warehouses"
-                  class="w-full"
-                  showClear
-                  @change="onFilter"
-                />
-              </div>
-              <div class="flex items-end">
-                <Button
-                  label="Clear Filters"
-                  severity="secondary"
-                  @click="clearFilters"
-                  class="w-full"
-                />
-              </div>
+          <div class="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-3">
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search issue number or description"
+                class="w-full text-sm" size="small" />
+            </IconField>
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+              placeholder="Status" class="w-full text-sm" size="small" showClear />
+            <Select v-model="filters.issue_type" :options="typeOptions" optionLabel="label" optionValue="value"
+              placeholder="Reason" class="w-full text-sm" size="small" showClear />
+            <div v-if="hasActiveFilters">
+              <Button label="Clear All" severity="danger" size="small" @click="clearFilters" />
             </div>
           </div>
 
           <!-- Data Table -->
-          <DataTable
-            :value="stockIssues"
-            :loading="loading"
-            paginator
-            :rows="filters.per_page"
-            :rowsPerPageOptions="[5, 10, 25, 50]"
-            :totalRecords="totalRecords"
-            :lazy="true"
-            @page="onPage"
-            @sort="onSort"
-            :sortField="filters.sort_field"
-            :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
-            tableStyle="min-width: 50rem"
-            class="p-datatable-sm"
-          >
-            <Column field="issue_number" header="Issue Number" style="width: 140px" sortable />
-            <Column field="issue_type" header="Type" style="width: 120px">
+          <DataTable :value="stockIssues" :loading="loading" paginator :rows="filters.per_page"
+            :rowsPerPageOptions="[15, 25, 50]" :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort"
+            :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
+            currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
+            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
+            tableStyle="min-width: 50rem" class="p-datatable-sm text-sm" rowHover>
+            <Column field="issue_date" header="Issue Date" style="width: 150px" sortable>
               <template #body="slotProps">
-                <Tag
-                  :value="slotProps.data.issue_type"
-                  :severity="getTypeSeverity(slotProps.data.issue_type)"
-                  class="capitalize"
-                />
+                {{ formatDate(slotProps.data.issue_date) }}
               </template>
             </Column>
-            <Column field="description" header="Description" style="min-width: 200px">
+            <Column field="issue_number" header="Issue Number" style="width: 200px" sortable />
+            <Column field="issue_type" header="Reason" style="width: 190px" sortable>
               <template #body="slotProps">
-                {{ slotProps.data.description || 'N/A' }}
+                {{ slotProps.data.issue_type === 'other' && slotProps.data.description
+                  ? slotProps.data.description : formatIssueType(slotProps.data.issue_type) }}
               </template>
             </Column>
-            <Column field="branch" header="Branch" style="min-width: 150px">
+
+            <Column v-if="showBranchColumn" field="branch" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
                 {{ slotProps.data.branch?.name || 'N/A' }}
               </template>
             </Column>
-            <Column field="requester" header="Requested By" style="min-width: 150px">
+            <Column field="creator" header="Created By" style="min-width: 150px">
               <template #body="slotProps">
-                {{ slotProps.data.requester?.full_name || 'N/A' }}
+                {{ slotProps.data.creator?.full_name || 'N/A' }}
               </template>
             </Column>
             <Column field="total_value" header="Total Value" style="width: 120px" sortable>
@@ -125,53 +66,26 @@
                 ₱{{ formatNumber(slotProps.data.total_value) }}
               </template>
             </Column>
-            <Column field="status" header="Status" style="width: 120px">
+            <Column field="status" header="Status" style="width: 120px" sortable>
               <template #body="slotProps">
-                <Tag
-                  :value="slotProps.data.status"
-                  :severity="getStatusSeverity(slotProps.data.status)"
-                  class="capitalize"
-                />
+                <Badge :value="formatStatus(slotProps.data.status)"
+                  :severity="getStatusSeverity(slotProps.data.status)" />
               </template>
             </Column>
-            <Column field="issue_date" header="Issue Date" style="width: 150px" sortable>
-              <template #body="slotProps">
-                {{ formatDate(slotProps.data.issue_date) }}
-              </template>
-            </Column>
+
             <Column header="Actions" style="width: 150px">
               <template #body="slotProps">
                 <div class="flex gap-2">
-                  <Button
-                    icon="pi pi-eye"
-                    severity="info"
-                    outlined
-                    @click="viewStockIssue(slotProps.data)"
-                    v-tooltip.top="'View Details'"
-                  />
-                  <Button
-                    icon="pi pi-pencil"
-                    severity="warning"
-                    outlined
-                    @click="editStockIssue(slotProps.data)"
-                    v-tooltip.top="'Edit Issue'"
-                    :disabled="slotProps.data.status === 'completed' || slotProps.data.status === 'approved'"
-                  />
-                  <Button
-                    icon="pi pi-times"
-                    severity="danger"
-                    outlined
-                    @click="confirmCancel(slotProps.data)"
-                    v-tooltip.top="'Cancel Issue'"
-                    :disabled="slotProps.data.status === 'cancelled' || slotProps.data.status === 'approved' || slotProps.data.status === 'completed'"
-                  />
+                  <Button icon="pi pi-eye" outlined label="View" rounded size="small"
+                    @click="viewStockIssue(slotProps.data)" v-tooltip.top="'View Details'" />
+
                 </div>
               </template>
             </Column>
             <template #empty>
               <div class="text-center py-8">
                 <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
-                <p class="text-gray-500">No stock issues found</p>
+                <p class="text-gray-500">No stock issuance records found</p>
               </div>
             </template>
           </DataTable>
@@ -181,12 +95,7 @@
   </div>
 
   <!-- Cancel Confirmation Dialog -->
-  <Dialog
-    v-model:visible="cancelDialog"
-    modal
-    header="Confirm Cancellation"
-    :style="{ width: '450px' }"
-  >
+  <Dialog v-model:visible="cancelDialog" modal header="Confirm Cancellation" :style="{ width: '450px' }">
     <div class="flex items-center gap-3">
       <i class="pi pi-exclamation-triangle text-orange-500 text-2xl"></i>
       <div>
@@ -195,28 +104,19 @@
           Reference: <strong>{{ selectedStockIssue?.issue_number }}</strong>
         </p>
         <p class="text-sm text-gray-600 mt-1">
-          This will reverse the stock reduction and mark the issue as cancelled.
+          This will mark the stock issuance as cancelled.
         </p>
       </div>
     </div>
     <template #footer>
-      <Button
-        label="No, Keep It"
-        severity="secondary"
-        @click="cancelDialog = false"
-      />
-      <Button
-        label="Yes, Cancel Issue"
-        severity="danger"
-        @click="cancelStockIssue"
-        :loading="cancelLoading"
-      />
+      <Button label="No, Keep It" severity="secondary" @click="cancelDialog = false" />
+      <Button label="Yes, Cancel Issue" severity="danger" @click="cancelStockIssue" :loading="cancelLoading" />
     </template>
   </Dialog>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
@@ -226,38 +126,51 @@ const cancelLoading = ref(false)
 const cancelDialog = ref(false)
 const selectedStockIssue = ref<any>(null)
 const stockIssues = ref<any[]>([])
-const warehouses = ref<any[]>([])
 const totalRecords = ref(0)
+const branchCount = ref(0)
+const showBranchColumn = computed(() => branchCount.value >= 2)
 const toast = useToast()
 const router = useRouter()
 
 const filters = reactive({
   search: '',
   status: null as string | null,
-  type: null as string | null,
-  warehouse_id: null as number | null,
+  issue_type: null as string | null,
   page: 1,
-  per_page: 10,
+  per_page: 15,
   sort_field: 'issue_date',
   sort_direction: 'desc' as 'asc' | 'desc'
 })
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Pending', value: 'pending' },
+  { label: 'Pending', value: 'submitted' },
   { label: 'Approved', value: 'approved' },
-  { label: 'Completed', value: 'completed' },
+  { label: 'Issued', value: 'issued' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
 
 const typeOptions = [
-  { label: 'Expired', value: 'expired' },
-  { label: 'Damaged', value: 'damaged' },
-  { label: 'Lost', value: 'lost' },
-  { label: 'Internal Use', value: 'internal_use' },
-  { label: 'Sample', value: 'sample' },
+  { label: 'Used for Production', value: 'production_use' },
+  { label: 'Office Consumption', value: 'office_consumption' },
+  { label: 'Store Usage / Sample or Demo', value: 'store_usage' },
   { label: 'Other', value: 'other' }
 ]
+
+const hasActiveFilters = computed(() => Boolean(
+  filters.search.trim() || filters.status || filters.issue_type
+))
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+const formatIssueType = (type: string) => {
+  if (type === 'store_usage') return 'Store Usage / Sample or Demo'
+  return String(type || 'other').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+const formatStatus = (status: string) => status === 'submitted'
+  ? 'Pending'
+  : formatIssueType(status)
 
 const loadStockIssues = async () => {
   loading.value = true
@@ -268,11 +181,10 @@ const loadStockIssues = async () => {
       sort_by: filters.sort_field,
       sort_order: filters.sort_direction
     }
-    
+
     if (filters.search) params.search = filters.search
     if (filters.status) params.status = filters.status
-    if (filters.type) params.type = filters.type
-    if (filters.warehouse_id) params.warehouse_id = filters.warehouse_id
+    if (filters.issue_type) params.issue_type = filters.issue_type
 
     const response = await inventoryService.getStockIssues(params)
 
@@ -288,8 +200,7 @@ const loadStockIssues = async () => {
         stockIssues.value = []
         totalRecords.value = 0
       }
-      
-      console.log('Loaded stock issues:', stockIssues.value)
+
     } else {
       toast.add({
         severity: 'error',
@@ -313,26 +224,6 @@ const loadStockIssues = async () => {
   }
 }
 
-const loadWarehouses = async () => {
-  try {
-    const response = await inventoryService.getWarehouses()
-    if (response.success) {
-      if (response.data && Array.isArray(response.data.data)) {
-        warehouses.value = response.data.data
-      } else if (Array.isArray(response.data)) {
-        warehouses.value = response.data
-      } else {
-        warehouses.value = []
-      }
-    } else {
-      warehouses.value = []
-    }
-  } catch (error) {
-    console.error('Failed to load warehouses', error)
-    warehouses.value = []
-  }
-}
-
 const onFilter = () => {
   filters.page = 1
   loadStockIssues()
@@ -353,9 +244,9 @@ const onSort = (event: any) => {
 const clearFilters = () => {
   filters.search = ''
   filters.status = null
-  filters.type = null
-  filters.warehouse_id = null
+  filters.issue_type = null
   filters.page = 1
+  filters.per_page = 15
   loadStockIssues()
 }
 
@@ -365,6 +256,12 @@ const createStockIssue = () => {
 
 const viewStockIssue = (stockIssue: any) => {
   router.push({ name: 'inventory.stock-issues.detail', params: { id: stockIssue.id } })
+}
+
+const onRowClick = (event: any) => {
+  const target = event?.originalEvent?.target as HTMLElement | null
+  if (target?.closest('button, a, input')) return
+  viewStockIssue(event.data)
 }
 
 const editStockIssue = (stockIssue: any) => {
@@ -416,31 +313,31 @@ const cancelStockIssue = async () => {
 const getStatusSeverity = (status: string) => {
   switch (status) {
     case 'approved':
-    case 'completed': 
+    case 'issued':
       return 'success'
-    case 'pending': 
+    case 'submitted':
       return 'warning'
-    case 'draft': 
+    case 'draft':
       return 'info'
-    case 'cancelled': 
+    case 'cancelled':
       return 'danger'
-    default: 
+    default:
       return 'secondary'
   }
 }
 
 const getTypeSeverity = (type: string) => {
   switch (type) {
-    case 'expired': 
-    case 'damaged': 
+    case 'expired':
+    case 'damaged':
       return 'danger'
-    case 'lost': 
+    case 'lost':
       return 'warning'
-    case 'internal_use': 
+    case 'internal_use':
       return 'info'
-    case 'sample': 
+    case 'sample':
       return 'success'
-    default: 
+    default:
       return 'secondary'
   }
 }
@@ -459,8 +356,26 @@ const formatNumber = (value: string | number | null | undefined) => {
   return parseFloat(value.toString()).toFixed(2)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const response = await inventoryService.getBranches()
+    branchCount.value = Array.isArray(response?.data) ? response.data.length : 0
+  } catch {
+    branchCount.value = 0
+  }
   loadStockIssues()
-  loadWarehouses()
+})
+
+watch([() => filters.status, () => filters.issue_type, () => filters.per_page], () => {
+  filters.page = 1
+  loadStockIssues()
+})
+
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    filters.page = 1
+    loadStockIssues()
+  }, 350)
 })
 </script>

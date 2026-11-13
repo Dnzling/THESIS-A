@@ -4,7 +4,7 @@
       <div>
         <h1 class="text-lg font-bold text-gray-800">Stock Transfers</h1>
       </div>
-      <Button v-if="canCreateTransfers" label="Create Transfer" icon="pi pi-plus" severity="success"
+      <Button label="Create Transfer" icon="pi pi-plus" severity="success"
         @click="router.push({ name: 'inventory.transfers.create' })" size="small" />
     </div>
   
@@ -20,7 +20,7 @@
             placeholder="All Statuses" showClear @change="loadTransfers(1)" fluid  size="small" />
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
-            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
+            <DatePicker v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
           </div>
           <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters"  size="small" />
         </div>
@@ -172,9 +172,9 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const transfers = ref<Transfer[]>([])
 
-const canViewTransfers = authStore.hasPermission('inventory.transfers.view')
-const canCreateTransfers = authStore.hasPermission('inventory.transfers.manage')
-const canCancelTransfers = authStore.hasPermission('inventory.transfers.manage')
+const canViewTransfers = authStore.hasPermission('transfers.view')
+const canCreateTransfers = authStore.hasPermission('transfers.manage')
+const canCancelTransfers = authStore.hasPermission('transfers.manage')
 
 const pagination = reactive<PaginationMeta>({
   current_page: 1,

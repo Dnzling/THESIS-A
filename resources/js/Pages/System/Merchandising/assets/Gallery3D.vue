@@ -7,10 +7,11 @@
                 <p class="text-sm text-gray-500 mt-1">All 3D models from Store 1</p>
             </div>
             <div class="flex gap-2">
-                <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined @click="loadModels"
-                    :loading="loading" />
-                <Button label="Upload New" icon="pi pi-cloud-upload"
-                    @click="router.push({ name: 'merchandising.assets.upload' })" />
+                <!-- <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined @click="loadModels"
+                    :loading="loading" /> -->
+                <Button label="Requests" icon="pi pi-file-edit"  rounded size="small" @click="router.push({name: 'merchandising.3d-requests'})"/>
+                <!-- <Button label="Upload New" icon="pi pi-cloud-upload"
+                    @click="router.push({ name: 'merchandising.assets.upload' })" outlined rounded size="small" /> -->
             </div>
         </div>
     
@@ -97,8 +98,8 @@
                             {{ formatFileSize(model.file_size_kb * 1024) }}
                         </div>
                         <div class="md:col-span-1 flex md:justify-end gap-2">
-                            <Button label="View" icon="pi pi-eye" size="small" @click="viewModel(model)" />
-                            <Button icon="pi pi-download" severity="secondary" size="small" @click="downloadModel(model)" />
+                            <Button label="View" icon="pi pi-eye" size="small" rounded outlined @click="viewModel(model)" />
+                         
                         </div>
                     </div>
                 </template>

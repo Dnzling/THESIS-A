@@ -42,7 +42,7 @@
 
 <script setup lang="ts">
 import JobPortalLayout from './JobPortalLayout.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
@@ -77,6 +77,7 @@ const resendLabel = computed(() => {
 })
 
 const submitOtp = async () => {
+  if (submitting.value || !/^\d{6}$/.test(String(otp.value))) return
   submitting.value = true
   try {
     await portalAuth.verifyOtp(String(otp.value))
@@ -90,6 +91,10 @@ const submitOtp = async () => {
     submitting.value = false
   }
 }
+
+watch(otp, (value) => {
+  if (/^\d{6}$/.test(String(value)) && !submitting.value) void submitOtp()
+})
 
 const resendOtp = async () => {
   if (countdown.value > 0) return

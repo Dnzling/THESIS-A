@@ -90,7 +90,7 @@ class AlertController extends Controller
                 ->firstOrFail();
 
             // Check authorization
-            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['store_admin', 'super_admin'])) {
+            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['owner', 'super_admin'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to view this alert',
@@ -130,7 +130,7 @@ class AlertController extends Controller
                 ->firstOrFail();
 
             // Check authorization
-            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['store_admin', 'super_admin'])) {
+            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['owner', 'super_admin'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to acknowledge this alert',
@@ -180,7 +180,7 @@ class AlertController extends Controller
                 ->firstOrFail();
 
             // Check authorization
-            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['store_admin', 'super_admin'])) {
+            if ($alert->branch_id !== optional($user->branch)->id && !$user->hasRole(['owner', 'super_admin'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to resolve this alert',

@@ -41,7 +41,7 @@ const props = withDefaults(defineProps<{
   title: 'Join the Furnisync Supplier Network',
   subtitle: 'Register and manage RFQs, POs, and deliveries from one supplier portal.',
   footer: 'Supplier portal powered by Furnisync IMS',
-  modelUrl: '/storage/platform/sofa.glb',
+  modelUrl: '/storage/platform/warehouse.glb',
 })
 
 const host = ref<HTMLElement | null>(null)
@@ -100,13 +100,34 @@ const fitCameraToObject = (object: THREE.Object3D) => {
 
 const loadFallback = () => {
   if (!scene) return
-  const geometry = new THREE.TorusKnotGeometry(1, 0.35, 120, 24)
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xfef3c7,
-    metalness: 0.35,
-    roughness: 0.28,
+  const warehouse = new THREE.Group()
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(4.8, 0.12, 3.4),
+    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 }),
+  )
+  floor.position.y = -1.1
+  warehouse.add(floor)
+
+  const shelfMaterial = new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.2, roughness: 0.55 })
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.14, 3.2, 2.7), shelfMaterial)
+  ;[-2, 2].forEach((x) => {
+    const post = shelf.clone()
+    post.position.set(x, 0.45, 0)
+    warehouse.add(post)
   })
-  currentModel = new THREE.Mesh(geometry, material)
+  ;[-0.85, 0, 0.85].forEach((y) => {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(4.1, 0.12, 2.7), shelfMaterial)
+    beam.position.set(0, y, 0)
+    warehouse.add(beam)
+  })
+
+  const crateMaterial = new THREE.MeshStandardMaterial({ color: 0xffc857, roughness: 0.7 })
+  ;[-1.25, 0, 1.25].forEach((x, index) => {
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.62, 0.8), crateMaterial)
+    crate.position.set(x, -0.55 + (index % 2) * 0.03, 0)
+    warehouse.add(crate)
+  })
+  currentModel = warehouse
   scene.add(currentModel)
   fitCameraToObject(currentModel)
 }

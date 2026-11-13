@@ -12,7 +12,9 @@ use App\Models\Procurement\RFQ\SupplierQuotationItem;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
+use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use Illuminate\Http\Request;
@@ -30,7 +32,7 @@ class RequestForQuotationController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = RequestForQuotation::with(['createdBy', 'purchaseRequisition'])
+        $query = RequestForQuotation::with(['createdBy.user', 'purchaseRequisition'])
             ->where('store_id', auth()->user()->store_id);
 
         // Filters
@@ -44,6 +46,27 @@ class RequestForQuotationController extends Controller
 
         if ($request->has('closed')) {
             $query->closed();
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('rfq_number', 'like', "%{$search}%")
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('createdBy.user', function ($userQuery) use ($search) {
+                        $userQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('issue_date', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('issue_date', '<=', $request->input('date_to'));
         }
 
         $rfqs = $query->orderBy('created_at', 'desc')
@@ -68,10 +91,12 @@ class RequestForQuotationController extends Controller
             'suppliers.supplier',
             'quotations.supplier',
             'supplierPortalFeedbacks.supplierPortal.supplier',
+            'supplierPortalFeedbacks.supplier',
+            'supplierPortalFeedbacks.recordedBy:id,fname,lname',
             'supplierPortalFeedbacks.rfqItem.product',
             'supplierPortalFeedbacks.rfqItem.variation',
             'supplierPortalFeedbacks.negotiations',
-            'createdBy',
+            'createdBy.user',
             'awardedToSupplier'
         ])->findOrFail($id);
 
@@ -79,6 +104,108 @@ class RequestForQuotationController extends Controller
             'success' => true,
             'data' => $rfq,
         ]);
+    }
+
+    public function recordOfflineQuotation(Request $request, int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['procurement.rfq.manage']), 403, 'You are not authorized to record supplier quotations.');
+
+        $validated = $request->validate([
+            'supplier_id' => ['required', 'integer', 'exists:suppliers,id'],
+            'response_channel' => ['required', 'in:email,phone,paper,in_person'],
+            'response_received_at' => ['required', 'date', 'before_or_equal:today'],
+            'quotation_valid_until' => ['required', 'date', 'after_or_equal:response_received_at'],
+            'notes' => ['nullable', 'string', 'max:3000'],
+            'attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx', 'max:10240'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.rfq_item_id' => ['required', 'integer', 'distinct', 'exists:rfq_items,id'],
+            'items.*.quoted_price' => ['required', 'numeric', 'min:0'],
+            'items.*.available_quantity' => ['required', 'numeric', 'min:0'],
+            'items.*.estimated_delivery_date' => ['required', 'date', 'after_or_equal:response_received_at'],
+        ]);
+
+        $user = $request->user();
+        $rfq = RequestForQuotation::with('items')->where('store_id', (int) $user->store_id)->findOrFail($id);
+        abort_if(in_array((string) $rfq->status, ['closed', 'cancelled', 'awarded'], true), 422, 'This RFQ no longer accepts supplier responses.');
+
+        $supplier = Supplier::where('store_id', (int) $rfq->store_id)->findOrFail((int) $validated['supplier_id']);
+        $invited = $rfq->suppliers()->where('supplier_id', $supplier->id)->exists();
+        abort_unless($invited, 422, 'Select a supplier invited to this RFQ.');
+
+        $rfqItemIds = $rfq->items->pluck('id')->map(fn ($value) => (int) $value);
+        foreach ($validated['items'] as $item) {
+            abort_unless($rfqItemIds->contains((int) $item['rfq_item_id']), 422, 'One or more quotation items do not belong to this RFQ.');
+        }
+
+        $approvedItemIds = SupplierRFQFeedback::query()
+            ->whereIn('rfq_item_id', collect($validated['items'])->pluck('rfq_item_id'))
+            ->where('status', 'approved')
+            ->pluck('rfq_item_id');
+        abort_if($approvedItemIds->isNotEmpty(), 422, 'One or more RFQ items already have an approved quotation.');
+
+        $contract = SupplierContract::query()
+            ->where('store_id', $rfq->store_id)
+            ->where('supplier_id', $supplier->id)
+            ->where('status', 'active')
+            ->whereDate('start_date', '<=', now())
+            ->whereDate('end_date', '>=', now())
+            ->first();
+        $taxRate = ($contract && ! $contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? 0) : 0;
+        $attachmentPath = $request->hasFile('attachment')
+            ? $request->file('attachment')->store("procurement/rfqs/{$rfq->id}/offline-quotes", 'public')
+            : null;
+
+        $feedbacks = DB::transaction(function () use ($validated, $rfq, $supplier, $user, $taxRate, $attachmentPath) {
+            $rows = collect($validated['items'])->map(function (array $item) use ($validated, $rfq, $supplier, $user, $taxRate, $attachmentPath) {
+                return SupplierRFQFeedback::updateOrCreate(
+                    ['supplier_id' => $supplier->id, 'rfq_item_id' => (int) $item['rfq_item_id']],
+                    [
+                        'supplier_portal_id' => null,
+                        'rfq_id' => $rfq->id,
+                        'response_source' => 'procurement_recorded',
+                        'response_channel' => $validated['response_channel'],
+                        'response_received_at' => $validated['response_received_at'],
+                        'recorded_by' => $user->id,
+                        'quoted_price' => $item['quoted_price'],
+                        'available_quantity' => $item['available_quantity'],
+                        'estimated_delivery_date' => $item['estimated_delivery_date'],
+                        'quotation_valid_until' => $validated['quotation_valid_until'],
+                        'attachment_path' => $attachmentPath,
+                        'additional_notes' => $validated['notes'] ?? null,
+                        'tax_rate' => $taxRate,
+                        'status' => 'pending',
+                        'reviewed_by' => null,
+                        'reviewed_at' => null,
+                        'rejection_reason' => null,
+                        'submitted_at' => now(),
+                    ]
+                );
+            });
+
+            $rfq->suppliers()->where('supplier_id', $supplier->id)->update([
+                'status' => 'submitted',
+                'responded_at' => now(),
+            ]);
+            if (in_array((string) $rfq->status, ['pending', 'sent', 'receiving'], true)) {
+                $rfq->update(['status' => 'receiving']);
+            }
+
+            ActivityLog::record(
+                'rfq_offline_quote_recorded',
+                "Offline quotation from {$supplier->supplier_name} recorded for {$rfq->rfq_number}.",
+                ['supplier_id' => $supplier->id, 'channel' => $validated['response_channel'], 'feedback_ids' => $rows->pluck('id')->all()],
+                'request_for_quotation',
+                $rfq->id,
+            );
+
+            return $rows;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier quotation recorded successfully.',
+            'data' => $feedbacks->load(['supplier', 'rfqItem.product', 'recordedBy']),
+        ], 201);
     }
 
     /**
@@ -92,8 +219,8 @@ class RequestForQuotationController extends Controller
             'rejection_reason' => 'required_if:status,rejected|string|min:5',
         ]);
 
-        $rfq = RequestForQuotation::findOrFail($id);
-        $feedback = SupplierRFQFeedback::with(['supplierPortal.supplier', 'rfqItem'])
+        $rfq = RequestForQuotation::where('store_id', (int) auth()->user()->store_id)->findOrFail($id);
+        $feedback = SupplierRFQFeedback::with(['supplierPortal.supplier', 'supplier', 'rfqItem'])
             ->where('rfq_id', $rfq->id)
             ->findOrFail($feedbackId);
 
@@ -106,6 +233,38 @@ class RequestForQuotationController extends Controller
         ]);
 
         if ($validated['status'] === 'approved') {
+            $this->syncApprovedDimensions($feedback, (int) $rfq->store_id);
+            if ($feedback->has_variant) {
+                $feedback->update(['merchandising_status' => 'pending']);
+                $permissionNames = ['merchandising.variations.edit', 'merchandising.products.edit', 'merchandising.products.create'];
+                $recipientIds = $this->userIdsWithAnyPermission((int) $rfq->store_id, $permissionNames);
+
+                foreach ($recipientIds as $recipientId) {
+                    $recipient = \App\Models\Core\User::query()->find($recipientId);
+                    $requiredPermission = collect($permissionNames)->first(fn (string $permission) =>
+                        $recipient && $recipient->hasPermissionTo($permission, (int) $rfq->store_id)
+                    );
+
+                    \App\Models\Core\SystemNotification::create([
+                        'store_id' => $rfq->store_id,
+                        'user_id' => $recipientId,
+                        'module' => 'merchandising',
+                        'entity_type' => 'supplier_variant_proposal',
+                        'entity_id' => $feedback->id,
+                        'action' => 'variant_creation_required',
+                        'title' => 'Variant Creation Required',
+                        'message' => "An approved supplier quote includes the variant {$feedback->variant_name}.",
+                        'data' => [
+                            'feedback_id' => $feedback->id,
+                            'product_id' => $feedback->rfqItem?->product_id,
+                            'required_permission' => $requiredPermission,
+                        ],
+                        'link' => '/merchandising/variations?tab=requests',
+                        'severity' => 'info',
+                        'is_read' => false,
+                    ]);
+                }
+            }
             // Reject other feedbacks for the same RFQ item
             SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
                 ->where('id', '!=', $feedback->id)
@@ -118,22 +277,11 @@ class RequestForQuotationController extends Controller
                 ]);
 
             // Use relation to get supplier_id; the attribute supplier_portal is just the FK
-            $approvedSupplierId = $feedback->supplierPortal?->supplier_id;
-            if ($approvedSupplierId) {
-                DB::table('rfq_suppliers')
-                    ->where('rfq_id', $rfq->id)
-                    ->where('supplier_id', '!=', $approvedSupplierId)
-                    ->whereIn('status', ['pending', 'submitted'])
-                    ->update([
-                        'status' => 'declined',
-                        'responded_at' => now(),
-                        'decline_reason' => 'Another supplier was approved for this RFQ.',
-                    ]);
-            }
-
-            // Update supplier_quotations: mark winner quotation accepted and others rejected
+            $approvedSupplierId = $feedback->supplier_id ?? $feedback->supplierPortal?->supplier_id;
+            // Keep supplier invitations open while other RFQ items are still unresolved.
+            // Supplier selection is handled per approved feedback/item for partial approvals.
             try {
-                if (\Schema::hasTable('supplier_quotations')) {
+                if ($this->isRfqCompleted($rfq->id) && \Schema::hasTable('supplier_quotations')) {
                     $winnerQuotation = \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
                         ->where('supplier_id', $approvedSupplierId)
                         ->first();
@@ -220,9 +368,16 @@ class RequestForQuotationController extends Controller
         ]);
 
         $rfq = RequestForQuotation::findOrFail($id);
-        $feedbacks = SupplierRFQFeedback::where('rfq_id', $rfq->id)
+        $feedbacks = SupplierRFQFeedback::with('rfqItem')->where('rfq_id', $rfq->id)
             ->whereIn('id', $validated['feedback_ids'])
             ->get();
+
+        if ($feedbacks->count() !== count(array_unique($validated['feedback_ids']))
+            || $feedbacks->pluck('rfq_item_id')->unique()->count() !== $feedbacks->count()) {
+            throw ValidationException::withMessages([
+                'feedback_ids' => 'Select one response per RFQ item from this request.',
+            ]);
+        }
 
         foreach ($feedbacks as $feedback) {
             $feedback->update([
@@ -231,6 +386,7 @@ class RequestForQuotationController extends Controller
                 'reviewed_at' => now(),
                 'rejection_reason' => null,
             ]);
+            $this->syncApprovedDimensions($feedback, (int) $rfq->store_id);
 
             SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
                 ->where('id', '!=', $feedback->id)
@@ -304,6 +460,36 @@ class RequestForQuotationController extends Controller
         return count($itemIds) > 0 && count($approvedByItem) === count($itemIds);
     }
 
+    private function syncApprovedDimensions(SupplierRFQFeedback $feedback, int $storeId): void
+    {
+        $item = $feedback->rfqItem;
+        if (!$item?->product_id || $feedback->has_variant) {
+            return;
+        }
+
+        $dimensions = collect(['length_cm', 'width_cm', 'height_cm', 'weight_kg'])
+            ->filter(fn ($field) => $feedback->{$field} !== null)
+            ->mapWithKeys(fn ($field) => [$field => $feedback->{$field}])
+            ->all();
+        if (!$dimensions) {
+            return;
+        }
+
+        if ($item->variation_id) {
+            ProductVariation::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $item->product_id)
+                ->whereKey($item->variation_id)
+                ->update($dimensions);
+            return;
+        }
+
+        Product::query()
+            ->where('store_id', $storeId)
+            ->whereKey($item->product_id)
+            ->update($dimensions);
+    }
+
     private function syncApprovedPrices(int $rfqId): void
     {
         $approvedFeedbacks = SupplierRFQFeedback::with(['supplierPortal', 'rfqItem'])
@@ -312,7 +498,7 @@ class RequestForQuotationController extends Controller
             ->get();
 
         foreach ($approvedFeedbacks as $feedback) {
-            $supplierId = $feedback->supplierPortal?->supplier_id;
+            $supplierId = $feedback->supplier_id ?? $feedback->supplierPortal?->supplier_id;
             $productId = $feedback->rfqItem?->product_id;
 
             if (!$supplierId || !$productId) {
@@ -345,9 +531,6 @@ class RequestForQuotationController extends Controller
                 ]);
             }
 
-            Product::where('id', $productId)->update([
-                'cost_price' => $feedback->quoted_price,
-            ]);
         }
     }
 
@@ -401,9 +584,6 @@ class RequestForQuotationController extends Controller
                 ]);
             }
 
-            Product::where('id', $productId)->update([
-                'cost_price' => $unitPrice,
-            ]);
         }
     }
 
@@ -429,7 +609,7 @@ class RequestForQuotationController extends Controller
         try {
             $storeId = (int) (auth()->user()->store_id ?? 0);
 
-            $requisition = PurchaseRequisition::with(['items.product'])
+            $requisition = PurchaseRequisition::with(['items.product', 'items.variation'])
                 ->where('store_id', $storeId)
                 ->findOrFail((int) $validated['purchase_requisition_id']);
 
@@ -443,24 +623,26 @@ class RequestForQuotationController extends Controller
             $unassignedItemIds = [];
 
             foreach ($requisition->items as $requisitionItem) {
-                $supplierId = $this->resolveSupplierIdForRequisitionItem($requisitionItem, $storeId);
-                if (!$supplierId) {
+                $supplierIds = $this->eligibleSupplierIdsForRequisitionItem($requisitionItem, $storeId);
+                if ($requisitionItem->selected_supplier_id) {
+                    $supplierIds = $supplierIds->contains((int) $requisitionItem->selected_supplier_id)
+                        ? collect([(int) $requisitionItem->selected_supplier_id])
+                        : collect();
+                }
+
+                if ($supplierIds->isEmpty()) {
                     $unassignedItemIds[] = $requisitionItem->id;
                     continue;
                 }
 
-                if (!$this->supplierCanProvideProduct($supplierId, (int) $requisitionItem->product_id, $storeId)) {
-                    throw ValidationException::withMessages([
-                        'items' => "Product {$requisitionItem->product_id} is not mapped to supplier {$supplierId} for this store.",
-                    ]);
+                foreach ($supplierIds as $supplierId) {
+                    $itemsBySupplier[(int) $supplierId][] = $requisitionItem;
                 }
-
-                $itemsBySupplier[$supplierId][] = $requisitionItem;
             }
 
             if (!empty($unassignedItemIds)) {
                 throw ValidationException::withMessages([
-                    'items' => 'Some requisition items have no supplier assignment and cannot be grouped into RFQs. Item IDs: ' . implode(', ', $unassignedItemIds),
+                    'items' => 'Every PR item needs at least one supplier-product link and an active supplier contract before RFQs can be sent. Unmatched PR item IDs: ' . implode(', ', $unassignedItemIds),
                 ]);
             }
 
@@ -472,11 +654,15 @@ class RequestForQuotationController extends Controller
 
             $createdRfqs = [];
             foreach ($itemsBySupplier as $supplierId => $requisitionItems) {
+                $supplier = Supplier::where('store_id', $storeId)
+                    ->whereHas('contracts', fn ($query) => $query->active())
+                    ->findOrFail((int) $supplierId);
+
                 $rfq = RequestForQuotation::create([
                     'rfq_number' => $this->generateRfqNumber(),
                     'store_id' => $storeId,
                     'purchase_requisition_id' => $requisition->id,
-                    'title' => $validated['title'] ?? "RFQ for {$requisition->pr_number} - Supplier {$supplierId}",
+                    'title' => $validated['title'] ?? "RFQ for {$requisition->pr_number} - {$supplier->supplier_name}",
                     'description' => $validated['description'] ?? $requisition->reason,
                     'rfq_type' => $validated['rfq_type'] ?? 'purchase',
                     'currency' => $validated['currency'] ?? 'PHP',
@@ -558,7 +744,98 @@ class RequestForQuotationController extends Controller
             'items.*.requirements' => 'nullable|string',
             'supplier_ids' => 'required|array|min:1',
             'supplier_ids.*' => 'exists:suppliers,id',
+            'from_supplier_products' => 'sometimes|boolean',
         ]);
+
+        if ($request->boolean('from_supplier_products')) {
+            if (count($validated['supplier_ids']) !== 1) {
+                throw ValidationException::withMessages([
+                    'supplier_ids' => 'Select exactly one supplier when creating an RFQ from supplier products.',
+                ]);
+            }
+
+            $storeId = (int) auth()->user()->store_id;
+            $supplierId = (int) $validated['supplier_ids'][0];
+            $supplier = Supplier::query()->where('store_id', $storeId)->find($supplierId);
+            if (!$supplier) {
+                throw ValidationException::withMessages(['supplier_ids' => 'The selected supplier is not connected to your store.']);
+            }
+
+            foreach ($validated['items'] as $index => $item) {
+                $productBelongsToStore = Product::query()
+                    ->where('store_id', $storeId)
+                    ->where('id', (int) $item['product_id'])
+                    ->exists();
+                $listing = DB::table('supplier_products')
+                    ->where('supplier_id', $supplierId)
+                    ->where('product_id', (int) $item['product_id'])
+                    ->first();
+
+                if (!$productBelongsToStore || !$listing) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This product is not available from the selected supplier for your store.',
+                    ]);
+                }
+
+                if (($listing->availability_status ?? 'available') === 'out_of_stock') {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This supplier has marked the product unavailable.',
+                    ]);
+                }
+
+                $activeVariants = ProductVariation::query()
+                    ->where('store_id', $storeId)
+                    ->where('product_id', (int) $item['product_id'])
+                    ->where('is_active', true);
+                if ($activeVariants->exists()) {
+                    if (empty($item['variation_id']) || !$activeVariants->whereKey((int) $item['variation_id'])->exists()) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.variation_id" => 'Select an active supplier variant for this product.',
+                        ]);
+                    }
+                } elseif (!empty($item['variation_id'])) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.variation_id" => 'The selected variant is not available for this product.',
+                    ]);
+                }
+
+                $alreadyApprovedQuery = DB::table('supplier_rfq_feedbacks as feedback')
+                    ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
+                    ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
+                    ->where('rfq.store_id', $storeId)
+                    ->whereNull('rfq.deleted_at')
+                    ->where('feedback.status', 'approved')
+                    ->where('rfq_item.product_id', (int) $item['product_id'])
+                    ->where(function ($query) use ($supplier) {
+                        $query->where('feedback.supplier_id', $supplier->id);
+                        if ($supplier->supplier_portal_id) {
+                            $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
+                        }
+                    });
+
+                if (!empty($item['variation_id'])) {
+                    $alreadyApprovedQuery->where('rfq_item.variation_id', (int) $item['variation_id']);
+                } else {
+                    $alreadyApprovedQuery->whereNull('rfq_item.variation_id');
+                }
+
+                $alreadyApproved = $alreadyApprovedQuery->exists();
+
+                if ($alreadyApproved) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This product already has an approved RFQ from this supplier for your store.',
+                    ]);
+                }
+
+                $quantity = (int) $item['quantity'];
+                $minimum = (int) ($listing->minimum_order_quantity ?? 1);
+                if ($quantity < $minimum) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.quantity" => "Quantity must be at least the supplier minimum of {$minimum}.",
+                    ]);
+                }
+            }
+        }
 
         DB::beginTransaction();
         try {
@@ -1076,25 +1353,25 @@ class RequestForQuotationController extends Controller
         return 'RFQ-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
     }
 
-    private function resolveSupplierIdForRequisitionItem(PurchaseRequisitionItem $item, int $storeId): ?int
+    private function eligibleSupplierIdsForRequisitionItem(PurchaseRequisitionItem $item, int $storeId)
     {
-        if (!empty($item->selected_supplier_id)) {
-            return (int) $item->selected_supplier_id;
-        }
-
-        $supplierIds = DB::table('supplier_products')
+        return DB::table('supplier_products')
             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.product_id', $item->product_id)
             ->where('suppliers.store_id', $storeId)
+            ->whereNull('suppliers.deleted_at')
+            ->whereExists(function ($query) use ($storeId) {
+                $query->selectRaw('1')
+                    ->from('supplier_contracts')
+                    ->whereColumn('supplier_contracts.supplier_id', 'suppliers.id')
+                    ->where('supplier_contracts.store_id', $storeId)
+                    ->where('supplier_contracts.status', 'active')
+                    ->whereDate('supplier_contracts.start_date', '<=', now()->toDateString())
+                    ->whereDate('supplier_contracts.end_date', '>=', now()->toDateString());
+            })
             ->pluck('supplier_products.supplier_id')
             ->unique()
             ->values();
-
-        if ($supplierIds->count() === 1) {
-            return (int) $supplierIds->first();
-        }
-
-        return null;
     }
 
     private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool

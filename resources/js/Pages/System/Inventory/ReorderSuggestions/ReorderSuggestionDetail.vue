@@ -1,39 +1,12 @@
-<template>
+﻿<template>
   <div class="p-4 min-h-screen">
     <div class="mb-4 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <Button icon="pi pi-arrow-left" text severity="secondary" @click="goBack" />
         <div>
           <h1 class="text-xl font-bold text-gray-800">Reorder Suggestion Detail</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Review, approve, reject, or implement this suggestion.</p>
+          <p class="text-xs text-gray-500 mt-0.5">Review this low-stock suggestion and create a restock request.</p>
         </div>
-      </div>
-      <div class="flex gap-2" v-if="suggestion">
-        <Button
-          v-if="suggestion.status === 'pending'"
-          label="Approve"
-          size="small"
-          icon="pi pi-check"
-          severity="success"
-          @click="openAction('approve')"
-        />
-        <Button
-          v-if="suggestion.status === 'pending'"
-          label="Reject"
-          size="small"
-          icon="pi pi-times"
-          severity="danger"
-          outlined
-          @click="openAction('reject')"
-        />
-        <Button
-          v-if="suggestion.status === 'approved'"
-          label="Implement"
-          size="small"
-          icon="pi pi-send"
-          severity="warn"
-          @click="openAction('implement')"
-        />
       </div>
     </div>
 
@@ -49,19 +22,22 @@
             <p class="text-xs text-gray-500">Product</p>
             <p class="font-semibold">{{ suggestion.product_name || '-' }}</p>
             <p class="text-xs text-gray-500">{{ suggestion.product_sku || '-' }}</p>
+            <p v-if="suggestion.variation_name" class="mt-1 text-xs font-medium text-orange-700">
+              Variant: {{ suggestion.variation_name }}
+            </p>
           </template>
         </Card>
         <Card>
           <template #content>
             <p class="text-xs text-gray-500">Branch</p>
             <p class="font-semibold">{{ suggestion.branch_name || '-' }}</p>
-            <p class="text-xs text-gray-500">Current Stock: {{ suggestion.current_stock || 0 }}</p>
+            <p class="text-xs text-gray-500">Current Stock: {{ formatQuantity(suggestion.current_stock) }}</p>
           </template>
         </Card>
         <Card>
           <template #content>
             <p class="text-xs text-gray-500">Suggested Qty</p>
-            <p class="font-semibold">{{ suggestion.suggested_quantity || 0 }}</p>
+            <p class="font-semibold">{{ formatQuantity(suggestion.suggested_quantity) }}</p>
             <p class="text-xs text-gray-500">Est Cost: {{ formatCurrency(suggestion.estimated_cost || 0) }}</p>
           </template>
         </Card>
@@ -77,9 +53,19 @@
       </div>
 
       <Card>
-        <template #title>Reason</template>
+        <template #title>How this quantity was calculated</template>
         <template #content>
           <p class="text-sm text-gray-700">{{ suggestion.reason || 'No reason provided.' }}</p>
+          <p v-if="suggestion.calculation" class="mt-2 text-xs leading-5 text-slate-500">{{ calculationExplanation }}</p>
+          <div v-if="suggestion.calculation" class="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
+            <div v-for="metric in calculationMetrics" :key="metric.label" class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">{{ metric.label }}</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ metric.value }}</div>
+            </div>
+          </div>
+          <div v-if="suggestion.calculation" class="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+            Priority is a stock-risk band based on current stock versus the trigger: Critical at zero or at/below 25%, High at/below 50%, Medium at/below 75%, otherwise Low.
+          </div>
         </template>
       </Card>
 
@@ -97,6 +83,15 @@
           </Timeline>
         </template>
       </Card>
+      <div class="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+        <Button v-if="suggestion.status === 'pending'" label="Reject" icon="pi pi-times" size="small" severity="danger" outlined @click="openAction('reject')" />
+        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'pr' && canManagePr" label="Approve & Create PR" icon="pi pi-check" size="small" severity="warn" @click="openAction('approve')" />
+        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'po' && canManagePo" label="Approve & Create PO" icon="pi pi-shopping-cart" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/purchase-orders/create?reorder_suggestion_id=${suggestion.id}`)" />
+        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'warehouse' && canCreateTransfer" label="Request from Warehouse" icon="pi pi-warehouse" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/stock-requests/create?type=transfer&reorder_suggestion_id=${suggestion.id}`)" />
+        <Button v-if="suggestion.metadata?.stock_transfer_id" label="View Warehouse Request" icon="pi pi-arrow-right-arrow-left" size="small" severity="secondary" outlined @click="router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id: suggestion.metadata.stock_transfer_id } })" />
+        <Button v-if="suggestion.metadata?.purchase_requisition_id" label="View Inventory PR" icon="pi pi-file" size="small" severity="warn" @click="router.push({ name: 'inventory.requisites.detail', params: { id: suggestion.metadata.purchase_requisition_id } })" />
+        <Button v-if="suggestion.metadata?.purchase_order_id" label="View Purchase Order" icon="pi pi-file" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/purchase-orders/${suggestion.metadata.purchase_order_id}`)" />
+      </div>
     </div>
 
     <Dialog v-model:visible="actionDialog.visible" :header="actionDialog.title" modal class="w-full max-w-lg">
@@ -115,12 +110,18 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { router as inertiaRouter } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
+import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManagePr = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canManagePo = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canCreateTransfer = computed(() => authStore.hasPermission('inventory.transfers.create') || authStore.hasPermission('inventory.transfers.manage'))
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -128,7 +129,7 @@ const suggestion = ref<any | null>(null)
 
 const actionDialog = reactive({
   visible: false,
-  type: '' as 'approve' | 'reject' | 'implement' | '',
+  type: '' as 'approve' | 'reject' | '',
   title: '',
   description: '',
   confirmLabel: 'Confirm',
@@ -141,9 +142,77 @@ const suggestionId = computed(() => Number(route.params.id))
 const normalizeSuggestion = (row: any) => ({
   ...row,
   product_name: row?.product?.product_name || row?.product?.name || '-',
-  product_sku: row?.product?.sku || '-',
+  product_sku: row?.variation?.variation_sku || row?.product?.sku || '-',
+  variation_name: row?.variation?.variation_name || null,
+  calculation: row?.metadata?.calculation || null,
+  calculation_source: row?.metadata?.source || null,
+  applied_basis_type: row?.metadata?.basis_type || row?.reorder_rule?.basis_type || null,
+  forecast_enabled: row?.metadata?.forecast_enabled,
+  reorder_rule: row?.reorder_rule || null,
   branch_name: row?.branch?.name || '-',
 })
+
+const calculationSourceLabel = computed(() => {
+  const source = suggestion.value?.calculation_source
+  if (source === 'sales_30_day') return 'Recent sales'
+  if (source === 'configured_average_demand') return 'Configured demand'
+  if (source === 'branch_inventory_reorder_point') return 'Branch reorder point'
+  if (source === 'configured_reorder_rule') return 'Reorder rule'
+  return source || 'Manual'
+})
+
+const isDemandDriven = computed(() => ['sales_30_day', 'configured_average_demand'].includes(suggestion.value?.calculation_source))
+const appliedTriggerType = computed(() => suggestion.value?.calculation?.trigger_type || suggestion.value?.reorder_rule?.trigger_type || 'reorder_point')
+const calculationExplanation = computed(() => {
+  if (isDemandDriven.value) {
+    return 'Demand-based calculation: average daily demand Ã— supplier lead time + safety stock sets the reorder trigger. The target covers lead time plus review period and safety stock. The order quantity fills the gap from current stock to that target.'
+  }
+  if (suggestion.value?.applied_basis_type === 'demand_lead_time' && suggestion.value?.forecast_enabled === false) {
+    return 'Demand-based forecasting is unavailable for this store plan, so this suggestion falls back to the branch reorder point. The configured refill quantity or maximum stock determines the target when present.'
+  }
+  return 'Reorder-point calculation: the suggestion triggers when available stock reaches the configured threshold. The target uses maximum stock when set; otherwise it uses current stock plus refill quantity, or twice the reorder point when no refill quantity is set.'
+})
+
+const formatMetric = (value: any, digits = 0) => value === null || value === undefined || value === ''
+  ? 'â€”'
+  : Number(value).toLocaleString('en-PH', { maximumFractionDigits: digits })
+const formatWithUnit = (value: any, unit: string, digits = 0) => {
+  const formatted = formatMetric(value, digits)
+  return formatted === 'â€”' ? formatted : `${formatted} ${unit}`
+}
+
+const calculationMetrics = computed(() => {
+  const row = suggestion.value
+  const calc = row?.calculation
+  if (!row || !calc) return []
+  const rule = row.reorder_rule
+  const demandDriven = isDemandDriven.value
+  const triggerType = appliedTriggerType.value
+  const maxStock = Number(calc.maximum_stock ?? rule?.maximum_stock ?? 0)
+  const refillQty = Number(calc.configured_refill_quantity ?? rule?.reorder_quantity ?? 0)
+  const unused = 'Not used for this suggestion'
+  return [
+    { label: 'Calculation source', value: calculationSourceLabel.value },
+    { label: 'Applied rule', value: row.applied_basis_type === 'demand_lead_time' ? 'Demand and lead time' : row.applied_basis_type === 'reorder_point' ? 'Reorder point' : 'Branch inventory settings' },
+    { label: 'Available stock', value: formatMetric(row.current_stock) },
+    { label: 'Units sold · 30 days', value: demandDriven ? formatMetric(calc.units_sold, 2) : unused },
+    { label: 'Average daily demand', value: demandDriven ? formatWithUnit(calc.average_daily_demand, 'units/day', 2) : unused },
+    { label: 'Configured average daily demand', value: row.calculation_source === 'configured_average_demand' ? formatWithUnit(rule?.avg_daily_demand ?? calc.average_daily_demand, 'units/day', 2) : unused },
+    { label: 'Configured reorder point', value: !demandDriven && triggerType !== 'safety_stock' ? formatWithUnit(calc.configured_reorder_point ?? rule?.reorder_point, 'units') : unused },
+    { label: 'Configured refill quantity', value: !demandDriven && maxStock <= 0 && refillQty > 0 ? formatWithUnit(refillQty, 'units') : unused },
+    { label: 'Maximum stock', value: !demandDriven && maxStock > 0 ? formatWithUnit(maxStock, 'units') : unused },
+    { label: 'Reorder trigger', value: formatWithUnit(calc.reorder_trigger, 'units') },
+    { label: 'Target stock', value: formatWithUnit(calc.target_stock, 'units') },
+    { label: 'Supplier lead time', value: demandDriven ? formatWithUnit(calc.lead_time_days ?? rule?.lead_time_days, 'days') : unused },
+    { label: 'Review period', value: demandDriven ? formatWithUnit(calc.review_period_days ?? rule?.review_period_days, 'days') : unused },
+    { label: 'Safety stock', value: demandDriven || triggerType === 'safety_stock' ? formatWithUnit(calc.safety_stock ?? rule?.safety_stock, 'units') : unused },
+    { label: 'Suggested order quantity', value: formatWithUnit(row.suggested_quantity, 'units') },
+  ]
+})
+
+const formatQuantity = (value: unknown) => new Intl.NumberFormat('en-PH', {
+  maximumFractionDigits: 0,
+}).format(Math.round(Number(value) || 0))
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
@@ -237,14 +306,14 @@ const loadSuggestion = async () => {
 
 const goBack = () => router.push({ name: 'inventory.reorder-suggestions' })
 
-const openAction = (type: 'approve' | 'reject' | 'implement') => {
+const openAction = (type: 'approve' | 'reject') => {
   actionDialog.type = type
   actionDialog.notes = ''
   actionDialog.visible = true
 
   if (type === 'approve') {
     actionDialog.title = 'Approve Suggestion'
-    actionDialog.description = 'Approve this suggestion and allow procurement follow-through.'
+    actionDialog.description = 'Approve this suggestion and create a draft Inventory PR. Submit the PR from Inventory Purchase Requisitions.'
     actionDialog.confirmLabel = 'Approve'
     actionDialog.severity = 'success'
     return
@@ -257,11 +326,6 @@ const openAction = (type: 'approve' | 'reject' | 'implement') => {
     actionDialog.severity = 'danger'
     return
   }
-
-  actionDialog.title = 'Implement Suggestion'
-  actionDialog.description = 'Mark this suggestion as implemented.'
-  actionDialog.confirmLabel = 'Implement'
-  actionDialog.severity = 'warn'
 }
 
 const submitAction = async () => {
@@ -270,11 +334,14 @@ const submitAction = async () => {
   submitting.value = true
   try {
     if (actionDialog.type === 'approve') {
-      await inventoryService.approveReorderSuggestion(suggestionId.value, actionDialog.notes || undefined)
+      const response = await inventoryService.approveReorderSuggestion(suggestionId.value, actionDialog.notes || undefined)
+      if (response?.action_required === 'create_purchase_order' && response?.url) {
+        actionDialog.visible = false
+        inertiaRouter.visit(response.url)
+        return
+      }
     } else if (actionDialog.type === 'reject') {
       await inventoryService.rejectReorderSuggestion(suggestionId.value, actionDialog.notes || undefined)
-    } else if (actionDialog.type === 'implement') {
-      await inventoryService.implementReorderSuggestion(suggestionId.value, actionDialog.notes || undefined)
     }
 
     actionDialog.visible = false
@@ -282,7 +349,7 @@ const submitAction = async () => {
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: 'Suggestion updated successfully.',
+      detail: actionDialog.type === 'approve' ? 'Draft PR created in Inventory Purchase Requisitions.' : 'Suggestion rejected.',
       life: 2500,
     })
   } catch (error: any) {

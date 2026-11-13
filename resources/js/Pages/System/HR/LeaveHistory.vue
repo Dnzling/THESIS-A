@@ -1,83 +1,90 @@
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
+  <div class="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h2 class="text-xl font-semibold text-gray-800">Leave History</h2>
-        <p class="text-sm text-gray-500">Track all filed leave requests across the store.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Leave History</h1>
+        <p class="mt-1 text-sm text-slate-500">Track filed leave requests across your store.</p>
       </div>
-      <Button label="Back to Management" icon="pi pi-arrow-left" severity="secondary" outlined
+      <Button label="Back to Management" icon="pi pi-arrow-left" severity="secondary" outlined size="small"
         @click="router.push({ name: 'hr.leave' })" />
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div class="flex flex-wrap gap-3 items-center justify-between">
-        <div class="flex gap-3 flex-wrap">
-          <IconField>
-            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-            <InputText v-model="filters.search" placeholder="Search employee" class="pl-8 rounded-lg w-64" />
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-3">
+          <IconField class="w-full sm:min-w-56">
+            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400"></i>
+            <InputText v-model="filters.search" placeholder="Search employee" class="w-full pl-8" />
           </IconField>
 
           <Select v-model="filters.status" :options="statusOptions" showClear placeholder="Status"
-            class="rounded-lg w-40" />
+            class="w-full sm:min-w-40" />
 
           <Select v-model="filters.leaveType" :options="leaveTypeOptions" showClear placeholder="Leave Type"
-            class="rounded-lg w-44" />
+            class="w-full sm:min-w-44" />
         </div>
 
         <div class="flex gap-2">
-          <Button label="Apply" icon="pi pi-filter" severity="info" outlined @click="fetchLeaves" />
-          <Button label="Reset" icon="pi pi-filter-slash" severity="secondary" outlined @click="resetFilters" />
+          <Button label="Apply" icon="pi pi-filter" severity="warn" outlined size="small" @click="applyFilters" />
+          <Button v-if="hasActiveFilters" label="Clear Filters" icon="pi pi-filter-slash" severity="danger" outlined size="small" @click="resetFilters" />
         </div>
       </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full">
+    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div v-if="loading" class="space-y-2 p-4" aria-label="Loading leave history">
+        <Skeleton v-for="i in 6" :key="i" height="2.75rem" />
+      </div>
+      <div v-else-if="filteredLeaves.length === 0" class="px-4 py-12 text-center">
+        <i class="pi pi-calendar-times text-2xl text-slate-300" />
+        <p class="mt-2 text-sm font-medium text-slate-700">No leave history found</p>
+        <p class="mt-1 text-xs text-slate-500">Try adjusting the filters or search term.</p>
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[760px] text-sm">
           <thead>
             <tr class="bg-gray-50/50 border-b border-gray-100 text-left">
-              <th class="p-4 text-sm font-medium text-gray-600">Employee</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Leave Type</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Date Range</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Days</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Status</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Filed</th>
-              <th class="p-4 text-sm font-medium text-gray-600">Actions</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Leave Type</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Date Range</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Days</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Filed</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            <tr v-for="leave in filteredLeaves" :key="leave.id" class="hover:bg-gray-50/50 transition-colors">
-              <td class="p-4">
+            <tr v-for="leave in filteredLeaves" :key="leave.id" class="transition-colors hover:bg-orange-50/40">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <Avatar :label="getInitials(leave.employeeName)" size="large"
-                    class="bg-blue-100 text-blue-600 font-medium" />
+                  <Avatar :label="getInitials(leave.employeeName)" size="normal" class="bg-slate-100 text-slate-700 font-medium" />
                   <div>
-                    <div class="font-medium text-gray-800">{{ leave.employeeName }}</div>
-                    <div class="text-xs text-gray-500">{{ leave.department }}</div>
+                    <div class="font-medium text-slate-800">{{ leave.employeeName }}</div>
+                    <div class="text-xs text-slate-500">{{ leave.department }}</div>
                   </div>
                 </div>
               </td>
-              <td class="p-4">
+              <td class="px-4 py-3">
                 <Tag :value="leave.leaveType" severity="info" rounded />
               </td>
-              <td class="p-4 text-sm text-gray-600">
+              <td class="whitespace-nowrap px-4 py-3 text-slate-600">
                 {{ formatDateRange(leave.startDate, leave.endDate) }}
               </td>
-              <td class="p-4 text-sm font-medium text-gray-700">{{ leave.duration }}</td>
-              <td class="p-4">
-                <Tag :value="leave.statusLabel" :severity="statusSeverity(leave.status)" rounded />
+              <td class="px-4 py-3 font-medium text-slate-700">{{ leave.duration }} <span class="text-xs font-normal text-slate-500">days</span></td>
+              <td class="px-4 py-3">
+                <Badge :value="leave.statusLabel" :severity="statusSeverity(leave.status)" />
               </td>
-              <td class="p-4 text-sm text-gray-500">{{ formatDate(leave.submittedDate) }}</td>
-              <td class="p-4">
-                <Button icon="pi pi-eye" text rounded severity="info" @click="goToDetail(leave.id)" />
+              <td class="whitespace-nowrap px-4 py-3 text-slate-500">{{ formatDate(leave.submittedDate) }}</td>
+              <td class="px-4 py-3 text-right">
+                <Button label="View" icon="pi pi-eye" size="small" outlined rounded @click="goToDetail(leave.id)" />
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="p-4 border-t border-gray-100 flex items-center justify-between">
-        <div class="text-sm text-gray-500">
+      <div v-if="!loading && filteredLeaves.length" class="flex flex-col gap-2 border-t border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="text-xs text-slate-500">
           Showing {{ paginationStart }} to {{ paginationEnd }} of {{ totalRecords }} entries
         </div>
         <Paginator v-model:first="paginationOffset" :rows="perPage" :totalRecords="totalRecords" @page="onPageChange"
@@ -85,9 +92,6 @@
       </div>
     </div>
 
-    <div v-if="loading" class="mt-4">
-      <Skeleton v-for="i in 5" :key="i" height="3rem" class="mb-2" />
-    </div>
   </div>
 </template>
 
@@ -97,6 +101,7 @@ import { useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import Avatar from 'primevue/avatar'
 import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import Paginator from 'primevue/paginator'
 import InputText from 'primevue/inputtext'
@@ -129,6 +134,7 @@ const filters = ref({
   status: null as string | null,
   leaveType: null as string | null,
 })
+const hasActiveFilters = computed(() => Boolean(filters.value.search || filters.value.status || filters.value.leaveType))
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
@@ -180,7 +186,7 @@ const formatDateRange = (start: string | null, end: string | null): string => {
 
 const statusSeverity = (status: string) => {
   const map: Record<string, string> = {
-    pending: 'warning',
+    pending: 'warn',
     approved: 'success',
     rejected: 'danger',
     cancelled: 'secondary',
@@ -254,6 +260,12 @@ const paginationEnd = computed(() => Math.min(paginationOffset.value + perPage.v
 
 const resetFilters = () => {
   filters.value = { search: '', status: null, leaveType: null }
+  currentPage.value = 1
+  paginationOffset.value = 0
+  fetchLeaves()
+}
+
+const applyFilters = () => {
   currentPage.value = 1
   paginationOffset.value = 0
   fetchLeaves()

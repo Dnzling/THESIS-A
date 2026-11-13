@@ -89,8 +89,8 @@
     </div>
 
     <!-- Notifications List -->
-    <div v-if="loading" class="space-y-3">
-      <Skeleton v-for="i in 5" :key="i" height="120px" class="rounded-lg" />
+    <div v-if="loading" class="py-12 text-center text-sm text-gray-500">
+      Loading notifications...
     </div>
 
     <div v-else-if="notifications.length === 0" class="text-center py-16">
@@ -269,13 +269,16 @@ const formatTime = (datetime: string): string => {
   const date = new Date(datetime)
   const now = new Date()
   const diff = now.getTime() - date.getTime()
+  const clockTime = date.toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
+  })
 
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`
+  if (diff < 60000) return `just now · ${clockTime}`
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago · ${clockTime}`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago · ${clockTime}`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago · ${clockTime}`
 
-  return date.toLocaleDateString()
+  return `${date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })} · ${date.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true })}`
 }
 
 const fetchNotifications = async (page = 1) => {

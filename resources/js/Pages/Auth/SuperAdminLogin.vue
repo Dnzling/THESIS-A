@@ -109,7 +109,7 @@ const handleLogin = async () => {
       return
     }
 
-    await authStore.login(form.login, form.password)
+    await authStore.login(form.login, form.password, '/api/auth/super-admin/login')
 
     if (!isSuperAdmin()) {
       await authStore.logout({ redirect: false })

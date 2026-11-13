@@ -2,7 +2,7 @@ import axiosClient from '../axios'
 
 export interface Product {
     id?: number
-    sku: string
+    sku?: string | null
     product_name: string
     description?: string
     category_id: number
@@ -17,6 +17,7 @@ export interface Product {
     length_cm?: number
     width_cm?: number
     height_cm?: number
+    depth_cm?: number
     weight_kg?: number
     assembly_required?: boolean
     is_featured?: boolean
@@ -65,11 +66,19 @@ export interface ProductVariation {
     size?: string
     material?: string
     price_adjustment: number
+    base_price?: number | null
+    discounted_price?: number | null
+    cost_price?: number | null
+    reorder_point?: number
+    supplier_name?: string
+    unit_of_measurement?: string
+    initial_stock?: number
     custom_3d_model_id?: number
     custom_image_id?: number
     length_cm?: number | null
     width_cm?: number | null
     height_cm?: number | null
+    depth_cm?: number | null
     weight_kg?: number | null
     is_active?: boolean
 }
@@ -93,6 +102,105 @@ class MerchandisingService {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/stats`)
         return response.data
     }
+    async getDashboardOverview(days = 30) {
+        const response = await axiosClient.get(`${this.baseUrl}/dashboard/overview`, { params: { days } })
+        return response.data
+    }
+    async getReports(params: { days?: number; branch_id?: number | null; category_id?: number | null; search?: string; page?: number; per_page?: number }) {
+        const response = await axiosClient.get(`${this.baseUrl}/reports`, { params })
+        return response.data
+    }
+
+    async get3DModelRequests(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/3d-model-requests`, { params })
+        return response.data
+    }
+
+    async create3DModelRequest(data: FormData) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-model-requests`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return response.data
+    }
+
+    async update3DModelRequest(id: number, data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-model-requests/${id}/store-action`, data)
+        return response.data
+    }
+
+    async download3DModelRequest(id: number) {
+        return axiosClient.get(`${this.baseUrl}/3d-model-requests/${id}/download`, { responseType: 'blob' })
+    }
+
+    async archiveProduct(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/archive`, undefined, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
+        return response.data
+    }
+
+    async getArchivedProducts(params?: { page?: number; per_page?: number; search?: string }) {
+        const response = await axiosClient.get(`${this.baseUrl}/products/archived`, { params })
+        return response.data
+    }
+
+    async restoreProduct(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/restore`, undefined, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
+        return response.data
+    }
+
+    async permanentlyDeleteArchivedProduct(id: number) {
+        const response = await axiosClient.delete(`${this.baseUrl}/products/${id}/purge`, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
+        return response.data
+    }
+
+    // ==================== PROMOTIONS ====================
+    async getPromotions(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions`, { params })
+        return response.data
+    }
+
+    async getPromotionOptions() {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions/options`)
+        return response.data
+    }
+
+    async createPromotion(data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions`, data)
+        return response.data
+    }
+
+    async updatePromotion(id: number, data: any) {
+        const response = await axiosClient.put(`${this.baseUrl}/promotions/${id}`, data)
+        return response.data
+    }
+
+    async togglePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/toggle`)
+        return response.data
+    }
+
+    async duplicatePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/duplicate`)
+        return response.data
+    }
+
+    async deletePromotion(id: number) {
+        const response = await axiosClient.delete(`${this.baseUrl}/promotions/${id}`)
+        return response.data
+    }
+    async getDiscountRequests(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/discount-requests`, { params })
+        return response.data
+    }
+    async createDiscountRequest(data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/discount-requests`, data)
+        return response.data
+    }
     async getActivityLog(params: any) {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/activity`, { params })
         return response.data
@@ -109,8 +217,10 @@ class MerchandisingService {
         return response.data
     }
 
-    async createProduct(data: Product) {
-        const response = await axiosClient.post(`${this.baseUrl}/products`, data)
+    async createProduct(data: Product | Record<string, any>, suppressDialog = false) {
+        const response = await axiosClient.post(`${this.baseUrl}/products`, data, suppressDialog
+            ? { headers: { 'X-Suppress-Dialog': '1' } }
+            : undefined)
         return response.data
     }
 
@@ -245,6 +355,11 @@ class MerchandisingService {
         return response.data
     }
 
+    async getVariationRequests() {
+        const response = await axiosClient.get(`${this.baseUrl}/variation-requests`)
+        return response.data
+    }
+
     async getVariation(id: number) {
         const response = await axiosClient.get(`${this.baseUrl}/variations/${id}`)
         return response.data
@@ -252,6 +367,11 @@ class MerchandisingService {
 
     async getVariationsByProduct(productId: number) {
         const response = await axiosClient.get(`${this.baseUrl}/products/${productId}/variations`)
+        return response.data
+    }
+
+    async initializeStandardVariation(productId: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/variations/initialize-standard`)
         return response.data
     }
 
@@ -265,15 +385,8 @@ class MerchandisingService {
         return response.data
     }
 
-    async deleteVariation(id: number) {
-        const response = await axiosClient.delete(`${this.baseUrl}/variations/${id}`)
-        return response.data
-    }
-
-    async bulkUpdateStock(variations: Array<{ id: number; stock_quantity: number }>) {
-        const response = await axiosClient.post(`${this.baseUrl}/variations/bulk/stock`, {
-            variations
-        })
+    async archiveVariation(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/variations/${id}/archive`)
         return response.data
     }
 
@@ -302,6 +415,13 @@ class MerchandisingService {
         return response.data
     }
 
+    async uploadProduct3DModel(productId: number, formData: FormData) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/3d-model`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        return response.data
+    }
+
     async updateAsset(id: number, data: Partial<ProductAsset>) {
         const response = await axiosClient.put(`${this.baseUrl}/assets/${id}`, data)
         return response.data
@@ -312,7 +432,7 @@ class MerchandisingService {
         return response.data
     }
 
-    async reorderAssets(product_id: number, assets: Array<{ id: number; display_order: number }>) {
+    async reorderAssets(product_id: number, assets: Array<{ id: number; display_order: number; asset_type?: string; is_primary?: boolean }>) {
         const response = await axiosClient.post(`${this.baseUrl}/assets/reorder`, {
             product_id,
             assets

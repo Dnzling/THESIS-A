@@ -140,11 +140,11 @@
               @click="goProduct(product.id)">
               <template #content>
                 <div class="space-y-2">
-                  <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+                  <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name" loading="lazy" decoding="async"
                     class="h-40 w-full rounded-xl border border-slate-100 object-cover md:h-44" @error="onImageError" />
                   <p class="line-clamp-2 text-sm font-semibold text-slate-900">{{ product.product_name }}</p>
-                  <p class="text-xs text-slate-500">PHP {{ Number(product.final_price ?? product.base_price ??
-                    0).toFixed(2) }}</p>
+                  <p class="text-xs font-semibold text-slate-800">PHP {{ Number(product.price ?? product.final_price ?? product.discounted_price ?? product.base_price ?? 0).toFixed(2) }}</p>
+                  <p v-if="Number(product.base_price) > Number(product.price ?? product.final_price ?? product.discounted_price ?? product.base_price)" class="text-xs text-slate-400 line-through">PHP {{ Number(product.base_price).toFixed(2) }}</p>
                 </div>
               </template>
             </Card>

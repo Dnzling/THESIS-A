@@ -47,6 +47,11 @@ class StockAdjustment extends Model
         return $this->hasMany(StockAdjustmentItem::class, 'adjustment_id');
     }
 
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(StockAdjustmentAttachment::class, 'adjustment_id');
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'created_by');

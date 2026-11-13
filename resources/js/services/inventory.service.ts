@@ -32,9 +32,6 @@ export interface BranchInventoryItem {
   maximum_stock: number
   safety_stock: number
   stock_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'overstock'
-  unit_cost?: number | null
-  average_cost?: number | null
-  total_value: string | number
 
   // Relationships
   product?: {
@@ -42,6 +39,8 @@ export interface BranchInventoryItem {
     sku: string
     product_name: string
     base_price: string
+    cost_price?: string | number | null
+    inventory_cost_price?: string | number | null
   }
   variation?: any
   branch?: {
@@ -109,7 +108,6 @@ export interface InventoryProductPayload {
   unit_of_measurement?: string | null
   supplier_name?: string | null
   initial_stock?: number | null
-  unit_cost?: number
   is_active?: boolean
 }
 
@@ -169,8 +167,13 @@ class InventoryService {
     return response.data
   }
 
-  async getInventoryItem(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`)
+  async getInventoryItem(id: number, params?: Record<string, any>) {
+    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`, { params })
+    return response.data
+  }
+
+  async getInventoryItemPerformance(id: number, params?: Record<string, any>) {
+    const response = await axiosClient.get(`${this.baseUrl}/items/${id}/performance`, { params })
     return response.data
   }
 
@@ -209,8 +212,18 @@ class InventoryService {
     return response.data
   }
 
-  async createAdjustment(data: StockAdjustment) {
-    const response = await axiosClient.post(`${this.baseUrl}/adjustments`, data)
+  async createAdjustment(data: Record<string, any>, photos: File[] = []) {
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'items') {
+        formData.append('items', JSON.stringify(value))
+      } else if (value !== null && value !== undefined) {
+        formData.append(key, String(value))
+      }
+    })
+    photos.forEach(photo => formData.append('photos[]', photo))
+
+    const response = await axiosClient.post(`${this.baseUrl}/adjustments`, formData)
     return response.data
   }
 
@@ -258,6 +271,7 @@ class InventoryService {
   async createTransferDelivery(
     id: number,
     payload: {
+      driver_user_id: number
       vehicle_type: string
       driver_name: string
       driver_contact: string
@@ -412,6 +426,61 @@ class InventoryService {
     return response.data
   }
 
+  // ==================== SUPPLIERS ====================
+  async getSuppliers(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers`, { params })
+    return response.data
+  }
+
+  async createSupplier(data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async updateSupplier(id: number, data: FormData) {
+    // PHP does not consistently populate multipart FormData on PUT requests.
+    // Use Laravel's method override so uploaded logo and text inputs are parsed.
+    data.set('_method', 'PUT')
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers/${id}`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async getSupplierForEdit(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/edit`)
+    return response.data
+  }
+
+  async getSupplier(id: number, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}`, { params })
+    return response.data
+  }
+
+  async getSupplierContracts(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/supplier-contracts`, { params })
+    return response.data
+  }
+
+  async getSupplierContract(id: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/supplier-contracts/${id}`)
+    return response.data
+  }
+
+  async createSupplierContract(data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async activateSupplierContract(id: string | number) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`, { supplier_confirmed: true })
+    return response.data
+  }
+
   // ==================== PRODUCTS ====================
   async getProducts(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/products`, { params })
@@ -423,18 +492,44 @@ class InventoryService {
     return response.data
   }
 
-  async createProduct(data: any) {
-    const response = await axiosClient.post(`${this.baseUrl}/products`, data)
+  async createProductVariation(productId: number, data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/variations`, {
+      ...data,
+      product_id: productId,
+    })
     return response.data
   }
 
-  async updateProduct(id: number, data: any) {
-    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, data)
+  async createProduct(data: any, suppressDialog = false) {
+    const response = await axiosClient.post(`${this.baseUrl}/products`, data, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
     return response.data
   }
 
-  async deleteProduct(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/products/${id}`)
+  async updateProduct(id: number, data: any, suppressDialog = false) {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
+    const body = isFormData ? data : data
+    if (isFormData) {
+      body.append('_method', 'PUT')
+      const response = await axiosClient.post(`${this.baseUrl}/products/${id}`, body, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(suppressDialog ? { 'X-Suppress-Dialog': '1' } : {})
+        }
+      })
+      return response.data
+    }
+    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, body, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
+    return response.data
+  }
+
+  async deleteProduct(id: number, suppressDialog = false) {
+    const response = await axiosClient.delete(`${this.baseUrl}/products/${id}`, suppressDialog
+      ? { headers: { 'X-Suppress-Dialog': '1' } }
+      : undefined)
     return response.data
   }
 
@@ -617,13 +712,18 @@ class InventoryService {
     return response.data
   }
 
+  async shipStockReturn(id: number, payload: { tracking_number?: string; vehicle_type?: string; driver_name?: string; driver_contact?: string } = {}) {
+    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/ship`, payload)
+    return response.data
+  }
+
   async rejectStockReturn(id: number, notes?: string) {
     const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/reject`, { notes })
     return response.data
   }
 
-  async receiveStockReturn(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/receive`, { notes })
+  async receiveStockReturn(id: number, payload: { supplier_resolution?: string; supplier_resolution_notes?: string } = {}) {
+    const response = await axiosClient.post(`${this.baseUrl}/returns/${id}/receive`, payload)
     return response.data
   }
 
@@ -880,6 +980,11 @@ class InventoryService {
   // ==================== REORDER SUGGESTIONS ====================
   async getReorderSuggestions(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/reorder-suggestions`, { params })
+    return response.data
+  }
+
+  async createGroupedReorderPrs(suggestionIds: number[]) {
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/create-grouped-prs`, { suggestion_ids: suggestionIds })
     return response.data
   }
 
@@ -1294,12 +1399,10 @@ class InventoryService {
   // Inventory shortcut: create PR from a branch inventory item (single line item)
   async createPurchaseRequisitionFromInventory(payload: {
     branch_inventory_id?: number
-    selected_supplier_id?: number
     requested_quantity?: number
     items?: Array<{
       product_id: number
       variation_id?: number | null
-      selected_supplier_id?: number | null
       quantity_requested: number
       estimated_unit_cost?: number | null
       tax_rate?: number
@@ -1308,9 +1411,24 @@ class InventoryService {
     reason?: string | null
     requisition_type?: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
     priority?: number | null
-    auto_submit?: boolean
+    submit?: boolean
   }) {
     const response = await axiosClient.post(`${this.baseUrl}/requisitions`, payload)
+    return response.data
+  }
+
+  async updatePurchaseRequisitionDraft(id: number | string, payload: {
+    requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
+    reason: string
+    submit?: boolean
+    items: Array<{ product_id: number; variation_id?: number | null; quantity_requested: number; estimated_unit_cost?: number | null; tax_rate?: number }>
+  }) {
+    const response = await axiosClient.put(`${this.baseUrl}/requisitions/${id}`, payload)
+    return response.data
+  }
+
+  async deletePurchaseRequisitionDraft(id: number | string) {
+    const response = await axiosClient.delete(`${this.baseUrl}/requisitions/${id}`)
     return response.data
   }
 

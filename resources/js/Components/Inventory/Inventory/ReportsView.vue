@@ -264,7 +264,7 @@ const groupByOptions = [
   { label: 'Branch', value: 'branch' }
 ]
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Raw Material', value: 'raw_material' }
 ]
 

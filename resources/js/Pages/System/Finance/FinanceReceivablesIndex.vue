@@ -1,8 +1,8 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-semibold tracking-tight text-gray-900">Accounts Receivable</h1>
+        <h1 class="text-xl font-semibold tracking-tight text-gray-900">Receivables</h1>
         <p class="mt-0.5 text-sm text-gray-500">Customer invoices and collections from Sales and Ecommerce.</p>
       </div>
     </div>
@@ -17,7 +17,8 @@
                 <i class="pi pi-clock text-sm text-orange-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pendingCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pendingCount }}</p>
           </div>
         </template>
       </Card>
@@ -31,7 +32,8 @@
                 <i class="pi pi-check-circle text-sm text-green-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.paidCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.paidCount }}</p>
           </div>
         </template>
       </Card>
@@ -45,47 +47,50 @@
                 <i class="pi pi-exclamation-circle text-sm text-red-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.overdueCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.overdueCount }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-linear-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-orange-300 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="rounded-xl p-5 bg-gradient-to-b from-orange-500 to-orange-700" >
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider">Outstanding Amount</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-white/95">Outstanding · 28 Days</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                <i class="pi pi-credit-card text-sm"></i>
+                <i class="pi pi-credit-card text-sm text-white"></i>
               </div>
             </div>
-            <p class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+            <Skeleton v-if="loading" width="7rem" height="1.75rem" />
+            <template v-else>
+              <p class="text-xl font-bold text-white">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px] text-white/95">
+                <i :class="outstandingComparisonIcon" />
+                {{ outstandingComparisonLabel }} vs previous 28 days
+              </p>
+            </template>
           </div>
         </template>
       </Card>
     </div>
 
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Filter Receivables</h2>
-        </div>
-      </template>
-
-      <template #content>
-        <div class="p-6 pt-2">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div class="space-y-2 md:col-span-2">
+        <div class="m-4 mt-6">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Customer Invoices</h2>
+          <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+            <div class="space-y-2 md:w-80">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText
                 v-model="filters.search"
                 placeholder="Search invoice or customer"
-                class="w-full"
+                class="w-full" size="small"
                 @keyup.enter="loadReceivables"
               />
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Source</label>
               <Select
                 v-model="filters.source"
@@ -93,11 +98,11 @@
                 optionLabel="label"
                 optionValue="value"
                 class="w-full"
-                fluid
+                fluid size="small"
               />
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2 md:w-44">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Status</label>
               <Select
                 v-model="filters.status"
@@ -105,36 +110,37 @@
                 optionLabel="label"
                 optionValue="value"
                 class="w-full"
-                fluid
+                fluid size="small"
               />
             </div>
+            
+          <div class="flex flex-wrap items-center gap-2">
+            <Button v-if="filters.search || filters.source !== 'all' || filters.status" label="Clear Filter" severity="danger" size="small" @click="clearFilters" />
+            <Button icon="pi pi-filter" label="Apply Filters" severity="secondary" outlined size="small" :loading="loading" @click="loadReceivables" />
+          </div>
           </div>
 
-          <div class="mt-4 flex justify-end">
-            <Button icon="pi pi-refresh" label="Apply Filters" :loading="loading" @click="loadReceivables" />
-          </div>
-        </div>
-      </template>
-    </Card>
-
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Customer Invoices</h2>
         </div>
       </template>
       <template #content>
-        <div class="p-6 pt-2">
+        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-10 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 10" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`receivable-${row}`" class="grid grid-cols-10 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 10" :key="cell" height="1.25rem" /></div></div>
+        <div v-else>
           <DataTable
             :value="receivables"
-            :loading="loading"
-            stripedRows
+            rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs m-4"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+
+           <Column field="created_at" header="Date & Time" sortable style="min-width: 9rem">
+              <template #body="{ data }">
+                <span class="text-xs">{{ formatDateTime(data.created_at) }}</span>
+              </template>
+            </Column>
+
             <Column field="reference" header="Invoice #" style="min-width: 140px">
               <template #body="{ data }">
                 <button class="text-sm font-medium text-blue-600 hover:underline" @click="viewDetail(data)">{{ data.reference }}</button>
@@ -143,15 +149,32 @@
 
             <Column field="source_type" header="Source" style="width: 120px">
               <template #body="{ data }">
-                <Tag
+                <Badge
                   :value="data.source_type === 'ecommerce' ? 'Ecommerce' : 'In Store'"
-                  :severity="data.source_type === 'ecommerce' ? 'info' : 'secondary'"
-                  size="small"
+                  :severity="data.source_type === 'ecommerce' ? 'info' : 'success'"
                 />
               </template>
             </Column>
 
             <Column field="customer" header="Customer" style="min-width: 180px" />
+
+            <Column field="branch" header="Branch" style="min-width: 150px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.branch || '—' }}</span>
+              </template>
+            </Column>
+
+            <Column field="processed_by" header="POS Created By" style="min-width: 160px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.processed_by || '—' }}</span>
+              </template>
+            </Column>
+
+            <Column field="marked_for_dispatch_by" header="Marked for Dispatch By" style="min-width: 190px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ data.marked_for_dispatch_by || '—' }}</span>
+              </template>
+            </Column>
 
             <Column field="amount" header="Amount" style="width: 140px">
               <template #body="{ data }">
@@ -159,22 +182,16 @@
               </template>
             </Column>
 
-            <Column field="due_date" header="Created" style="width: 140px">
-              <template #body="{ data }">
-                <span class="text-sm">{{ formatDate(data.created_at) }}</span>
-              </template>
-            </Column>
-
             <Column field="status" header="Status" style="width: 130px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" size="small" />
+                <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
 
             <Column header="Actions" style="width: 100px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button icon="pi pi-eye" text rounded size="small" @click="viewDetail(data)" />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewDetail(data)" />
                 </div>
               </template>
             </Column>
@@ -198,10 +215,12 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
+import Skeleton from 'primevue/skeleton'
 import financeService from '../../../services/finance.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const receivables = ref<any[]>([])
 const router = useRouter()
 const filters = ref({
@@ -229,9 +248,12 @@ const formatMoney = (value: number | string) => {
   return new Intl.NumberFormat('en-PH').format(amount)
 }
 
-const formatDate = (date: string) => {
+const formatDateTime = (date: string) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(date).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
 }
 
 const formatStatus = (status: string) => {
@@ -257,16 +279,30 @@ const stats = computed(() => {
     return !Number.isNaN(due.getTime()) && due < now
   }).length
 
-  const outstandingAmount = receivables.value
-    .filter((row) => row.status !== 'paid')
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
-
   return {
     pendingCount,
     paidCount,
     overdueCount,
-    outstandingAmount,
+    outstandingAmount: Number(receivablesSummary.value.current.outstanding_amount || 0),
   }
+})
+
+const emptyPeriodSummary = () => ({ outstanding_amount: 0 })
+const receivablesSummary = ref({ current: emptyPeriodSummary(), previous: emptyPeriodSummary() })
+
+const outstandingComparisonLabel = computed(() => {
+  const current = Number(receivablesSummary.value.current.outstanding_amount || 0)
+  const previous = Number(receivablesSummary.value.previous.outstanding_amount || 0)
+  if (previous === 0) return current === 0 ? '0.0%' : 'New'
+  const percent = ((current - previous) / Math.abs(previous)) * 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`
+})
+
+const outstandingComparisonIcon = computed(() => {
+  const current = Number(receivablesSummary.value.current.outstanding_amount || 0)
+  const previous = Number(receivablesSummary.value.previous.outstanding_amount || 0)
+  if (current === previous) return 'pi pi-minus'
+  return current > previous ? 'pi pi-arrow-up' : 'pi pi-arrow-down'
 })
 
 const loadReceivables = async () => {
@@ -281,9 +317,18 @@ const loadReceivables = async () => {
 
     const res = await financeService.getReceivables(params)
     receivables.value = res.data || []
+    receivablesSummary.value = {
+      current: { ...emptyPeriodSummary(), ...(res.summary?.current || {}) },
+      previous: { ...emptyPeriodSummary(), ...(res.summary?.previous || {}) },
+    }
   } finally {
     loading.value = false
   }
+}
+
+const clearFilters = () => {
+  filters.value = { search: '', source: 'all', status: '' }
+  loadReceivables()
 }
 
 const viewDetail = (row: any) => {

@@ -1,332 +1,132 @@
 <template>
-  <div class="max-w-7xl mx-auto pb-6">
-    <div class="flex items-center justify-between mb-4">
+  <div class="mx-auto max-w-7xl space-y-5 pb-8">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-2xl font-bold">Supplier Verification</h2>
-        <p class="text-sm text-gray-500">Review and verify supplier accounts before approval.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Supplier Verification</h1>
+        <p class="mt-1 text-sm text-slate-500">Review supplier registration details and submitted documents.</p>
       </div>
+      <Button label="Back to Suppliers" icon="pi pi-arrow-left" outlined rounded size="small" severity="secondary" @click="router.push({ name: 'admin.suppliers.index' })" />
     </div>
 
-    <Card>
+    <section class="flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-slate-200 px-1">
+      <button v-for="filter in statusTabs" :key="filter.value" type="button" class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors" :class="status === filter.value ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-600 hover:text-orange-600'" :aria-pressed="status === filter.value" @click="status = filter.value">
+        {{ filter.label }} <span class="ml-1 text-xs text-slate-400">{{ filter.count }}</span>
+      </button>
+    </section>
+
+    <Card class="overflow-hidden border border-slate-200 shadow-none">
       <template #content>
-        <div class="p-4">
-          <p class="text-sm text-gray-600">Suppliers pending verification are listed below.</p>
-          <div class="mt-4">
-              <div class="mb-3">
-                <div class="p-2 bg-white rounded shadow-sm flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span class="p-input-icon-left">
-                      <i class="pi pi-search" />
-                      <InputText v-model="searchTerm" placeholder="Search supplier name or email" @keyup.enter="loadPending" />
-                    </span>
-
-                    <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" @change="loadPending" placeholder="Status" style="min-width:160px" />
-
-                    <Button label="Search" icon="pi pi-search" class="p-button-outlined" @click="loadPending" />
-                  </div>
-
-                  <div>
-                    <Button label="Refresh" icon="pi pi-refresh" class="p-button-text" @click="loadPending" />
-                  </div>
-                </div>
-              </div>
-
-              <DataTable :value="suppliers" emptyMessage="No suppliers">
-              <Column field="supplier_name" header="Supplier Name" />
-              <Column field="contact_person" header="Contact Person" />
-               <Column header="Portal Status">
-                 <template #body="{ data }">
-                   <Tag :value="(data.verification_status || 'pending').toUpperCase()" :severity="statusSeverity(data.verification_status)" />
-                 </template>
-               </Column>
-              <Column header="Submitted" >
-                <template #body="{ data }">
-                  <span class="text-sm">{{ new Date(data?.created_at).toLocaleString() }}</span>
-                </template>
-  
-              </Column>
-              <Column header="Action" style="width:160px;">
-                <template #body="slotProps">
-                  <div>
-                    <Button label="View" severity="info" class="mr-2" @click="() => navigateTo(slotProps.data.id)" />
-                  </div>
-                </template>
-              </Column>
-              </DataTable> 
-              <DataTable :value="suppliers" emptyMessage="No suppliers" paginator :rows="15"/>
-
+        <div class="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="font-semibold text-slate-900">{{ activeTitle }}</h2>
+            <p class="mt-1 text-sm text-slate-500">{{ filtered.length }} supplier application{{ filtered.length === 1 ? '' : 's' }}</p>
           </div>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <IconField class="w-full sm:w-72"><InputIcon class="pi pi-search" /><InputText v-model="search" placeholder="Search supplier or contact" class="w-full" size="small" /></IconField>
+            <Select v-model="documentFilter" :options="documentOptions" option-label="label" option-value="value" size="small" class="w-full sm:w-48" />
+            <Button icon="pi pi-refresh" severity="secondary" outlined rounded size="small" aria-label="Refresh applications" :loading="loading" @click="load" />
+          </div>
+        </div>
+
+        <div v-if="loading" class="space-y-4 py-5"><Skeleton v-for="item in 3" :key="item" height="7rem" border-radius=".75rem" /></div>
+        <div v-else-if="filtered.length" class="divide-y divide-slate-100">
+          <article v-for="supplier in filtered" :key="supplier.portalId" class="grid gap-4 py-5 transition hover:bg-slate-50/70 md:grid-cols-[minmax(0,1.4fr)_minmax(180px,.7fr)_auto] md:items-center">
+            <div class="flex min-w-0 items-start gap-3">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-700">{{ initials(supplier.name) }}</span>
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold text-slate-900">{{ supplier.name }}</h3><Badge :value="title(supplier.status)" :severity="statusSeverity(supplier.status)" /></div>
+                <p class="mt-1 break-all text-sm text-slate-600">{{ supplier.contact }} <span class="text-slate-400">·</span> {{ supplier.email }}</p>
+                <p class="mt-2 text-xs text-slate-500">Submitted {{ formatDate(supplier.createdAt) }}</p>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between gap-2 text-xs"><span class="font-medium text-slate-600">Documents received</span><span class="text-slate-500">{{ supplier.documents }}</span></div>
+              <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-emerald-500" :style="{ width: supplier.documents ? '100%' : '0%' }"></div></div>
+            </div>
+            <Button :label="supplier.status === 'pending' ? 'Review' : 'View details'" icon="pi pi-arrow-right" icon-pos="right" :severity="supplier.status === 'pending' ? undefined : 'secondary'" :outlined="supplier.status !== 'pending'" size="small" @click="open(supplier.portalId)" />
+          </article>
+        </div>
+        <div v-else class="py-14 text-center">
+          <i class="pi pi-inbox text-2xl text-slate-400"></i>
+          <h3 class="mt-3 font-semibold text-slate-800">No supplier applications found</h3>
+          <p class="mt-1 text-sm text-slate-500">Try another status, document filter, or search term.</p>
         </div>
       </template>
     </Card>
-
-    <Dialog v-model:visible="viewModal" modal class="w-2/3" :closable="false">
-      <template #header>
-        <h3 class="text-lg font-semibold">Supplier Details</h3>
-      </template>
-      <div class="p-4 max-h-[70vh] overflow-auto">
-        <p><strong>Code:</strong> {{ displayCode(viewing) }}</p>
-        <p><strong>Company Name:</strong> {{ displayName(viewing) }}</p>
-        <p><strong>Contact Person:</strong> {{ viewing?.contact_person || viewing?.supplier?.contact_person || '-' }}</p>
-        <p><strong>Contact Number:</strong> {{ displayContact(viewing) }}</p>
-        <p><strong>Email:</strong> {{ viewing?.user?.email || viewing?.supplier?.email || '-' }}</p>
-
-        <div class="mt-4">
-          <p class="font-semibold">Documents</p>
-          <div v-if="(viewing?.verificationDocuments || []).length === 0" class="text-sm text-gray-500">No documents uploaded.</div>
-          <ul class="mt-2 space-y-2">
-            <li v-for="doc in viewing?.verificationDocuments || []" :key="doc.id" class="flex items-center justify-between">
-              <div>
-                <div class="font-medium">{{ doc.original_filename || doc.document_type }}</div>
-                <div class="text-sm text-gray-500">{{ doc.document_type }} • {{ (doc.file_size || 0) }} bytes</div>
-              </div>
-              <div class="space-x-2">
-                <Button label="Download" size="small" @click="downloadDocument(doc.id)" />
-                <Button label="View" severity="info" size="small" @click="openDocument(doc)" />
-              </div>
-            </li>
-          </ul>
-        </div>
-      </div>
-      <template #footer>
-        <div class="flex justify-between w-full items-center">
-          <div class="flex items-center space-x-2">
-            <Button label="Approve" severity="success" @click="confirmApprove(viewing.id)" />
-            <Button label="Reject" severity="danger" @click="openRejectDialog(viewing.id)" />
-            <Button label="Request Resubmission" severity="warning" @click="openResubmitDialog(viewing.id)" />
-          </div>
-          <Button label="Close" class="p-button-secondary" @click="closeView" />
-        </div>
-      </template>
-    </Dialog>
-
-    <!-- Reject / Resubmit Dialog -->
-  <Dialog v-model:visible="actionDialog.visible" header="Action" modal :closable="false">
-    <div class="p-4">
-      <p class="mb-2">{{ actionDialog.title }}</p>
-      <label class="block text-sm font-medium mb-1">Reason / Notes</label>
-          <Textarea v-model="actionDialog.reason" rows="4" />
-    </div>
-    <template #footer>
-      <div class="flex justify-end space-x-2">
-        <Button label="Cancel" class="p-button-secondary" @click="closeActionDialog" />
-        <Button :label="actionDialog.confirmLabel" @click="performAction" :severity="actionDialog.severity" />
-      </div>
-    </template>
-  </Dialog>
-    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-
-import { ref, onMounted } from 'vue'
-// declare props passed by Inertia/Layout to avoid Extraneous attributes warnings
-const props = defineProps({
-  errors: { type: Object, required: false },
-  auth: { type: Object, required: false },
-  routeName: { type: String, required: false },
-  routeParams: { type: Object, required: false },
-  query: { type: Object, required: false },
-  title: { type: String, required: false },
-})
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axiosClient from '@/axios'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
 
-const suppliers = ref<any[]>([])
-const viewing = ref<any | null>(null)
-const viewModal = ref(false)
-
-onMounted(() => {
-  loadPending()
-})
-
-const statusFilter = ref<'all'|'pending'|'approved'|'rejected'>('pending')
-const searchTerm = ref('')
-const statusOptions = [
-  { label: 'All', value: 'all' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Approved', value: 'approved' },
-  { label: 'Rejected', value: 'rejected' },
+const router = useRouter()
+const rows = ref<any[]>([])
+const loading = ref(false)
+const search = ref('')
+const status = ref('pending')
+const documentFilter = ref('all')
+const documentOptions = [
+  { label: 'All submissions', value: 'all' },
+  { label: 'With documents', value: 'with' },
+  { label: 'No documents', value: 'without' },
 ]
-
-const actionDialog = ref({
-  visible: false,
-  type: null as null | 'reject' | 'resubmit' | 'approve',
-  id: null as number | null,
-  reason: '',
-  title: '',
-  confirmLabel: 'Confirm',
-  severity: 'danger'
-})
-
-const loadPending = async () => {
-  try {
-    const params: any = { per_page: 100 }
-    if (statusFilter.value && statusFilter.value !== 'all') params.status = statusFilter.value
-    if (searchTerm.value) params.search = searchTerm.value
-
-    // Prefer the supplier-portals API which already contains supplier and portal status
-    const res = await axiosClient.get('/api/supplier-verifications', { params })
-    const body = res?.data
-    let items: any[] = []
-    if (body) {
-      if (body.data && Array.isArray(body.data.data)) items = body.data.data
-      else if (Array.isArray(body.data)) items = body.data
-      else if (Array.isArray(body)) items = body
-    }
-
-    // Map portals to table rows: include supplier fields where present
-    suppliers.value = items.map((p: any) => ({
-      id: p.supplier_id || p.portal_id || p.id,
-      portal_id: p.id,
-      supplier_name: p.supplier_name || p.company_name || p.supplier?.supplier_name,
-      contact_person: p.contact_person || p.supplier?.contact_person,
-      created_at: p.created_at,
-      verificationDocuments: p.verificationDocuments || p.verification_documents || [],
-      verification_status: p.status || 'pending',
-      supplier: p.supplier || null,
-    }))
-  } catch (e) {
-    console.error('Failed loading suppliers', e)
-  }
-}
-
-const closeView = () => {
-  viewing.value = null
-  viewModal.value = false
-}
-
-const navigateTo = (id: number) => {
-  (globalThis as any).location.href = `/admin/verification/suppliers/${id}`
-}
-
-
-const downloadDocument = (id: number) => {
-  // open download link - backend should return binary stream
-  const url = `/api/supplier-portal/documents/${id}/download`
-  window.open(url, '_blank')
-}
-
-const openDocument = (doc: any) => {
-  // attempt to open stored file via download route
-  const url = `/api/supplier-portal/documents/${doc.id}/download`
-  window.open(url, '_blank')
-}
-
-const confirmApprove = (id: number) => {
-  if (!window.confirm('Approve this supplier?')) return
-  approveSupplier(id)
-}
-
-const approveSupplier = async (id: number) => {
-  confirmAction('Approve supplier?', async () => {
-    try {
-      await axiosClient.post(`/api/supplier-verifications/${id}/approve`)
-      suppliers.value = suppliers.value.filter(s => s.id !== id)
-      closeView()
-    } catch (e) {
-      console.error('Approve failed', e)
-      alert('Approve failed')
-    }
+const filtered = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return rows.value.filter((supplier) => {
+    const matchesStatus = status.value === 'all' || supplier.status === status.value
+    const matchesTerm = !term || [supplier.name, supplier.contact, supplier.email].some((value) => String(value || '').toLowerCase().includes(term))
+    const matchesDocuments = documentFilter.value === 'all' || (documentFilter.value === 'with' ? supplier.documents > 0 : supplier.documents === 0)
+    return matchesStatus && matchesTerm && matchesDocuments
   })
-}
+})
+const counts = computed(() => ({
+  pending: rows.value.filter((row) => row.status === 'pending').length,
+  approved: rows.value.filter((row) => row.status === 'approved').length,
+  rejected: rows.value.filter((row) => row.status === 'rejected').length,
+  all: rows.value.length,
+}))
+const statusTabs = computed(() => [
+  { value: 'pending', label: 'Pending review', count: counts.value.pending },
+  { value: 'approved', label: 'Approved', count: counts.value.approved },
+  { value: 'rejected', label: 'Rejected', count: counts.value.rejected },
+  { value: 'all', label: 'All applications', count: counts.value.all },
+])
+const activeTitle = computed(() => statusTabs.value.find((tab) => tab.value === status.value)?.label || 'Applications')
 
-const openRejectPrompt = async (id: number) => {
-  const reason = window.prompt('Enter rejection reason (min 5 chars):')
-  if (!reason || reason.length < 5) return alert('Rejection reason required (min 5 chars).')
-  await rejectSupplier(id, reason)
-}
-
-const rejectSupplier = async (id: number, reason: string) => {
+async function load() {
+  loading.value = true
   try {
-    await axiosClient.post(`/api/supplier-verifications/${id}/reject`, { rejection_reason: reason })
-    suppliers.value = suppliers.value.filter(s => s.id !== id)
-    alert('Supplier rejected')
-  } catch (e) {
-    console.error('Reject failed', e)
-    alert('Reject failed')
+    const response = await axiosClient.get('/api/supplier-verifications', { params: { per_page: 200 } })
+    const result = response.data?.data?.data || response.data?.data || []
+    rows.value = result.map((item: any) => ({
+      portalId: Number(item.portal_id || item.id),
+      name: item.supplier_name || item.company_name || item.supplier?.supplier_name || 'Unnamed supplier',
+      contact: item.contact_person || item.supplier?.contact_person || 'No contact person',
+      email: item.email || item.user?.email || item.supplier?.email || 'No email',
+      status: String(item.status || 'pending').toLowerCase(),
+      createdAt: item.created_at || null,
+      documents: (item.verificationDocuments || item.verification_documents || []).length,
+    }))
+  } finally {
+    loading.value = false
   }
 }
 
-const openRejectDialog = (id: number) => {
-  actionDialog.value = {
-    visible: true,
-    type: 'reject',
-    id,
-    reason: '',
-    title: 'Provide rejection reason (min 5 chars)',
-    confirmLabel: 'Reject',
-    severity: 'danger'
-  }
-}
+function open(id: number) { router.push({ name: 'admin.supplier-verification.show', params: { id } }) }
+function title(value: string) { return String(value || 'unknown').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) }
+function statusSeverity(value: string) { return ({ pending: 'warn', approved: 'success', rejected: 'danger' } as Record<string, string>)[value] || 'secondary' }
+function initials(value: string) { return String(value || 'S').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() }
+function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Not available' }
 
-const openResubmitDialog = (id: number) => {
-  actionDialog.value = {
-    visible: true,
-    type: 'resubmit',
-    id,
-    reason: '',
-    title: 'Describe what needs resubmission (min 5 chars)',
-    confirmLabel: 'Request Resubmission',
-    severity: 'warning'
-  }
-}
-
-const performAction = async () => {
-  const ad = actionDialog.value
-  if (!ad.id) return
-  if (!ad.reason || ad.reason.length < 5) return alert('Reason required (min 5 chars)')
-
-  try {
-    if (ad.type === 'reject') {
-      await axiosClient.post(`/api/supplier-verifications/${ad.id}/reject`, { rejection_reason: ad.reason })
-      suppliers.value = suppliers.value.filter(s => s.id !== ad.id)
-      alert('Supplier rejected')
-    } else if (ad.type === 'resubmit') {
-      await axiosClient.post(`/api/supplier-verifications/${ad.id}/request-resubmission`, { notes: ad.reason })
-      suppliers.value = suppliers.value.filter(s => s.id !== ad.id)
-      alert('Resubmission requested')
-    }
-    closeActionDialog()
-    closeView()
-  } catch (e) {
-    console.error('Action failed', e)
-    alert('Action failed')
-  }
-}
-
-const closeActionDialog = () => {
-  actionDialog.value = { visible: false, type: null, id: null, reason: '', title: '', confirmLabel: 'Confirm', severity: 'danger' }
-}
-
-const confirmAction = (message: string, fn: () => Promise<void>) => {
-  if (window.confirm(message)) fn()
-}
-const displayCode = (portal: any) => {
-  if (!portal) return '-'
-  const name = portal.supplier_name || portal.company_name || portal.supplier?.supplier_name || portal.user?.email || 'SUPP'
-  const short = slugify(name).split('-').slice(0,2).map((s: string) => s.slice(0,3)).join('').toUpperCase()
-  return `${short}-${(portal.id || Math.floor(Math.random()*9000)+1000)}`
-}
-
-const displayName = (portal: any) => {
-  if (!portal) return '-'
-  return portal.supplier?.supplier_name || portal.company_name || portal.user?.email || 'Unknown Supplier'
-}
-
-const displayContact = (portal: any) => {
-  if (!portal) return '-'
-  // Prefer the phone (contact number) submitted in the portal
-  return portal.phone || portal.supplier?.contact_person || portal.contact_person || portal.user?.phone || 'N/A'
-}
-
-const statusSeverity = (status: string|null|undefined) => {
-  switch ((status || 'pending')) {
-    case 'approved': return 'success'
-    case 'rejected': return 'danger'
-    case 'pending': return 'warning'
-    default: return 'info'
-  }
-}
-
+onMounted(load)
 </script>
-

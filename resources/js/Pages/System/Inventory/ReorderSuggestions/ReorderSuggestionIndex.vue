@@ -4,25 +4,47 @@
       <div>
         <h1 class="text-xl font-bold text-gray-800">Reorder Suggestions</h1>
         <p class="text-xs text-gray-500 mt-0.5">
-          Branch-aware decision support for low stock replenishment.
+          {{ reorderDestination === 'warehouse'
+            ? 'Select pending items for one receiving branch to create a grouped warehouse request. Open View for the full calculation.'
+            : 'Group pending items by supplier and receiving branch to create one purchase order per group. Open View for the full calculation.' }}
         </p>
       </div>
       <div class="flex items-center gap-2">
         <Button
-          label="Settings"
-          icon="pi pi-cog"
+          v-if="reorderDestination === 'warehouse' && canCreateTransfer"
+          :label="`Request Selected (${selectedSuggestions.length})`"
+          icon="pi pi-warehouse"
+          size="small"
+          severity="warn"
+          :disabled="!canCreateGroupedWarehouseRequest"
+          @click="createWarehouseRequest(selectedSuggestions.map(item => item.id))"
+        />
+        <Button
+          v-else-if="reorderDestination === 'pr' && canManagePr"
+          :label="`Create Grouped PRs (${selectedSuggestions.length})`"
+          icon="pi pi-file-plus"
+          size="small"
+          severity="warn"
+          :disabled="!selectedSuggestions.length || selectedSuggestions.some(item => item.status !== 'pending')"
+          @click="createGroupedPrs"
+        />
+        <Button v-if="reorderDestination === 'po' && canCreatePo" label="Create PO by Supplier" icon="pi pi-shopping-cart" size="small" severity="warn" outlined @click="openSimplePoDialog" />
+        <Button
+          label="Reorder Rules"
+          icon="pi pi-sliders-h"
           size="small"
           severity="secondary"
           outlined
-          @click="openSettings"
+          @click="router.push({ name: 'inventory.reorder-rules' })"
         />
         <Button
-          label="Generate Suggestions"
-          icon="pi pi-bolt"
+          label="Refresh"
+          icon="pi pi-refresh"
           size="small"
-          severity="info"
-          :loading="generating"
-          @click="generateSuggestions"
+          severity="secondary"
+          outlined
+          :loading="loading"
+          @click="refreshData"
         />
       </div>
     </div>
@@ -120,31 +142,48 @@
 
         <DataTable
           v-else
+          v-model:selection="selectedSuggestions"
           :value="suggestions"
-          stripedRows
-          class="p-datatable-sm"
+          dataKey="id"
+          :rowSelectable="isPendingSuggestionSelectable"
+          rowHover
+          class="p-datatable-sm text-sm"
           paginator
           :rows="filters.per_page"
           :totalRecords="pagination.total"
           :first="(pagination.current_page - 1) * filters.per_page"
           @page="onPage"
         >
-          <Column field="suggested_at" header="Date" style="width: 140px">
-            <template #body="{ data }">{{ formatDate(data.suggested_at || data.created_at) }}</template>
+          <Column v-if="(reorderDestination === 'warehouse' && canCreateTransfer) || (reorderDestination === 'pr' && canManagePr)" selectionMode="multiple" headerStyle="width: 3rem" />
+          <Column field="suggested_at" header="Created At" style="min-width: 190px">
+            <template #body="{ data }">{{ formatDateTime(data.suggested_at || data.created_at) }}</template>
           </Column>
           <Column header="Product" style="min-width: 220px">
             <template #body="{ data }">
               <div class="text-sm">
                 <div class="font-medium">{{ data.product_name || '-' }}</div>
                 <div class="text-gray-500">{{ data.product_sku || '-' }}</div>
+                <div v-if="data.variation_name" class="mt-0.5 text-xs font-medium text-orange-700">
+                  Variant: {{ data.variation_name }}
+                </div>
               </div>
             </template>
           </Column>
           <Column header="Branch" style="min-width: 160px">
             <template #body="{ data }">{{ data.branch_name || '-' }}</template>
           </Column>
-          <Column field="current_stock" header="Current" style="width: 110px" />
-          <Column field="suggested_quantity" header="Suggested" style="width: 110px" />
+          <Column field="current_stock" header="Current" style="width: 110px"><template #body="{ data }">{{ formatQuantity(data.current_stock) }}</template></Column>
+          <Column field="suggested_quantity" header="Suggested" style="width: 110px"><template #body="{ data }">{{ formatQuantity(data.suggested_quantity) }}</template></Column>
+          <Column header="Decision support" style="min-width: 220px">
+            <template #body="{ data }">
+              <div class="space-y-1 text-xs leading-5">
+                <div class="font-medium text-slate-800">{{ calculationSourceLabel(data) }}</div>
+                <div>Trigger {{ formatOptionalMetric(data.calculation?.reorder_trigger) }} · Target {{ formatOptionalMetric(data.calculation?.target_stock) }}</div>
+                <div v-if="isDemandDriven(data)" class="text-slate-500">30-day sales {{ formatOptionalMetric(data.calculation?.units_sold, 2) }} · Daily demand {{ formatOptionalMetric(data.calculation?.average_daily_demand, 2) }}</div>
+                <div v-else class="text-slate-500">{{ data.calculation?.trigger_type === 'safety_stock' ? 'Demand and lead time not used; safety stock is the trigger' : 'Demand, lead time, review period, and safety stock not used' }}</div>
+              </div>
+            </template>
+          </Column>
           <Column field="priority" header="Priority" style="width: 120px">
             <template #body="{ data }">
               <Tag :value="capitalize(data.priority)" :severity="prioritySeverity(data.priority)" />
@@ -155,33 +194,18 @@
               <Tag :value="capitalize(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-          <Column header="Actions" style="width: 200px">
+          <Column header="Actions" style="width: 210px">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-eye" rounded text severity="info" @click="openDetail(data.id)" />
+              <div class="flex items-center gap-2">
+                <Button label="View" icon="pi pi-eye" size="small" rounded outlined @click="openDetail(data.id)" />
                 <Button
-                  v-if="data.status === 'pending'"
-                  icon="pi pi-check"
+                  v-if="data.metadata?.stock_transfer_id"
+                  label="View Transfer"
+                  icon="pi pi-arrow-right-arrow-left"
+                  size="small"
                   rounded
-                  text
-                  severity="success"
-                  @click="quickApprove(data.id)"
-                />
-                <Button
-                  v-if="data.status === 'pending'"
-                  icon="pi pi-times"
-                  rounded
-                  text
-                  severity="danger"
-                  @click="quickReject(data.id)"
-                />
-                <Button
-                  v-if="data.status === 'approved'"
-                  icon="pi pi-send"
-                  rounded
-                  text
-                  severity="warn"
-                  @click="quickImplement(data.id)"
+                  outlined
+                  @click="viewWarehouseRequest(data.metadata.stock_transfer_id)"
                 />
               </div>
             </template>
@@ -190,72 +214,85 @@
             <div class="text-center py-8 text-gray-500">No reorder suggestions found.</div>
           </template>
         </DataTable>
+        <small v-if="reorderDestination === 'warehouse' && selectedSuggestions.length && !canCreateGroupedWarehouseRequest" class="mt-3 block text-amber-700">
+          Select pending suggestions for one receiving branch, with only one suggestion per product or variant.
+        </small>
       </template>
     </Card>
 
-    <Dialog
-      v-model:visible="settingsDialogVisible"
-      modal
-      header="Auto Generate Settings"
-      :style="{ width: '30rem' }"
-      :closable="!savingSettings"
-    >
-      <div class="space-y-4">
-        <div class="flex items-center gap-2">
-          <Checkbox v-model="settingsForm.enable_auto_reorder_suggestions" :binary="true" inputId="enable-auto-reorder" />
-          <label for="enable-auto-reorder" class="text-sm font-medium text-gray-700">
-            Enable auto generation of reorder suggestions
-          </label>
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold mb-2">Auto Generate Time</label>
-          <input
-            v-model="settingsForm.auto_reorder_suggestions_time"
-            type="time"
-            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            :disabled="!settingsForm.enable_auto_reorder_suggestions"
-          />
-          <p class="text-xs text-gray-500 mt-2">
-            The scheduler will run daily at this time.
-          </p>
-        </div>
+    <Dialog v-model:visible="simplePoDialogVisible" modal header="Create PO from Reorder Suggestions" :style="{ width: 'min(96vw, 900px)' }">
+      <p class="mb-4 text-sm text-slate-600">Choose a supplier and receiving branch, then select its linked pending suggestions. Each supplier-and-branch group becomes one draft PO.</p>
+      <div class="mb-4 grid gap-3 md:grid-cols-2">
+        <Select v-if="canSelectAllBranches" v-model="poBranchId" :options="poBranches" optionLabel="name" optionValue="id" placeholder="Select receiving branch" class="w-full" />
+        <div v-else class="flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">Receiving branch: {{ assignedBranchName || 'No assigned branch' }}</div>
+        <Select v-model="poSupplierId" :options="supplierOptionsForBranch" optionLabel="supplier_name" optionValue="id" placeholder="Select supplier" class="w-full" />
       </div>
-
+      <div v-if="!canSelectAllBranches && !poBranchId && !simplePoLoading" class="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">Your user profile needs an assigned branch before you can create a PO from reorder suggestions.</div>
+      <div v-if="simplePoLoading" class="space-y-2"><Skeleton v-for="n in 4" :key="n" height="3rem" /></div>
+      <DataTable v-else v-model:selection="selectedPoSuggestions" :value="supplierSuggestions" dataKey="id" size="small" rowHover scrollable scrollHeight="380px">
+        <Column selectionMode="multiple" headerStyle="width: 3rem" />
+        <Column header="Item"><template #body="{ data }"><div class="font-medium">{{ data.product_name }}</div><div class="text-xs text-slate-500">{{ data.product_sku }}<span v-if="data.variation_name"> · {{ data.variation_name }}</span></div></template></Column>
+        <Column header="Current"><template #body="{ data }">{{ formatQuantity(data.current_stock) }}</template></Column>
+        <Column header="Suggested Qty"><template #body="{ data }">{{ formatQuantity(data.suggested_quantity) }}</template></Column>
+        <Column header="Reorder logic" style="min-width: 230px"><template #body="{ data }"><div class="text-xs leading-5"><div class="font-medium">{{ calculationSourceLabel(data) }}</div><div>Trigger {{ formatOptionalMetric(data.calculation?.reorder_trigger) }} · Target {{ formatOptionalMetric(data.calculation?.target_stock) }}</div><div class="text-slate-500">{{ isDemandDriven(data) ? `30-day sales ${formatOptionalMetric(data.calculation?.units_sold, 2)} · Daily demand ${formatOptionalMetric(data.calculation?.average_daily_demand, 2)}` : (data.calculation?.trigger_type === 'safety_stock' ? 'Demand-based inputs not used; safety stock trigger applied' : 'Demand-based inputs not used for this suggestion') }}</div></div></template></Column>
+        <Column header="Priority"><template #body="{ data }"><Tag :value="capitalize(data.priority)" :severity="prioritySeverity(data.priority)" /></template></Column>
+      </DataTable>
+      <div v-if="poSupplierId && !supplierSuggestions.length && !simplePoLoading" class="py-5 text-center text-sm text-slate-500">No pending suggestions for this supplier and branch.</div>
       <template #footer>
-        <Button
-          label="Cancel"
-          severity="secondary"
-          outlined
-          :disabled="savingSettings"
-          @click="settingsDialogVisible = false"
-        />
-        <Button
-          label="Save Settings"
-          icon="pi pi-save"
-          :loading="savingSettings"
-          @click="saveSettings"
-        />
+        <Button label="Cancel" severity="secondary" text @click="simplePoDialogVisible = false" />
+        <Button :label="`Continue with ${selectedPoSuggestions.length} item(s)`" icon="pi pi-arrow-right" severity="warn" :disabled="!poSupplierId || !poBranchId || !selectedPoSuggestions.length" @click="continueToSimplePo" />
       </template>
     </Dialog>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { router as inertiaRouter } from '@inertiajs/vue3'
+import axiosClient from '@/axios'
 import inventoryService from '@/services/inventory.service'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
+const reorderDestination = ref('pr')
+const canCreatePo = computed(() => authStore.hasPermission('inventory.purchase_orders.manage'))
+const canManagePr = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canCreateTransfer = computed(() => authStore.hasPermission('inventory.transfers.create') || authStore.hasPermission('inventory.transfers.manage'))
+const selectedSuggestions = ref<any[]>([])
+const canCreateGroupedWarehouseRequest = computed(() => {
+  if (!selectedSuggestions.value.length) return false
+  if (selectedSuggestions.value.some(item => item.status !== 'pending')) return false
+  const branches = new Set(selectedSuggestions.value.map(item => Number(item.branch_id)))
+  const products = selectedSuggestions.value.map(item => `${Number(item.product_id)}:${Number(item.variation_id || 0)}`)
+  return branches.size === 1 && new Set(products).size === products.length
+})
+const simplePoDialogVisible = ref(false)
+const simplePoLoading = ref(false)
+const poBranches = ref<any[]>([])
+const canSelectAllBranches = ref(false)
+const poSuppliers = ref<any[]>([])
+const poProducts = ref<any[]>([])
+const pendingPoSuggestions = ref<any[]>([])
+const poBranchId = ref<number | null>(Number((authStore.user as any)?.branch_id || 0) || null)
+const poSupplierId = ref<number | null>(null)
+const selectedPoSuggestions = ref<any[]>([])
+const assignedBranchName = computed(() => poBranches.value.find(branch => Number(branch.id) === Number(poBranchId.value))?.name || '')
+const supplierOptionsForBranch = computed(() => poSuppliers.value.filter(supplier =>
+  String(supplier?.supplier_name || '').trim().length > 0
+).sort((left, right) => String(left.supplier_name).localeCompare(String(right.supplier_name))))
+const supplierSuggestions = computed(() => pendingPoSuggestions.value.filter(suggestion => {
+  if (Number(suggestion.branch_id) !== Number(poBranchId.value) || !poSupplierId.value) return false
+  const product = poProducts.value.find(item => Number(item.id) === Number(suggestion.product_id))
+  return product?.suppliers?.some((supplier: any) => Number(supplier.id) === Number(poSupplierId.value))
+}))
+watch([poBranchId, poSupplierId], () => { selectedPoSuggestions.value = [] })
 
 const loading = ref(false)
-const generating = ref(false)
-const savingSettings = ref(false)
-const settingsDialogVisible = ref(false)
 const suggestions = ref<any[]>([])
 const stats = ref<any>({})
 const pagination = reactive({
@@ -270,11 +307,6 @@ const filters = reactive({
   type: null as string | null,
   page: 1,
   per_page: 15,
-})
-
-const settingsForm = reactive({
-  enable_auto_reorder_suggestions: true,
-  auto_reorder_suggestions_time: '08:00',
 })
 
 const userBranchId = Number((authStore.user as any)?.branch_id || 0)
@@ -309,9 +341,24 @@ const extractRows = (payload: any): any[] => {
 const normalizeSuggestion = (row: any) => ({
   ...row,
   product_name: row?.product?.product_name || row?.product?.name || '-',
-  product_sku: row?.product?.sku || '-',
+  product_sku: row?.variation?.variation_sku || row?.product?.sku || '-',
+  variation_name: row?.variation?.variation_name || null,
+  calculation: row?.metadata?.calculation || null,
+  calculation_source: row?.metadata?.source || null,
+  applied_basis_type: row?.metadata?.basis_type || row?.reorder_rule?.basis_type || null,
   branch_name: row?.branch?.name || '-',
 })
+
+const isDemandDriven = (row: any) => ['sales_30_day', 'configured_average_demand'].includes(row?.calculation_source)
+const calculationSourceLabel = (row: any) => ({
+  sales_30_day: 'Recent sales (30 days)',
+  configured_average_demand: 'Configured average demand',
+  configured_reorder_rule: 'Configured reorder rule',
+  branch_inventory_reorder_point: 'Branch inventory reorder point',
+} as Record<string, string>)[row?.calculation_source] || 'Saved suggestion data'
+const formatOptionalMetric = (value: any, digits = 0) => value === null || value === undefined || value === ''
+  ? '—'
+  : Number(value).toLocaleString('en-PH', { maximumFractionDigits: digits })
 
 const statusSeverity = (status: string) => {
   const key = String(status || '').toLowerCase()
@@ -335,11 +382,11 @@ const capitalize = (value: string) => {
   return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : '-'
 }
 
-const formatDate = (value?: string | null) => {
+const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
-  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: '2-digit' })
+  return d.toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 const formatCurrency = (amount: number) => {
@@ -351,14 +398,21 @@ const formatCurrency = (amount: number) => {
   }).format(n)
 }
 
+const formatQuantity = (value: unknown) => new Intl.NumberFormat('en-PH', {
+  maximumFractionDigits: 0,
+}).format(Math.round(Number(value) || 0))
+
 const loadSuggestions = async () => {
   loading.value = true
   try {
     const params: any = { ...filters }
     if (userBranchId > 0) params.branch_id = userBranchId
     const response = await inventoryService.getReorderSuggestions(params)
+    reorderDestination.value = response?.reorder_destination || 'pr'
     const rows = extractRows(response?.data).map(normalizeSuggestion)
     suggestions.value = rows
+    const loadedIds = new Set(rows.map(row => Number(row.id)))
+    selectedSuggestions.value = selectedSuggestions.value.filter(row => loadedIds.has(Number(row.id)))
     pagination.total = Number(response?.data?.total || rows.length || 0)
     pagination.current_page = Number(response?.data?.current_page || filters.page || 1)
   } catch (error: any) {
@@ -373,6 +427,71 @@ const loadSuggestions = async () => {
   }
 }
 
+const openSimplePoDialog = async () => {
+  simplePoDialogVisible.value = true
+  simplePoLoading.value = true
+  selectedPoSuggestions.value = []
+  try {
+    const [suggestionResponse, optionResponse] = await Promise.all([
+      inventoryService.getReorderSuggestions({ status: 'pending', expired: false, per_page: 200 }),
+      axiosClient.get('/api/inventory/purchase-orders/options'),
+    ])
+    pendingPoSuggestions.value = (suggestionResponse?.data?.data || []).map(normalizeSuggestion)
+    poBranches.value = optionResponse.data?.data?.branches || []
+    canSelectAllBranches.value = Boolean(optionResponse.data?.data?.can_select_all_branches)
+    poSuppliers.value = optionResponse.data?.data?.suppliers || []
+    poProducts.value = optionResponse.data?.data?.products || []
+    if (!canSelectAllBranches.value || (!poBranchId.value && poBranches.value.length === 1)) {
+      poBranchId.value = poBranches.value.length === 1 ? Number(poBranches.value[0].id) : null
+    }
+  } catch (error: any) {
+    simplePoDialogVisible.value = false
+    toast.add({ severity: 'error', summary: 'Unable to load reorder items', detail: error?.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    simplePoLoading.value = false
+  }
+}
+
+const continueToSimplePo = () => {
+  if (!poSupplierId.value || !poBranchId.value || !selectedPoSuggestions.value.length) return
+  const ids = selectedPoSuggestions.value.map(item => item.id).join(',')
+  simplePoDialogVisible.value = false
+  inertiaRouter.visit(`/inventory/purchase-orders/create?reorder_suggestion_ids=${ids}&supplier_id=${poSupplierId.value}`)
+}
+
+const isPendingSuggestionSelectable = (row: any) => row?.status === 'pending'
+
+const createGroupedPrs = async () => {
+  if (!selectedSuggestions.value.length || selectedSuggestions.value.some(item => item.status !== 'pending')) return
+  try {
+    const response = await inventoryService.createGroupedReorderPrs(selectedSuggestions.value.map(item => Number(item.id)))
+    const createdCount = Array.isArray(response?.data) ? response.data.length : 0
+    selectedSuggestions.value = []
+    toast.add({
+      severity: 'success',
+      summary: 'Draft PRs Created',
+      detail: response?.message || `${createdCount} grouped draft purchase requisition(s) created.`,
+      life: 3500,
+    })
+    await refreshData()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Could Not Create PRs', detail: error?.response?.data?.message || 'Refresh suggestions and try again.', life: 4000 })
+  }
+}
+
+const createWarehouseRequest = (ids: number[]) => {
+  if (!ids.length || !canCreateGroupedWarehouseRequest.value) return
+  const query = new URLSearchParams({
+    type: 'transfer',
+    reorder_suggestion_ids: ids.join(','),
+  })
+  inertiaRouter.visit(`/inventory/stock-requests/create?${query.toString()}`)
+}
+
+const viewWarehouseRequest = (id: number) => {
+  router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id } })
+}
+
 const loadStats = async () => {
   try {
     const params: any = {}
@@ -384,104 +503,7 @@ const loadStats = async () => {
   }
 }
 
-const generateSuggestions = async () => {
-  generating.value = true
-  try {
-    const payload: any = {}
-    if (userBranchId > 0) payload.branch_id = userBranchId
-    const response = await inventoryService.generateSuggestions(payload)
-    toast.add({
-      severity: 'success',
-      summary: 'Generated',
-      detail: response?.message || 'Reorder suggestions generated successfully.',
-      life: 2500,
-    })
-    await Promise.all([loadSuggestions(), loadStats()])
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to generate suggestions',
-      life: 3000,
-    })
-  } finally {
-    generating.value = false
-  }
-}
-
-const openSettings = async () => {
-  settingsDialogVisible.value = true
-  try {
-    const response = await inventoryService.getInventoryConfiguration()
-    const config = response?.data || {}
-    settingsForm.enable_auto_reorder_suggestions = Boolean(config.enable_auto_reorder_suggestions ?? true)
-    settingsForm.auto_reorder_suggestions_time = String(config.auto_reorder_suggestions_time || '08:00').slice(0, 5)
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to load auto-generate settings',
-      life: 3000,
-    })
-  }
-}
-
-const saveSettings = async () => {
-  savingSettings.value = true
-  try {
-    await inventoryService.updateInventoryConfiguration({
-      enable_auto_reorder_suggestions: settingsForm.enable_auto_reorder_suggestions,
-      auto_reorder_suggestions_time: settingsForm.auto_reorder_suggestions_time || '08:00',
-    })
-
-    settingsDialogVisible.value = false
-    toast.add({
-      severity: 'success',
-      summary: 'Saved',
-      detail: 'Auto generate suggestion time updated successfully.',
-      life: 2500,
-    })
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to save auto-generate settings',
-      life: 3000,
-    })
-  } finally {
-    savingSettings.value = false
-  }
-}
-
-const quickApprove = async (id: number) => {
-  try {
-    await inventoryService.approveReorderSuggestion(id)
-    await Promise.all([loadSuggestions(), loadStats()])
-    toast.add({ severity: 'success', summary: 'Approved', detail: 'Suggestion approved.', life: 2000 })
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Approval failed', life: 3000 })
-  }
-}
-
-const quickReject = async (id: number) => {
-  try {
-    await inventoryService.rejectReorderSuggestion(id)
-    await Promise.all([loadSuggestions(), loadStats()])
-    toast.add({ severity: 'info', summary: 'Rejected', detail: 'Suggestion rejected.', life: 2000 })
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Reject failed', life: 3000 })
-  }
-}
-
-const quickImplement = async (id: number) => {
-  try {
-    await inventoryService.implementReorderSuggestion(id)
-    await Promise.all([loadSuggestions(), loadStats()])
-    toast.add({ severity: 'success', summary: 'Implemented', detail: 'Suggestion implemented.', life: 2000 })
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Implement failed', life: 3000 })
-  }
-}
+const refreshData = () => Promise.all([loadSuggestions(), loadStats()])
 
 const openDetail = (id: number) => {
   router.push({ name: 'inventory.reorder-suggestions.detail', params: { id } })

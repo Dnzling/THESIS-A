@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\StockAdjustment;
 use App\Models\Inventory\StockAdjustmentItem;
+use App\Services\Inventory\StockAdjustmentInventoryEffect;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
@@ -15,6 +16,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class StockAdjustmentController extends Controller
 {
@@ -65,7 +68,8 @@ class StockAdjustmentController extends Controller
             ]);
         }
 
-        $query = StockAdjustment::with(['branch', 'createdBy', 'approvedBy'])
+        $query = StockAdjustment::with(['branch', 'createdBy.user', 'approvedBy.user'])
+            ->withCount('items')
             ->when($storeId > 0, fn($q) => $q->where('store_id', $storeId));
 
         if ($branchId > 0) {
@@ -85,8 +89,29 @@ class StockAdjustmentController extends Controller
             $query->where('type', $request->type);
         }
 
-        $adjustments = $query->orderBy('created_at', 'desc')
-            ->paginate($request->get('per_page', 15));
+        if ($request->filled('search')) {
+            $search = trim((string) $request->query('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('adjustment_number', 'like', "%{$search}%")
+                    ->orWhere('reason', 'like', "%{$search}%")
+                    ->orWhereHas('branch', fn ($branch) => $branch->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('adjustment_date', '>=', $request->query('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('adjustment_date', '<=', $request->query('date_to'));
+        }
+
+        $sortField = in_array($request->query('sort_field'), ['adjustment_date', 'adjustment_number', 'status', 'created_at'], true)
+            ? $request->query('sort_field') : 'created_at';
+        $sortDirection = $request->query('sort_direction') === 'asc' ? 'asc' : 'desc';
+        $adjustments = $query->orderBy($sortField, $sortDirection)
+            ->orderBy('id', 'desc')
+            ->paginate(min(50, max(1, $request->integer('per_page', 15))));
 
         return response()->json([
             'success' => true,
@@ -104,8 +129,9 @@ class StockAdjustmentController extends Controller
             'branch',
             'items.product',
             'items.variation',
-            'createdBy',
-            'approvedBy'
+            'attachments',
+            'createdBy.user',
+            'approvedBy.user'
         ])->findOrFail($id);
 
         return response()->json([
@@ -132,6 +158,13 @@ class StockAdjustmentController extends Controller
             ], 422);
         }
 
+        if (is_string($request->input('items'))) {
+            $decodedItems = json_decode($request->input('items'), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $request->merge(['items' => $decodedItems]);
+            }
+        }
+
         $validated = $request->validate([
             'branch_id' => 'nullable|exists:branches,id',
             'type' => 'required|in:physical_count,cycle_count,spot_check,damage,loss,found,correction,writeoff',
@@ -143,6 +176,8 @@ class StockAdjustmentController extends Controller
             'items.*.system_quantity' => 'required|integer|min:0',
             'items.*.actual_quantity' => 'required|integer|min:0',
             'items.*.notes' => 'nullable|string|max:500',
+            'photos' => 'nullable|array|max:5',
+            'photos.*' => 'required|image|mimes:jpg,jpeg,png,webp|max:10240',
         ]);
 
         $branchId = $isGlobal
@@ -170,6 +205,7 @@ class StockAdjustmentController extends Controller
             ], 422);
         }
 
+        $storedPhotoPaths = [];
         DB::beginTransaction();
         try {
             // Generate adjustment number using datetime for uniqueness
@@ -190,7 +226,7 @@ class StockAdjustmentController extends Controller
             // Create items
             foreach ($validated['items'] as $item) {
                 // Get unit cost from inventory
-                $inventory = BranchInventory::where('branch_id', $branchId)
+                $inventory = BranchInventory::with('product')->where('branch_id', $branchId)
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
@@ -205,7 +241,12 @@ class StockAdjustmentController extends Controller
 
                 $difference = $item['actual_quantity'] - $item['system_quantity'];
 
-                $unitCost = $inventory?->average_cost ?? 0;
+                if (($difference >= 0 && in_array($validated['type'], ['damage', 'loss', 'writeoff'], true))
+                    || ($difference <= 0 && $validated['type'] === 'found')) {
+                    throw new \InvalidArgumentException('The adjustment cause does not match the counted quantity difference.');
+                }
+
+                $unitCost = (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0);
                 $valueDifference = $difference * $unitCost;
 
                 StockAdjustmentItem::create([
@@ -221,7 +262,18 @@ class StockAdjustmentController extends Controller
                 ]);
             }
 
-            $shouldAutoApprove = $this->userHasPermissions([
+            foreach ($request->file('photos', []) as $photo) {
+                $path = $photo->store("inventory/adjustments/{$storeId}/{$adjustment->id}", 'public');
+                $storedPhotoPaths[] = $path;
+                $adjustment->attachments()->create([
+                    'file_path' => $path,
+                    'file_name' => $photo->getClientOriginalName(),
+                    'mime_type' => $photo->getMimeType() ?: 'application/octet-stream',
+                    'file_size' => $photo->getSize(),
+                ]);
+            }
+
+            $shouldAutoApprove = $this->userHasAnyPermission([
                 'inventory.adjustments.approve',
                 // Backward-compatible aliases (some modules used a more explicit permission name)
                 'inventory.stock-adjustments.approve',
@@ -240,8 +292,6 @@ class StockAdjustmentController extends Controller
                 );
             }
 
-            DB::commit();
-
             $this->recordLog(
                 'inventory.stock_adjustment.created',
                 "Created stock adjustment {$adjustment->adjustment_number}",
@@ -249,13 +299,29 @@ class StockAdjustmentController extends Controller
                 ['status' => $adjustment->status]
             );
 
+            DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => $shouldAutoApprove ? 'Stock adjustment created and auto-approved' : 'Stock adjustment created and submitted for approval',
-                'data' => $adjustment->load('items.product'),
+                'data' => $adjustment->load(['items.product', 'items.variation', 'attachments']),
             ], 201);
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+            Storage::disk('public')->delete($storedPhotoPaths);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
+            Storage::disk('public')->delete($storedPhotoPaths);
+            Log::error('Failed to create stock adjustment.', [
+                'user_id' => $request->user()?->id,
+                'store_id' => $storeId,
+                'branch_id' => $branchId,
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create stock adjustment',
@@ -270,6 +336,7 @@ class StockAdjustmentController extends Controller
      */
     public function approve(Request $request, int $id): JsonResponse
     {
+        abort_unless($this->userHasAnyPermission(['inventory.adjustments.approve'], $request->user()), 403);
         $adjustment = StockAdjustment::with('items')->findOrFail($id);
 
         if ($adjustment->status !== 'pending_approval') {
@@ -317,7 +384,11 @@ class StockAdjustmentController extends Controller
      */
     public function reject(Request $request, int $id): JsonResponse
     {
+        abort_unless($this->userHasAnyPermission(['inventory.adjustments.approve'], $request->user()), 403);
         $adjustment = StockAdjustment::findOrFail($id);
+        if ($adjustment->status !== 'pending_approval') {
+            return response()->json(['success' => false, 'message' => 'Only pending adjustments can be rejected'], 422);
+        }
 
         $validated = $request->validate([
             'rejection_reason' => 'required|string',
@@ -359,10 +430,7 @@ class StockAdjustmentController extends Controller
             ], 422);
         }
 
-        $shouldAutoApprove = $this->userHasPermissions([
-            'inventory.adjustments.approve',
-            'finance.approvals.approve',
-        ]);
+        $shouldAutoApprove = $this->userHasAnyPermission(['inventory.adjustments.approve']);
 
         if ($shouldAutoApprove) {
             DB::beginTransaction();
@@ -370,7 +438,7 @@ class StockAdjustmentController extends Controller
                 $adjustment->update(['status' => 'pending_approval']);
                 $adjustment->load('items');
 
-                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', EmployeeContext::currentEmployeeId());
+                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory.adjustments.approve)', EmployeeContext::currentEmployeeId());
 
                 DB::commit();
 
@@ -425,19 +493,19 @@ class StockAdjustmentController extends Controller
 
             $quantityBefore = (int) $inventory->quantity_available;
             $difference = (int) $item->difference;
-            $quantityAfter = $quantityBefore + $difference;
+            $effect = app(StockAdjustmentInventoryEffect::class)->calculate((string) $adjustment->type, $difference);
 
-            // Apply adjustment by variance (difference), not by absolute overwrite.
-            $inventory->quantity_available = $quantityAfter;
-            // Keep on-hand synchronized to the operational truth value.
-            $inventory->quantity_on_hand = $quantityAfter;
+            // Damaged units remain physically on hand but are removed from saleable stock.
+            $inventory->quantity_available += $effect['available_change'];
+            $inventory->quantity_on_hand += $effect['on_hand_change'];
+            $inventory->quantity_damaged += $effect['damaged_change'];
             $inventory->last_stock_count_date = $adjustment->adjustment_date;
             $inventory->last_counted_quantity = $item->actual_quantity;
             $inventory->last_counted_by = $approvedBy;
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
             $inventory->updateStockStatus();
-            $inventory->calculateTotalValue();
 
             // Create inventory transaction with unique datetime-based number
             $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -448,13 +516,15 @@ class StockAdjustmentController extends Controller
                 'branch_id' => $adjustment->branch_id,
                 'product_id' => $item->product_id,
                 'variation_id' => $item->variation_id,
-                'transaction_type' => 'adjustment',
+                'transaction_type' => $effect['transaction_type'],
                 'quantity_before' => $quantityBefore,
-                'quantity_change' => $item->difference,
-                'quantity_after' => $quantityAfter,
+                'quantity_change' => $effect['available_change'],
+                'quantity_after' => (int) $inventory->quantity_available,
                 'reference_type' => 'stock_adjustment',
                 'reference_id' => $adjustment->id,
-                'notes' => $adjustment->reason,
+                'notes' => $effect['transaction_type'] === 'damage'
+                    ? trim($adjustment->reason . ' Damaged units retained on hand and removed from saleable stock.')
+                    : $adjustment->reason,
                 'unit_cost' => $item->unit_cost,
                 'total_value' => $item->value_difference,
                 'created_by' => $approvedBy,
@@ -481,43 +551,4 @@ class StockAdjustmentController extends Controller
         );
     }
 
-    protected function userHasPermissions(array $permissions, $user = null): bool
-    {
-        $user = $user ?? Auth::user();
-        if (!$user || !$user->role_id) {
-            return false;
-        }
-
-        $rolePermissions = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->where('role_permissions.role_id', $user->role_id)
-            ->whereIn('permissions.name', $permissions)
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userGrants = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'grant')
-            ->whereIn('permissions.name', $permissions)
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userRevokes = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'revoke')
-            ->whereIn('permissions.name', $permissions)
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $allPermissions = array_merge($rolePermissions, $userGrants);
-        $finalPermissions = array_diff($allPermissions, $userRevokes);
-
-        return count(array_diff($permissions, $finalPermissions)) === 0;
-    }
 }

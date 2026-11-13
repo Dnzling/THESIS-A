@@ -13,6 +13,7 @@ use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\Analytics\SupplierPerformance;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 
 class Supplier extends Model
 {
@@ -20,8 +21,10 @@ class Supplier extends Model
 
     protected $fillable = [
         'store_id',
+        'supplier_portal_id',
         'supplier_code',
         'supplier_name',
+        'logo_path',
         'company_name',
         'contact_person',
         'email',
@@ -35,6 +38,9 @@ class Supplier extends Model
         'address',
         'city',
         'province',
+        'barangay',
+        'latitude',
+        'longitude',
         'postal_code',
         'country',
         'tin',
@@ -58,6 +64,8 @@ class Supplier extends Model
         'notes',
     ];
 
+    protected $appends = ['logo_url'];
+
     protected $casts = [
         'credit_limit' => 'decimal:2',
         'current_balance' => 'decimal:2',
@@ -68,6 +76,8 @@ class Supplier extends Model
         'late_deliveries' => 'integer',
         'is_tax_exempt' => 'boolean',
         'default_tax_rate' => 'decimal:2',
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
         'payment_account_updated_at' => 'datetime',
     ];
 
@@ -77,10 +87,17 @@ class Supplier extends Model
         return $this->belongsTo(Store::class);
     }
 
+    public function getLogoUrlAttribute(): ?string
+    {
+        return $this->logo_path
+            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->logo_path)
+            : null;
+    }
+
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class, 'supplier_products')
-            ->withPivot('supplier_sku', 'supplier_price', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
+            ->withPivot('supplier_sku', 'supplier_price', 'availability_status', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
             ->withTimestamps();
     }
 
@@ -117,6 +134,11 @@ class Supplier extends Model
     public function performanceMetrics(): HasMany
     {
         return $this->hasMany(SupplierPerformance::class);
+    }
+
+    public function performanceEvaluations(): HasMany
+    {
+        return $this->hasMany(SupplierPerformanceEvaluation::class);
     }
 
     // Scopes
@@ -168,6 +190,13 @@ class Supplier extends Model
 
     public function updateRating(): void
     {
+        $evaluationAverage = $this->performanceEvaluations()->avg('overall_rating');
+        if ($evaluationAverage !== null) {
+            $this->rating = round((float) $evaluationAverage, 2);
+            $this->save();
+            return;
+        }
+
         $onTimeRate = $this->on_time_delivery_rate;
         
         if ($onTimeRate >= 95) {

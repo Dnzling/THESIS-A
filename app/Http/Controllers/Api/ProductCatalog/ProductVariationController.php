@@ -7,15 +7,70 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\ProductVariation;
-use App\Models\ProductCatalog\PricingHistory;
+use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ProductVariationController extends BaseController
 {
+    public function initializeStandard(int $productId)
+    {
+        $product = Product::byStore($this->getStoreId())->find($productId);
+        if (!$product) {
+            return $this->errorResponse('Product not found or does not belong to this store', 404);
+        }
+
+        $result = DB::transaction(function () use ($product) {
+            $lockedProduct = Product::byStore($this->getStoreId())
+                ->lockForUpdate()
+                ->findOrFail($product->id);
+
+            $existing = $lockedProduct->variations()
+                ->whereRaw('LOWER(variation_name) = ?', ['standard'])
+                ->first();
+
+            if ($existing) {
+                return ['variation' => $existing, 'created' => false];
+            }
+
+            if ($lockedProduct->variations()->exists()) {
+                return ['variation' => null, 'created' => false];
+            }
+
+            return [
+                'variation' => $this->convertProductInventoryToBaselineVariation($lockedProduct),
+                'created' => true,
+            ];
+        });
+
+        return $this->successResponse($result, $result['created']
+            ? 'Standard variant created from the product and existing stock.'
+            : 'Product variants are already initialized.');
+    }
+
+    public function requests(Request $request)
+    {
+        $requests = SupplierRFQFeedback::query()
+            ->with(['rfqItem.product:id,product_name,sku,store_id', 'supplierPortal.supplier:id,supplier_name'])
+            ->whereHas('rfqItem.product', fn ($query) => $query->where('store_id', $this->getStoreId()))
+            ->where('has_variant', true)
+            ->where('status', 'approved')
+            ->where('merchandising_status', 'pending')
+            ->latest('reviewed_at')
+            ->get()
+            ->map(function (SupplierRFQFeedback $feedback) {
+                $data = $feedback->toArray();
+                $data['image_urls'] = collect($feedback->variant_image_paths ?? [])->map(fn ($path) => asset('storage/' . ltrim($path, '/')))->values();
+                return $data;
+            });
+
+        return $this->successResponse($requests, 'Variant requests retrieved successfully');
+    }
+
     /**
      * Display a listing of variations.
      */
@@ -54,6 +109,10 @@ class ProductVariationController extends BaseController
             $variations = $query->orderBy('created_at', 'desc')
                                ->paginate($request->get('per_page', 15));
 
+            $variations->getCollection()->each(function (ProductVariation $variation) {
+                $variation->setAttribute('final_price', $variation->final_price);
+            });
+
             return $this->successResponse($variations, 'Variations retrieved successfully');
 
         } catch (\Exception $e) {
@@ -85,21 +144,46 @@ class ProductVariationController extends BaseController
                 'color_hex' => 'nullable|string|max:7|regex:/^#[0-9A-Fa-f]{6}$/',
                 'size' => 'nullable|string|max:50',
                 'material' => 'nullable|string|max:100',
-                'price_adjustment' => 'required|numeric',
+                'texture' => 'nullable|string|max:100',
+                'finish' => 'nullable|string|max:100',
+                'base_price' => 'nullable|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0',
+                'cost_price' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
+                'unit_of_measurement' => 'nullable|string|max:50',
+                'initial_stock' => 'nullable|integer|min:0',
                 'custom_3d_model_id' => 'nullable|exists:product_assets,id',
                 'custom_image_id' => 'nullable|exists:product_assets,id',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
+                ,'proposal_id' => 'nullable|integer|exists:supplier_rfq_feedbacks,id'
             ]);
+
+            $routeProductId = (int) ($request->route('id') ?? 0);
+            if ($routeProductId > 0 && $routeProductId !== (int) $validated['product_id']) {
+                return $this->errorResponse('The selected product does not match the inventory product route.', 422);
+            }
 
             // Verify product belongs to this store
             $product = Product::byStore($this->getStoreId())->find($validated['product_id']);
             
             if (!$product) {
                 return $this->errorResponse('Product not found or does not belong to this store', 404);
+            }
+
+            $this->assertUniqueVariationAttributes($product, $validated);
+
+            $effectiveBasePrice = (float) ($validated['base_price'] ?? $product->current_price ?? 0);
+            if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
+                throw ValidationException::withMessages(['discounted_price' => ['Discounted price must be lower than the variant selling price or inherited product price.']]);
+            }
+
+            if (!$product->variations()->exists() && strcasecmp($validated['variation_sku'], (string) $product->sku) === 0) {
+                $validated['variation_sku'] = $product->sku . '-V2';
             }
 
             DB::beginTransaction();
@@ -132,34 +216,58 @@ class ProductVariationController extends BaseController
                 }
 
                 // Check if variation SKU is unique for this store
-                $exists = ProductVariation::byStore($this->getStoreId())
-                                         ->where('variation_sku', $validated['variation_sku'])
-                                         ->exists();
+                $exists = ProductVariation::withTrashed()
+                    ->where('store_id', $this->getStoreId())
+                    ->where('variation_sku', $validated['variation_sku'])
+                    ->exists();
 
                 if ($exists) {
                     DB::rollBack();
                     return $this->errorResponse('Variation SKU already exists for this store', 422);
                 }
 
+                $initialStock = (int) ($validated['initial_stock'] ?? 0);
+                $proposalId = (int) ($validated['proposal_id'] ?? 0);
                 $data = $validated;
+                unset($data['initial_stock'], $data['proposal_id']);
+
+                if ($proposalId && empty($data['custom_image_id'])) {
+                    $proposal = SupplierRFQFeedback::where('id', $proposalId)->where('merchandising_status', 'pending')->first();
+                    $sourceImage = $proposal?->variant_image_paths[0] ?? null;
+                    if ($proposal && $sourceImage) {
+                        $data['custom_image_id'] = ProductAsset::create([
+                            'store_id' => $this->getStoreId(), 'product_id' => $product->id,
+                            'asset_type' => 'Image_Gallery', 'file_name' => basename($sourceImage),
+                            'file_path' => $sourceImage, 'is_primary' => false, 'display_order' => 0,
+                            'alt_text' => $proposal->variant_name,
+                        ])->id;
+                    }
+                }
                 $data['store_id'] = $this->getStoreId();
+                $data['base_price'] = $data['base_price'] ?? null;
+                $data['discounted_price'] = $data['discounted_price'] ?? null;
+                $data['price_adjustment'] = 0;
+                $data['cost_price'] = $data['cost_price'] ?? null;
+                $data['reorder_point'] = $data['reorder_point'] ?? (int) ($product->reorder_point ?? 0);
+                $data['supplier_name'] = $product->supplier_name;
+                $data['unit_of_measurement'] = $data['unit_of_measurement'] ?? $product->unit_of_measurement;
+                $data['length_cm'] = $data['length_cm'] ?? null;
+                $data['width_cm'] = $data['width_cm'] ?? null;
+                $data['height_cm'] = $data['height_cm'] ?? null;
+                $data['depth_cm'] = $data['depth_cm'] ?? null;
+                $data['weight_kg'] = $data['weight_kg'] ?? null;
+                $data = $this->onlyExistingVariationColumns($data);
                 
                 $variation = ProductVariation::create($data);
                 $this->ensureVariationInventoryRows($product, $variation);
+                $this->seedVariationOpeningStock($variation, $initialStock);
 
-                // Create pricing history entry for variation
-                if ($data['price_adjustment'] != 0) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $product->id,
-                        'variation_id' => $variation->id,
-                        'old_price' => 0,
-                        'new_price' => $product->base_price + $data['price_adjustment'],
-                        'price_type' => 'Variation',
-                        'reason' => 'Initial variation pricing',
-                        'effective_date' => now(),
-                        'created_by' => $this->getEmployeeId()
-                    ]);
+                if ($proposalId) {
+                    SupplierRFQFeedback::query()
+                        ->where('id', $proposalId)
+                        ->where('has_variant', true)
+                        ->where('merchandising_status', 'pending')
+                        ->update(['merchandising_status' => 'created', 'created_variation_id' => $variation->id]);
                 }
 
                 DB::commit();
@@ -208,6 +316,7 @@ class ProductVariationController extends BaseController
                                         ->with([
                                             'product',
                                             'custom3dModel',
+                                            'customImage',
                                             'pricingHistory' => function($query) {
                                                 $query->orderBy('effective_date', 'desc')->limit(10);
                                             }
@@ -254,16 +363,33 @@ class ProductVariationController extends BaseController
                 'color_hex' => 'nullable|string|max:7|regex:/^#[0-9A-Fa-f]{6}$/',
                 'size' => 'nullable|string|max:50',
                 'material' => 'nullable|string|max:100',
-                'price_adjustment' => 'sometimes|numeric',
+                'texture' => 'nullable|string|max:100',
+                'finish' => 'nullable|string|max:100',
+                'base_price' => 'sometimes|nullable|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0',
+                'cost_price' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
+                'unit_of_measurement' => 'nullable|string|max:50',
                 'custom_3d_model_id' => 'nullable|exists:product_assets,id',
                 'custom_image_id' => 'nullable|exists:product_assets,id',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
-                'is_active' => 'boolean',
-                'price_change_reason' => 'required_if:price_adjustment,changed|string|nullable'
+                'is_active' => 'boolean'
             ]);
+
+            $this->assertUniqueVariationAttributes($variation->product, $validated, $variation);
+
+            $effectiveBasePrice = (float) ($validated['base_price'] ?? $variation->base_price ?? $variation->product?->current_price ?? 0);
+            if (isset($validated['discounted_price']) && (float) $validated['discounted_price'] >= $effectiveBasePrice) {
+                throw ValidationException::withMessages(['discounted_price' => ['Discounted price must be lower than the variant selling price or inherited product price.']]);
+            }
+
+            if (array_key_exists('is_active', $validated) && !$validated['is_active'] && $variation->is_active) {
+                return $this->errorResponse('Use Archive for deactivation so inventory can be checked first.', 422);
+            }
 
             DB::beginTransaction();
 
@@ -294,32 +420,28 @@ class ProductVariationController extends BaseController
                     }
                 }
 
-                $oldPriceAdjustment = $variation->price_adjustment;
+                // Inventory edits must not change ecommerce pricing or supplier ownership.
+                unset(
+                    $validated['price_adjustment'],
+                    $validated['price_change_reason']
+                );
+                $validated['supplier_name'] = $variation->product->supplier_name;
                 
-                $variation->update($validated);
+                $variation->update($this->onlyExistingVariationColumns($validated));
                 if ((bool) $variation->is_active) {
                     $this->ensureVariationInventoryRows($variation->product, $variation);
-                }
-
-                // Create pricing history if price adjustment changed
-                if (isset($validated['price_adjustment']) && $validated['price_adjustment'] != $oldPriceAdjustment) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $variation->product_id,
-                        'variation_id' => $variation->id,
-                        'old_price' => $variation->product->base_price + $oldPriceAdjustment,
-                        'new_price' => $variation->product->base_price + $validated['price_adjustment'],
-                        'price_type' => 'Variation',
-                        'reason' => $validated['price_change_reason'] ?? 'Price adjustment update',
-                        'effective_date' => now(),
-                        'created_by' => $this->getEmployeeId()
-                    ]);
+                    BranchInventory::query()
+                        ->where('store_id', $this->getStoreId())
+                        ->where('variation_id', $variation->id)
+                        ->update([
+                            'reorder_point' => (int) ($variation->reorder_point ?? 0),
+                        ]);
                 }
 
                 DB::commit();
 
                 return $this->successResponse(
-                    $variation->fresh(['product', 'custom3dModel']),
+                    $variation->fresh(['product', 'custom3dModel', 'customImage']),
                     'Variation updated successfully'
                 );
 
@@ -359,40 +481,90 @@ class ProductVariationController extends BaseController
      */
     public function destroy($id)
     {
-        try {
-            $variation = ProductVariation::byStore($this->getStoreId())->findOrFail($id);
+        return $this->errorResponse(
+            'Permanent variant deletion is disabled. Archive the variant to preserve inventory and sales history.',
+            405
+        );
+    }
 
-            DB::beginTransaction();
+    public function archive($id)
+    {
+        $storeId = $this->getStoreId();
+        $result = DB::transaction(function () use ($id, $storeId) {
+            $variation = ProductVariation::byStore($storeId)
+                ->lockForUpdate()
+                ->find($id);
 
-            try {
-                $variation->delete();
-
-                DB::commit();
-
-                return $this->successResponse(null, 'Variation deleted successfully');
-
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
+            if (!$variation) {
+                return ['status' => 404, 'message' => 'Variation not found'];
             }
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Variation not found', 404);
-        } catch (\Exception $e) {
-            Log::error('Failed to delete variation', [
-                'store_id' => $this->getStoreId(),
-                'variation_id' => $id,
-                'user_id' => $this->getUserId(),
-                'error' => $e->getMessage()
-            ]);
-            
-            return $this->errorResponse(
-                'Failed to delete variation: ' . $e->getMessage(),
-                500,
-                [],
-                $e
-            );
+            $inventoryRows = BranchInventory::query()
+                ->with('branch:id,name')
+                ->where('store_id', $storeId)
+                ->where('variation_id', $variation->id)
+                ->lockForUpdate()
+                ->get();
+
+            $stockColumns = collect([
+                'quantity_on_hand',
+                'quantity_available',
+                'quantity_reserved',
+                'quantity_damaged',
+                'quantity_incoming',
+            ])->filter(fn (string $column) => Schema::hasColumn('branch_inventory', $column));
+
+            $stockRows = $inventoryRows->filter(fn (BranchInventory $row) => $stockColumns
+                ->contains(fn (string $column) => (int) $row->getAttribute($column) > 0));
+
+            if ($stockRows->isNotEmpty()) {
+                $branchDetails = $stockRows->map(function (BranchInventory $row) use ($stockColumns) {
+                    $branchName = $row->branch?->name ?? "Branch {$row->branch_id}";
+                    $labels = [
+                        'quantity_on_hand' => 'on hand',
+                        'quantity_available' => 'available',
+                        'quantity_reserved' => 'reserved',
+                        'quantity_damaged' => 'damaged',
+                        'quantity_incoming' => 'incoming',
+                    ];
+                    $quantities = $stockColumns
+                        ->mapWithKeys(fn (string $column) => [$labels[$column] => (int) $row->getAttribute($column)])
+                        ->filter(fn ($quantity) => $quantity > 0)
+                        ->map(fn ($quantity, $label) => "{$quantity} {$label}")
+                        ->implode(', ');
+
+                    return "{$branchName} ({$quantities})";
+                })->implode('; ');
+
+                return [
+                    'status' => 422,
+                    'message' => "Cannot archive this variant while inventory remains at: {$branchDetails}. Clear, transfer, or dispose of the stock first.",
+                ];
+            }
+
+            $hasActiveSibling = ProductVariation::byStore($storeId)
+                ->where('product_id', $variation->product_id)
+                ->where('id', '!=', $variation->id)
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$hasActiveSibling) {
+                return ['status' => 422, 'message' => 'At least one active variant must remain for this product.'];
+            }
+
+            $variation->update(['is_active' => false]);
+
+            return ['variation' => $variation->fresh()];
+        });
+
+        if (isset($result['status'])) {
+            return $this->errorResponse($result['message'], $result['status']);
         }
+
+        return $this->successResponse(
+            $result['variation'],
+            'Variant archived successfully'
+        );
     }
 
     /**
@@ -472,16 +644,174 @@ class ProductVariationController extends BaseController
                     'quantity_available' => 0,
                     'quantity_damaged' => 0,
                     'quantity_incoming' => 0,
-                    'reorder_point' => 0,
+                    'reorder_point' => (int) ($variation->reorder_point ?? 0),
                     'reorder_quantity' => 0,
                     'maximum_stock' => 0,
                     'safety_stock' => 0,
                     'stock_status' => 'out_of_stock',
-                    'unit_cost' => 0,
-                    'average_cost' => 0,
-                    'total_value' => 0,
                 ]
             );
         }
+    }
+
+    private function convertProductInventoryToBaselineVariation(Product $product, bool $skipWhenEmpty = false): ?ProductVariation
+    {
+        $parentInventory = BranchInventory::query()
+            ->where('store_id', $this->getStoreId())
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id');
+
+        if ($skipWhenEmpty && !$parentInventory->where(function ($query): void {
+            $query->where('quantity_on_hand', '>', 0)
+                ->orWhere('quantity_available', '>', 0)
+                ->orWhere('quantity_reserved', '>', 0)
+                ->orWhere('quantity_damaged', '>', 0)
+                ->orWhere('quantity_incoming', '>', 0);
+        })->exists()) {
+            BranchInventory::query()
+                ->where('store_id', $this->getStoreId())
+                ->where('product_id', $product->id)
+                ->whereNull('variation_id')
+                ->delete();
+
+            return null;
+        }
+
+        $product->loadMissing(['assets' => function ($query) {
+            $query->orderByDesc('is_primary')->orderBy('display_order');
+        }]);
+
+        $standardImage = $product->assets->first(fn ($asset) => in_array($asset->asset_type, ['Image_Main', 'Image_Gallery'], true));
+        $standardModel = $product->assets->firstWhere('asset_type', '3D_Model');
+        $baselineSku = (string) $product->sku;
+        if (ProductVariation::withTrashed()->where('store_id', $this->getStoreId())->where('variation_sku', $baselineSku)->exists()) {
+            $baseCandidate = $baselineSku . '-STD';
+            $baselineSku = $baseCandidate;
+            $suffix = 2;
+            while (ProductVariation::withTrashed()->where('store_id', $this->getStoreId())->where('variation_sku', $baselineSku)->exists()) {
+                $baselineSku = $baseCandidate . '-' . $suffix++;
+            }
+        }
+
+        $baseline = ProductVariation::create($this->onlyExistingVariationColumns([
+            'store_id' => $this->getStoreId(),
+            'product_id' => $product->id,
+            'variation_sku' => $baselineSku,
+            'variation_name' => 'Standard',
+            'is_baseline' => true,
+            'color' => $product->variation_attributes['color'] ?? null,
+            'size' => $product->variation_attributes['size'] ?? null,
+            'material' => $product->variation_attributes['material'] ?? null,
+            'texture' => $product->variation_attributes['texture'] ?? null,
+            'finish' => $product->variation_attributes['finish'] ?? null,
+            'price_adjustment' => 0,
+            'base_price' => $product->base_price,
+            'discounted_price' => $product->discounted_price,
+            'cost_price' => $product->getRawOriginal('cost_price'),
+            'reorder_point' => (int) ($product->reorder_point ?? 0),
+            'supplier_name' => $product->supplier_name,
+            'unit_of_measurement' => $product->unit_of_measurement,
+            'length_cm' => $product->length_cm,
+            'width_cm' => $product->width_cm,
+            'height_cm' => $product->height_cm,
+            'depth_cm' => $product->depth_cm,
+            'weight_kg' => $product->weight_kg,
+            'custom_image_id' => $standardImage?->id,
+            'custom_3d_model_id' => $standardModel?->id,
+            'is_active' => true,
+        ]));
+
+        BranchInventory::query()
+            ->where('store_id', $this->getStoreId())
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id')
+            ->update([
+                'variation_id' => $baseline->id,
+                'reorder_point' => (int) ($baseline->reorder_point ?? 0),
+            ]);
+
+        $this->ensureVariationInventoryRows($product, $baseline);
+
+        return $baseline;
+    }
+
+    private function onlyExistingVariationColumns(array $data): array
+    {
+        $columns = array_flip(Schema::getColumnListing('product_variations'));
+
+        return array_intersect_key($data, $columns);
+    }
+
+    private function assertUniqueVariationAttributes(Product $product, array $candidate, ?ProductVariation $current = null): void
+    {
+        $keys = ['color', 'size', 'material', 'texture', 'finish'];
+        $attributes = [];
+        foreach ($keys as $key) {
+            $attributes[$key] = array_key_exists($key, $candidate)
+                ? $candidate[$key]
+                : ($current?->{$key} ?? '');
+        }
+        $signature = $this->variationAttributeSignature($attributes, $keys);
+
+        if ($current && $signature === $this->variationAttributeSignature($current->only($keys), $keys)) {
+            return;
+        }
+
+        if (!$current?->is_baseline && $signature === $this->variationAttributeSignature($product->variation_attributes ?? [], $keys)) {
+            throw ValidationException::withMessages([
+                'variation_attributes' => ['This variant duplicates the standard product. Change at least one attribute.'],
+            ]);
+        }
+
+        $existing = $product->variations()
+            ->when($current, fn ($query) => $query->where('id', '!=', $current->id))
+            ->get($keys);
+        foreach ($existing as $variation) {
+            if ($signature === $this->variationAttributeSignature($variation->only($keys), $keys)) {
+                throw ValidationException::withMessages([
+                    'variation_attributes' => ['A variant with this full attribute combination already exists.'],
+                ]);
+            }
+        }
+    }
+
+    private function variationAttributeSignature(array $attributes, array $keys): string
+    {
+        return json_encode(array_map(
+            fn ($key) => mb_strtolower(trim((string) ($attributes[$key] ?? ''))),
+            $keys,
+        ), JSON_UNESCAPED_UNICODE);
+    }
+
+    private function seedVariationOpeningStock(ProductVariation $variation, int $quantity): void
+    {
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $user = auth()->user();
+        $branchId = (int) ($user?->branch_id ?? 0);
+        if ($branchId <= 0) {
+            $branchId = (int) Branch::query()
+                ->where('store_id', $this->getStoreId())
+                ->where('status', 'active')
+                ->orderByDesc('is_main_branch')
+                ->orderBy('id')
+                ->value('id');
+        }
+
+        if ($branchId <= 0) {
+            return;
+        }
+
+        BranchInventory::query()
+            ->where('store_id', $this->getStoreId())
+            ->where('branch_id', $branchId)
+            ->where('variation_id', $variation->id)
+            ->update([
+                'quantity_on_hand' => $quantity,
+                'quantity_available' => $quantity,
+                'stock_status' => $quantity <= (int) ($variation->reorder_point ?? 0) ? 'low_stock' : 'in_stock',
+            ]);
     }
 }

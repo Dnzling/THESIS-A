@@ -1,7 +1,7 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="min-h-screen">
     <div class="mb-6">
-      <h1 class="text-3xl font-bold text-gray-800">Stock Alerts</h1>
+      <h1 class="text-2xl font-bold text-gray-800">Stock Alerts</h1>
       <p class="text-gray-600 mt-1">Track and manage inventory threshold alerts</p>
     </div>
 
@@ -189,9 +189,9 @@
             </template>
           </Column>
 
-          <Column field="created_at" header="Created">
+          <Column field="created_at" header="Created At" style="min-width: 190px">
             <template #body="{ data }">
-              {{ formatDate(data.created_at) }}
+              {{ formatDateTime(data.created_at) }}
             </template>
           </Column>
 
@@ -289,8 +289,8 @@ const formatAlertType = (type?: string) => {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const formatDateTime = (date: string) => {
+  return date ? new Date(date).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '—'
 }
 
 const loadAlerts = async () => {

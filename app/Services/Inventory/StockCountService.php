@@ -297,9 +297,8 @@ class StockCountService
 
             case 'cycle_count':
                 // Cycle counts typically focus on high-value or fast-moving items
-                if (empty($count->product_ids)) {
-                    $query->orderBy('total_value', 'desc')->limit(50);
-                }
+                // Sorting by product cost is applied after loading because cost_price
+                // is the store-wide source of truth, not a branch_inventory column.
                 break;
 
             case 'full_inventory':
@@ -309,8 +308,16 @@ class StockCountService
         }
 
         $inventoryItems = $query->get();
+        if ($count->count_type === 'cycle_count' && empty($count->product_ids)) {
+            $inventoryItems = $inventoryItems
+                ->sortByDesc(fn ($item) => (float) $item->quantity_on_hand * (float) ($item->product?->getRawOriginal('cost_price') ?? 0))
+                ->take(50)
+                ->values();
+        }
         $totalItems = $inventoryItems->count();
-        $totalValue = $inventoryItems->sum('total_value');
+        $totalValue = $inventoryItems->sum(
+            fn ($item) => (float) $item->quantity_on_hand * (float) ($item->product?->getRawOriginal('cost_price') ?? 0)
+        );
 
         // Create count sheets
         foreach ($inventoryItems as $item) {
@@ -320,8 +327,8 @@ class StockCountService
                 'product_id' => $item->product_id,
                 'variation_id' => $item->variation_id,
                 'system_quantity' => $item->quantity_available,
-                'system_unit_cost' => $item->unit_cost ?? 0,
-                'system_total_value' => $item->total_value ?? 0,
+                'system_unit_cost' => (float) ($item->product?->getRawOriginal('cost_price') ?? 0),
+                'system_total_value' => (float) $item->quantity_available * (float) ($item->product?->getRawOriginal('cost_price') ?? 0),
                 'warehouse_section' => $item->warehouse_section,
                 'aisle' => $item->aisle,
                 'rack' => $item->rack,
@@ -362,7 +369,7 @@ class StockCountService
             $disc = $discrepancies->get($item->product_id);
             $discValue = (float) ($disc?->discrepancy_value_sum ?? 0);
             $discCount = (int) ($disc?->discrepancy_count ?? 0);
-            $value = (float) ($item->total_value ?? 0);
+            $value = (float) $item->quantity_on_hand * (float) ($item->product?->getRawOriginal('cost_price') ?? 0);
             $score = ($discValue * 2) + $value;
 
             $reasons = [];

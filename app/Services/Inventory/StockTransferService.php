@@ -234,7 +234,13 @@ class StockTransferService
                     $item->product_id,
                     $itemData['quantity_received'],
                     "Transfer from branch {$transfer->from_branch_id}",
-                    $item->variation_id
+                    $item->variation_id,
+                    'transfer_in',
+                    [
+                        'related_branch_id' => $transfer->from_branch_id,
+                        'reference_type' => StockTransfer::class,
+                        'reference_id' => $transfer->id,
+                    ]
                 );
 
                 // Calculate loss/gain
@@ -243,8 +249,18 @@ class StockTransferService
                     $this->inventoryService->createTransaction(
                         $transfer->store_id,
                         $transfer->from_branch_id,
-                        'TRANSFER_LOSS',
-                        ['quantity' => $loss, 'reason' => 'In-transit loss']
+                        'lost',
+                        [
+                            'product_id' => $item->product_id,
+                            'variation_id' => $item->variation_id,
+                            'quantity_before' => (int) $item->quantity_requested,
+                            'quantity_change' => -$loss,
+                            'quantity_after' => (int) $itemData['quantity_received'],
+                            'related_branch_id' => $transfer->to_branch_id,
+                            'reference_type' => StockTransfer::class,
+                            'reference_id' => $transfer->id,
+                            'notes' => 'In-transit loss',
+                        ]
                     );
                 }
             }

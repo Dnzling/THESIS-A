@@ -104,7 +104,7 @@ class PayrollItemSeeder extends Seeder
             }
             
             // ============ ALLOWANCES ============
-            if ($roleId == 2) { // Store Admin
+            if ($roleId == 2) { // Store Owner
                 $payrollItems[] = [
                     'payroll_id' => $payroll->id,
                     'type' => 'allowance',
@@ -282,7 +282,7 @@ class PayrollItemSeeder extends Seeder
     private function getHourlyRate($roleId): float
     {
         $hourlyRates = [
-            2 => 343.75,  // Store Admin (55000/160)
+            2 => 343.75,  // Store Owner (55000/160)
             3 => 300.00,  // Store Manager (48000/160)
             4 => 325.00,  // HR Manager (52000/160)
             5 => 281.25,  // Accountant (45000/160)
@@ -326,7 +326,7 @@ class PayrollItemSeeder extends Seeder
     private function getTaxRate($roleId): float
     {
         $taxRates = [
-            2 => 0.15, // Store Admin
+            2 => 0.15, // Store Owner
             3 => 0.15, // Store Manager
             4 => 0.15, // HR Manager
             5 => 0.12, // Accountant

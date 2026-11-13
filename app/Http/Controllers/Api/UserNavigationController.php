@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Core\NavigationItem;
 use App\Models\Core\Permission;
-use App\Models\Admin\SubscriptionPlan;
+use App\Models\Store\Branch;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +16,10 @@ class UserNavigationController extends Controller
 {
     private const ALL_STORE_MODULES = [
         'inventory',
+        'warehouse',
         'procurement',
         'sales',
+        'crm',
         'hr',
         'merchandising',
         'logistics',
@@ -45,7 +47,7 @@ class UserNavigationController extends Controller
             }
 
             // Refresh user to ensure store_id comes from users table
-            $user = $user->fresh(['role', 'store', 'trialOnboardingProfile']);
+            $user = $user->fresh(['role', 'store', 'employee']);
             
             // Get permissions based on role
             $permissionPayload = $this->getUserPermissionsWithMeta($user);
@@ -53,12 +55,18 @@ class UserNavigationController extends Controller
             
             // Get navigation items user has access to
             $navigation = $this->getUserNavigationItems($user, $permissions);
+            $modules = DB::table('modules')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'key', 'name', 'description'])
+                ->values();
 
             return response()->json([
                 'success' => true,
                 'permissions' => $permissions,
                 'permissions_meta' => $permissionPayload['meta'],
-                'navigation' => $navigation
+                'navigation' => $navigation,
+                'modules' => $modules,
             ]);
 
         } catch (\Exception $e) {
@@ -132,26 +140,13 @@ class UserNavigationController extends Controller
         $basePermissions = array_diff($allPermissions, $userRevokes);
         $basePermissions = array_values(array_unique($basePermissions));
 
-        $finalPermissions = array_values(array_unique($basePermissions));
-        $filteredOut = [];
-
-        // Store-plan specific permission restrictions
-        $roleName = strtolower((string) ($user->role?->name ?? ''));
-        if ($roleName === 'store_admin' && (int) ($user->store_id ?? 0) > 0) {
-            $subscriptionTier = strtolower((string) ($user->store?->subscriptionPlan?->plan_key ?? ''));
-            if ($subscriptionTier === '') {
-                $subscriptionTier = strtolower((string) (SubscriptionPlan::query()
-                    ->join('stores', 'stores.subscription_tier', '=', 'subscription_plans.id')
-                    ->where('stores.id', (int) $user->store_id)
-                    ->value('subscription_plans.plan_key') ?? ''));
-            }
-
-            if (in_array($subscriptionTier, ['free', 'simple'], true)) {
-                $restricted = ['hr.recuitment.manage', 'hr.recuitment.view'];
-                $filteredOut = array_values(array_intersect($finalPermissions, $restricted));
-                $finalPermissions = array_values(array_diff($finalPermissions, $restricted));
-            }
-        }
+        $finalPermissions = $this->permissionService->getUserPermissions(
+            $user,
+            $user->store_id ? (int) $user->store_id : null
+        );
+        $storeChatPermissions = $this->getStoreChatPermissions($user);
+        $finalPermissions = array_values(array_unique(array_merge($finalPermissions, $storeChatPermissions)));
+        $filteredOut = array_values(array_diff($basePermissions, $finalPermissions));
 
         return [
             'permissions' => $finalPermissions,
@@ -164,13 +159,40 @@ class UserNavigationController extends Controller
         ];
     }
 
+    /** Store-plan chat access is shared by every employee, not assigned per user. */
+    private function getStoreChatPermissions($user): array
+    {
+        $storeId = (int) ($user?->store_id ?? 0);
+        if ($storeId <= 0) {
+            return [];
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $storeId)
+            ->whereIn('permissions.name', ['admin.chats.manage', 'admin.chats.cross-branch'])
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->pluck('permissions.name')
+            ->all();
+    }
+
     /**
      * Get navigation items user can access
      */
     private function getUserNavigationItems($user, array $permissions): array
     {
         $roleName = strtolower($user->role->name ?? '');
-        $allowedModules = $this->getStoreAdminAllowedModules($user);
+        $allowedModules = $this->getOwnerAllowedModules($user);
+        $storeId = (int) ($user->store_id ?: $user->employee?->store_id ?: 0);
+        $branchId = (int) ($user->branch_id ?: $user->employee?->branch_id ?: 0);
+        $isMainBranchUser = $storeId > 0 && $branchId > 0 && Branch::query()
+            ->where('store_id', $storeId)
+            ->whereKey($branchId)
+            ->where('is_main_branch', true)
+            ->exists();
 
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
@@ -182,8 +204,12 @@ class UserNavigationController extends Controller
         $accessibleNavigation = [];
 
         foreach ($navigationItems as $navItem) {
-            if ($roleName === 'store_admin' && !empty($allowedModules)) {
-                $whitelist = ['store_admin', 'store', 'system', 'admin'];
+            if ($isMainBranchUser && $navItem->module === 'store') {
+                continue;
+            }
+
+            if ($roleName === 'owner' && !empty($allowedModules)) {
+                $whitelist = ['owner', 'store', 'system', 'admin'];
                 if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
                     continue;
                 }
@@ -195,7 +221,7 @@ class UserNavigationController extends Controller
                     'id' => $navItem->id,
                     'name' => $navItem->name,
                     'display_name' => $navItem->display_name,
-                    'module' => $navItem->module,
+                    'module' => $navItem->name === 'store.expenses' ? 'admin' : $navItem->module,
                     'route_name' => $navItem->route_name,
                     'route_path' => $navItem->route_path,
                     'icon' => $navItem->icon,
@@ -212,36 +238,26 @@ class UserNavigationController extends Controller
         return $accessibleNavigation;
     }
 
-    private function getStoreAdminAllowedModules($user): array
+    private function getOwnerAllowedModules($user): array
     {
-        if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
+        if (!$user || strtolower($user->role?->name ?? '') !== 'owner') {
             return [];
         }
 
-        $subscriptionTier = strtolower((string) ($user->store?->subscriptionPlan?->plan_key ?? ''));
-        $onboardingPlan = strtolower((string) ($user->trialOnboardingProfile?->plan ?? ''));
-        if ($subscriptionTier === 'unlimited' || $onboardingPlan === 'unlimited') {
-            return self::ALL_STORE_MODULES;
-        }
-
-        if (!$user->store_id) {
-            return [];
-        }
-
-        /** @var \App\Services\Modules\ModuleAccessService $modules */
-        $modules = app(\App\Services\Modules\ModuleAccessService::class);
-        return $modules->enabledModuleKeysForStore((int) $user->store_id);
+        // Modules are available to every store while the platform transitions
+        // from subscription billing to commission-based revenue.
+        return self::ALL_STORE_MODULES;
     }
 
     private function filterPermissionsByModules($user, array $permissions): array
     {
-        $allowedModules = $this->getStoreAdminAllowedModules($user);
+        $allowedModules = $this->getOwnerAllowedModules($user);
 
         if (empty($allowedModules)) {
             return $permissions;
         }
 
-        $alwaysAllowPrefixes = ['store.', 'store_admin.', 'system.', 'profile.', 'auth.'];
+        $alwaysAllowPrefixes = ['store.', 'owner.', 'system.', 'profile.', 'auth.'];
 
         return array_values(array_filter($permissions, function ($permission) use ($allowedModules, $alwaysAllowPrefixes) {
             foreach ($alwaysAllowPrefixes as $prefix) {
@@ -267,6 +283,14 @@ class UserNavigationController extends Controller
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
 
+        if ($navItem->name === 'store.employees') {
+            // This owner-only page must still respect its navigation permission.
+            // An unlinked item must not bypass a disabled or removed permission.
+            if ($roleName !== 'owner' || $navItem->permissions->isEmpty()) {
+                return false;
+            }
+        }
+
         // Supplier portal should always be visible to supplier roles
         if ($navItem->module === 'supplier' && str_contains($roleName, 'supplier')) {
             return true;
@@ -277,15 +301,45 @@ class UserNavigationController extends Controller
             return false;
         }
 
-        // If no permissions required, everyone can access
+        // Older navigation rows may not have a navigation_permissions pivot
+        // record even though the matching permission exists. Fall back to the
+        // conventional permission name so a missing link does not hide a menu
+        // from an authorized user.
+        $requiredPermissions = $navItem->permissions->pluck('name')->toArray();
         if ($navItem->permissions->isEmpty()) {
+            $requiredPermissions = $this->fallbackNavigationPermissions($navItem);
+        }
+
+        // Group/utility items without a permission remain visible; their
+        // children are still permission-checked individually.
+        if (empty($requiredPermissions)) {
             return true;
         }
 
-        // Check if user has any of the required permissions
-        $requiredPermissions = $navItem->permissions->pluck('name')->toArray();
-        
         return !empty(array_intersect($requiredPermissions, $userPermissions));
+    }
+
+    private function fallbackNavigationPermissions($navItem): array
+    {
+        $name = (string) ($navItem->name ?? '');
+
+        $special = [
+            'hr.job-postings' => ['hr.recruitment.view'],
+            'hr.screening-pipeline' => ['hr.recruitment.view'],
+            'hr.apply-job' => ['hr.recruitment.view'],
+        ];
+
+        if (isset($special[$name])) {
+            return $special[$name];
+        }
+
+        if (!in_array($navItem->module, ['hr', 'merchandising'], true)) {
+            return [];
+        }
+
+        // Navigation names use the same namespace as permissions. Detail and
+        // action pages are intentionally matched by their explicit suffix.
+        return [$name . '.view', $name . '.manage', $name];
     }
 
     /**

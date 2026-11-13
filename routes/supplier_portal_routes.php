@@ -5,10 +5,10 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPortalController
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierVerificationController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierRFQFeedbackController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackController;
-use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierShipmentController;
-use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryLogController;
-use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryTemplateController;
+use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierProductListingController;
 use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
+use App\Http\Controllers\Api\Procurement\InvoiceController;
 use Illuminate\Support\Facades\Route;
 
 // ============================================
@@ -21,15 +21,27 @@ Route::prefix('supplier-portal')->group(function () {
 
     // Authenticated supplier routes
     Route::middleware(['auth:sanctum', 'account.operational'])->group(function () {
+        Route::post('/invoices/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
         Route::put('/payment-account', [SupplierPortalController::class, 'updatePaymentAccount']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
+        Route::get('/products', [SupplierProductListingController::class, 'index']);
+        Route::get('/products/options', [SupplierProductListingController::class, 'options']);
+        Route::post('/products', [SupplierProductListingController::class, 'store']);
+        Route::post('/product-categories', [SupplierProductListingController::class, 'createCategory']);
+        Route::get('/products/{listingId}', [SupplierProductListingController::class, 'show'])->whereNumber('listingId');
+        Route::put('/products/{listingId}', [SupplierProductListingController::class, 'update'])->whereNumber('listingId');
+        Route::post('/products/{listingId}/variants/{variationId}/archive', [SupplierProductListingController::class, 'archiveVariant'])
+            ->whereNumber(['listingId', 'variationId']);
         Route::get('/stores/linked', [SupplierPortalController::class, 'getLinkedStores']);
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
         Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);
         Route::get('/stores/{storeId}', [SupplierPortalController::class, 'getLinkedStoreDetail'])->whereNumber('storeId');
+        Route::get('/contracts/{id}', [SupplierContractController::class, 'show'])->whereNumber('id');
+        Route::post('/contracts/{id}/approve', [SupplierContractController::class, 'supplierApprove'])->whereNumber('id');
+        Route::post('/contracts/{id}/reject', [SupplierContractController::class, 'supplierReject'])->whereNumber('id');
         Route::post('/contracts/{id}/report', [SupplierContractController::class, 'report'])->whereNumber('id');
         Route::post('/contracts/{id}/terminate-request', [SupplierContractController::class, 'requestTermination'])->whereNumber('id');
         Route::post('/contracts/{id}/terminate-request/respond', [SupplierContractController::class, 'respondTerminationRequest'])->whereNumber('id');
@@ -38,6 +50,7 @@ Route::prefix('supplier-portal')->group(function () {
         Route::post('/documents', [SupplierPortalController::class, 'uploadDocument']);
         Route::get('/my-documents', [SupplierPortalController::class, 'getMyDocuments']);
         Route::get('/documents/{id}/download', [SupplierPortalController::class, 'downloadDocument']);
+        Route::post('/submit-verification', [SupplierPortalController::class, 'submitVerification']);
 
         // RFQ Feedback
         Route::get('/rfqs', [SupplierRFQFeedbackController::class, 'getRFQs']);
@@ -53,21 +66,11 @@ Route::prefix('supplier-portal')->group(function () {
         Route::post('/po-feedbacks', [SupplierPOFeedbackController::class, 'submitFeedback']);
         Route::post('/po-feedbacks/{id}/confirm-receipt', [SupplierPOFeedbackController::class, 'confirmReceipt']);
         Route::get('/po-feedbacks', [SupplierPOFeedbackController::class, 'getMyFeedbacks']);
+        Route::get('/pos/{id}/receipt-resolutions', [GoodsReceiptResolutionController::class, 'supplierForPurchaseOrder']);
+        Route::post('/receipt-resolutions/{id}/accept', [GoodsReceiptResolutionController::class, 'accept']);
+        Route::post('/receipt-resolutions/{id}/reject', [GoodsReceiptResolutionController::class, 'reject']);
+        Route::post('/receipt-resolutions/{id}/delivery', [GoodsReceiptResolutionController::class, 'submitDelivery']);
 
-        // PO Shipments (Delivery Form)
-        Route::get('/po-shipments/{poId}', [SupplierShipmentController::class, 'show'])->whereNumber('poId');
-        Route::get('/shipments', [SupplierShipmentController::class, 'index']);
-        Route::get('/shipments/{id}', [SupplierShipmentController::class, 'showById'])->whereNumber('id');
-        Route::post('/po-shipments', [SupplierShipmentController::class, 'store']);
-        Route::post('/shipments/{id}/deliver', [SupplierShipmentController::class, 'deliver'])->whereNumber('id');
-
-        // Delivery Form Templates
-        Route::get('/delivery-templates', [SupplierDeliveryTemplateController::class, 'index']);
-        Route::post('/delivery-templates', [SupplierDeliveryTemplateController::class, 'store']);
-        Route::put('/delivery-templates/{id}', [SupplierDeliveryTemplateController::class, 'update']);
-        Route::delete('/delivery-templates/{id}', [SupplierDeliveryTemplateController::class, 'destroy']);
-        Route::get('/shipments/{id}/logs', [SupplierDeliveryLogController::class, 'index']);
-        Route::post('/shipments/{id}/logs', [SupplierDeliveryLogController::class, 'store']);
     });
 });
 

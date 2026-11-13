@@ -38,6 +38,8 @@ class MerchandisingPermissionsSeeder extends Seeder
             // Categories
             ['name' => 'merchandising.categories.view', 'display_name' => 'View Categories', 'module' => 'merchandising'],
             ['name' => 'merchandising.categories.edit', 'display_name' => 'Edit Categories', 'module' => 'merchandising'],
+            ['name' => 'merchandising.tags.view', 'display_name' => 'View Collections', 'module' => 'merchandising'],
+            ['name' => 'merchandising.tags.manage', 'display_name' => 'Manage Collections', 'module' => 'merchandising'],
 
             // Attributes
             ['name' => 'merchandising.attributes.view', 'display_name' => 'View Product Attributes', 'module' => 'merchandising'],
@@ -47,8 +49,13 @@ class MerchandisingPermissionsSeeder extends Seeder
             ['name' => 'merchandising.pricing.view', 'display_name' => 'View Pricing', 'module' => 'merchandising'],
             ['name' => 'merchandising.pricing.edit', 'display_name' => 'Edit Pricing', 'module' => 'merchandising'],
 
+            // Vouchers
+            ['name' => 'merchandising.vouchers.view', 'display_name' => 'View Vouchers', 'module' => 'merchandising'],
+            ['name' => 'merchandising.vouchers.manage', 'display_name' => 'Manage Vouchers', 'module' => 'merchandising'],
+
             // Reports
-            ['name' => 'merchandising.reports.view', 'display_name' => 'View Sales Reports', 'module' => 'merchandising'],
+            ['name' => 'merchandising.reports.view', 'display_name' => 'View Product Catalog Reports', 'module' => 'merchandising'],
+            ['name' => 'merchandising.reports.manage', 'display_name' => 'Manage Product Catalog Reports', 'module' => 'merchandising'],
         ];
 
         foreach ($permissions as $permission) {

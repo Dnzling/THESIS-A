@@ -20,68 +20,79 @@
           </div>
         </template>
         <template #content>
-          <DataTable 
-            :value="products" 
-            :loading="loadingProducts" 
-            :rows="10"
-            :paginator="true"
-          >
-            <Column field="product.product_name" header="Product">
-              <template #body="{ data }">
-                <div>
-                  <div class="font-medium">{{ data.product?.product_name }}</div>
-                  <div class="truncate text-xs text-slate-500">Variant: {{ data.variation?.variation_name || data.product?.sku || 'Standard' }}</div>
+          <div v-if="loadingProducts" class="space-y-2">
+            <div v-for="n in 6" :key="n" class="h-24 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+          </div>
+          <div v-else-if="!products.length" class="rounded-xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
+            <template v-if="productLoadError">
+              <p class="text-red-600">{{ productLoadError }}</p>
+              <Button label="Retry" size="small" text class="mt-2" @click="loadProducts" />
+            </template>
+            <template v-else>No in-stock products found.</template>
+          </div>
+          <div v-else class="space-y-2">
+            <article
+              v-for="row in products"
+              :key="row.id"
+              class="group flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              role="button"
+              tabindex="0"
+              :aria-disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
+              @click="selectProduct(row)"
+              @keydown.enter.prevent="selectProduct(row)"
+            >
+              <div class="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-24 sm:w-24">
+                <img v-if="productImage(row)" :src="productImage(row)" :alt="row.product?.product_name || 'Product image'" class="h-full w-full object-contain p-2" loading="lazy" />
+                <i v-else class="pi pi-image text-3xl text-slate-300" />
+              </div>
+              <div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                  <h3 class="truncate text-sm font-semibold text-slate-900">{{ row.product?.product_name }}<span v-if="row.variation?.variation_name"> - {{ row.variation.variation_name }}</span></h3>
+                  <p class="mt-1 truncate text-xs text-slate-500">SKU: {{ productSku(row) }}</p>
+                  <Badge class="mt-2" :value="`${Number(row.quantity_available || 0)} in stock`" :severity="getStockSeverity(row.quantity_available)" />
                 </div>
-              </template>
-            </Column>
-            <Column field="quantity_available" header="Stock">
-              <template #body="{ data }">
-                <Tag 
-                  :value="data.quantity_available" 
-                  :severity="getStockSeverity(data.quantity_available)" 
-                />
-              </template>
-            </Column>
-            <Column header="Price">
-              <template #body="{ data }">
-                {{ money(data.product?.discounted_price || data.product?.base_price || 0) }}
-              </template>
-            </Column>
-            <Column header="" style="width: 60px">
-              <template #body="{ data }">
-                <Button 
-                  text 
-                  severity="info" 
-                  icon="pi pi-plus" 
-                  :disabled="!canManagePos" 
-                  @click="addToCart(data)"
-                />
-              </template>
-            </Column>
-          </DataTable>
+                <div class="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                  <div class="text-right">
+                    <p v-if="hasDiscount(row)" class="text-xs text-slate-400 line-through">{{ money(productBasePrice(row)) }}</p>
+                    <p class="font-semibold text-orange-600">{{ money(productSellingPrice(row)) }}</p>
+                  <p v-if="hasDiscount(row)" class="text-[11px] font-medium text-emerald-700">{{ row.discount_percentage }}% off</p>
+                  </div>
+                  <Button
+                    :icon="productIsCustomizable(row) ? 'pi pi-palette' : 'pi pi-plus'"
+                    rounded
+                    :aria-label="productIsCustomizable(row) ? 'Customize and add to order' : 'Add to order'"
+                    :disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
+                    @click.stop="productIsCustomizable(row) ? openCustomizationDialog(row) : addToCart(row)"
+                  />
+                </div>
+              </div>
+            </article>
+          </div>
         </template>
       </Card>
 
-      <!-- Cart Section -->
+      <!-- Order Section -->
       <Card>
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-shopping-cart text-blue-500"></i>
-            <span>Cart</span>
+            <span>Order</span>
             <Badge v-if="cart.length" :value="cart.length" class="ml-auto" />
           </div>
         </template>
         <template #content>
           <div v-if="!cart.length" class="text-center py-8 text-gray-500">
             <i class="pi pi-inbox text-4xl mb-2 text-gray-300"></i>
-            <p>No items in cart</p>
+            <p>No items in order</p>
           </div>
           <div v-else class="space-y-2 max-h-96 overflow-y-auto mb-4">
-            <div v-for="item in cart" :key="item.branch_inventory_id" class="border rounded-lg p-3">
+            <div v-for="item in cart" :key="item.cart_line_key" class="border rounded-lg p-3">
               <div class="flex justify-between items-start mb-2">
                 <div>
                   <p class="font-medium">{{ item.product_name }}</p>
-                  <p class="text-sm text-gray-600">{{ money(item.unit_price) }}</p>
+                  <p class="text-sm text-gray-600">{{ money(Number(item.unit_price) + Number(item.customization_fee || 0)) }} / unit</p>
+                  <p v-if="Number(item.regular_unit_price) > Number(item.unit_price)" class="text-xs text-slate-400 line-through">{{ money(item.regular_unit_price) }} regular</p>
+                  <p v-if="Number(item.customization_fee || 0) > 0" class="text-xs text-orange-700">Includes {{ money(item.customization_fee) }} customization fee per unit</p>
+                  <p class="text-xs text-slate-500">{{ item.stock_available }} in inventory</p>
                 </div>
                 <Button 
                   text 
@@ -92,25 +103,46 @@
                   size="small"
                 />
               </div>
-              <InputNumber 
-                v-model="item.quantity" 
-                :min="1" 
-                showButtons
-                buttonLayout="horizontal"
-                :step="1"
-                fluid
-                @update:model-value="updateCartTotal"
-              />
+              <div v-if="item.customization_request" class="mt-3 rounded-lg border border-orange-100 bg-orange-50 p-2 text-xs text-slate-700">
+                <p class="font-semibold text-orange-800"><i class="pi pi-palette mr-1" />Upholstery customization</p>
+                <p class="mt-1 whitespace-pre-line">{{ item.customization_request }}</p>
+                <p class="mt-1 text-slate-600">Estimated lead time: {{ item.customization_lead_time_days }} days</p>
+              </div>
+              <Button v-if="item.is_customizable" type="button" :label="item.customization_request ? 'Edit customization' : 'Add customization'"
+                icon="pi pi-pencil" text size="small" class="mt-2" :disabled="!canManagePos"
+                @click="openCustomizationDialog(item, item)" />
+              <div class="flex w-full items-stretch" role="group" :aria-label="`Quantity for ${item.product_name}`">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  outlined
+                  class="shrink-0 rounded-r-none"
+                  :disabled="!canManagePos || item.quantity <= 1"
+                  :aria-label="`Decrease ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, -1)"
+                />
+                <InputNumber
+                  v-model="item.quantity"
+                  :min="1"
+                  :max="remainingStockForCartItem(item)"
+                  :useGrouping="false"
+                  inputClass="w-full text-center rounded-none"
+                  class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                  @update:model-value="normalizeCartQuantity(item)"
+                />
+                <Button
+                  icon="pi pi-plus"
+                  
+                  class="shrink-0 rounded-l-none"
+                  :disabled="!canManagePos || item.quantity >= remainingStockForCartItem(item)"
+                  :aria-label="`Increase ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, 1)"
+                />
+              </div>
             </div>
           </div>
 
           <Divider />
-
-          <!-- Delivery Option -->
-          <div class="flex items-center gap-2 mb-3">
-            <Checkbox v-model="deliveryRequired" binary inputId="delivery" />
-            <label for="delivery" class="text-sm">For Delivery</label>
-          </div>
 
           <!-- Customer Info Button -->
           <Button 
@@ -118,7 +150,7 @@
             icon="pi pi-user" 
             severity="secondary" 
             outlined 
-            @click="customerDialog = true"
+            @click="customerValidationAttempted = false; customerDialog = true"
             fluid
             class="mb-3"
           />
@@ -129,7 +161,9 @@
           </div>
 
           <!-- Payment Method -->
+          <label for="payment-mode" class="mb-1 block text-sm font-medium text-gray-700">Payment Mode</label>
           <Select 
+            inputId="payment-mode"
             v-model="paymentMethod" 
             :options="paymentOptions" 
             optionLabel="label" 
@@ -138,35 +172,56 @@
             class="mb-3"
           />
 
-          <!-- Amount Tendered (Non-GCash) -->
+          <Message v-if="paymentMethod === 'qrph'" severity="info" :closable="false" class="mb-3 text-xs">
+            PayMongo will show one QR Ph code. The customer can scan it with GCash, Maya, or a participating bank app.
+          </Message>
+
+          <!-- Cash tendered -->
           <InputNumber 
-            v-if="paymentMethod !== 'gcash'"
+            v-if="paymentMethod === 'cash'"
             v-model="amountTendered" 
             fluid 
             mode="currency" 
             currency="PHP" 
             :min="0"
+            :invalid="tenderedAmountInvalid || (cashAmountAttempted && amountTendered === null)"
             placeholder="Amount tendered"
             class="mb-3"
           />
+          <Message v-if="tenderedAmountInvalid" severity="error" :closable="false" class="-mt-2 mb-3">
+            Amount tendered must be at least {{ money(total) }}.
+          </Message>
+          <Message v-else-if="cashAmountAttempted && paymentMethod === 'cash' && amountTendered === null" severity="error" :closable="false" class="-mt-2 mb-3">
+            Enter the amount tendered to complete checkout.
+          </Message>
 
-          <!-- GCash Info -->
-          <Message v-if="paymentMethod === 'gcash'" severity="info" class="mb-3">
+          <!-- Hosted online payment info -->
+          <Message v-if="paymentMethod !== 'cash'" class="mb-3">
             <i class="pi pi-info-circle mr-2"></i>
-            GCash checkout opens after you submit. We will auto-refresh payment status.
+            {{ paymentLabel(paymentMethod) }} checkout opens securely after you submit. Do not release the order until payment is confirmed.
           </Message>
 
           <!-- Totals -->
           <div class="bg-gray-50 rounded-lg p-3 mb-3">
             <div class="flex justify-between py-1 text-sm">
               <span>Subtotal</span>
-              <span class="font-medium">{{ money(subtotal) }}</span>
+              <span class="font-medium">{{ money(regularSubtotal) }}</span>
             </div>
+            <div v-if="productDiscount > 0" class="flex justify-between py-1 text-sm text-emerald-700">
+              <span>Product discount</span><span>- {{ money(productDiscount) }}</span>
+            </div>
+            <div v-if="deliveryRequired" class="flex justify-between py-1 text-sm">
+              <span>Shipping fee</span>
+              <span class="font-medium">{{ estimatingShipping ? 'Calculating...' : money(shippingFee) }}</span>
+            </div>
+            <Message v-if="deliveryRequired && shippingEstimateError" severity="error" :closable="false" class="mt-2 text-xs">
+              {{ shippingEstimateError }}
+            </Message>
             <div class="flex justify-between py-1 text-base font-semibold border-t mt-1 pt-2">
               <span>Total</span>
               <span class="text-blue-600">{{ money(total) }}</span>
             </div>
-            <div v-if="paymentMethod !== 'gcash' && amountTendered" class="flex justify-between py-1 text-sm text-green-600">
+            <div v-if="paymentMethod === 'cash' && amountTendered" class="flex justify-between py-1 text-sm text-green-600">
               <span>Change</span>
               <span>{{ money(changeAmount) }}</span>
             </div>
@@ -174,10 +229,10 @@
 
           <!-- Checkout Button -->
           <Button 
-            severity="info" 
+             
             fluid 
             :loading="checkingOut" 
-            :disabled="!canManagePos || !cart.length"
+            :disabled="!canManagePos || !cart.length || checkingOut"
             label="Checkout"
             @click="checkout"
           />
@@ -185,28 +240,94 @@
       </Card>
     </div>
 
+    <Dialog v-model:visible="customizationDialogVisible" modal header="Upholstery Customization" :style="{ width: 'min(640px, 95vw)' }" :breakpoints="{ '640px': '96vw' }">
+      <div v-if="customizationSource" class="space-y-4">
+        <div class="rounded-xl border border-orange-100 bg-orange-50 p-3">
+          <p class="font-semibold text-slate-900">{{ customizationSource.product_name || customizationSource.product?.product_name }}</p>
+          <p class="mt-1 text-xs text-slate-600">Describe the agreed fabric, color, pattern, or other upholstery details. Confirm the added fee and lead time with the customer before saving.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Customization specifications <span class="text-red-600">*</span></label>
+          <Textarea v-model="customizationForm.request" rows="4" auto-resize fluid maxlength="1000"
+            placeholder="Example: Replace the seat upholstery with customer-selected charcoal gray fabric." />
+          <small class="text-slate-500">{{ customizationForm.request.length }}/1000 characters</small>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Additional fee per unit</label>
+            <InputNumber v-model="customizationForm.fee" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Estimated lead time (days) <span class="text-red-600">*</span></label>
+            <InputNumber v-model="customizationForm.leadTimeDays" :min="1" :max="365" :useGrouping="false" suffix=" days" fluid />
+          </div>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div class="flex justify-between gap-3"><span class="text-slate-600">Base price per unit</span><span>{{ money(customizationBasePrice) }}</span></div>
+          <div class="mt-1 flex justify-between gap-3"><span class="text-slate-600">Customization fee per unit</span><span>{{ money(customizationFee) }}</span></div>
+          <div class="mt-2 flex justify-between gap-3 border-t border-slate-200 pt-2 font-semibold"><span>Agreed price per unit</span><span class="text-orange-700">{{ money(customizationBasePrice + customizationFee) }}</span></div>
+          <p v-if="customizationForm.leadTimeDays" class="mt-1 text-right text-xs text-slate-500">Estimated completion in {{ customizationForm.leadTimeDays }} days</p>
+        </div>
+        <div class="flex items-start gap-2 rounded-lg border border-slate-200 p-3">
+          <Checkbox v-model="customerConfirmedCustomization" inputId="customer-confirmed-customization" binary />
+          <label for="customer-confirmed-customization" class="cursor-pointer text-sm text-slate-700">The customer confirmed these specifications, the additional fee, and the estimated lead time.</label>
+        </div>
+        <Message v-if="customizationError" severity="error" :closable="false">{{ customizationError }}</Message>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="customizationDialogVisible = false" />
+        <Button :label="customizationEditing ? 'Save Changes' : 'Add Customized Item'" icon="pi pi-check" severity="warn"
+          :disabled="!canManagePos" @click="saveCustomizationToCart" />
+      </template>
+    </Dialog>
+
     <!-- Customer Dialog -->
     <Dialog 
       v-model:visible="customerDialog" 
       header="Customer Information" 
       modal 
       :style="{ width: '90%', maxWidth: '800px' }"
+      @show="initMap"
+      @hide="destroyMap"
     >
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Name</label>
-          <InputText v-model="customerForm.name" fluid placeholder="Customer name" />
+      <Message v-if="customerValidationAttempted && customerInformationError" severity="error" :closable="false" class="mb-4">
+        {{ customerInformationError }}
+      </Message>
+      <form id="pos-customer-information-form" class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="requestSaveCustomerInformation">
+        <div class="md:col-span-2">
+          <label class="mb-1 block text-sm font-medium text-gray-700">Fulfillment Method</label>
+          <SelectButton
+            v-model="deliveryRequired"
+            :options="fulfillmentOptions"
+            optionLabel="label"
+            optionValue="value"
+            :allowEmpty="false"
+            aria-label="Fulfillment method"
+            class="w-full"
+          />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Email</label>
-          <InputText v-model="customerForm.email" type="email" fluid placeholder="Email address" />
+          <label class="text-sm font-medium text-gray-700 block mb-1">Name <span class="text-red-600">*</span></label>
+          <InputText v-model="customerForm.name" :invalid="customerValidationAttempted && !customerForm.name.trim()" fluid placeholder="Customer name" />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Phone</label>
-          <InputText v-model="customerForm.phone" fluid placeholder="Contact number" />
+          <label class="text-sm font-medium text-gray-700 block mb-1">Email <span class="text-xs font-normal text-gray-500">(optional)</span></label>
+          <InputText v-model="customerForm.email" type="email" :invalid="customerValidationAttempted && customerForm.email.trim() !== '' && !isValidCustomerEmail" fluid placeholder="Email address" />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Province</label>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Contact Number <span class="text-red-600">*</span></label>
+          <InputMask
+            v-model="customerForm.phone"
+            mask="0999 999 9999"
+            placeholder="09XX XXX XXXX"
+            :autoClear="false"
+            :invalid="customerValidationAttempted && !isValidCustomerPhone"
+            fluid
+          />
+        </div>
+        <template v-if="deliveryRequired">
+        <div>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Province <span class="text-red-600">*</span></label>
           <Select 
             v-model="addressSelection.provinceId" 
             :options="provinceOptions" 
@@ -214,11 +335,12 @@
             filter 
             placeholder="Select Province" 
             fluid
+            :invalid="customerValidationAttempted && !addressSelection.provinceId"
             @change="onProvinceChange"
           />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">City / Municipality</label>
+          <label class="text-sm font-medium text-gray-700 block mb-1">City / Municipality <span class="text-red-600">*</span></label>
           <Select 
             v-model="addressSelection.cityId" 
             :options="cityOptions" 
@@ -226,12 +348,13 @@
             filter 
             placeholder="Select City" 
             fluid
+            :invalid="customerValidationAttempted && !addressSelection.cityId"
             :disabled="!addressSelection.provinceId" 
             @change="onCityChange"
           />
         </div>
         <div>
-          <label class="text-sm font-medium text-gray-700 block mb-1">Barangay</label>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Barangay <span class="text-red-600">*</span></label>
           <Select 
             v-model="addressSelection.barangayCode" 
             :options="barangayOptions" 
@@ -239,18 +362,36 @@
             filter 
             placeholder="Select Barangay" 
             fluid
+            :invalid="customerValidationAttempted && !addressSelection.barangayCode"
             :disabled="!addressSelection.cityId"
           />
         </div>
         <div class="md:col-span-2">
-          <label class="text-sm font-medium text-gray-700 block mb-1">Address Line</label>
-          <Textarea v-model="customerForm.addressLine" rows="2" auto-resize fluid placeholder="Street, building, landmark" />
+          <label class="text-sm font-medium text-gray-700 block mb-1">Address Line <span class="text-red-600">*</span></label>
+          <Textarea v-model="customerForm.addressLine" rows="2" auto-resize fluid :invalid="customerValidationAttempted && !customerForm.addressLine.trim()" placeholder="Street, building, landmark" />
+        </div>
+        <div v-if="deliveryRequired" class="md:col-span-2">
+          <label class="text-sm font-medium text-gray-700 block mb-1">Preferred Delivery Date <span class="text-red-600">*</span></label>
+          <DatePicker
+            v-model="customerForm.preferredDeliveryDate"
+            :minDate="today"
+            dateFormat="M d, yy"
+            placeholder="Select the customer's preferred delivery date"
+            :invalid="customerValidationAttempted && !customerForm.preferredDeliveryDate"
+            fluid
+            showIcon
+          />
         </div>
         <div class="md:col-span-2">
           <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location</label>
-          <div class="flex gap-2 mb-2">
-            <InputText v-model="addressSearchText" placeholder="Search address to pin" fluid />
-            <Button text icon="pi pi-search" @click="geocodeCustomerAddress" />
+          <div class="mb-2 flex gap-2">
+            <InputText
+              v-model="addressSearchText"
+              placeholder="Search address to pin"
+              fluid
+              @keydown.enter.prevent.stop="geocodeCustomerAddress"
+            />
+            <Button text icon="pi pi-search" :loading="searchingCustomerAddress" @click="geocodeCustomerAddress" />
           </div>
           <div ref="mapEl" class="h-64 w-full rounded-lg border border-gray-200"></div>
           <div class="text-xs text-gray-500 mt-2">
@@ -261,55 +402,81 @@
           <label class="text-sm font-medium text-gray-700 block mb-1">Delivery Notes</label>
           <Textarea v-model="customerForm.deliveryNotes" rows="2" auto-resize fluid placeholder="Gate, landmark, instructions (optional)" />
         </div>
-      </div>
+        </template>
+      </form>
       <template #footer>
         <Button label="Close" severity="secondary" text @click="customerDialog = false" />
+        <Button
+          type="submit"
+          form="pos-customer-information-form"
+          label="Save Information"
+          icon="pi pi-check"
+          severity="warn"
+        />
       </template>
     </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import ecommerceService from '@/services/ecommerce.service'
+import paymongoService from '@/services/paymongo.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Divider from 'primevue/divider'
 import Checkbox from 'primevue/checkbox'
+import SelectButton from 'primevue/selectbutton'
+import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
-import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Message from 'primevue/message'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
-import { onBeforeUnmount, nextTick } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { onBeforeUnmount } from 'vue'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 
 const toast = useToast()
 const confirm = useConfirm()
+const router = useRouter()
 const authStore = useAuthStore()
 const search = ref('')
 const products = ref<any[]>([])
+const productLoadError = ref('')
+const customizationDialogVisible = ref(false)
+const customizationSource = ref<any | null>(null)
+const customizationEditing = ref(false)
+const customizationError = ref('')
+const customerConfirmedCustomization = ref(false)
+const customizationForm = ref({ request: '', fee: 0 as number | null, leadTimeDays: null as number | null })
 const loadingProducts = ref(false)
 const checkingOut = ref(false)
 const cart = ref<any[]>([])
-const paymentMethod = ref('cash')
+const paymentMethod = ref<'cash' | 'card' | 'qrph'>('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
+const fulfillmentOptions = [
+  { label: 'Pickup', value: false },
+  { label: 'Delivery', value: true },
+]
+const shippingFee = ref(0)
+const estimatingShipping = ref(false)
+const shippingEstimateError = ref('')
 const customerDialog = ref(false)
+const customerValidationAttempted = ref(false)
+const searchingCustomerAddress = ref(false)
+const cashAmountAttempted = ref(false)
 const customerForm = ref({
   name: '',
   email: '',
@@ -318,7 +485,9 @@ const customerForm = ref({
   latitude: null as number | null,
   longitude: null as number | null,
   deliveryNotes: '',
+  preferredDeliveryDate: null as Date | null,
 })
+const today = new Date()
 const addressSearchText = ref('')
 const addressSelection = ref({
   provinceId: null as string | null,
@@ -331,17 +500,36 @@ const barangays = ref<any[]>([])
 const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
 const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+const isValidCustomerEmail = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerForm.value.email.trim()))
+const isValidCustomerPhone = computed(() => /^09\d{9}$/.test(customerForm.value.phone.replace(/\D/g, '')))
+const customerInformationError = computed(() => {
+  const missing = [
+    !customerForm.value.name.trim() && 'name',
+    !customerForm.value.phone.trim() && 'contact number',
+    deliveryRequired.value && !addressSelection.value.provinceId && 'province',
+    deliveryRequired.value && !addressSelection.value.cityId && 'city',
+    deliveryRequired.value && !addressSelection.value.barangayCode && 'barangay',
+    deliveryRequired.value && !customerForm.value.addressLine.trim() && 'address line',
+    deliveryRequired.value && !customerForm.value.preferredDeliveryDate && 'preferred delivery date',
+  ].filter(Boolean)
+  if (missing.length) return `Complete the following before checkout: ${missing.join(', ')}.`
+  if (customerForm.value.email.trim() && !isValidCustomerEmail.value) return 'Enter a valid customer email address.'
+  if (!isValidCustomerPhone.value) return 'Enter a valid 11-digit customer contact number.'
+  return ''
+})
 
 const mapEl = ref<HTMLDivElement | null>(null)
-let map: L.Map | null = null
-let marker: L.Marker | null = null
-const paymentOptions = [
-  { label: 'Cash', value: 'cash' },
-  { label: 'Card', value: 'card' },
-  { label: 'GCash', value: 'gcash' },
-  { label: 'Cash On Delivery', value: 'cod' },
-]
+let map: MapboxMap | null = null
+let marker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
+const paymentOptions = ref([{ label: 'Cash', value: 'cash' }])
 const canManagePos = authStore.hasPermission('sales.pos.manage')
+const customizationFee = computed(() => Math.max(0, Number(customizationForm.value.fee || 0)))
+const customizationBasePrice = computed(() => {
+  const source = customizationSource.value
+  if (!source) return 0
+  return Number(source.unit_price ?? productSellingPrice(source))
+})
 
 const getStockSeverity = (stock: number) => {
   if (stock <= 0) return 'danger'
@@ -349,11 +537,48 @@ const getStockSeverity = (stock: number) => {
   return 'success'
 }
 
+const productBasePrice = (row: any) => Number(row.regular_price ?? row.variation?.base_price ?? row.product?.base_price ?? 0)
+const productSellingPrice = (row: any) => Number(row.selling_price ?? row.variation?.discounted_price ?? row.product?.discounted_price ?? productBasePrice(row))
+const hasDiscount = (row: any) => productSellingPrice(row) > 0 && productSellingPrice(row) < productBasePrice(row)
+const productSku = (row: any) => row.variation?.variation_sku || row.product?.sku || '—'
+const productIsCustomizable = (row: any) => Boolean(row?.is_customizable ?? row?.product?.is_customizable)
+const productImage = (row: any) => {
+  const images = (row.product?.assets || []).filter((item: any) => ['Image_Main', 'Image_Gallery'].includes(item.asset_type))
+  const asset = row.variation?.custom_image || images.find((item: any) => item.is_primary || item.asset_type === 'Image_Main') || images[0]
+  return asset?.url || asset?.thumbnail_url || null
+}
+const selectProduct = (row: any) => {
+  if (!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)) return
+  if (productIsCustomizable(row)) {
+    openCustomizationDialog(row)
+    return
+  }
+  addToCart(row)
+}
+
+const openCustomizationDialog = (row: any, cartItem: any | null = null) => {
+  const existing = cartItem || null
+  customizationSource.value = existing || row
+  customizationEditing.value = Boolean(existing)
+  customizationError.value = ''
+  customerConfirmedCustomization.value = false
+  customizationForm.value = {
+    request: existing?.customization_request || '',
+    fee: Number(existing?.customization_fee || 0),
+    leadTimeDays: existing?.customization_lead_time_days ? Number(existing.customization_lead_time_days) : null,
+  }
+  customizationDialogVisible.value = true
+}
+
 const loadProducts = async () => {
   loadingProducts.value = true
+  productLoadError.value = ''
   try {
     const res = await salesService.getPosProducts({ per_page: 40, search: search.value || undefined })
     products.value = res?.data?.data || []
+  } catch (error: any) {
+    products.value = []
+    productLoadError.value = error?.response?.data?.message || 'Unable to load POS products. Please try again.'
   } finally { loadingProducts.value = false }
 }
 
@@ -361,73 +586,180 @@ const updateCartTotal = () => {
   cart.value = [...cart.value]
 }
 
+const remainingStockForCartItem = (item: any) => {
+  const reservedByOtherLines = cart.value
+    .filter((line) => line.cart_line_key !== item.cart_line_key && Number(line.branch_inventory_id) === Number(item.branch_inventory_id))
+    .reduce((total, line) => total + Number(line.quantity || 0), 0)
+  return Math.max(0, Number(item.stock_available || 0) - reservedByOtherLines)
+}
+
+const normalizeCartQuantity = (item: any) => {
+  item.quantity = Math.max(1, Math.min(remainingStockForCartItem(item), Number(item.quantity || 1)))
+  updateCartTotal()
+}
+
+const changeCartQuantity = (item: any, amount: number) => {
+  item.quantity = Number(item.quantity || 1) + amount
+  normalizeCartQuantity(item)
+}
+
+const cartQuantity = (inventoryId: number) => cart.value
+  .filter((item) => Number(item.branch_inventory_id) === Number(inventoryId))
+  .reduce((total, item) => total + Number(item.quantity || 0), 0)
+
 const addToCart = (row: any) => {
   const id = row.id
-  const existing = cart.value.find((i) => i.branch_inventory_id === id)
+  const existing = cart.value.find((i) => Number(i.branch_inventory_id) === Number(id) && !i.customization_request)
   if (existing) { 
+    if (cartQuantity(id) >= Number(row.quantity_available || 0)) return
     existing.quantity += 1
     updateCartTotal()
     return 
   }
   cart.value.push({
+    cart_line_key: `pos-${id}-standard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     branch_inventory_id: id,
-    product_name: row.product?.product_name || 'Product',
-    unit_price: Number(row.product?.discounted_price || row.product?.base_price || 0),
+    product_id: row.product_id,
+    product_name: [row.product?.product_name, row.variation?.variation_name].filter(Boolean).join(' - ') || 'Product',
+    unit_price: productSellingPrice(row),
+    regular_unit_price: productBasePrice(row),
     quantity: 1,
+    stock_available: Number(row.quantity_available || 0),
+    is_customizable: productIsCustomizable(row),
   })
   updateCartTotal()
-  
-  toast.add({
-    severity: 'success',
-    summary: 'Added',
-    detail: `${row.product?.product_name} added to cart`,
-    life: 1500
-  })
+}
+
+const saveCustomizationToCart = () => {
+  const source = customizationSource.value
+  const request = customizationForm.value.request.trim()
+  const leadTimeDays = Number(customizationForm.value.leadTimeDays || 0)
+  const fee = customizationFee.value
+  if (!request) {
+    customizationError.value = 'Enter the agreed upholstery specifications.'
+    return
+  }
+  if (!Number.isInteger(leadTimeDays) || leadTimeDays < 1 || leadTimeDays > 365) {
+    customizationError.value = 'Enter an estimated lead time between 1 and 365 days.'
+    return
+  }
+  if (!customerConfirmedCustomization.value) {
+    customizationError.value = 'Confirm that the customer agreed to the specifications, fee, and lead time.'
+    return
+  }
+
+  const inventoryId = Number(source?.branch_inventory_id ?? source?.id)
+  const existingLine = customizationEditing.value
+    ? cart.value.find((line) => line.cart_line_key === source.cart_line_key)
+    : null
+  const values = {
+    customization_request: request,
+    customization_fee: fee,
+    customization_lead_time_days: leadTimeDays,
+    is_customizable: true,
+  }
+
+  if (existingLine) {
+    Object.assign(existingLine, values)
+  } else {
+    cart.value.push({
+      cart_line_key: `pos-${inventoryId}-custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      branch_inventory_id: inventoryId,
+      product_id: source?.product_id,
+      product_name: source?.product_name || [source?.product?.product_name, source?.variation?.variation_name].filter(Boolean).join(' - ') || 'Product',
+      unit_price: Number(source?.unit_price ?? productSellingPrice(source)),
+      regular_unit_price: Number(source?.regular_unit_price ?? productBasePrice(source)),
+      quantity: 1,
+      stock_available: Number(source?.stock_available ?? source?.quantity_available ?? 0),
+      ...values,
+    })
+  }
+
+  updateCartTotal()
+  customizationDialogVisible.value = false
 }
 
 const removeCart = (item: any) => {
   if (!item) return
-  const id = Number(item.branch_inventory_id || 0)
-  if (!id) return
+  const lineKey = item.cart_line_key
+  if (!lineKey) return
 
   confirm.require({
     header: 'Remove Item',
-    message: `Remove ${item.product_name || 'this item'} from the cart?`,
+    message: `Remove ${item.product_name || 'this item'} from the order?`,
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Remove',
     rejectLabel: 'Cancel',
     acceptClass: 'p-button-danger',
     accept: () => {
-      cart.value = cart.value.filter((i) => i.branch_inventory_id !== id)
+      cart.value = cart.value.filter((i) => i.cart_line_key !== lineKey)
       updateCartTotal()
     },
   })
 }
 
-const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
-const total = computed(() => subtotal.value)
+const subtotal = computed(() => cart.value.reduce((sum, item) =>
+  sum + ((Number(item.unit_price || 0) + Number(item.customization_fee || 0)) * Number(item.quantity || 0)), 0))
+const productDiscount = computed(() => cart.value.reduce((sum, item) =>
+  sum + Math.max(0, Number(item.regular_unit_price ?? item.unit_price) - Number(item.unit_price || 0)) * Number(item.quantity || 0), 0))
+const regularSubtotal = computed(() => subtotal.value + productDiscount.value)
+const total = computed(() => subtotal.value + (deliveryRequired.value ? shippingFee.value : 0))
+const tenderedAmountInvalid = computed(() =>
+  paymentMethod.value === 'cash'
+  && amountTendered.value !== null
+  && Number(amountTendered.value) < total.value
+)
 const changeAmount = computed(() => Math.max(0, Number(amountTendered.value || 0) - total.value))
+
+let shippingEstimateRequest = 0
+const updateShippingFee = async () => {
+  const requestId = ++shippingEstimateRequest
+  if (!deliveryRequired.value || !cart.value.length) {
+    shippingFee.value = 0
+    shippingEstimateError.value = ''
+    return
+  }
+
+  estimatingShipping.value = true
+  shippingEstimateError.value = ''
+  try {
+    const response = await salesService.estimatePosShipping({
+      subtotal: subtotal.value,
+      delivery_latitude: customerForm.value.latitude,
+      delivery_longitude: customerForm.value.longitude,
+    })
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = Number(response?.data?.shipping_fee || 0)
+    }
+  } catch (error: any) {
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = 0
+      shippingEstimateError.value = error?.response?.data?.message || 'Unable to calculate the shipping fee. Please check the delivery location.'
+    }
+  } finally {
+    if (requestId === shippingEstimateRequest) estimatingShipping.value = false
+  }
+}
 
 const checkout = async () => {
   if (!cart.value.length) {
-    toast.add({ severity: 'warn', summary: 'Empty Cart', detail: 'Please add items to cart first.', life: 2500 })
+    toast.add({ severity: 'warn', summary: 'Empty Order', detail: 'Please add products to the order first.', life: 2500 })
+    return
+  }
+
+  if (customerInformationError.value) {
+    customerValidationAttempted.value = true
+    customerDialog.value = true
+    return
+  }
+
+  cashAmountAttempted.value = true
+  if (paymentMethod.value === 'cash' && (amountTendered.value === null || Number(amountTendered.value) < total.value)) {
     return
   }
   
-  if (deliveryRequired.value) {
-    if (!customerForm.value.name || !customerForm.value.phone) {
-      toast.add({ severity: 'warn', summary: 'Customer info', detail: 'Please complete customer name and phone.', life: 2500 })
-      customerDialog.value = true
-      return
-    }
-    if (!addressSelection.value.provinceId || !addressSelection.value.cityId || !addressSelection.value.barangayCode || !customerForm.value.addressLine) {
-      toast.add({ severity: 'warn', summary: 'Delivery address', detail: 'Please complete the delivery address details.', life: 2500 })
-      customerDialog.value = true
-      return
-    }
-  }
-  
   checkingOut.value = true
+  let createdOrderId = 0
   try {
     const provinceLabel = provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label
     const cityLabel = cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label
@@ -451,82 +783,130 @@ const checkout = async () => {
       delivery_address_line: deliveryRequired.value ? customerForm.value.addressLine : undefined,
       delivery_latitude: deliveryRequired.value ? customerForm.value.latitude : undefined,
       delivery_longitude: deliveryRequired.value ? customerForm.value.longitude : undefined,
-      delivery_email: deliveryRequired.value ? customerForm.value.email : undefined,
-      items: cart.value.map((i) => ({ branch_inventory_id: i.branch_inventory_id, quantity: i.quantity })),
+      delivery_email: customerForm.value.email.trim() || undefined,
+      preferred_delivery_date: deliveryRequired.value && customerForm.value.preferredDeliveryDate
+        ? [
+            customerForm.value.preferredDeliveryDate.getFullYear(),
+            String(customerForm.value.preferredDeliveryDate.getMonth() + 1).padStart(2, '0'),
+            String(customerForm.value.preferredDeliveryDate.getDate()).padStart(2, '0'),
+          ].join('-')
+        : undefined,
+      items: cart.value.map((item) => ({
+        branch_inventory_id: item.branch_inventory_id,
+        quantity: item.quantity,
+        customization_request: item.customization_request || null,
+        customization_fee: Number(item.customization_fee || 0),
+        customization_lead_time_days: item.customization_lead_time_days || null,
+      })),
     })
-
-    if (response?.checkout_url) {
-      openCheckout(response.checkout_url)
-      toast.add({ severity: 'info', summary: 'Checkout Opened', detail: 'Complete the payment in GCash.', life: 3000 })
-    } else {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'POS checkout completed.', life: 2500 })
+    const orderId = Number(response?.data?.id || 0)
+    createdOrderId = orderId
+    if (paymentMethod.value !== 'cash') {
+      const storeId = Number(response?.data?.store_id || authStore.user?.store_id || 0)
+      if (!orderId || !storeId) throw new Error('The order was created, but its payment session could not be initialized. Open the order and retry payment.')
+      const successUrl = new URL(router.resolve({ name: 'sales.pos.order-detail', params: { id: orderId }, query: { paymongo_success: '1' } }).href, window.location.origin).toString()
+      const cancelUrl = new URL(router.resolve({ name: 'sales.pos.order-detail', params: { id: orderId }, query: { paymongo_cancel: '1' } }).href, window.location.origin).toString()
+      const sessionResponse = await paymongoService.createCheckoutSession({
+        amount: Math.max(1, Math.round(Number(response?.data?.total_amount || total.value) * 100)),
+        currency: 'PHP',
+        description: `POS Order ${response?.data?.order_number || orderId}`,
+        store_id: storeId,
+        payable_type: 'sales_order',
+        payable_id: orderId,
+        payment_method_allowed: [paymentMethod.value],
+        metadata: { order_id: orderId, source: 'sales_pos' },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      })
+      const checkoutUrl = String(sessionResponse?.data?.checkout_url || '')
+      if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) throw new Error('The order was created, but the secure payment page was unavailable. Open the order and retry payment.')
+      window.location.assign(checkoutUrl)
+      return
     }
+
+    toast.add({ severity: 'success', summary: 'Success', detail: 'POS checkout completed.', life: 2500 })
 
     cart.value = []
     amountTendered.value = null
+    cashAmountAttempted.value = false
+    customerValidationAttempted.value = false
     deliveryRequired.value = false
-    customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '' }
+    customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '', preferredDeliveryDate: null }
     addressSelection.value = { provinceId: null, cityId: null, barangayCode: null }
-    loadProducts()
+    if (orderId) {
+      await router.push({ name: 'sales.pos.order-detail', params: { id: orderId } })
+    } else {
+      loadProducts()
+    }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Checkout failed', detail: error?.response?.data?.message || 'Failed checkout.', life: 3000 })
+    if (createdOrderId) {
+      toast.add({ severity: 'warn', summary: 'Order Created', detail: 'The order was created, but payment checkout could not open. Continue payment from the order details.', life: 5000 })
+      await router.push({ name: 'sales.pos.order-detail', params: { id: createdOrderId } })
+    } else {
+      toast.add({ severity: 'error', summary: 'Checkout failed', detail: error?.response?.data?.message || 'Failed checkout.', life: 3000 })
+    }
   } finally { checkingOut.value = false }
 }
 
-const openCheckout = (url: string) => {
-  if (!url) return
-  window.open(url, '_blank', 'noopener')
-}
+const paymentLabel = (value: string) => ({ cash: 'Cash', card: 'Credit / Debit Card', qrph: 'QR Scan (QR Ph)' }[value] || 'Online payment')
 
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 
 watch(search, () => loadProducts())
+watch([deliveryRequired, subtotal, () => customerForm.value.latitude, () => customerForm.value.longitude], updateShippingFee)
 onMounted(async () => {
   loadProducts()
+  try {
+    const storeId = Number(authStore.user?.store_id || 0)
+    if (storeId) {
+      const response = await paymongoService.getAvailableCheckoutMethods(storeId)
+      const available = new Set<string>(response?.data?.methods || [])
+      paymentOptions.value = [
+        { label: 'Cash', value: 'cash' },
+        ...[
+          { label: 'QR Scan (GCash, Maya, bank apps)', value: 'qrph' },
+          { label: 'Credit / Debit Card', value: 'card' },
+        ].filter(method => available.has(method.value)),
+      ]
+    }
+  } catch {
+    // Keep cash available if hosted payment methods cannot be loaded.
+  }
   await fetchProvinces()
 })
 
-watch(customerDialog, async (visible) => {
-  if (!visible) return
-  await nextTick()
-  initMap()
-})
-
-function initMap() {
+async function initMap() {
   if (!mapEl.value) return
   if (map) {
-    map.invalidateSize()
+    map.resize()
     return
   }
 
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-  })
-
   const startLat = customerForm.value.latitude ?? 14.5995
   const startLng = customerForm.value.longitude ?? 120.9842
-  map = L.map(mapEl.value).setView([startLat, startLng], 12)
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(map)
-
-  marker = L.marker([startLat, startLng], { draggable: true }).addTo(map)
-  marker.on('dragend', () => {
-    const pos = marker?.getLatLng()
-    if (!pos) return
-    customerForm.value.latitude = pos.lat
-    customerForm.value.longitude = pos.lng
-  })
-
-  map.on('click', (e: L.LeafletMouseEvent) => {
-    marker?.setLatLng(e.latlng)
-    customerForm.value.latitude = e.latlng.lat
-    customerForm.value.longitude = e.latlng.lng
-  })
+  try {
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    const currentMap = new mapboxgl.Map({ container: mapEl.value, style: 'mapbox://styles/mapbox/streets-v12', center: [startLng, startLat], zoom: 12 })
+    map = currentMap
+    await new Promise<void>((resolve) => currentMap.once('load', () => resolve()))
+    if (map !== currentMap || !customerDialog.value) return
+    marker = new mapboxgl.Marker({ draggable: true, color: '#f97316' }).setLngLat([startLng, startLat]).addTo(map)
+    marker.on('dragend', () => {
+      const position = marker?.getLngLat()
+      if (!position) return
+      customerForm.value.latitude = position.lat
+      customerForm.value.longitude = position.lng
+    })
+    map.on('click', (event) => {
+      marker?.setLngLat(event.lngLat)
+      customerForm.value.latitude = event.lngLat.lat
+      customerForm.value.longitude = event.lngLat.lng
+    })
+    map.resize()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Mapbox Unavailable', detail: error?.message || 'Unable to load the location map.', life: 3500 })
+  }
 }
 
 const geocodeAddressText = async (addressText: string): Promise<{ latitude: number; longitude: number } | null> => {
@@ -534,39 +914,47 @@ const geocodeAddressText = async (addressText: string): Promise<{ latitude: numb
   if (!query) return null
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`,
-      {
-        headers: { Accept: 'application/json' },
-      },
-    )
-
-    if (!response.ok) return null
-    const results = await response.json()
-    if (!Array.isArray(results) || results.length === 0) return null
-
-    const first = results[0]
-    const latitude = Number(first?.lat)
-    const longitude = Number(first?.lon)
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-
-    return { latitude, longitude }
+    const result = await forwardGeocodeMapbox(query)
+    return result ? { latitude: result.latitude, longitude: result.longitude } : null
   } catch {
     return null
   }
 }
 
 async function geocodeCustomerAddress() {
-  const built = `${customerForm.value.addressLine || ''}, ${barangayOptions.value.find(b => b.value === addressSelection.value.barangayCode)?.label || ''}, ${cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label || ''}, ${provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label || ''}, Philippines ${addressSearchText.value ? ` ${addressSearchText.value}` : ''}`
-  const geocoded = await geocodeAddressText(built)
-  if (!geocoded) {
-    toast.add({ severity: 'warn', summary: 'Not Found', detail: 'Unable to find location for that address.' })
-    return
+  if (searchingCustomerAddress.value) return
+  searchingCustomerAddress.value = true
+  try {
+    const built = `${customerForm.value.addressLine || ''}, ${barangayOptions.value.find(b => b.value === addressSelection.value.barangayCode)?.label || ''}, ${cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label || ''}, ${provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label || ''}, Philippines ${addressSearchText.value ? ` ${addressSearchText.value}` : ''}`
+    const geocoded = await geocodeAddressText(built)
+    if (!geocoded) {
+      toast.add({ severity: 'warn', summary: 'Not Found', detail: 'Unable to find location for that address.' })
+      return
+    }
+    customerForm.value.latitude = geocoded.latitude
+    customerForm.value.longitude = geocoded.longitude
+    if (marker) marker.setLngLat([geocoded.longitude, geocoded.latitude])
+    if (map) map.flyTo({ center: [geocoded.longitude, geocoded.latitude], zoom: 14 })
+  } finally {
+    searchingCustomerAddress.value = false
   }
-  customerForm.value.latitude = geocoded.latitude
-  customerForm.value.longitude = geocoded.longitude
-  if (marker) marker.setLatLng([geocoded.latitude, geocoded.longitude])
-  if (map) map.setView([geocoded.latitude, geocoded.longitude], 14)
+}
+
+function requestSaveCustomerInformation() {
+  customerValidationAttempted.value = true
+  if (customerInformationError.value) return
+
+  confirm.require({
+    header: 'Save Customer Information?',
+    message: 'Use these details for this POS order? You can still update them before checkout.',
+    icon: 'pi pi-user-edit',
+    acceptLabel: 'Save Information',
+    rejectLabel: 'Continue Editing',
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: () => {
+      customerDialog.value = false
+    },
+  })
 }
 
 async function fetchProvinces() {
@@ -612,13 +1000,25 @@ async function onCityChange() {
   }
 }
 
-onBeforeUnmount(() => {
+const destroyMap = () => {
   if (map) {
     map.remove()
     map = null
     marker = null
   }
+}
+
+watch([deliveryRequired, customerDialog], async () => {
+  if (deliveryRequired.value && customerDialog.value) {
+    await nextTick()
+    await initMap()
+    return
+  }
+
+  destroyMap()
 })
+
+onBeforeUnmount(destroyMap)
 </script>
 
 <style scoped>

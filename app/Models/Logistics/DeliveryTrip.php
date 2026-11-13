@@ -5,7 +5,10 @@ namespace App\Models\Logistics;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Models\Inventory\StockTransfer;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesOrderDelivery;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,15 +22,22 @@ class DeliveryTrip extends Model
         'store_id',
         'vehicle_id',
         'driver_user_id',
+        'assistant_user_ids',
         'status',
         'scheduled_departure_at',
         'notes',
         'created_by',
         'updated_by',
+        'dispatched_by',
+        'dispatched_at',
+        'route_distances',
     ];
 
     protected $casts = [
         'scheduled_departure_at' => 'datetime',
+        'dispatched_at' => 'datetime',
+        'route_distances' => 'array',
+        'assistant_user_ids' => 'array',
     ];
 
     public function store(): BelongsTo
@@ -45,6 +55,11 @@ class DeliveryTrip extends Model
         return $this->belongsTo(User::class, 'driver_user_id');
     }
 
+    public function dispatchedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'dispatched_by');
+    }
+
     public function ecommerceDeliveries(): HasMany
     {
         return $this->hasMany(EcommerceOrderDelivery::class, 'trip_id');
@@ -54,5 +69,25 @@ class DeliveryTrip extends Model
     {
         return $this->hasMany(SalesOrderDelivery::class, 'trip_id');
     }
-}
 
+    public function returnPickups(): HasMany
+    {
+        return $this->hasMany(ReturnPickup::class, 'trip_id');
+    }
+
+    public function stockTransfers(): HasMany
+    {
+        return $this->hasMany(StockTransfer::class, 'trip_id');
+    }
+
+    public function replacementReturns(): HasMany
+    {
+        return $this->hasMany(EcommerceOrderReturn::class, 'replacement_trip_id');
+    }
+
+    public function purchaseOrderShipments(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderShipment::class, 'trip_id');
+    }
+
+}

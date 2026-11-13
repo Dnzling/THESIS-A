@@ -11,7 +11,7 @@ class InventoryConfigurationRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->user()->hasRole(['super_admin', 'store_admin']);
+        return auth()->user()->hasRole(['super_admin', 'owner']);
     }
 
     /**
@@ -41,8 +41,6 @@ class InventoryConfigurationRequest extends FormRequest
             'cost_per_km' => 'nullable|numeric|min:0',
             'reporting_frequency' => 'nullable|in:daily,weekly,monthly',
             'include_sub_branches' => 'boolean',
-            'enable_auto_reorder_suggestions' => 'boolean',
-            'auto_reorder_suggestions_time' => 'nullable|date_format:H:i',
         ];
     }
 

@@ -18,6 +18,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::put('/address-templates/{id}', [EcommerceController::class, 'updateAddressTemplate']);
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
     Route::post('/shipping/estimate', [EcommerceController::class, 'estimateShippingFee']);
+    Route::get('/checkout/availability', [EcommerceController::class, 'checkoutAvailability']);
 
     Route::get('/favorites', [EcommerceController::class, 'favorites']);
     Route::post('/favorites/toggle', [EcommerceController::class, 'toggleFavorite']);
@@ -27,13 +28,16 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/orders', [EcommerceController::class, 'orders']);
     Route::get('/orders/{id}', [EcommerceController::class, 'orderShow']);
     Route::post('/orders/{id}/cancel-requests', [EcommerceController::class, 'requestOrderCancellation']);
+    Route::put('/orders/{id}/refund-payment-method', [EcommerceController::class, 'updateCancellationRefundPaymentMethod']);
     Route::post('/order-items/{itemId}/return-requests', [EcommerceController::class, 'requestOrderReturn']);
+    Route::put('/returns/{return}/refund-payment-method', [EcommerceController::class, 'updateRefundPaymentMethod']);
     Route::post('/order-items/{itemId}/reviews', [EcommerceController::class, 'submitItemReview']);
     Route::post('/violations/report', [EcommerceController::class, 'reportViolation']);
 
     Route::get('/chat/threads', [EcommerceController::class, 'chatThreads']);
     Route::get('/chat/stores/{storeId}/messages', [EcommerceController::class, 'chatMessages']);
     Route::post('/chat/stores/{storeId}/messages', [EcommerceController::class, 'sendChatMessage']);
+    Route::get('/chat/attachments/{messageId}', [EcommerceController::class, 'chatAttachment'])->name('ecommerce.chat-attachments');
     Route::put('/chat/stores/{storeId}/messages/{messageId}', [EcommerceController::class, 'updateChatMessage']);
     Route::delete('/chat/stores/{storeId}/messages/{messageId}', [EcommerceController::class, 'unsendChatMessage']);
 });
