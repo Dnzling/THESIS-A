@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Loading Skeleton -->
     <div v-if="loadingData" class="space-y-6">
@@ -25,10 +25,10 @@
           </button>
           <div>
             <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">
-              {{ isEditMode ? 'Configure Product' : 'Create Product' }}
+              {{ isEditMode ? 'Edit Product' : 'Create Product' }}
             </h1>
             <p class="text-sm text-gray-500 mt-1">
-              {{ isEditMode ? 'Configure storefront presentation for an existing inventory product.' : 'Create a catalog product and set up its inventory details.' }}
+              {{ isEditMode ? 'Update product setup, inventory details, and storefront presentation.' : 'Create a catalog product and set up its inventory details.' }}
             </p>
           </div>
         </div>
@@ -44,17 +44,11 @@
           <div class="p-6 space-y-10">
             <!-- Product basics, classification, and details -->
             <section class="space-y-6">
-              <div v-if="isEditMode" class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-                <p class="font-semibold">Inventory product: {{ form.product_name || 'Loading...' }}</p>
-                <p class="mt-1">SKU {{ form.sku || '—' }} · {{ formatCurrencyPHP(form.base_price || 0) }} · {{ form.brand || 'No brand' }}</p>
-                <p class="mt-2 text-xs">Name, category, supplier, pricing, dimensions, and stock are managed in Inventory.</p>
-                <Button type="button" label="Edit Inventory Details" icon="pi pi-external-link" text size="small" class="mt-2" @click="router.push({ name: 'inventory.products.edit', params: { id: route.params.id } })" />
-              </div>
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Storefront Presentation' : 'Product Setup' }}</h2>
-                <p class="text-sm text-gray-500 mt-1">{{ isEditMode ? 'Customer-facing details for this inventory product' : 'Product identity, classification, and descriptive details.' }}</p>
+                <h2 class="text-xl font-semibold text-gray-900">Product Setup</h2>
+                <p class="text-sm text-gray-500 mt-1">Product identity, classification, and descriptive details.</p>
               </div>
-              <h3 v-if="!isEditMode" class="text-sm font-semibold text-slate-800">1. Product Basics</h3>
+              <h3 class="text-sm font-semibold text-slate-800">1. Product Basics</h3>
               <!-- Product Name -->
               <div v-if="showInventoryFields" class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">
@@ -82,7 +76,7 @@
                 <small v-else-if="!isEditMode" class="text-gray-500">A unique SKU will be assigned automatically.</small>
               </div>
 
-              <h3 v-if="!isEditMode" class="border-t border-gray-100 pt-4 text-sm font-semibold text-slate-800">2. Classification and discovery</h3>
+              <h3 class="border-t border-gray-100 pt-4 text-sm font-semibold text-slate-800">2. Classification and discovery</h3>
   
               <!-- Category, Subcategory & Unit -->
               <div v-if="showInventoryFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -131,7 +125,7 @@
                 <Select v-model="form.collection_name" :options="availableTags" optionLabel="tag_name" optionValue="tag_name"
                   placeholder="Select a store collection" :loading="loadingTags" :disabled="loadingTags || availableTags.length === 0"
                   showClear fluid size="small" />
-                <small class="text-xs text-gray-500">Choose from this store’s active collection records.</small>
+                <small class="text-xs text-gray-500">Choose from this stores active collection records.</small>
                 <small v-if="!loadingTags && availableTags.length === 0" class="text-xs text-amber-700">No active collections are available. Add one in Collections first.</small>
               </div>
 
@@ -171,29 +165,29 @@
             <!-- Pricing -->
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Pricing' : '3. Pricing' }}</h2>
-                <p class="text-sm text-gray-500 mt-1">{{ isEditMode ? 'Selling and cost prices are managed in Inventory. Use Promotions to schedule discounts.' : 'Set the product selling and inventory cost prices.' }}</p>
+                <h2 class="text-xl font-semibold text-gray-900">3. Pricing</h2>
+                <p class="text-sm text-gray-500 mt-1">Set the product selling and inventory cost prices.</p>
               </div>
   
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Selling Price</label>
                   <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH"
-                    :disabled="isEditMode" :min="0" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
+                    :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
                   <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
-                  <small class="text-gray-500 text-xs">{{ isEditMode ? 'Managed in Inventory.' : 'Customer-facing selling price.' }}</small>
+                  <small class="text-gray-500 text-xs">Customer-facing selling price.</small>
                 </div>
   
-                <div class="space-y-2">
+                <div v-if="!isEditMode" class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Cost Price</label>
                   <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH"
-                    :min="0" :disabled="isEditMode" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
-                  <small class="text-gray-500 text-xs">{{ isEditMode ? 'Auto-managed value (read-only)' : 'Used for inventory valuation.' }}</small>
+                    :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                  <small class="text-gray-500 text-xs">Used for inventory valuation.</small>
                 </div>
   
               </div>
   
-              <div v-if="form.base_price || form.discounted_price"
+              <div v-if="!isEditMode && (form.base_price || form.discounted_price)"
                 class="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Display Price Preview</p>
                 <p v-if="form.discounted_price" class="mt-2 text-3xl font-semibold text-red-600">
@@ -218,14 +212,14 @@
               </div>
             </section>
 
-            <section v-if="showInventoryFields" class="space-y-5">
+            <section v-if="showInventoryFields && !isEditMode" class="space-y-5">
               <div class="border-b border-gray-100 pb-4">
                 <h2 class="text-xl font-semibold text-gray-900">4. Inventory Setup</h2>
                 <p class="mt-1 text-sm text-gray-500">Set up variants, optional opening stock, and the reorder threshold.</p>
               </div>
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div v-if="form.product_type === 'finished_good'" class="flex items-center gap-2">
-                  <Checkbox v-model="form.has_variants" inputId="product_has_variants" :binary="true" />
+                  <Checkbox v-model="form.has_variants" inputId="product_has_variants" :binary="true" :disabled="isEditMode" />
                   <label for="product_has_variants" class="text-sm text-gray-700">This product has separate variants</label>
                 </div>
                 <div v-if="showInitialStockToggle && !form.has_variants" class="space-y-2">
@@ -240,8 +234,15 @@
                   </div>
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm font-medium text-gray-700">Reorder Threshold</label>
+                  <label class="text-sm font-medium text-gray-700">Reorder Point</label>
                   <InputNumber v-model="form.reorder_point" :min="0" placeholder="10" class="w-full" fluid />
+                  <small class="text-xs text-gray-500">Create a replenishment suggestion at or below this available stock.</small>
+                </div>
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700">Refill Quantity</label>
+                  <InputNumber v-model="form.reorder_quantity" :min="1" :maxFractionDigits="0" placeholder="25" class="w-full" fluid />
+                  <small class="text-xs text-gray-500">Suggested quantity when the reorder point is reached.</small>
+                  <small v-if="errors.reorder_quantity" class="text-red-500">{{ errors.reorder_quantity }}</small>
                 </div>
                 <div class="flex items-center gap-2">
                   <Checkbox v-model="form.is_active" inputId="active" :binary="true" />
@@ -250,9 +251,16 @@
               </div>
             </section>
 
+            <section v-if="showInventoryFields && form.product_type === 'finished_good' && form.has_variants" class="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+              <div><h2 class="text-base font-semibold text-gray-900">Standard Product Variation Attributes</h2><p class="mt-1 text-sm text-gray-500">Set the standard values first. New variants are prefilled with these attributes; change at least one value to make a distinct variant.</p></div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div v-for="attribute in variationAttributeFields" :key="attribute.key" class="space-y-1.5"><label class="text-xs font-medium text-gray-600">{{ attribute.label }}</label><InputText v-model="form.variation_attributes[attribute.key]" :placeholder="attribute.placeholder" class="w-full" fluid /></div>
+              </div>
+            </section>
+
             <section class="space-y-6">
               <div class="border-b border-gray-100 pb-4">
-                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Product Details' : '5. Product Details' }}</h2>
+                <h2 class="text-xl font-semibold text-gray-900">5. Product Details</h2>
                 <p class="mt-1 text-sm text-gray-500">Add the product description, physical specifications, and special handling information.</p>
               </div>
               <div class="space-y-2">
@@ -341,7 +349,7 @@
             <!-- Assets -->
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Media' : '6. Media' }}</h2>
+                <h2 class="text-xl font-semibold text-gray-900">6. Media</h2>
                 <p class="text-sm text-gray-500 mt-1">Upload 3D models and product images</p>
               </div>
               <!-- 3D Model Upload -->
@@ -437,7 +445,7 @@
                     :chooseLabel="`Upload Images (${remainingImageSlots} left)`" class="w-full"
                     @select="handleImageSelect" />
                   <Message v-else severity="info" :closable="false">
-                    You’ve reached the maximum of 4 images. Remove one to upload more.
+                    You've reached the maximum of 4 images. Remove one to upload more.
                   </Message>
                   <small class="text-gray-500 text-xs">Up to 4 images. JPG, PNG, WebP (Max 5MB each). Images are cropped
                     to square.</small>
@@ -467,11 +475,17 @@
                   </div>
   
                   <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    <button v-for="(it, idx) in previewGalleryItems" :key="it.key" type="button"
-                      class="shrink-0 w-14 h-14 rounded-xl overflow-hidden border transition-colors"
+                    <button v-for="(it, idx) in previewGalleryItems" :key="it.key" type="button" draggable="true"
+                      class="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border transition-colors"
                       :class="idx === selectedAssetPreviewIndex ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'"
+                      :title="it.isPrimary ? 'Primary image — drag to reorder' : `Image ${idx + 1} — drag to reorder`"
+                      @dragstart="imageDragIndex = idx"
+                      @dragover.prevent
+                      @drop.prevent="reorderPreviewImage(idx)"
                       @click="selectedAssetPreviewIndex = idx">
                       <img :src="it.src" :alt="it.alt" class="w-full h-full object-cover" />
+                      <span v-if="idx === 0" class="absolute inset-x-0 bottom-0 bg-green-700/90 px-1 py-0.5 text-[9px] font-semibold text-white">Primary</span>
+                      <span v-else-if="it.type === 'new'" class="absolute inset-x-0 bottom-0 bg-blue-700/90 px-1 py-0.5 text-[9px] font-semibold text-white">Queue {{ idx + 1 }}</span>
                     </button>
                   </div>
                 </div>
@@ -482,7 +496,7 @@
             <section class="space-y-6">
               <div class="flex items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div>
-                  <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Variations' : '7. Variations' }}</h2>
+                  <h2 class="text-xl font-semibold text-gray-900">7. Variations</h2>
                   <p class="text-sm text-gray-500 mt-1">Create sellable variants with their own automatically generated SKUs.</p>
                 </div>
                 <Button v-if="isEditMode" type="button" icon="pi pi-plus" label="Add Variant" severity="warn" size="small" :loading="initializingVariant" @click="addVariant" />
@@ -640,7 +654,7 @@
               <div class="space-y-2">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Description</p>
                 <div v-if="previewDescriptionHtml"
-                  class="text-sm text-gray-700 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+                  class="min-w-0 w-full max-w-full break-words text-sm text-gray-700 leading-relaxed [overflow-wrap:anywhere] [&_*]:max-w-full [&_img]:h-auto [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
                   v-html="previewDescriptionHtml"></div>
                 <p v-else class="text-sm text-gray-500">
                   Add a description to help customers understand the product.
@@ -648,64 +662,44 @@
               </div>
   
               <!-- Dimensions -->
-              <div class="space-y-2">
+              <div v-if="previewSpecs.length" class="space-y-2">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Specs</p>
                 <div class="grid grid-cols-2 gap-3 text-sm">
-                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p class="text-[11px] text-gray-500">L</p>
-                    <p class="font-semibold text-gray-900">{{ previewLengthCm ?? '—' }}<span v-if="previewLengthCm">
-                        cm</span></p>
-                  </div>
-                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p class="text-[11px] text-gray-500">W</p>
-                    <p class="font-semibold text-gray-900">{{ previewWidthCm ?? '—' }}<span v-if="previewWidthCm">
-                        cm</span></p>
-                  </div>
-                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p class="text-[11px] text-gray-500">H</p>
-                    <p class="font-semibold text-gray-900">{{ previewHeightCm ?? '—' }}<span v-if="previewHeightCm">
-                        cm</span></p>
-                  </div>
-                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p class="text-[11px] text-gray-500">D</p>
-                    <p class="font-semibold text-gray-900">{{ previewDepthCm ?? '—' }}<span v-if="previewDepthCm"> cm</span></p>
-                  </div>
-                  <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p class="text-[11px] text-gray-500">Weight</p>
-                    <p class="font-semibold text-gray-900">{{ previewWeightKg ?? '—' }}<span v-if="previewWeightKg">
-                        kg</span></p>
+                  <div v-for="spec in previewSpecs" :key="spec.label" class="min-w-0 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                    <p class="text-[11px] text-gray-500">{{ spec.label }}</p>
+                    <p class="break-words font-semibold text-gray-900">{{ spec.value }} <span class="font-normal text-gray-500">{{ spec.unit }}</span></p>
                   </div>
                 </div>
+              </div>
                 <div class="mt-6 border-t border-gray-200 px-4 pt-4">
-                  <Button type="submit" :label="isEditMode ? 'Save Presentation' : 'Create Product'" :loading="submitting" :disabled="submitting" fluid />
+                  <Button type="submit" :label="isEditMode ? 'Save Product' : 'Create Product'" :loading="submitting" :disabled="submitting" fluid />
                 </div>
               </div>
   
-              <!-- 3D Model Hint -->
-              <div v-if="form.modelFile || existingModelPreviewUrl"
-                class="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                <div class="flex items-start gap-3">
-                  <div class="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center">
-                    <i class="pi pi-cube text-gray-700"></i>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-semibold text-gray-900">3D model attached</p>
-                    <p v-if="form.modelFile" class="text-xs text-gray-600 truncate">{{ form.modelFile.name }}</p>
-                    <p v-else class="text-xs text-gray-600">Existing model will be shown on product page.</p>
-                  </div>
-                </div>
-              </div>
             </div>
-          </div>
         </aside>
       </div>
     </form>
   
-    <Dialog v-model:visible="successVisible" modal :closable="false" header="Product created" :style="{ width: 'min(92vw, 26rem)' }">
-      <p class="text-sm text-gray-600">{{ createdHasVariants ? 'The product and its SKU were created. Continue to add the product variants.' : 'The product and its SKU were created successfully.' }}</p>
+    <Dialog v-model:visible="saveProgressVisible" modal :closable="saveSucceeded || !!saveError" :header="saveSucceeded ? 'Product saved' : saveError ? 'Unable to save product' : 'Saving product'" :style="{ width: 'min(92vw, 32rem)' }">
+      <div class="space-y-4">
+        <p v-if="saveSucceeded" class="text-sm text-gray-600">{{ isEditMode ? 'Product changes and selected media have been saved.' : 'Product details and selected media have been saved.' }}</p>
+        <p v-else-if="saveError" class="text-sm text-red-700">{{ saveError }}</p>
+        <p v-else class="text-sm text-gray-600">Please keep this window open while the product is being saved.</p>
+        <ol class="space-y-3">
+          <li v-for="stage in saveStages" :key="stage.key" class="flex items-center gap-3 text-sm">
+            <i v-if="stage.status === 'complete'" class="pi pi-check-circle text-green-600" />
+            <i v-else-if="stage.status === 'active'" class="pi pi-spin pi-spinner text-orange-500" />
+            <i v-else-if="stage.status === 'error'" class="pi pi-times-circle text-red-600" />
+            <i v-else class="pi pi-circle text-gray-300" />
+            <span :class="stage.status === 'active' ? 'font-medium text-gray-900' : 'text-gray-600'">{{ stage.label }}</span>
+          </li>
+        </ol>
+      </div>
       <template #footer>
-        <Button v-if="createdHasVariants && createdProductId" label="Add Variants" severity="warn" size="small" @click="router.push({ name: 'merchandising.products.edit', params: { id: createdProductId } })" />
-        <Button label="View Products" severity="warn" size="small" @click="router.push({ name: 'merchandising.products' })" />
+        <Button v-if="saveSucceeded && createdHasVariants && createdProductId" label="Add Variants" severity="warn" size="small" @click="router.push({ name: 'merchandising.products.edit', params: { id: createdProductId } })" />
+        <Button v-if="saveSucceeded" label="View Products" severity="warn" size="small" @click="router.push({ name: 'merchandising.products' })" />
+        <Button v-else-if="saveError" label="Close" severity="secondary" outlined size="small" @click="saveProgressVisible = false" />
       </template>
     </Dialog>
 
@@ -753,7 +747,9 @@
             id: Number(route.params.id),
             product_name: form.product_name,
             sku: form.sku,
-            base_price: Number(form.base_price || 0)
+            base_price: Number(form.base_price || 0),
+            variation_attributes: form.variation_attributes,
+            variations: variations
           }"
         :can-manage-3d="canManage3d" :upgrade-plan-name="upgradePlanName"
         :embedded-variation="editingVariationId ? (variations.find(v => Number(v.id) === Number(editingVariationId)) || { id: editingVariationId }) : null"
@@ -812,12 +808,15 @@ const load3dUpgradePlan = async () => {
 }
 
 const isEditMode = computed(() => !!route.params.id)
-const showInventoryFields = computed(() => !isEditMode.value)
+const showInventoryFields = computed(() => true)
 const branchCount = ref(0)
-const showInitialStockToggle = computed(() => showInventoryFields.value && branchCount.value === 1)
+const showInitialStockToggle = computed(() => !isEditMode.value && branchCount.value === 1)
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
 const submitting = ref(false)
-const successVisible = ref(false)
+const saveProgressVisible = ref(false)
+const saveSucceeded = ref(false)
+const saveError = ref('')
+const saveStages = ref<Array<{ key: string; label: string; status: 'pending' | 'active' | 'complete' | 'error' }>>([])
 const createdProductId = ref<number | null>(null)
 const createdHasVariants = ref(false)
 const loadingData = ref(false)
@@ -850,6 +849,13 @@ const cropViewportSize = 320
 const loadingVariations = ref(false)
 const initializingVariant = ref(false)
 const variations = ref<any[]>([])
+const variationAttributeFields = [
+  { key: 'color', label: 'Color', placeholder: 'e.g. Walnut' },
+  { key: 'size', label: 'Size', placeholder: 'e.g. Standard' },
+  { key: 'material', label: 'Material', placeholder: 'e.g. Oak wood' },
+  { key: 'texture', label: 'Texture', placeholder: 'e.g. Smooth' },
+  { key: 'finish', label: 'Finish', placeholder: 'e.g. Matte' },
+] as const
 const selectedVariationId = ref<number | null>(null)
 const variationDialogVisible = ref(false)
 const variationDialogKey = ref(0)
@@ -953,9 +959,11 @@ const form = ref({
   base_price: 0.00,
   cost_price: '',
   has_variants: false,
+  variation_attributes: { color: '', size: '', material: '', texture: '', finish: '' },
   add_initial_stock: false,
   initial_stock: null as number | null,
   reorder_point: 10,
+  reorder_quantity: 25,
   discounted_price: null,
   length_cm: null,
   width_cm: null,
@@ -1062,30 +1070,32 @@ const previewUsesVariationSpecs = computed(() => {
   })
 })
 
+const imageOrder = ref<string[]>([])
+const imageDragIndex = ref<number | null>(null)
 const basePreviewImages = computed(() => {
   const items: Array<{ key: string; src: string; alt: string }> = []
-
   const existing = Array.isArray(existingImages.value) ? [...existingImages.value] : []
-  existing.sort((a: any, b: any) => Number(!!b?.is_primary) - Number(!!a?.is_primary))
-  for (const img of existing) {
-    if (!img?.url) continue
-    items.push({
-      key: `existing-${img?.id ?? Math.random()}`,
-      src: img.url,
-      alt: img?.file_name || 'Product image'
-    })
-  }
-
-  const newFiles = Array.isArray(form.value.imageFiles) ? form.value.imageFiles : []
-  newFiles.forEach((file: File, index: number) => {
-    items.push({
-      key: `new-${index}`,
-      src: getImagePreview(file),
-      alt: file?.name || 'Product image'
-    })
+  existing.sort((a: any, b: any) => {
+    const aKey = `existing-${a.id}`
+    const bKey = `existing-${b.id}`
+    const aOrder = imageOrder.value.indexOf(aKey)
+    const bOrder = imageOrder.value.indexOf(bKey)
+    if (aOrder >= 0 || bOrder >= 0) return (aOrder < 0 ? Number.MAX_SAFE_INTEGER : aOrder) - (bOrder < 0 ? Number.MAX_SAFE_INTEGER : bOrder)
+    return Number(!!b?.is_primary) - Number(!!a?.is_primary) || Number(a?.display_order || 0) - Number(b?.display_order || 0)
   })
-
-  return items.filter((i) => !!i.src).slice(0, 4)
+  for (const img of existing) {
+    if (img?.url) items.push({ key: `existing-${img.id}`, src: img.url, alt: img.file_name || 'Product image' })
+  }
+  const newFiles = Array.isArray(form.value.imageFiles) ? form.value.imageFiles : []
+  newFiles.forEach((file: File) => items.push({ key: `new-${fileKey(file)}`, src: getImagePreview(file), alt: file?.name || 'Product image' }))
+  return items.filter(item => !!item.src).sort((a, b) => {
+    const aOrder = imageOrder.value.indexOf(a.key)
+    const bOrder = imageOrder.value.indexOf(b.key)
+    if (aOrder < 0 && bOrder < 0) return 0
+    if (aOrder < 0) return 1
+    if (bOrder < 0) return -1
+    return aOrder - bOrder
+  }).slice(0, 4)
 })
 
 const selectedBaseImageIndex = ref(0)
@@ -1109,6 +1119,37 @@ const previewWidthCm = computed(() => previewUsesVariationSpecs.value ? (selecte
 const previewHeightCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.height_cm ?? null) : form.value.height_cm)
 const previewDepthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.depth_cm ?? null) : form.value.depth_cm)
 const previewWeightKg = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.weight_kg ?? null) : form.value.weight_kg)
+
+const previewSpecs = computed(() => {
+  const variation: any = selectedVariation.value
+  const specs: Array<{ label: string; value: number | string; unit: string }> = []
+  const add = (label: string, value: any, unit: string) => {
+    if (value !== null && value !== undefined && value !== '') specs.push({ label, value, unit })
+  }
+  const valueFor = (key: string) => {
+    const variantValue = variation?.[key]
+    return variantValue !== null && variantValue !== undefined && variantValue !== '' ? variantValue : form.value[key]
+  }
+  add('Width', valueFor('width_cm'), 'cm')
+  add('Depth', valueFor('depth_cm'), 'cm')
+  add('Height', valueFor('height_cm'), 'cm')
+  add('Length', valueFor('length_cm'), 'cm')
+  add('Weight', valueFor('weight_kg'), 'kg')
+  const measurements = [
+    ...(Array.isArray(form.value.additional_measurements) ? form.value.additional_measurements : []),
+    ...(Array.isArray(variation?.additional_measurements) ? variation.additional_measurements : []),
+  ]
+  const uniqueMeasurements = new Map<string, any>()
+  measurements.forEach((measurement: any) => {
+    const label = String(measurement?.label || '').trim()
+    const value = measurement?.value
+    if (label && value !== null && value !== undefined && value !== '') uniqueMeasurements.set(label.toLocaleLowerCase(), measurement)
+  })
+  uniqueMeasurements.forEach((measurement: any) => {
+    add(String(measurement.label).trim(), measurement.value, String(measurement.unit || ''))
+  })
+  return specs
+})
 
 const previewPrimaryImageUrl = computed(() => previewImageUrl.value)
 
@@ -1148,7 +1189,7 @@ const previewGalleryItems = computed(() => {
         src: img?.url || '',
         alt: img?.file_name || 'Product image',
         type: 'existing',
-        isPrimary: !!img?.is_primary,
+        isPrimary: false,
         raw: img
       })
     }
@@ -1161,16 +1202,45 @@ const previewGalleryItems = computed(() => {
         src: getImagePreview(file),
         alt: file?.name || 'Product image',
         type: 'new',
-        isPrimary: existingImages.value?.length ? false : index === 0,
+        isPrimary: false,
         index
       })
     })
   }
 
-  return items.filter((i) => !!i.src)
+  const validItems = items.filter((i) => !!i.src)
+  const ordered = [...validItems].sort((a, b) => {
+    const aIndex = imageOrder.value.indexOf(a.key)
+    const bIndex = imageOrder.value.indexOf(b.key)
+    if (aIndex < 0 && bIndex < 0) return 0
+    if (aIndex < 0) return 1
+    if (bIndex < 0) return -1
+    return aIndex - bIndex
+  })
+  return ordered.map((item, index) => ({ ...item, isPrimary: index === 0 }))
 })
 
 const selectedAssetPreviewIndex = ref(0)
+watch([existingImages, () => form.value.imageFiles], () => {
+  const keys = [
+    ...existingImages.value.map((img: any) => `existing-${img.id}`),
+    ...(form.value.imageFiles || []).map((file: File) => `new-${fileKey(file)}`),
+  ]
+  const retained = imageOrder.value.filter(key => keys.includes(key))
+  imageOrder.value = [...retained, ...keys.filter(key => !retained.includes(key))]
+}, { deep: true })
+
+const reorderPreviewImage = (targetIndex: number) => {
+  const sourceIndex = imageDragIndex.value
+  imageDragIndex.value = null
+  if (sourceIndex === null || sourceIndex === targetIndex) return
+  const keys = previewGalleryItems.value.map(item => item.key)
+  const [moved] = keys.splice(sourceIndex, 1)
+  if (!moved) return
+  keys.splice(targetIndex, 0, moved)
+  imageOrder.value = keys
+  selectedAssetPreviewIndex.value = targetIndex
+}
 watch(previewGalleryItems, (items) => {
   if (!items.length) {
     selectedAssetPreviewIndex.value = 0
@@ -1339,6 +1409,7 @@ const loadProduct = async () => {
       product_name: product.product_name || '',
       sku: product.sku || '',
       category_id: product.category_id,
+      subcategory_id: product.subcategory_id ?? product.subcategory?.id ?? null,
       unit_code: product.unit?.unit_symbol || product.unit?.unit_code || product.unit?.unit_name || product.unit_of_measurement || null,
       product_type: product.product_type || 'finished_good',
       brand: product.brand || '',
@@ -1346,6 +1417,15 @@ const loadProduct = async () => {
       tag_ids: (product.tags || []).filter((tag: any) => tag.tag_type !== 'Room').slice(0, 3).map((tag: any) => Number(tag.id)),
       room_ids: (product.shopping_rooms || []).map((room: any) => Number(room.id)),
       stock_status: product.stock_status || 'In Stock',
+      reorder_point: Number(product.reorder_point ?? 10),
+      has_variants: Boolean(product.has_variants || Number(product.variations_count || 0) > 0),
+      variation_attributes: {
+        color: product.variation_attributes?.color || '',
+        size: product.variation_attributes?.size || '',
+        material: product.variation_attributes?.material || '',
+        texture: product.variation_attributes?.texture || '',
+        finish: product.variation_attributes?.finish || '',
+      },
       description: product.description || '',
       base_price: product.base_price,
       cost_price: product.cost_price || null,
@@ -1368,7 +1448,7 @@ const loadProduct = async () => {
       is_featured: product.is_featured || false,
       is_new_arrival: product.is_new_arrival || false,
       is_bestseller: product.is_bestseller || false,
-      is_active: product.is_active,
+      is_active: product.is_active ?? true,
       meta_title: product.meta_title || '',
       meta_description: product.meta_description || '',
       meta_keywords: product.meta_keywords || '',
@@ -1410,7 +1490,7 @@ const loadProductAssets = async (productId: number) => {
     const galleryImages = grouped['Image_Gallery'] || []
 
     existingImages.value = [...mainImages, ...galleryImages]
-      .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
+      .sort((a: any, b: any) => Number(!!b.is_primary) - Number(!!a.is_primary) || Number(a.display_order || 0) - Number(b.display_order || 0))
 
     if (models.length > 0) {
       existingModel.value = models.find((m: any) => m.is_primary) || models[0]
@@ -1975,10 +2055,13 @@ const validateForm = () => {
   errors.value = {}
 
   if (!form.value.product_name.trim()) errors.value.product_name = 'Product name is required.'
-  if (!isEditMode.value && form.value.product_type === 'finished_good' && !form.value.category_id) {
+  if (form.value.product_type === 'finished_good' && !form.value.category_id) {
     errors.value.category_id = categories.value.length ? 'Category is required.' : 'Create a category before adding a product.'
   }
-  if (!isEditMode.value && !form.value.unit_code) errors.value.unit_of_measurement = 'Unit is required.'
+  if (!form.value.unit_code) errors.value.unit_of_measurement = 'Unit is required.'
+  if (!isEditMode.value && (form.value.reorder_quantity == null || Number(form.value.reorder_quantity) < 1)) {
+    errors.value.reorder_quantity = 'Refill quantity must be at least 1.'
+  }
   if (!isEditMode.value && showInitialStockToggle.value && form.value.add_initial_stock && !form.value.has_variants
     && (form.value.initial_stock == null || Number(form.value.initial_stock) < 1)) {
     errors.value.initial_stock = 'Available stock must be at least 1.'
@@ -2012,15 +2095,55 @@ const confirmProductSubmit = () => {
   })
 }
 
-const handleSubmit = async () => {
-  if (!isEditMode.value) {
-    if (!validateForm()) {
-      toast.add({ severity: 'warn', summary: 'Validation Error', detail: 'Please correct the highlighted fields before saving.', life: 3500 })
-      return
-    }
+const beginSaveProgress = (stages: Array<{ key: string; label: string }>) => {
+  saveStages.value = stages.map((stage, index) => ({ ...stage, status: index === 0 ? 'active' : 'pending' }))
+  saveSucceeded.value = false
+  saveError.value = ''
+  saveProgressVisible.value = true
+}
 
-    submitting.value = true
-    try {
+const activateSaveStage = (key: string) => {
+  let activeIndex = saveStages.value.findIndex(stage => stage.key === key)
+  saveStages.value = saveStages.value.map((stage, index) => ({
+    ...stage,
+    status: index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending',
+  }))
+}
+
+const completeSaveProgress = () => {
+  saveStages.value = saveStages.value.map(stage => ({ ...stage, status: 'complete' }))
+  saveSucceeded.value = true
+}
+
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    toast.add({ severity: 'warn', summary: 'Validation Error', detail: 'Please correct the highlighted fields before saving.', life: 3500 })
+    return
+  }
+
+  const hasImages = !!(existingImages.value.length || form.value.imageFiles?.length)
+  const hasModelUpdate = !!(form.value.modelFile || (isEditMode.value && existingModel.value?.id))
+  const stages = isEditMode.value
+    ? [
+        { key: 'product', label: 'Save product details' },
+        ...(hasModelUpdate ? [{ key: 'model', label: 'Save 3D model settings' }] : []),
+        ...(hasImages ? [{ key: 'images', label: 'Save product image order and uploads' }] : []),
+        { key: 'finish', label: 'Finish saving' },
+      ]
+    : [
+        { key: 'product', label: 'Create product and inventory setup' },
+        { key: 'storefront', label: 'Save storefront details' },
+        ...(form.value.modelFile ? [{ key: 'model', label: 'Upload 3D model' }] : []),
+        ...(form.value.imageFiles?.length ? [{ key: 'images', label: 'Upload product images' }] : []),
+        { key: 'finish', label: 'Finish saving' },
+      ]
+
+  beginSaveProgress(stages)
+  submitting.value = true
+  try {
+    let productId: number
+    if (!isEditMode.value) {
+      activateSaveStage('product')
       const createPayload: Record<string, any> = {
         product_name: form.value.product_name.trim(),
         product_type: form.value.product_type,
@@ -2044,126 +2167,101 @@ const handleSubmit = async () => {
         is_active: form.value.is_active,
         tag_ids: form.value.tag_ids,
         has_variants: form.value.product_type === 'finished_good' && form.value.has_variants,
+        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
         reorder_point: form.value.reorder_point,
+        reorder_quantity: form.value.reorder_quantity,
+        reorder_scope: 'store',
         add_initial_stock: showInitialStockToggle.value && form.value.add_initial_stock && !form.value.has_variants,
       }
       if (createPayload.add_initial_stock) createPayload.initial_stock = form.value.initial_stock
 
       const response = await inventoryService.createProduct(createPayload, true)
       const product = response?.data?.data || response?.data || {}
-      const productId = Number(product.id)
-      if (!productId) throw new Error(response?.message || 'Product was created but its identifier was not returned.')
-
+      productId = Number(product.id)
+      if (!productId) throw new Error(response?.message || 'The server did not return the created product ID.')
       createdProductId.value = productId
       createdHasVariants.value = Boolean(createPayload.has_variants)
       form.value.sku = product.sku || ''
 
-      // Save storefront fields and uploaded assets after inventory creates the product and its SKU.
-      try {
-        await merchandisingService.updateProduct(productId, {
-          collection_name: form.value.collection_name,
-          room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
-          is_customizable: form.value.is_customizable,
-          is_featured: form.value.is_featured,
-          is_new_arrival: form.value.is_new_arrival,
-          is_bestseller: form.value.is_bestseller,
-          meta_title: form.value.meta_title,
-          meta_description: form.value.meta_description,
-          meta_keywords: form.value.meta_keywords,
-        } as any)
-        if (form.value.modelFile) await upload3DModel(productId)
-        if (form.value.imageFiles?.length) await uploadImages(productId)
-      } catch (metadataError: any) {
-        toast.add({ severity: 'warn', summary: 'Product created', detail: metadataError?.response?.data?.message || 'Some storefront details or assets could not be saved. You can update them from the product edit page.', life: 5000 })
+      activateSaveStage('storefront')
+      await merchandisingService.updateProduct(productId, {
+        collection_name: form.value.collection_name,
+        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
+        room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
+        is_customizable: form.value.is_customizable,
+        is_featured: form.value.is_featured,
+        is_new_arrival: form.value.is_new_arrival,
+        is_bestseller: form.value.is_bestseller,
+        meta_title: form.value.meta_title,
+        meta_description: form.value.meta_description,
+        meta_keywords: form.value.meta_keywords,
+      } as any)
+    } else {
+      productId = Number(route.params.id)
+      activateSaveStage('product')
+      const submitData = {
+        product_name: form.value.product_name.trim(),
+        product_type: form.value.product_type,
+        category_id: form.value.product_type === 'finished_good' ? form.value.category_id : null,
+        subcategory_id: form.value.product_type === 'finished_good' ? form.value.subcategory_id : null,
+        unit_of_measurement: form.value.unit_code,
+        brand: form.value.brand?.trim() || null,
+        base_price: Number(form.value.base_price || 0),
+        cost_price: form.value.cost_price === '' ? null : Number(form.value.cost_price),
+        collection_name: form.value.collection_name,
+        room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
+        description: form.value.description,
+        discounted_price: isRawMaterialType.value ? null : form.value.discounted_price,
+        reorder_point: Number(form.value.reorder_point ?? 0),
+        is_active: form.value.is_active,
+        tag_ids: form.value.tag_ids,
+        variation_attributes: form.value.product_type === 'finished_good' && form.value.has_variants ? form.value.variation_attributes : null,
+        length_cm: form.value.length_cm,
+        width_cm: form.value.width_cm,
+        height_cm: form.value.height_cm,
+        depth_cm: form.value.depth_cm,
+        weight_kg: form.value.weight_kg,
+        additional_measurements: form.value.additional_measurements
+          .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
+          .map(({ label, value, unit }) => ({ label: label.trim(), value, unit })),
+        assembly_required: form.value.assembly_required,
+        is_customizable: form.value.is_customizable,
+        is_featured: form.value.is_featured,
+        is_new_arrival: form.value.is_new_arrival,
+        is_bestseller: form.value.is_bestseller,
+        meta_title: form.value.meta_title,
+        meta_description: form.value.meta_description,
+        meta_keywords: form.value.meta_keywords,
+        published_at: form.value.published_at instanceof Date ? form.value.published_at.toISOString() : form.value.published_at,
       }
-      successVisible.value = true
-    } catch (error: any) {
-      if (error.response?.status === 422) errors.value = error.response.data.errors || {}
-      toast.add({ severity: 'error', summary: 'Unable to create product', detail: error.response?.data?.message || error.message || 'Please check the form and try again.', life: 5000 })
-    } finally {
-      submitting.value = false
-    }
-    return
-  }
-  if (!validateForm()) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Validation Error',
-      detail: 'Please fill in all required fields',
-      life: 3000
-    })
-    return
-  }
-
-  submitting.value = true
-
-  try {
-    let productId: number
-
-    // Prepare data for submission - convert Date back to ISO string
-    const submitData = {
-      collection_name: form.value.collection_name,
-      room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
-      description: form.value.description,
-      discounted_price: isRawMaterialType.value ? null : form.value.discounted_price,
-      length_cm: form.value.length_cm,
-      width_cm: form.value.width_cm,
-      height_cm: form.value.height_cm,
-      depth_cm: form.value.depth_cm,
-      weight_kg: form.value.weight_kg,
-      additional_measurements: form.value.additional_measurements
-        .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
-        .map(({ label, value, unit }) => ({ label: label.trim(), value, unit })),
-      assembly_required: form.value.assembly_required,
-      is_customizable: form.value.is_customizable,
-      is_featured: form.value.is_featured,
-      is_new_arrival: form.value.is_new_arrival,
-      is_bestseller: form.value.is_bestseller,
-      meta_title: form.value.meta_title,
-      meta_description: form.value.meta_description,
-      meta_keywords: form.value.meta_keywords,
-      // Convert Date object to ISO string
-      published_at: form.value.published_at instanceof Date
-        ? form.value.published_at.toISOString()
-        : form.value.published_at,
+      await merchandisingService.updateProduct(productId, submitData)
     }
 
-    // Create or update product
-    const response = await merchandisingService.updateProduct(Number(route.params.id), submitData)
-    productId = Number(route.params.id)
-    toast.add({ severity: 'success', summary: 'Success', detail: response?.message || 'Presentation updated successfully', life: 3000 })
-
-    // Upload 3D model if present
     if (form.value.modelFile) {
+      activateSaveStage('model')
       await upload3DModel(productId)
-    } else if (existingModel.value?.id) {
+    } else if (isEditMode.value && existingModel.value?.id) {
+      activateSaveStage('model')
       await updateExistingModelCameraSettings(existingModel.value.id)
     }
 
-    // Upload images if present
-    if (form.value.imageFiles && form.value.imageFiles.length > 0) {
+    if (hasImages) {
+      activateSaveStage('images')
+      await persistImageOrder(productId)
       await uploadImages(productId)
     }
 
-    router.push({ name: 'merchandising.products' })
+    activateSaveStage('finish')
+    completeSaveProgress()
   } catch (error: any) {
-    console.error('Form submission error:', error)
-
-    if (error.response?.status === 422) {
-      errors.value = error.response.data.errors || {}
-    }
-
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to save product',
-      life: 5000
-    })
+    const activeStage = saveStages.value.find(stage => stage.status === 'active')
+    if (activeStage) activeStage.status = 'error'
+    if (error.response?.status === 422) errors.value = error.response.data.errors || {}
+    saveError.value = error.response?.data?.message || error.message || 'Please check the form and try again.'
   } finally {
     submitting.value = false
   }
 }
-
 // In ProductForm2.vue - Update these functions
 
 const upload3DModel = async (productId: number) => {
@@ -2186,25 +2284,9 @@ const upload3DModel = async (productId: number) => {
       size: form.value.modelFile.size
     })
 
-    const response = await merchandisingService.uploadProduct3DModel(productId, formData)
-
-    console.log('3D model upload response:', response)
-
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: '3D model uploaded successfully',
-      life: 3000
-    })
+    await merchandisingService.uploadProduct3DModel(productId, formData)
   } catch (error: any) {
-    console.error('3D model upload error:', error.response || error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to upload 3D model',
-      life: 3000
-    })
-    throw error // Re-throw to handle in main submit
+    throw error
   }
 }
 
@@ -2216,55 +2298,42 @@ const updateExistingModelCameraSettings = async (assetId: number) => {
       default_zoom_level: Number(form.value.default_zoom_level ?? 1.5),
     })
   } catch (error: any) {
-    console.error('Failed to update existing model camera settings:', error?.response || error)
-    toast.add({
-      severity: 'warn',
-      summary: 'Camera Settings',
-      detail: 'Product saved, but failed to update existing 3D camera settings.',
-      life: 3500
-    })
+    throw error
   }
+}
+
+const persistImageOrder = async (productId: number) => {
+  const orderedItems = previewGalleryItems.value
+  const orderedExisting = orderedItems.map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.type === 'existing' && item.raw?.id)
+  if (!orderedExisting.length) return
+  await merchandisingService.reorderAssets(productId, orderedExisting.map(({ item, index }) => ({
+    id: Number(item.raw.id),
+    display_order: index,
+    asset_type: index === 0 ? 'Image_Main' : 'Image_Gallery',
+    is_primary: index === 0,
+  })))
 }
 
 const uploadImages = async (productId: number) => {
   if (!form.value.imageFiles || form.value.imageFiles.length === 0) return
 
-  try {
-    for (let i = 0; i < form.value.imageFiles.length; i++) {
-      const originalFile = form.value.imageFiles[i] as File
-      const settings = cropSettingsByKey.value[fileKey(originalFile)]
-      const fileToUpload = settings ? (await createCroppedFileFrom(originalFile, settings)) : originalFile
-      if (!fileToUpload) {
-        throw new Error('Failed to crop image')
-      }
+  const orderedNew = previewGalleryItems.value.filter(item => item.type === 'new')
+  for (let i = 0; i < orderedNew.length; i++) {
+    const item = orderedNew[i]
+    const originalFile = form.value.imageFiles[item.index!] as File
+    const settings = cropSettingsByKey.value[fileKey(originalFile)]
+    const fileToUpload = settings ? (await createCroppedFileFrom(originalFile, settings)) : originalFile
+    if (!fileToUpload) throw new Error(`Failed to prepare image ${i + 1}.`)
 
-      const formData = new FormData()
-      formData.append('product_id', productId.toString())
-      formData.append('asset_type', i === 0 ? 'Image_Main' : 'Image_Gallery')
-      formData.append('asset_file', fileToUpload) // Note: asset_file
-      formData.append('is_primary', i === 0 ? '1' : '0') // Use '1'/'0'
-      formData.append('display_order', i.toString())
-
-      console.log(`Uploading image ${i + 1}/${form.value.imageFiles.length}`)
-
-      await merchandisingService.uploadAsset(formData)
-    }
-
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `${form.value.imageFiles.length} images uploaded successfully`,
-      life: 3000
-    })
-  } catch (error: any) {
-    console.error('Image upload error:', error.response || error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to upload some images',
-      life: 3000
-    })
-    throw error
+    const fullOrderIndex = previewGalleryItems.value.findIndex(candidate => candidate.key === item.key)
+    const formData = new FormData()
+    formData.append('product_id', productId.toString())
+    formData.append('asset_type', fullOrderIndex === 0 ? 'Image_Main' : 'Image_Gallery')
+    formData.append('asset_file', fileToUpload)
+    formData.append('is_primary', fullOrderIndex === 0 ? '1' : '0')
+    formData.append('display_order', String(fullOrderIndex))
+    await merchandisingService.uploadAsset(formData)
   }
 }
 

@@ -88,7 +88,7 @@
       </div>
   
       <div v-if="loading">
-        <Card class="rounded-2xl border border-gray-100 shadow-sm">
+        <Card class="rounded-2xl border border-gray-200 shadow-sm">
           <template #content>
             <div class="space-y-3">
               <Skeleton height="16px" width="220px" />
@@ -100,9 +100,9 @@
       </div>
   
       <template v-else-if="detail">
-        <Card>
+        <Card class="border border-gray-200">
           <template #content>
-            <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
+            <div class="flex items-start justify-between gap-3 border-b border-gray-200 pb-4">
               <div>
                 <div class="text-xs text-gray-500">PR No.</div>
                 <div class="text-lg font-bold text-gray-900">Purchase Requisition Details</div>
@@ -137,8 +137,7 @@
             </div>
           </template>
         </Card>
-  
-        <Card class="rounded-2xl border border-gray-100 shadow-sm">
+        <Card class="rounded-2xl border border-gray-200 shadow-sm">
           <template #content>
             <div class="mb-4 flex items-center justify-between"><div><h2 class="text-sm font-semibold uppercase tracking-wider text-gray-900">Line Items</h2><p class="mt-1 text-xs text-gray-500">Products and quantities requested for this requisition.</p></div><i class="pi pi-list text-xl text-gray-400"></i></div>
             <DataTable :value="detail.items || []" class="p-datatable-sm text-xs" responsiveLayout="scroll">
@@ -179,8 +178,6 @@
             </DataTable>
           </template>
         </Card>
-
-       
       </template>
     </div>
   </div>

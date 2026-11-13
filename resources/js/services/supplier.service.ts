@@ -293,6 +293,16 @@ class SupplierService {
     return response.data
   }
 
+  async createProductCategory(categoryName: string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/product-categories`, { category_name: categoryName })
+    return response.data
+  }
+
+  async updateProductListing(id: number | string, data: Record<string, unknown>) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/products/${id}`, data)
+    return response.data
+  }
+
   async getProductListing(id: number | string) {
     const response = await axiosClient.get(`${this.portalBaseUrl}/products/${id}`)
     return response.data

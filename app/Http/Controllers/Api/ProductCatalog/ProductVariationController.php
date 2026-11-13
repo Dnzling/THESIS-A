@@ -224,10 +224,6 @@ class ProductVariationController extends BaseController
                     return $this->errorResponse('Variation SKU already exists for this store', 422);
                 }
 
-                if (!$product->variations()->exists()) {
-                    $this->convertProductInventoryToBaselineVariation($product, true);
-                }
-
                 $initialStock = (int) ($validated['initial_stock'] ?? 0);
                 $proposalId = (int) ($validated['proposal_id'] ?? 0);
                 $data = $validated;
@@ -489,44 +485,74 @@ class ProductVariationController extends BaseController
 
     public function archive($id)
     {
-        $variation = ProductVariation::byStore($this->getStoreId())->find($id);
+        $storeId = $this->getStoreId();
+        $result = DB::transaction(function () use ($id, $storeId) {
+            $variation = ProductVariation::byStore($storeId)
+                ->lockForUpdate()
+                ->find($id);
 
-        if (!$variation) {
-            return $this->errorResponse('Variation not found', 404);
-        }
+            if (!$variation) {
+                return ['status' => 404, 'message' => 'Variation not found'];
+            }
 
-        $hasStock = BranchInventory::query()
-            ->where('store_id', $this->getStoreId())
-            ->where('variation_id', $variation->id)
-            ->where(function ($query) {
-                $query->where('quantity_on_hand', '>', 0)
-                    ->orWhere('quantity_available', '>', 0)
-                    ->orWhere('quantity_reserved', '>', 0)
-                    ->orWhere('quantity_incoming', '>', 0);
-            })
-            ->exists();
+            $inventoryRows = BranchInventory::query()
+                ->with('branch:id,name')
+                ->where('store_id', $storeId)
+                ->where('variation_id', $variation->id)
+                ->lockForUpdate()
+                ->get();
 
-        if ($hasStock) {
-            return $this->errorResponse(
-                'This variant still has on-hand, available, reserved, or incoming stock. Clear its inventory before archiving.',
-                422
+            $stockRows = $inventoryRows->filter(fn (BranchInventory $row) =>
+                (int) $row->quantity_on_hand > 0
+                || (int) $row->quantity_available > 0
+                || (int) $row->quantity_reserved > 0
+                || (int) $row->quantity_damaged > 0
+                || (int) $row->quantity_incoming > 0
             );
+
+            if ($stockRows->isNotEmpty()) {
+                $branchDetails = $stockRows->map(function (BranchInventory $row) {
+                    $branchName = $row->branch?->name ?? "Branch {$row->branch_id}";
+                    $quantities = collect([
+                        'on hand' => (int) $row->quantity_on_hand,
+                        'available' => (int) $row->quantity_available,
+                        'reserved' => (int) $row->quantity_reserved,
+                        'damaged' => (int) $row->quantity_damaged,
+                        'incoming' => (int) $row->quantity_incoming,
+                    ])->filter(fn ($quantity) => $quantity > 0)
+                        ->map(fn ($quantity, $label) => "{$quantity} {$label}")
+                        ->implode(', ');
+
+                    return "{$branchName} ({$quantities})";
+                })->implode('; ');
+
+                return [
+                    'status' => 422,
+                    'message' => "Cannot archive this variant while inventory remains at: {$branchDetails}. Clear, transfer, or dispose of the stock first.",
+                ];
+            }
+
+            $hasActiveSibling = ProductVariation::byStore($storeId)
+                ->where('product_id', $variation->product_id)
+                ->where('id', '!=', $variation->id)
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$hasActiveSibling) {
+                return ['status' => 422, 'message' => 'At least one active variant must remain for this product.'];
+            }
+
+            $variation->update(['is_active' => false]);
+
+            return ['variation' => $variation->fresh()];
+        });
+
+        if (isset($result['status'])) {
+            return $this->errorResponse($result['message'], $result['status']);
         }
-
-        $hasActiveSibling = ProductVariation::byStore($this->getStoreId())
-            ->where('product_id', $variation->product_id)
-            ->where('id', '!=', $variation->id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (!$hasActiveSibling) {
-            return $this->errorResponse('At least one active variant must remain for this product.', 422);
-        }
-
-        $variation->update(['is_active' => false]);
 
         return $this->successResponse(
-            $variation->fresh(),
+            $result['variation'],
             'Variant archived successfully'
         );
     }

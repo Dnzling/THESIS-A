@@ -51,6 +51,7 @@ class Product extends Model
         'depth_cm',
         'weight_kg',
         'additional_measurements',
+        'variation_attributes',
         'is_bulky',
         'assembly_required',
         'is_customizable',
@@ -75,6 +76,7 @@ class Product extends Model
         'depth_cm' => 'decimal:2',
         'weight_kg' => 'decimal:2',
         'additional_measurements' => 'array',
+        'variation_attributes' => 'array',
         'discounted_price' => 'decimal:2',
         'reorder_point' => 'integer',
         'pending_base_price' => 'decimal:2',
@@ -114,7 +116,7 @@ class Product extends Model
     public function suppliers()
     {
         return $this->belongsToMany(Supplier::class, 'supplier_products')
-            ->withPivot('supplier_sku', 'supplier_price', 'available_stock', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
+            ->withPivot('supplier_sku', 'supplier_price', 'availability_status', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
             ->withTimestamps();
     }
     public function category()

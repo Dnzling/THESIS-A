@@ -202,6 +202,7 @@ class ProductController extends BaseController
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
+                'reorder_quantity' => 'nullable|integer|min:1',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
@@ -211,6 +212,12 @@ class ProductController extends BaseController
                 'additional_measurements.*.label' => 'required|string|max:80',
                 'additional_measurements.*.value' => 'required|numeric|gt:0',
                 'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
+                'variation_attributes' => 'nullable|array',
+                'variation_attributes.color' => 'nullable|string|max:100',
+                'variation_attributes.size' => 'nullable|string|max:100',
+                'variation_attributes.material' => 'nullable|string|max:100',
+                'variation_attributes.texture' => 'nullable|string|max:100',
+                'variation_attributes.finish' => 'nullable|string|max:100',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
@@ -267,6 +274,7 @@ class ProductController extends BaseController
                     $product->id,
                     (int) $this->getStoreId(),
                     (int) ($product->reorder_point ?? 0),
+                    (int) ($validated['reorder_quantity'] ?? 25),
                 );
 
                 // Create pricing history entry
@@ -524,7 +532,7 @@ class ProductController extends BaseController
                 'sku' => 'sometimes|string|max:50|unique:products,sku,' . $id . ',id,store_id,' . $this->getStoreId(),
                 'product_name' => 'sometimes|string|max:200',
                 'description' => 'nullable|string',
-                'category_id' => 'sometimes|exists:categories,id',
+                'category_id' => 'sometimes|nullable|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'unit_id' => 'nullable|exists:units,id',
                 'unit_of_measurement' => 'nullable|string|max:50',
@@ -533,6 +541,8 @@ class ProductController extends BaseController
                 'collection_name' => 'nullable|string|max:100',
                 'room_ids' => 'sometimes|array|max:5',
                 'room_ids.*' => 'integer|distinct|exists:shopping_rooms,id',
+                'tag_ids' => 'sometimes|nullable|array|max:3',
+                'tag_ids.*' => 'integer|distinct|exists:tags,id',
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|gt:0',
@@ -546,6 +556,12 @@ class ProductController extends BaseController
                 'additional_measurements.*.label' => 'required|string|max:80',
                 'additional_measurements.*.value' => 'required|numeric|gt:0',
                 'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
+                'variation_attributes' => 'sometimes|nullable|array',
+                'variation_attributes.color' => 'nullable|string|max:100',
+                'variation_attributes.size' => 'nullable|string|max:100',
+                'variation_attributes.material' => 'nullable|string|max:100',
+                'variation_attributes.texture' => 'nullable|string|max:100',
+                'variation_attributes.finish' => 'nullable|string|max:100',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
@@ -579,6 +595,26 @@ class ProductController extends BaseController
                 }
             }
 
+            if (!empty($validated['subcategory_id'])) {
+                $subcategory = \App\Models\ProductCatalog\Category::byStore($this->getStoreId())
+                    ->find($validated['subcategory_id']);
+                $parentCategoryId = $validated['category_id'] ?? $product->category_id;
+                if (!$subcategory || (int) $subcategory->parent_category_id !== (int) $parentCategoryId) {
+                    throw ValidationException::withMessages([
+                        'subcategory_id' => 'The selected subcategory does not belong to the selected category.',
+                    ]);
+                }
+            }
+
+            if (array_key_exists('tag_ids', $validated)) {
+                $tagIds = $validated['tag_ids'] ?? [];
+                $validTagCount = DB::table('tags')->where('store_id', (int) $this->getStoreId())
+                    ->whereNull('deleted_at')->whereIn('id', $tagIds)->count();
+                if ($validTagCount !== count($tagIds)) {
+                    throw ValidationException::withMessages(['tag_ids' => 'One or more selected tags are invalid.']);
+                }
+            }
+
             DB::beginTransaction();
 
             try {
@@ -599,6 +635,12 @@ class ProductController extends BaseController
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
+                if (array_key_exists('tag_ids', $validated)) {
+                    $tagSync = collect($validated['tag_ids'] ?? [])->mapWithKeys(fn ($tagId) => [
+                        (int) $tagId => ['store_id' => (int) $this->getStoreId()],
+                    ])->all();
+                    $product->tags()->sync($tagSync);
+                }
                 if (array_key_exists('reorder_point', $validated)) {
                     $branchIds = Branch::query()
                         ->where('store_id', (int) $this->getStoreId())
@@ -969,7 +1011,7 @@ class ProductController extends BaseController
      * Ensure each active branch has a base branch_inventory row for this product.
      * Stock starts at 0 and must move through inventory transactions.
      */
-    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId, int $reorderPoint): void
+    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId, int $reorderPoint, int $reorderQuantity): void
     {
         $branches = Branch::query()
             ->where('store_id', $storeId)
@@ -993,12 +1035,16 @@ class ProductController extends BaseController
                     // Reorder settings now live in reorder_rules (primary).
                     // Keep these columns as legacy/fallback only.
                     'reorder_point' => $reorderPoint,
-                    'reorder_quantity' => 0,
+                    'reorder_quantity' => $reorderQuantity,
                     'maximum_stock' => 1000,
                     'safety_stock' => 5,
                     'stock_status' => 'out_of_stock',
                 ]
             );
+
+            $inventory->reorder_point = $reorderPoint;
+            $inventory->reorder_quantity = $reorderQuantity;
+            $inventory->save();
 
             ReorderRule::query()->firstOrCreate(
                 [
@@ -1006,16 +1052,23 @@ class ProductController extends BaseController
                     'branch_id' => (int) $branchId,
                 ],
                 [
-                    'rule_type' => 'manual',
+                    'rule_type' => 'automatic',
                     'trigger_type' => 'reorder_point',
                     'basis_type' => 'reorder_point',
                     'reorder_point' => $reorderPoint,
-                    'reorder_quantity' => 25,
+                    'reorder_quantity' => $reorderQuantity,
                     'priority' => 'medium',
                     'auto_generate_po' => false,
                     'is_active' => true,
                 ]
             );
+
+            $suggestionResult = app(\App\Services\Inventory\ReorderSuggestionService::class)
+                ->generateSuggestions($storeId, (int) $branchId, (int) $inventory->id);
+            foreach (($suggestionResult['suggestions'] ?? []) as $suggestion) {
+                app(\App\Services\Inventory\ReorderSuggestionNotificationService::class)
+                    ->notify($suggestion, 'product_created');
+            }
         }
     }
 

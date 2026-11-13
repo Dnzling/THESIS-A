@@ -16,7 +16,7 @@
         </div>
       </div>
 
-      <Card>
+      <Card class="border border-gray-200">
         <template #content>
           <!-- Filters -->
           <div class="mb-6">

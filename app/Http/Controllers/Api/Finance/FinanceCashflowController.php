@@ -73,36 +73,9 @@ class FinanceCashflowController extends Controller
     {
         $user = Auth::user();
         $storeId = (int) ($user?->store_id ?? 0);
-
-        $query = FinanceCashflowTransaction::where('store_id', $storeId)
-            ->orderByDesc('id');
-
-        if ($request->filled('direction')) {
-            $query->where('direction', $request->direction);
-        }
-
-        if ($request->filled('reference_type')) {
-            $query->where('reference_type', $request->reference_type);
-        }
-
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-            $query->where(function ($builder) use ($search) {
-                $builder->where('description', 'like', "%{$search}%")
-                    ->orWhere('payment_method', 'like', "%{$search}%")
-                    ->orWhere('reference_type', 'like', "%{$search}%");
-            });
-        }
-
-        if ($request->filled('date_from')) {
-            $query->whereDate('created_at', '>=', $request->date_from);
-        }
-
-        if ($request->filled('date_to')) {
-            $query->whereDate('created_at', '<=', $request->date_to);
-        }
-
-        $transactions = $query->paginate($request->integer('per_page', 50));
+        $transactions = $this->filteredTransactionsQuery($request, $storeId)
+            ->paginate($request->integer('per_page', 50));
+        $this->attachListReferences($transactions->getCollection(), $storeId);
 
         $periodEnd = $request->filled('date_to')
             ? Carbon::parse($request->input('date_to'))->endOfDay()
@@ -153,6 +126,178 @@ class FinanceCashflowController extends Controller
                 ],
             ],
         ]);
+    }
+
+    public function exportTransactions(Request $request)
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        $filename = 'cashflow-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($request, $storeId) {
+            $output = fopen('php://output', 'w');
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, ['Date & Time', 'Direction', 'Amount (PHP)', 'Recorded Balance After (PHP)', 'Source', 'Reference', 'Method']);
+
+            $this->filteredTransactionsQuery($request, $storeId)
+                ->reorder()
+                ->orderBy('id')
+                ->chunkById(500, function ($transactions) use ($output, $storeId) {
+                    $this->attachListReferences($transactions, $storeId);
+                    foreach ($transactions as $transaction) {
+                        fputcsv($output, [
+                            $transaction->created_at?->timezone('Asia/Manila')->format('Y-m-d H:i:s'),
+                            $transaction->direction === 'in' ? 'Incoming' : 'Outgoing',
+                            number_format((float) $transaction->amount, 2, '.', ''),
+                            $transaction->balance_after === null ? '' : number_format((float) $transaction->balance_after, 2, '.', ''),
+                            $this->formatCashflowSource($transaction->reference_type),
+                            $transaction->source_reference ?? '',
+                            $this->formatCashflowPaymentMethod($transaction->payment_method),
+                        ]);
+                    }
+                });
+
+            fclose($output);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function printTransactions(Request $request)
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        $transactions = $this->filteredTransactionsQuery($request, $storeId)->get();
+        $this->attachListReferences($transactions, $storeId);
+
+        $pdf = \PDF::loadView('finance.cashflow-print', [
+            'store' => DB::table('stores')->where('id', $storeId)->first(['name']),
+            'transactions' => $transactions,
+            'filters' => [
+                'date_from' => $request->input('date_from'),
+                'date_to' => $request->input('date_to'),
+                'direction' => $request->input('direction'),
+                'source' => $request->input('reference_type'),
+            ],
+            'printedAt' => now()->timezone('Asia/Manila'),
+            'printedBy' => trim(($request->user()?->fname ?? '') . ' ' . ($request->user()?->lname ?? '')) ?: ($request->user()?->email ?? 'System'),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream('cashflow-transactions-' . now()->format('Ymd-His') . '.pdf');
+    }
+
+    private function filteredTransactionsQuery(Request $request, int $storeId)
+    {
+        $query = FinanceCashflowTransaction::where('store_id', $storeId)->orderByDesc('id');
+
+        if ($request->filled('direction')) {
+            $query->where('direction', $request->input('direction'));
+        }
+        if ($request->filled('reference_type')) {
+            $query->where('reference_type', $request->input('reference_type'));
+        }
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('description', 'like', "%{$search}%")
+                    ->orWhere('payment_method', 'like', "%{$search}%")
+                    ->orWhere('reference_type', 'like', "%{$search}%");
+            });
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->input('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->input('date_to'));
+        }
+
+        return $query;
+    }
+
+    private function formatCashflowSource(?string $value): string
+    {
+        $labels = [
+            'sales_order' => 'POS Sale', 'sales_pos_order' => 'POS Sale',
+            'ecommerce_order' => 'Ecommerce', 'invoice' => 'Supplier Invoice',
+            'finance_expense' => 'Expense', 'finance_refund' => 'Customer Refund',
+            'payroll' => 'Payroll', 'cash_advance' => 'Cash Advance',
+            'cash_advance_return' => 'Returned Advance Cash',
+            'liquidation_reimbursement' => 'Liquidation Reimbursement',
+            'manual_adjustment' => 'Manual Adjustment', 'cashflow_topup' => 'Cashflow Top-up',
+            'ecommerce_return_replacement' => 'Replacement',
+        ];
+
+        return $labels[$value] ?? ($value ? ucwords(str_replace(['_', '-'], ' ', $value)) : 'Manual Entry');
+    }
+
+    private function formatCashflowPaymentMethod(?string $value): string
+    {
+        if (!$value) return '-';
+        if (str_contains(strtolower($value), 'paymongo') || strtolower($value) === 'online_payment') return 'Online Payment';
+
+        return match (strtolower($value)) {
+            'gcash' => 'GCash', 'maya' => 'Maya', 'credit_card' => 'Credit Card',
+            'debit_card' => 'Debit Card', 'bank_transfer' => 'Bank Transfer',
+            default => ucwords(str_replace('_', ' ', $value)),
+        };
+    }
+
+    private function attachListReferences($transactions, int $storeId): void
+    {
+        foreach ($transactions as $transaction) {
+            $transaction->source_label = $this->formatCashflowSource($transaction->reference_type);
+            $transaction->formatted_payment_method = $this->formatCashflowPaymentMethod($transaction->payment_method);
+        }
+
+        $referenceSources = [
+            'sales_order' => ['sales_pos_orders', 'order_number'],
+            'sales_pos_order' => ['sales_pos_orders', 'order_number'],
+            'ecommerce_order' => ['ecommerce_orders', 'order_number'],
+            'invoice' => ['invoices', 'invoice_number'],
+            'finance_expense' => ['finance_expenses', 'reference_number'],
+            'finance_refund' => ['finance_refunds', 'order_number'],
+            'cash_advance' => ['finance_cash_advances', 'advance_number'],
+            'cash_advance_return' => ['finance_cash_advances', 'advance_number'],
+            'liquidation_reimbursement' => ['finance_cash_advances', 'advance_number'],
+            'ecommerce_return_replacement' => ['ecommerce_order_returns', 'return_number'],
+        ];
+
+        foreach ($transactions->groupBy('reference_type') as $sourceType => $rows) {
+            if (!$sourceType || !isset($referenceSources[$sourceType])) {
+                continue;
+            }
+
+            [$table, $referenceColumn] = $referenceSources[$sourceType];
+            if (!Schema::hasTable($table) || !Schema::hasColumn($table, $referenceColumn)) {
+                continue;
+            }
+
+            $sourceIds = $rows->pluck('reference_id')->filter()->unique()->values();
+            if ($sourceIds->isEmpty()) {
+                continue;
+            }
+
+            $sourceQuery = DB::table($table)->whereIn('id', $sourceIds);
+            if (Schema::hasColumn($table, 'store_id')) {
+                $sourceQuery->where('store_id', $storeId);
+            }
+
+            $references = $sourceQuery->pluck($referenceColumn, 'id');
+            foreach ($rows as $transaction) {
+                $transaction->source_reference = $references[$transaction->reference_id] ?? null;
+            }
+        }
+
+        if ($transactions->contains(fn ($transaction) => $transaction->reference_type === 'payroll')) {
+            $payrollIds = $transactions->where('reference_type', 'payroll')->pluck('reference_id')->filter()->unique();
+            if ($payrollIds->isNotEmpty() && Schema::hasTable('payrolls') && Schema::hasTable('employees')) {
+                $references = DB::table('payrolls')
+                    ->join('employees', 'employees.id', '=', 'payrolls.employee_id')
+                    ->where('employees.store_id', $storeId)
+                    ->whereIn('payrolls.id', $payrollIds)
+                    ->pluck('payrolls.reference_number', 'payrolls.id');
+
+                foreach ($transactions->where('reference_type', 'payroll') as $transaction) {
+                    $transaction->source_reference = $references[$transaction->reference_id] ?? null;
+                }
+            }
+        }
     }
 
     public function transactionDetail(Request $request, int $id): JsonResponse

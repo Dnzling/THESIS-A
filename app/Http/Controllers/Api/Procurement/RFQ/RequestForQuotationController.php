@@ -777,6 +777,27 @@ class RequestForQuotationController extends Controller
                     ]);
                 }
 
+                $alreadyApproved = DB::table('supplier_rfq_feedbacks as feedback')
+                    ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
+                    ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
+                    ->where('rfq.store_id', $storeId)
+                    ->whereNull('rfq.deleted_at')
+                    ->where('feedback.status', 'approved')
+                    ->where('rfq_item.product_id', (int) $item['product_id'])
+                    ->where(function ($query) use ($supplier) {
+                        $query->where('feedback.supplier_id', $supplier->id);
+                        if ($supplier->supplier_portal_id) {
+                            $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
+                        }
+                    })
+                    ->exists();
+
+                if ($alreadyApproved) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This product already has an approved RFQ from this supplier for your store.',
+                    ]);
+                }
+
                 $quantity = (int) $item['quantity'];
                 $minimum = (int) ($listing->minimum_order_quantity ?? 1);
                 if ($quantity < $minimum) {

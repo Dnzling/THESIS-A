@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\ReorderRule;
+use App\Services\Inventory\ReorderSuggestionNotificationService;
+use App\Services\Inventory\ReorderSuggestionService;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
@@ -13,10 +15,12 @@ use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
 use App\Services\Core\PermissionService;
+use App\Services\Inventory\ForecastPlanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -485,7 +489,12 @@ class ProductController extends Controller
      * Create new product
      * POST /api/inventory/products
      */
-    public function store(Request $request, PermissionService $permissions): JsonResponse
+    public function store(
+        Request $request,
+        PermissionService $permissions,
+        ReorderSuggestionService $reorderSuggestions,
+        ReorderSuggestionNotificationService $reorderNotifications,
+    ): JsonResponse
     {
         try {
             $context = $this->getUserContext();
@@ -558,6 +567,8 @@ class ProductController extends Controller
                     'min:1',
                 ],
                 'reorder_point' => 'nullable|integer|min:0',
+                'reorder_quantity' => 'nullable|integer|min:1',
+                'reorder_scope' => 'nullable|in:branch,store',
                 'is_active' => 'boolean',
                 'variations' => 'prohibited',
                 'product_image' => 'nullable|image|max:5120',
@@ -575,7 +586,14 @@ class ProductController extends Controller
                 ], 422);
             }
 
-            $hasVariants = (bool) ($validated['has_variants'] ?? false);
+            $hasVariants = ($validated['product_type'] ?? 'finished_good') === 'finished_good'
+                && (bool) ($validated['has_variants'] ?? false);
+            $reorderScope = $validated['reorder_scope'] ?? 'branch';
+            if ($reorderScope === 'store' && !$permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])) {
+                throw ValidationException::withMessages([
+                    'reorder_scope' => 'Store-wide reorder defaults require product catalog management access.',
+                ]);
+            }
             $addInitialStock = (bool) ($validated['add_initial_stock'] ?? false);
             $branchCount = Branch::query()->where('store_id', $context['store_id'])->count();
             if ($addInitialStock && ($hasVariants || $branchCount !== 1)) {
@@ -614,7 +632,13 @@ class ProductController extends Controller
 
             DB::beginTransaction();
 
-            $product = Product::create($this->buildProductPayload($validated, $context['store_id']));
+            $productPayload = $this->buildProductPayload($validated, $context['store_id']);
+            if ($reorderScope === 'branch') {
+                // Do not apply a branch-only threshold as a store-wide fallback
+                // to inventory rows in the other branches.
+                $productPayload['reorder_point'] = 0;
+            }
+            $product = Product::create($productPayload);
             if (array_key_exists('tag_ids', $validated)) {
                 $this->syncProductTags($product, $validated['tag_ids'] ?? [], $context['store_id']);
             }
@@ -653,9 +677,59 @@ class ProductController extends Controller
             // Product creation observers may have already created this row. Keep
             // the submitted branch default instead of retaining the schema fallback.
             $submittedReorderPoint = (int) ($validated['reorder_point'] ?? 10);
-            if ((int) $inventory->reorder_point !== $submittedReorderPoint) {
-                $inventory->reorder_point = $submittedReorderPoint;
-                $inventory->save();
+            $submittedReorderQuantity = (int) ($validated['reorder_quantity'] ?? 25);
+            $reorderBranchIds = $reorderScope === 'store'
+                ? Branch::query()->where('store_id', $context['store_id'])->where('status', 'active')->pluck('id')
+                : collect([$branchId]);
+
+            foreach ($reorderBranchIds as $reorderBranchId) {
+                $branchInventory = BranchInventory::query()->firstOrCreate(
+                    [
+                        'store_id' => $context['store_id'],
+                        'branch_id' => (int) $reorderBranchId,
+                        'product_id' => $product->id,
+                        'variation_id' => null,
+                    ],
+                    [
+                        'quantity_on_hand' => 0,
+                        'quantity_reserved' => 0,
+                        'quantity_available' => 0,
+                        'quantity_damaged' => 0,
+                        'quantity_incoming' => 0,
+                        'reorder_point' => $submittedReorderPoint,
+                        'reorder_quantity' => $submittedReorderQuantity,
+                        'maximum_stock' => 0,
+                        'safety_stock' => 0,
+                        'stock_status' => 'out_of_stock',
+                    ],
+                );
+
+                $branchInventory->reorder_point = $submittedReorderPoint;
+                $branchInventory->reorder_quantity = $submittedReorderQuantity;
+                $branchInventory->save();
+
+                ReorderRule::query()->updateOrCreate(
+                    ['product_id' => (int) $product->id, 'branch_id' => (int) $reorderBranchId],
+                    [
+                        'rule_type' => 'automatic',
+                        'trigger_type' => 'reorder_point',
+                        'basis_type' => 'reorder_point',
+                        'reorder_point' => $submittedReorderPoint,
+                        'reorder_quantity' => $submittedReorderQuantity,
+                        'priority' => 'medium',
+                        'auto_generate_po' => false,
+                        'is_active' => true,
+                    ],
+                );
+
+                $suggestionResult = $reorderSuggestions->generateSuggestions(
+                    (int) $context['store_id'],
+                    (int) $reorderBranchId,
+                    (int) $branchInventory->id,
+                );
+                foreach (($suggestionResult['suggestions'] ?? []) as $suggestion) {
+                    $reorderNotifications->notify($suggestion, 'product_created');
+                }
             }
 
             if ($initialStock > 0 && (int) $inventory->quantity_on_hand === 0) {
@@ -708,6 +782,10 @@ class ProductController extends Controller
                 ]);
             }
 
+            if ($hasVariants) {
+                $this->createInitialStandardVariation($product, (int) $context['store_id']);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -737,7 +815,7 @@ class ProductController extends Controller
      * Update product
      * PUT /api/inventory/products/{id}
      */
-    public function update(Request $request, int $id, PermissionService $permissions): JsonResponse
+    public function update(Request $request, int $id, PermissionService $permissions, ForecastPlanService $forecastPlans): JsonResponse
     {
         try {
             $context = $this->getUserContext();
@@ -751,6 +829,55 @@ class ProductController extends Controller
             }
 
             $product = Product::where('store_id', $context['store_id'])->findOrFail($id);
+            $warehouseEnabled = $forecastPlans->allowsWarehouse((int) $context['store_id']);
+
+            $canManageCatalog = $permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id']);
+            if (!$canManageCatalog || $request->boolean('inventory_settings_only')) {
+                $this->normalizeSupplierLinks($request);
+                $rules = [
+                    'inventory_settings_only' => 'sometimes|boolean',
+                    'reorder_point' => 'sometimes|nullable|integer|min:0',
+                ];
+                if (!$warehouseEnabled) {
+                    $rules = array_merge($rules, [
+                        'cost_price' => 'sometimes|nullable|numeric|min:0',
+                        'supplier_links' => 'sometimes|array',
+                        'supplier_links.*.supplier_id' => [
+                            'required', 'integer', 'distinct',
+                            Rule::exists('suppliers', 'id')->where(fn ($query) => $query->where('store_id', $context['store_id'])),
+                        ],
+                        'supplier_links.*.supplier_price' => 'required|numeric|min:0',
+                        'supplier_links.*.minimum_order_quantity' => 'nullable|integer|min:1',
+                        'supplier_links.*.lead_time_days' => 'nullable|integer|min:0',
+                        'supplier_links.*.is_preferred_supplier' => 'nullable|boolean',
+                    ]);
+                }
+                $validated = $request->validate($rules);
+
+                DB::beginTransaction();
+                if (!$warehouseEnabled && array_key_exists('cost_price', $validated)) {
+                    $product->cost_price = $validated['cost_price'];
+                }
+                if (array_key_exists('reorder_point', $validated) && $context['branch_id']) {
+                    $this->syncBranchReorderPoint(
+                        (int) $context['store_id'],
+                        (int) $context['branch_id'],
+                        (int) $product->id,
+                        (int) $validated['reorder_point']
+                    );
+                }
+                if (!$warehouseEnabled && array_key_exists('supplier_links', $validated)) {
+                    $this->syncSupplierLinks($product, $validated['supplier_links'] ?? []);
+                }
+                $product->save();
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $product->load(['category', 'suppliers', 'variations', 'assets', 'inventory']),
+                    'message' => 'Inventory settings updated successfully',
+                ]);
+            }
 
             $this->normalizeSupplierLinks($request);
             $this->normalizeAdditionalMeasurements($request);
@@ -1254,6 +1381,82 @@ class ProductController extends Controller
                 'message' => 'Failed to fetch stock history',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    private function createInitialStandardVariation(Product $product, int $storeId): void
+    {
+        $variationSku = (string) $product->sku;
+        if (ProductVariation::withTrashed()->where('store_id', $storeId)->where('variation_sku', $variationSku)->exists()) {
+            $variationSku .= '-STD';
+            $suffix = 2;
+            while (ProductVariation::withTrashed()->where('store_id', $storeId)->where('variation_sku', $variationSku)->exists()) {
+                $variationSku = (string) $product->sku . '-STD-' . $suffix++;
+            }
+        }
+
+        $assets = ProductAsset::query()
+            ->where('store_id', $storeId)
+            ->where('product_id', $product->id)
+            ->orderByDesc('is_primary')
+            ->orderBy('display_order')
+            ->get();
+        $image = $assets->first(fn (ProductAsset $asset) => in_array($asset->asset_type, ['Image_Main', 'Image_Gallery'], true));
+        $model = $assets->firstWhere('asset_type', '3D_Model');
+
+        $variationData = [
+            'store_id' => $storeId,
+            'product_id' => $product->id,
+            'variation_sku' => $variationSku,
+            'variation_name' => 'Standard',
+            'price_adjustment' => 0,
+            'base_price' => $product->base_price,
+            'discounted_price' => $product->discounted_price,
+            'cost_price' => $product->getRawOriginal('cost_price'),
+            'reorder_point' => (int) ($product->reorder_point ?? 0),
+            'supplier_name' => $product->supplier_name,
+            'unit_of_measurement' => $product->unit_of_measurement,
+            'length_cm' => $product->length_cm,
+            'width_cm' => $product->width_cm,
+            'height_cm' => $product->height_cm,
+            'depth_cm' => $product->depth_cm,
+            'weight_kg' => $product->weight_kg,
+            'additional_measurements' => $product->additional_measurements,
+            'custom_image_id' => $image?->id,
+            'custom_3d_model_id' => $model?->id,
+            'is_active' => true,
+        ];
+        $variationColumns = array_flip(Schema::getColumnListing('product_variations'));
+        $variation = ProductVariation::create(array_intersect_key($variationData, $variationColumns));
+
+        BranchInventory::query()
+            ->where('store_id', $storeId)
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id')
+            ->update(['variation_id' => $variation->id]);
+
+        $branches = Branch::query()->where('store_id', $storeId)->where('status', 'active')->get(['id']);
+        foreach ($branches as $branch) {
+            BranchInventory::query()->firstOrCreate(
+                [
+                    'store_id' => $storeId,
+                    'branch_id' => (int) $branch->id,
+                    'product_id' => (int) $product->id,
+                    'variation_id' => (int) $variation->id,
+                ],
+                [
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => (int) ($variation->reorder_point ?? 0),
+                    'reorder_quantity' => 0,
+                    'maximum_stock' => 0,
+                    'safety_stock' => 0,
+                    'stock_status' => 'out_of_stock',
+                ],
+            );
         }
     }
 }

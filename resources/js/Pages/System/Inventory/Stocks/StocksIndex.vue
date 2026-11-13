@@ -44,7 +44,9 @@
 
         <!-- Items Table -->
         <div v-if="loading" class="space-y-2">
-          <div class="grid grid-cols-6 gap-2 text-xs text-gray-400">
+          <div class="grid grid-cols-8 gap-2 text-xs text-gray-400">
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
@@ -52,7 +54,9 @@
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
           </div>
-          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-2">
+          <div v-for="i in 8" :key="i" class="grid grid-cols-8 gap-2">
+            <Skeleton height="40px" class="col-span-1" />
+            <Skeleton height="40px" class="col-span-1" />
             <Skeleton height="40px" class="col-span-1" />
             <Skeleton height="40px" class="col-span-1" />
             <Skeleton height="40px" class="col-span-1" />
@@ -62,8 +66,8 @@
           </div>
         </div>
   
-        <DataTable v-else v-model:expandedRows="expandedRows" :value="groupedItems" paginator :rows="filters.per_page"
-          :totalRecords="groupedItems.length" @sort="onSort" :sortField="sortField" :sortOrder="sortOrder" dataKey="group_key"
+        <DataTable v-else :value="items" paginator :rows="filters.per_page"
+          @sort="onSort" :sortField="sortField" :sortOrder="sortOrder" dataKey="id"
           @row-click="onItemRowClick" :rowClass="itemRowClass"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
@@ -83,20 +87,6 @@
             </div>
           </template>
   
-          <Column style="width: 3rem">
-            <template #body="{ data }">
-              <Button
-                v-if="data.variant_rows?.length"
-                text
-                rounded
-                size="small"
-                :icon="isVariantRowsExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
-                aria-label="Toggle variant stock"
-                @click.stop="toggleVariantRows(data)"
-              />
-            </template>
-          </Column>
-
           <Column field="product_name" header="Product" style="min-width: 230px">
             <template #body="{ data }">
               <div class="flex items-center gap-3">
@@ -104,10 +94,10 @@
                   <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name || 'Product image'" class="block h-full w-full object-contain" @error="handleProductImageError(data, $event)" />
                   <div v-else class="flex h-full w-full items-center justify-center"><i class="pi pi-image text-lg text-slate-300"></i></div>
                 </div>
-                <div>
+                <div class="min-w-0">
                   <p class="text-xs font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</p>
-                  <p class="font-mono text-[11px] text-gray-500">{{ data.product?.sku || 'N/A' }}</p>
-                  <p v-if="data.variant_rows?.length" class="text-[11px] text-orange-600">{{ data.variant_rows.length }} variants</p>
+                  <p v-if="data.variation" class="truncate text-[11px] font-medium text-orange-700">{{ data.variation.variation_name || 'Variant' }}</p>
+                  <p class="font-mono text-[11px] text-gray-500">{{ data.variation?.variation_sku || data.product?.sku || 'N/A' }}</p>
                 </div>
               </div>
             </template>
@@ -162,22 +152,6 @@
               </div>
             </template>
           </Column>
-  
-          <template #expansion="{ data }">
-            <div class="m-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Variant Stock</p>
-              <DataTable :value="data.variant_rows" dataKey="id" class="p-datatable-sm text-xs">
-                <template #empty><div class="py-4 text-center text-slate-500">This product has no variants.</div></template>
-                <Column header="Variant"><template #body="{ data: row }"><span class="font-medium">{{ row.variation?.variation_name || 'Standard' }}</span></template></Column>
-                <Column header="SKU"><template #body="{ data: row }"><span class="font-mono">{{ row.variation?.variation_sku || row.product?.sku }}</span></template></Column>
-                <Column header="UOM"><template #body="{ data: row }">{{ row.variation?.unit_of_measurement || row.product?.unit_of_measurement || 'unit' }}</template></Column>
-                <Column header="On Hand"><template #body="{ data: row }">{{ row.quantity_on_hand ?? 0 }}</template></Column>
-                <Column header="Available"><template #body="{ data: row }">{{ row.quantity_available ?? 0 }}</template></Column>
-                <Column header="Stock Value"><template #body="{ data: row }">{{ formatMoney(getStockValue(row)) }}</template></Column>
-                <Column header="Action" style="width: 6rem"><template #body="{ data: row }"><Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" @click.stop="openItem(row)" /></template></Column>
-              </DataTable>
-            </div>
-          </template>
         </DataTable>
         </template>
     </Card>
@@ -196,8 +170,6 @@ import Tag from 'primevue/tag'
 const loading = ref(true)
 const items = ref<any[]>([])
 const failedProductImageUrls = ref<Record<string, string[]>>({})
-const expandedRows = ref<Record<string, boolean>>({})
-const totalRecords = ref(0)
 const toast = useToast()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -209,34 +181,6 @@ const canViewWarehouseStock = computed(() => authStore.hasPermission('warehouse.
 const branchCount = ref(0)
 const branches = ref<any[]>([])
 const showBranchColumn = computed(() => branchCount.value >= 2)
-const groupedItems = computed(() => {
-  const groups = new Map<number, any>()
-  for (const row of items.value) {
-    const productId = Number(row.product_id || row.product?.id || 0)
-    if (!productId) continue
-    if (!groups.has(productId)) {
-      groups.set(productId, {
-        ...row,
-        group_key: `product-${productId}`,
-        variation: null,
-        variant_rows: [],
-        quantity_on_hand: 0,
-        quantity_available: 0,
-        quantity_incoming: 0,
-        stock_value: 0,
-        source_rows: [],
-      })
-    }
-    const group = groups.get(productId)
-    group.quantity_on_hand += Number(row.quantity_on_hand || 0)
-    group.quantity_available += Number(row.quantity_available || 0)
-    group.quantity_incoming += Number(row.quantity_incoming || 0)
-    group.stock_value += getStockValue(row)
-    group.source_rows.push(row)
-    if (row.variation) group.variant_rows.push(row)
-  }
-  return Array.from(groups.values())
-})
 const currentUserBranchId = computed<number | null>(() => {
   const user: any = authStore.user || {}
   return Number(
@@ -322,10 +266,8 @@ const loadItems = async () => {
 
     if (response?.data) {
       items.value = Array.isArray(response.data) ? response.data : (response.data.data || [])
-      totalRecords.value = groupedItems.value.length
     } else {
       items.value = []
-      totalRecords.value = 0
     }
   } catch (error: any) {
     console.error('Failed to load inventory', error)
@@ -336,7 +278,6 @@ const loadItems = async () => {
       life: 3000
     })
     items.value = []
-    totalRecords.value = 0
   } finally {
     loading.value = false
   }
@@ -458,14 +399,10 @@ const handleProductImageError = (data: any, event: Event) => {
 }
 
 const getStockLocation = (data: any) => {
-  const rows = Array.isArray(data?.source_rows) ? data.source_rows : [data]
-  const locations = rows.map((row: any) =>
-    row.warehouse_location?.name
-      || row.warehouse_location?.location_code
-      || row.bin_code
-      || row.warehouse_section
-  ).filter(Boolean)
-  return [...new Set(locations)].join(', ')
+  return data?.warehouse_location?.name
+    || data?.warehouse_location?.location_code
+    || data?.bin_code
+    || data?.warehouse_section
 }
 
 const openItem = (data: any) => {
@@ -483,20 +420,6 @@ const openAdjustment = (data: any) => {
 }
 
 const itemRowClass = () => ({ 'cursor-pointer hover:bg-orange-50': true })
-
-const toggleVariantRows = (data: any) => {
-  const key = data.group_key
-  if (!data.variant_rows?.length || !key) return
-  const nextExpandedRows = { ...expandedRows.value }
-  if (nextExpandedRows[key]) {
-    delete nextExpandedRows[key]
-  } else {
-    nextExpandedRows[key] = true
-  }
-  expandedRows.value = nextExpandedRows
-}
-
-const isVariantRowsExpanded = (data: any) => Boolean(data?.group_key && expandedRows.value[data.group_key])
 
 const onItemRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null

@@ -23,7 +23,7 @@
         </div>
       </div>
 
-      <Card>
+      <Card class="border border-gray-200">
         <template #content>
           <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-4 mb-4">
             <IconField>

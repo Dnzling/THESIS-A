@@ -5,8 +5,8 @@
         <h1 class="text-xl font-bold text-gray-800">Reorder Suggestions</h1>
         <p class="text-xs text-gray-500 mt-0.5">
           {{ reorderDestination === 'warehouse'
-            ? 'Select pending items for one receiving branch to create a grouped warehouse request.'
-            : 'Group pending items by supplier and receiving branch to create one purchase order per group.' }}
+            ? 'Select pending items for one receiving branch to create a grouped warehouse request. Open View for the full calculation.'
+            : 'Group pending items by supplier and receiving branch to create one purchase order per group. Open View for the full calculation.' }}
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -174,6 +174,16 @@
           </Column>
           <Column field="current_stock" header="Current" style="width: 110px"><template #body="{ data }">{{ formatQuantity(data.current_stock) }}</template></Column>
           <Column field="suggested_quantity" header="Suggested" style="width: 110px"><template #body="{ data }">{{ formatQuantity(data.suggested_quantity) }}</template></Column>
+          <Column header="Decision support" style="min-width: 220px">
+            <template #body="{ data }">
+              <div class="space-y-1 text-xs leading-5">
+                <div class="font-medium text-slate-800">{{ calculationSourceLabel(data) }}</div>
+                <div>Trigger {{ formatOptionalMetric(data.calculation?.reorder_trigger) }} · Target {{ formatOptionalMetric(data.calculation?.target_stock) }}</div>
+                <div v-if="isDemandDriven(data)" class="text-slate-500">30-day sales {{ formatOptionalMetric(data.calculation?.units_sold, 2) }} · Daily demand {{ formatOptionalMetric(data.calculation?.average_daily_demand, 2) }}</div>
+                <div v-else class="text-slate-500">{{ data.calculation?.trigger_type === 'safety_stock' ? 'Demand and lead time not used; safety stock is the trigger' : 'Demand, lead time, review period, and safety stock not used' }}</div>
+              </div>
+            </template>
+          </Column>
           <Column field="priority" header="Priority" style="width: 120px">
             <template #body="{ data }">
               <Tag :value="capitalize(data.priority)" :severity="prioritySeverity(data.priority)" />
@@ -224,6 +234,7 @@
         <Column header="Item"><template #body="{ data }"><div class="font-medium">{{ data.product_name }}</div><div class="text-xs text-slate-500">{{ data.product_sku }}<span v-if="data.variation_name"> · {{ data.variation_name }}</span></div></template></Column>
         <Column header="Current"><template #body="{ data }">{{ formatQuantity(data.current_stock) }}</template></Column>
         <Column header="Suggested Qty"><template #body="{ data }">{{ formatQuantity(data.suggested_quantity) }}</template></Column>
+        <Column header="Reorder logic" style="min-width: 230px"><template #body="{ data }"><div class="text-xs leading-5"><div class="font-medium">{{ calculationSourceLabel(data) }}</div><div>Trigger {{ formatOptionalMetric(data.calculation?.reorder_trigger) }} · Target {{ formatOptionalMetric(data.calculation?.target_stock) }}</div><div class="text-slate-500">{{ isDemandDriven(data) ? `30-day sales ${formatOptionalMetric(data.calculation?.units_sold, 2)} · Daily demand ${formatOptionalMetric(data.calculation?.average_daily_demand, 2)}` : (data.calculation?.trigger_type === 'safety_stock' ? 'Demand-based inputs not used; safety stock trigger applied' : 'Demand-based inputs not used for this suggestion') }}</div></div></template></Column>
         <Column header="Priority"><template #body="{ data }"><Tag :value="capitalize(data.priority)" :severity="prioritySeverity(data.priority)" /></template></Column>
       </DataTable>
       <div v-if="poSupplierId && !supplierSuggestions.length && !simplePoLoading" class="py-5 text-center text-sm text-slate-500">No pending suggestions for this supplier and branch.</div>
@@ -332,8 +343,22 @@ const normalizeSuggestion = (row: any) => ({
   product_name: row?.product?.product_name || row?.product?.name || '-',
   product_sku: row?.variation?.variation_sku || row?.product?.sku || '-',
   variation_name: row?.variation?.variation_name || null,
+  calculation: row?.metadata?.calculation || null,
+  calculation_source: row?.metadata?.source || null,
+  applied_basis_type: row?.metadata?.basis_type || row?.reorder_rule?.basis_type || null,
   branch_name: row?.branch?.name || '-',
 })
+
+const isDemandDriven = (row: any) => ['sales_30_day', 'configured_average_demand'].includes(row?.calculation_source)
+const calculationSourceLabel = (row: any) => ({
+  sales_30_day: 'Recent sales (30 days)',
+  configured_average_demand: 'Configured average demand',
+  configured_reorder_rule: 'Configured reorder rule',
+  branch_inventory_reorder_point: 'Branch inventory reorder point',
+} as Record<string, string>)[row?.calculation_source] || 'Saved suggestion data'
+const formatOptionalMetric = (value: any, digits = 0) => value === null || value === undefined || value === ''
+  ? '—'
+  : Number(value).toLocaleString('en-PH', { maximumFractionDigits: digits })
 
 const statusSeverity = (status: string) => {
   const key = String(status || '').toLowerCase()

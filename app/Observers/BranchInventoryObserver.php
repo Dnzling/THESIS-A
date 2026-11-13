@@ -81,11 +81,15 @@ class BranchInventoryObserver
         }
 
         try {
-            app(\App\Services\Inventory\ReorderSuggestionService::class)->generateSuggestions(
+            $result = app(\App\Services\Inventory\ReorderSuggestionService::class)->generateSuggestions(
                 (int) $inventory->store_id,
                 (int) $inventory->branch_id,
                 (int) $inventory->id,
             );
+            foreach (($result['suggestions'] ?? []) as $suggestion) {
+                app(\App\Services\Inventory\ReorderSuggestionNotificationService::class)
+                    ->notify($suggestion, 'stock_update');
+            }
         } catch (\Throwable $exception) {
             // Reorder suggestions are helpful automation, but must never block a stock transaction.
             \Illuminate\Support\Facades\Log::warning('BranchInventoryObserver: Failed to refresh reorder suggestion.', [

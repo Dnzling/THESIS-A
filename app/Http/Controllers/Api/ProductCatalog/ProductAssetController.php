@@ -432,7 +432,9 @@ class ProductAssetController extends BaseController
                 'product_id' => 'required|exists:products,id',
                 'assets' => 'required|array',
                 'assets.*.id' => 'required|exists:product_assets,id',
-                'assets.*.display_order' => 'required|integer|min:0'
+                'assets.*.display_order' => 'required|integer|min:0',
+                'assets.*.asset_type' => 'nullable|in:Image_Main,Image_Gallery',
+                'assets.*.is_primary' => 'nullable|boolean'
             ]);
 
             // Verify product belongs to store
@@ -445,13 +447,22 @@ class ProductAssetController extends BaseController
             DB::beginTransaction();
 
             try {
+                ProductAsset::byStore($this->getStoreId())
+                    ->where('product_id', $validated['product_id'])
+                    ->whereIn('asset_type', ['Image_Main', 'Image_Gallery'])
+                    ->update(['is_primary' => false]);
+
                 foreach ($validated['assets'] as $item) {
                     $asset = ProductAsset::byStore($this->getStoreId())
                         ->where('product_id', $validated['product_id'])
                         ->find($item['id']);
 
                     if ($asset) {
-                        $asset->update(['display_order' => $item['display_order']]);
+                        $asset->update(array_filter([
+                            'display_order' => $item['display_order'],
+                            'asset_type' => $item['asset_type'] ?? null,
+                            'is_primary' => $item['is_primary'] ?? null,
+                        ], fn ($value) => $value !== null));
                     }
                 }
 

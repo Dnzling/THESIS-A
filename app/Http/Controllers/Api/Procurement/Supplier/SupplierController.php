@@ -763,12 +763,36 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
         $productModels = $supplier->products()
-            ->with('category:id,category_name')
+            ->with([
+                'category:id,category_name',
+                'subcategory:id,category_name',
+            ])
             ->select(
-                'products.id', 'products.product_name', 'products.sku',
-                'products.category_id', 'products.product_type', 'products.unit_of_measurement', 'products.is_active'
+                'products.id', 'products.product_name',
+                'products.category_id', 'products.subcategory_id', 'products.product_type',
+                'products.unit_of_measurement', 'products.is_active'
             )
             ->get();
+
+        $approvedProductIds = collect();
+        if ($productModels->isNotEmpty()) {
+            $approvedFeedbacks = DB::table('supplier_rfq_feedbacks as feedback')
+                ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
+                ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
+                ->where('rfq.store_id', $supplier->store_id)
+                ->whereNull('rfq.deleted_at')
+                ->where('feedback.status', 'approved')
+                ->whereIn('rfq_item.product_id', $productModels->pluck('id'))
+                ->where(function ($query) use ($supplier) {
+                    $query->where('feedback.supplier_id', $supplier->id);
+                    if ($supplier->supplier_portal_id) {
+                        $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
+                    }
+                })
+                ->pluck('rfq_item.product_id');
+
+            $approvedProductIds = $approvedFeedbacks->map(fn ($id) => (int) $id)->unique();
+        }
 
         $assets = ProductAsset::query()
             ->whereIn('product_id', $productModels->pluck('id'))
@@ -780,19 +804,19 @@ class SupplierController extends Controller
             ->keyBy('product_id');
 
         $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
-        $products = $productModels->map(function ($product) use ($assets, $taxRate, $supplier) {
+        $products = $productModels->map(function ($product) use ($assets, $taxRate, $supplier, $approvedProductIds) {
             $baseCost = round((float) $product->pivot->supplier_price, 2);
             $taxAmount = round($baseCost * ($taxRate / 100), 2);
 
             return [
                 'id' => (int) $product->id,
                 'product_name' => $product->product_name,
-                'sku' => $product->sku,
-                'supplier_sku' => $product->pivot->supplier_sku,
+                'category_id' => $product->category_id,
                 'category_name' => $product->category?->category_name,
+                'subcategory_name' => $product->subcategory?->category_name,
                 'product_type' => $product->product_type,
                 'unit_of_measurement' => $product->unit_of_measurement,
-                'available_stock' => (int) ($product->pivot->available_stock ?? 0),
+                'availability_status' => $product->pivot->availability_status ?? 'available',
                 'minimum_order_quantity' => (int) ($product->pivot->minimum_order_quantity ?? 1),
                 'lead_time_days' => (int) ($product->pivot->lead_time_days ?? 7),
                 'base_cost' => $baseCost,
@@ -801,6 +825,7 @@ class SupplierController extends Controller
                 'cost_including_tax' => round($baseCost + $taxAmount, 2),
                 'is_tax_exempt' => (bool) $supplier->is_tax_exempt,
                 'is_active' => (bool) $product->is_active,
+                'is_acquired' => $approvedProductIds->contains((int) $product->id),
                 'image_url' => $assets->get($product->id)?->thumbnail_url,
             ];
         })->values();

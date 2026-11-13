@@ -383,7 +383,7 @@ class MerchandisingService {
         return response.data
     }
 
-    async reorderAssets(product_id: number, assets: Array<{ id: number; display_order: number }>) {
+    async reorderAssets(product_id: number, assets: Array<{ id: number; display_order: number; asset_type?: string; is_primary?: boolean }>) {
         const response = await axiosClient.post(`${this.baseUrl}/assets/reorder`, {
             product_id,
             assets

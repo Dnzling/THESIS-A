@@ -36,24 +36,6 @@
           size="small"
           @click="goToEdit"
         />
-        <Button
-          v-if="product?.is_active && !selectedVariation && canManageProducts"
-          label="Archive"
-          icon="pi pi-box"
-          severity="secondary"
-          outlined
-          size="small"
-          @click="confirmArchive"
-        />
-        <Button
-          v-if="product && !selectedVariation && canManageProducts"
-          label="Remove"
-          icon="pi pi-trash"
-          severity="danger"
-          outlined
-          size="small"
-          @click="confirmDelete"
-        />
       </div>
     </div>
 
@@ -66,7 +48,7 @@
         <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Available Stock</span><i class="pi pi-box text-gray-400"></i></div>
         <span class="text-base font-semibold text-gray-900">{{ availableStock }}</span>
       </div>
-      <div class="rounded-2xl bg-white p-5 shadow-sm">
+      <div class="rounded-2xl bg-white p-5 border border-gray-100 shadow-sm">
         <span class="mb-3 block text-sm font-medium ">Cost per Unit</span>
         <span class="text-2xl font-bold tracking-tight text-green-600">₱{{ formatPrice(unitCost) }}</span>
       </div>
@@ -122,17 +104,13 @@
                 <p class="text-lg font-semibold text-gray-900">{{ displayReorderLevel }}</p>
               </div>
 
-              <div v-if="hasDimensions">
-                <p class="text-xs text-gray-600 mb-1">Dimensions</p>
-                <p class="text-lg font-semibold text-gray-900">{{ dimensionsLabel }}</p>
-              </div>
-              <div v-if="product.additional_measurements?.length" class="sm:col-span-2">
-                <p class="mb-2 text-xs text-gray-600">Additional Measurements</p>
-                <div class="flex flex-wrap gap-2">
-                  <div v-for="(measurement, index) in product.additional_measurements" :key="`${measurement.label}-${index}`"
-                    class="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                    <p class="text-[11px] text-slate-500">{{ measurement.label }}</p>
-                    <p class="font-semibold text-slate-900">{{ measurement.value }} {{ measurement.unit }}</p>
+              <div v-if="dimensionRows.length" class="sm:col-span-2">
+                <p class="mb-2 text-xs text-gray-600">Dimensions</p>
+                <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 px-3">
+                  <div v-for="(dimension, index) in dimensionRows" :key="`${dimension.label}-${index}`"
+                    class="flex items-center justify-between gap-4 py-2 text-sm">
+                    <span class="text-slate-600">{{ dimension.label }}</span>
+                    <span class="text-right font-semibold text-slate-900">{{ dimension.value }}</span>
                   </div>
                 </div>
               </div>
@@ -240,7 +218,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-sm font-semibold text-gray-800">Product Variations</span>
             <Button
-              v-if="!selectedVariation && canManageProducts"
+              v-if="!selectedVariation && canManageProducts && variations.length > 0"
               label="Add Variant"
               icon="pi pi-plus"
               severity="warn"
@@ -250,10 +228,10 @@
           </div>
         </template>
         <template #content>
-          <DataTable :value="visibleVariations" class="p-datatable-sm text-xs">
+          <DataTable :value="activeVariations" class="p-datatable-sm text-xs">
             <template #empty>
               <div class="py-8 text-center text-xs text-gray-500">
-                No variants yet. This product currently uses its own SKU and stock.
+                {{ variations.length === 1 && String(variations[0]?.variation_name || '').trim().toLowerCase() === 'standard' ? 'This product is using its standard SKU. Add a variant option when needed.' : 'No active variants are available for this product.' }}
               </div>
             </template>
             <Column field="variation_name" header="Variation">
@@ -302,19 +280,70 @@
                 <span class="text-xs">{{ data.supplier_name || 'No supplier' }}</span>
               </template>
             </Column>
-            <Column header="Action" style="width: 6rem">
+            <Column header="Action" style="width: 10rem">
               <template #body="{ data }">
-                <Button
-                  label="Edit"
-                  icon="pi pi-pencil"
-                  severity="warn"
-                  size="small"
-                  text
-                  @click.stop="goToEditVariation(data)"
-                />
+                <div class="flex items-center gap-1">
+                  <Button
+                    label="Edit"
+                    icon="pi pi-pencil"
+                    severity="warn"
+                    size="small"
+                    text
+                    @click.stop="goToEditVariation(data)"
+                  />
+                  <Button
+                    v-if="canManageProducts"
+                    label="Archive"
+                    icon="pi pi-box"
+                    severity="secondary"
+                    size="small"
+                    text
+                    @click.stop="confirmArchiveVariation(data)"
+                  />
+                </div>
               </template>
             </Column>
           </DataTable>
+
+          <div v-if="archivedVariations.length" class="mt-6 border-t border-slate-200 pt-4">
+            <div class="mb-3 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-semibold text-slate-800">Archived Variations</h3>
+                <p class="mt-0.5 text-xs text-slate-500">Archived SKUs remain listed for reference and history.</p>
+              </div>
+              <Badge :value="archivedVariations.length" severity="secondary" />
+            </div>
+            <DataTable :value="archivedVariations" class="p-datatable-sm text-xs" rowHover>
+              <Column field="variation_name" header="Variation">
+                <template #body="{ data }">
+                  <span class="font-medium text-slate-700">{{ data.variation_name }}</span>
+                </template>
+              </Column>
+              <Column field="variation_sku" header="SKU">
+                <template #body="{ data }"><span class="font-mono">{{ data.variation_sku }}</span></template>
+              </Column>
+              <Column header="Attributes">
+                <template #body="{ data }">
+                  <div class="flex flex-wrap gap-1">
+                    <Tag v-if="data.color" :value="data.color" severity="info" size="small" />
+                    <Tag v-if="data.size" :value="data.size" severity="secondary" size="small" />
+                    <Tag v-if="data.material" :value="data.material" severity="success" size="small" />
+                  </div>
+                </template>
+              </Column>
+              <Column header="Status"><template #body><Badge value="Archived" severity="secondary" /></template></Column>
+              <Column header="Stock (This Branch)">
+                <template #body="{ data }">
+                  <span class="font-semibold">{{ branchStockTotal(data) }}</span>
+                </template>
+              </Column>
+              <Column header="Action" style="width: 6rem">
+                <template #body="{ data }">
+                  <Button label="View / Edit" size="small" severity="secondary" text @click.stop="goToEditVariation(data)" />
+                </template>
+              </Column>
+            </DataTable>
+          </div>
         </template>
       </Card>
 
@@ -399,6 +428,19 @@
         <Button @click="archiveProduct" label="Archive Item" severity="warn" :loading="archiving" :disabled="archiving" />
       </template>
     </Dialog>
+    <Dialog v-model:visible="archiveVariationDialogVisible" header="Archive Variation" modal :closable="!archivingVariation" class="w-[min(92vw,28rem)]">
+      <div class="space-y-3">
+        <p class="text-sm text-slate-700">
+          Archive <span class="font-semibold">{{ variationToArchive?.variation_name }}</span> ({{ variationToArchive?.variation_sku }})?
+        </p>
+        <p class="text-xs text-slate-500">This variant can only be archived when all branches have zero on-hand, reserved, damaged, and incoming stock. It will remain visible in the archived variations list.</p>
+        <p v-if="archiveVariationError" role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ archiveVariationError }}</p>
+      </div>
+      <template #footer>
+        <Button label="Keep Editing" severity="secondary" outlined :disabled="archivingVariation" @click="archiveVariationDialogVisible = false" />
+        <Button label="Archive Variation" severity="warn" :loading="archivingVariation" :disabled="archivingVariation" @click="archiveVariation" />
+      </template>
+    </Dialog>
     <Dialog v-model:visible="deleteDialogVisible" header="Remove Item" :modal="true" class="w-[min(92vw,26rem)]" :closable="!deleting">
       <div class="space-y-3">
         <p class="text-sm font-semibold text-gray-900">Remove {{ product?.product_name }}?</p>
@@ -419,6 +461,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../../../stores/auth'
 import inventoryService from '../../../../services/inventory.service'
+import merchandisingService from '../../../../services/merchandising.service'
 import { showResponseDialog } from '@/utils/responseDialogBus'
 
 import Card from 'primevue/card'
@@ -441,6 +484,10 @@ const loading = ref(false)
 const archiving = ref(false)
 const archiveDialogVisible = ref(false)
 const archiveError = ref('')
+const archiveVariationDialogVisible = ref(false)
+const archivingVariation = ref(false)
+const archiveVariationError = ref('')
+const variationToArchive = ref<any>(null)
 const deleting = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteError = ref('')
@@ -464,6 +511,10 @@ const visibleVariations = computed(() => variations.value.length === 1
   && String(variations.value[0]?.variation_name || '').trim().toLowerCase() === 'standard'
   ? []
   : variations.value)
+const activeVariations = computed(() => visibleVariations.value.filter((variation: any) => variation.is_active))
+const archivedVariations = computed(() => variations.value.filter((variation: any) => !variation.is_active))
+const branchStockTotal = (variation: any) => (variation.inventory || [])
+  .reduce((total: number, row: any) => total + Number(row.quantity_on_hand || 0), 0)
 const displayItem = computed(() => {
   if (!selectedVariation.value) return product.value
   const variation = selectedVariation.value
@@ -557,24 +608,35 @@ const availableStock = computed(() => {
 
 const displaySellingPrice = computed(() => selectedVariation.value?.final_price ?? product.value?.base_price ?? 0)
 const displayReorderLevel = computed(() => selectedVariation.value?.reorder_point ?? branchInventory.value?.reorder_point ?? product.value?.reorder_point ?? 'N/A')
-const hasDimensions = computed(() => ['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'].some((key) => displayItem.value?.[key]))
+const dimensionRows = computed(() => {
+  const item = displayItem.value || {}
+  const standardRows = [
+    { key: 'length_cm', label: 'Length', unit: 'cm' },
+    { key: 'width_cm', label: 'Width', unit: 'cm' },
+    { key: 'depth_cm', label: 'Depth', unit: 'cm' },
+    { key: 'height_cm', label: 'Height', unit: 'cm' },
+    { key: 'weight_kg', label: 'Weight', unit: 'kg' },
+  ]
+    .filter(({ key }) => item[key] !== null && item[key] !== undefined && String(item[key]).trim() !== '')
+    .map(({ key, label, unit }) => ({ label, value: `${item[key]} ${unit}` }))
+
+  const additionalRows = (product.value?.additional_measurements || [])
+    .filter((measurement: any) => measurement?.label?.trim()
+      && measurement.value !== null
+      && measurement.value !== undefined
+      && String(measurement.value).trim() !== '')
+    .map((measurement: any) => ({
+      label: measurement.label.trim(),
+      value: `${measurement.value}${measurement.unit ? ` ${measurement.unit}` : ''}`,
+    }))
+
+  return [...standardRows, ...additionalRows]
+})
 
 const priceLabel = computed(() => {
   const type = product.value?.product_type
   if (type === 'raw_material' || type === 'supply') return 'Unit Cost'
   return 'Base Price'
-})
-
-const dimensionsLabel = computed(() => {
-  const parts = [
-    displayItem.value?.width_cm ? `Width ${displayItem.value.width_cm} cm` : null,
-    displayItem.value?.depth_cm ? `Depth ${displayItem.value.depth_cm} cm` : null,
-    displayItem.value?.height_cm ? `Height ${displayItem.value.height_cm} cm` : null,
-    displayItem.value?.length_cm ? `Legacy length ${displayItem.value.length_cm} cm` : null,
-    displayItem.value?.weight_kg ? `Weight ${displayItem.value.weight_kg} kg` : null,
-  ].filter(Boolean)
-
-  return parts.length > 0 ? parts.join(' × ') : 'N/A'
 })
 
 const loadProduct = async () => {
@@ -683,6 +745,30 @@ const goToEditVariation = (variation: any) => {
     name: 'inventory.products.variants.edit',
     params: { productId: productId.value, id: variation.id },
   })
+}
+
+const confirmArchiveVariation = (variation: any) => {
+  variationToArchive.value = variation
+  archiveVariationError.value = ''
+  archiveVariationDialogVisible.value = true
+}
+
+const archiveVariation = async () => {
+  if (!variationToArchive.value || !canManageProducts.value) return
+  archivingVariation.value = true
+  archiveVariationError.value = ''
+  try {
+    const response = await merchandisingService.archiveVariation(Number(variationToArchive.value.id))
+    if (response?.success === false) throw new Error(response.message || 'Failed to archive variation')
+    archiveVariationDialogVisible.value = false
+    variationToArchive.value = null
+    await loadProduct()
+    showActionResponse('success', 'Variation Archived', response.message || 'Variation archived successfully.')
+  } catch (error: any) {
+    archiveVariationError.value = error.response?.data?.message || error.message || 'Failed to archive variation.'
+  } finally {
+    archivingVariation.value = false
+  }
 }
 
 const goBack = () => {

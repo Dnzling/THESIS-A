@@ -38,6 +38,7 @@ class ProductVariation extends Model
         'height_cm',
         'depth_cm',
         'weight_kg',
+        'additional_measurements',
         'is_active'
     ];
 
@@ -52,6 +53,7 @@ class ProductVariation extends Model
         'height_cm' => 'decimal:2',
         'depth_cm' => 'decimal:2',
         'weight_kg' => 'decimal:2',
+        'additional_measurements' => 'array',
         'is_active' => 'boolean'
     ];
 
@@ -64,6 +66,11 @@ class ProductVariation extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function assets()
+    {
+        return $this->hasMany(ProductAsset::class, 'variation_id');
     }
 
     public function custom3dModel()

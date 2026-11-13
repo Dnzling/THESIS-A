@@ -68,7 +68,27 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.edit', 'Edit Warehouse Location');
     $inertia('/warehouse/stock', 'System/Warehouse/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
     $inertia('/warehouse/reorder', 'System/Warehouse/Reorder/Index', 'warehouse.reorder', 'Warehouse Reorder');
-    $inertia('/warehouse/forecasting', 'System/Shared/Forecasting', 'warehouse.forecasting', 'Warehouse Forecasting');
+    Route::get('/warehouse/forecasting', function (\Illuminate\Http\Request $request) use ($render) {
+        if ($request->filled('inventory_id')) {
+            $inventoryId = filter_var($request->query('inventory_id'), FILTER_VALIDATE_INT);
+            abort_if(!$inventoryId || $inventoryId < 1, 404);
+            $user = $request->user();
+            $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id);
+            $permissions = app(\App\Services\Core\PermissionService::class);
+            abort_unless(
+                $permissions->userHasPermission($user, 'warehouse.reorder.view', $storeId)
+                    || $permissions->userHasPermission($user, 'warehouse.forecasting.manage', $storeId),
+                403,
+            );
+
+            return $render('System/Warehouse/Forecast/ProductReport', [
+                'title' => 'Product Forecast Report',
+                'inventoryId' => (int) $inventoryId,
+            ]);
+        }
+
+        return $render('System/Shared/Forecasting', ['title' => 'Warehouse Forecasting']);
+    })->name('warehouse.forecasting');
     $inertia('/warehouse/stock/{id}', 'System/Warehouse/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
     $inertia('/warehouse/stock/{id}/edit', 'System/Warehouse/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
     $inertia('/warehouse/purchase-requisitions', 'System/Warehouse/PurchaseRequisitions/Index', 'warehouse.purchase-requisitions', 'Warehouse Purchase Requisitions');

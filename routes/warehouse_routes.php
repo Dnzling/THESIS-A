@@ -45,6 +45,7 @@ Route::prefix('warehouse/reorder')->controller(WarehouseReorderController::class
     Route::post('rules', 'saveRule');
     Route::get('suggestions', 'suggestions');
     Route::post('suggestions/generate', 'generate');
+    Route::post('suggestions/create-prs', 'createPurchaseRequisitions');
     Route::post('suggestions/{suggestion}/approve', 'approve')->whereNumber('suggestion');
 });
 Route::get('warehouse/forecasting', fn (\Illuminate\Http\Request $request, ForecastController $controller) => $controller->index($request, 'warehouse'));

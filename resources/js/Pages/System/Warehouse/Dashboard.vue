@@ -87,8 +87,8 @@
             </Column>
             <Column header="Warehouse"><template #body="{ data: row }">{{ row.branch?.name || row.branch?.branch_name || 'Warehouse' }}</template></Column>
             <Column field="quantity_available" header="Available" />
-            <Column header="Status"><template #body="{ data: row }"><Badge :value="formatLabel(row.stock_status)" :severity="stockSeverity(row.stock_status)" /></template></Column>
-            <Column header="Action" headerClass="text-right" bodyClass="text-right"><template #body="{ data: row }"><Button label="Open" severity="warn" text size="small" @click.stop="openStock(row)" /></template></Column>
+            <Column header="Status" style="width: 8rem;"><template #body="{ data: row }"><Badge :value="formatLabel(row.stock_status)" :severity="stockSeverity(row.stock_status)" /></template></Column>
+            <Column header="Action" headerClass="text-right" bodyClass="text-right"><template #body="{ data: row }"><Button icon="pi pi-eye" severity="warn" text size="small" @click.stop="openStock(row)" /></template></Column>
             <template #empty><div class="py-7 text-center text-xs text-slate-500">No warehouse items need replenishment.</div></template>
           </DataTable>
         </section>

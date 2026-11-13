@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text rounded @click="goBack" />
         <div>
-          <h1 class="text-lg font-bold text-gray-800">{{ isEditMode ? 'Edit Product' : 'Create Product' }}</h1>
+          <h1 class="text-lg font-bold text-gray-800">{{ isInventoryEditMode ? 'Edit Inventory Settings' : isEditMode ? 'Edit Product' : 'Create Product' }}</h1>
         </div>
       </div>
 
@@ -12,8 +12,29 @@
 
     <Card>
       <template #content>
-        <form class="grid grid-cols-1 gap-6 lg:grid-cols-[360px_minmax(0,1fr)]" @submit.prevent="handleSubmit">
-          <div class="space-y-4 lg:sticky lg:top-6 lg:self-start">
+        <div v-if="isInventoryEditMode && loadingPrefill" class="space-y-5" role="status" aria-label="Loading product details">
+          <div class="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <Skeleton shape="rectangle" width="4rem" height="4rem" />
+            <div class="min-w-0 flex-1 space-y-2">
+              <Skeleton width="10rem" height="0.75rem" />
+              <Skeleton width="16rem" height="1.25rem" />
+              <Skeleton width="12rem" height="0.75rem" />
+            </div>
+            <Skeleton width="5rem" height="1.5rem" borderRadius="999px" />
+          </div>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div v-for="field in 4" :key="field" class="space-y-2">
+              <Skeleton width="8rem" height="0.75rem" />
+              <Skeleton height="2.5rem" borderRadius="0.5rem" />
+            </div>
+          </div>
+          <div class="space-y-2">
+            <Skeleton width="10rem" height="0.75rem" />
+            <Skeleton height="5rem" borderRadius="0.75rem" />
+          </div>
+        </div>
+        <form v-else :class="isInventoryEditMode ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 gap-6 lg:grid-cols-[360px_minmax(0,1fr)]'" @submit.prevent="handleSubmit">
+          <div v-if="!isInventoryEditMode" class="space-y-4 lg:sticky lg:top-6 lg:self-start">
             <div class="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 p-4">
               <div class="flex items-center justify-between gap-2">
                 <div>
@@ -52,13 +73,25 @@
           </div>
 
           <div class="space-y-4">
+            <div v-if="isInventoryEditMode" class="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <img v-if="imagePreview" :src="imagePreview" :alt="form.product_name" class="h-16 w-16 rounded-lg border border-slate-200 bg-white object-cover" />
+              <div v-else class="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400"><i class="pi pi-image" /></div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Shared Product Catalog</p>
+                <h2 class="truncate text-base font-semibold text-slate-900">{{ form.product_name }}</h2>
+                <p class="mt-1 text-xs text-slate-600">{{ productSku || 'No SKU' }}<span v-if="form.brand"> · {{ form.brand }}</span><span v-if="form.category_id"> · {{ parentCategoryName(form.category_id) }}</span></p>
+              </div>
+              <span class="shrink-0 rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">{{ productTypeLabel(form.product_type) }}</span>
+            </div>
+
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <template v-if="!isInventoryEditMode">
               <p class="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-orange-700">Item details</p>
               <div class="md:col-span-2">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Item Name <span
                     class="text-red-500">*</span></label>
                 <InputText v-model="form.product_name" class="w-full text-sm" size="small"
-                  placeholder="e.g. Modern Chair" />
+                  placeholder="e.g. Packing Tape" />
                 <small v-if="errors.product_name" class="text-red-500">{{ errors.product_name }}</small>
               </div>
 
@@ -145,13 +178,15 @@
                 <Checkbox v-model="form.is_active" :binary="true" inputId="product_active" />
                 <label for="product_active" class="text-sm text-gray-700">Active</label>
               </div>
+              </template>
 
               <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Stock and sourcing</p>
 
               <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">Unit Measure <span
+                <label class="mb-1 block text-sm font-medium text-gray-700">Unit Measure <span v-if="!isInventoryEditMode"
                     class="text-red-500">*</span></label>
-                <Select v-model="form.unit_of_measurement" :options="unitMeasureOptions" optionLabel="label"
+                <p v-if="isInventoryEditMode" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{{ unitMeasureLabel(form.unit_of_measurement) }}</p>
+                <Select v-else v-model="form.unit_of_measurement" :options="unitMeasureOptions" optionLabel="label"
                   optionValue="value" class="w-full text-sm" placeholder="Select unit" size="small" />
                 <small v-if="errors.unit_of_measurement" class="text-red-500">{{ errors.unit_of_measurement }}</small>
               </div>
@@ -174,29 +209,56 @@
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Reorder Point</label>
                 <InputNumber v-model="form.reorder_point" :min="0" class="w-full text-sm" fluid size="small"
-                  placeholder="0" />
-                <small class="mt-1 block text-xs text-gray-500">Used as this branch's default. Branch-specific forecast rules remain in effect.</small>
+                  placeholder="10" />
+                <small class="mt-1 block text-xs text-gray-500">Create a replenishment suggestion at or below this available stock.</small>
+              </div>
+
+              <div v-if="!isEditMode">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Refill Quantity</label>
+                <InputNumber v-model="form.reorder_quantity" :min="1" :maxFractionDigits="0" class="w-full text-sm" fluid size="small"
+                  placeholder="25" />
+                <small class="mt-1 block text-xs text-gray-500">Suggested quantity when the reorder point is reached.</small>
+                <small v-if="errors.reorder_quantity" class="text-red-500">{{ errors.reorder_quantity }}</small>
               </div>
 
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Current Inventory Cost / Unit</label>
-                <small class="mb-1 block text-xs text-gray-500">Used for current stock valuation. Supplier prices are recorded separately below.</small>
-                <InputNumber v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
+                <small class="mb-1 block text-xs text-gray-500">{{ lockSourcingFields ? 'Managed through the warehouse purchasing workflow.' : 'Used for stock valuation across this store. Supplier prices are recorded separately below.' }}</small>
+                <p v-if="lockSourcingFields" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{{ formatCurrency(form.cost_price) }}</p>
+                <InputNumber v-else v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
                   class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
               </div>
               <div class="md:col-span-2">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Available Suppliers</label>
-                <MultiSelect v-model="selectedSupplierIds" :options="suppliers" optionLabel="supplier_name"
+                <p v-if="lockSourcingFields" class="mb-2 text-xs text-slate-500">
+                  {{ hasWarehousePermission ? 'Linked suppliers and their quoted prices are managed through the warehouse purchasing workflow.' : 'Checking store purchasing configuration. Sourcing details are temporarily read-only.' }}
+                </p>
+                <MultiSelect v-else v-model="selectedSupplierIds" :options="suppliers" optionLabel="supplier_name"
                   optionValue="id" :filterFields="['supplier_name', 'company_name', 'supplier_code']"
                   class="w-full text-sm" placeholder="Select one or more suppliers" filter display="chip"
                   :loading="loadingSuppliers" size="small" />
-                <p class="mt-1 text-xs text-gray-500">Set each supplier's price separately. One supplier can be marked as preferred.</p>
-                <small v-if="errors.supplier_links" class="text-red-500">{{ errors.supplier_links }}</small>
-                <small v-else-if="!loadingSuppliers && suppliers.length === 0" class="text-amber-600">
+                <p v-if="!lockSourcingFields" class="mt-1 text-xs text-gray-500">Set each supplier's price separately. One supplier can be marked as preferred.</p>
+                <small v-if="!lockSourcingFields && errors.supplier_links" class="text-red-500">{{ errors.supplier_links }}</small>
+                <small v-else-if="!lockSourcingFields && !loadingSuppliers && suppliers.length === 0" class="text-amber-600">
                   No active suppliers are available. Add a supplier from Inventory first.
                 </small>
 
-                <div v-if="form.supplier_links.length" class="mt-3 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
+                <div v-if="lockSourcingFields && form.supplier_links.length" class="mt-3 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
+                  <div class="grid grid-cols-[minmax(0,1fr)_minmax(120px,180px)] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span>Linked Supplier</span><span>Supplier Unit Price</span>
+                  </div>
+                  <div v-for="link in form.supplier_links" :key="link.supplier_id" class="grid grid-cols-[minmax(0,1fr)_minmax(120px,180px)] items-center gap-3 px-3 py-3">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <img v-if="supplierById(link.supplier_id)?.logo_url" :src="supplierById(link.supplier_id)?.logo_url" :alt="`${supplierNameById(link.supplier_id)} logo`" class="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                      <span v-else class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-semibold text-slate-600">{{ supplierInitialById(link.supplier_id) }}</span>
+                      <span class="truncate text-sm font-medium text-slate-800">{{ supplierNameById(link.supplier_id) }}</span>
+                      <span v-if="link.is_preferred_supplier" class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">Preferred</span>
+                    </div>
+                    <span class="text-sm font-medium text-slate-700">{{ formatCurrency(link.supplier_price) }}</span>
+                  </div>
+                </div>
+                <p v-else-if="lockSourcingFields" class="mt-2 rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">No suppliers are linked to this product.</p>
+                <div v-else-if="form.supplier_links.length" class="mt-3 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
                   <div class="hidden grid-cols-[minmax(0,1.5fr)_minmax(130px,1fr)_100px_100px_100px] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid">
                     <span>Supplier</span><span>Supplier Unit Price</span><span>Min. Qty</span><span>Lead Days</span><span>Preferred</span>
                   </div>
@@ -228,6 +290,7 @@
                 </div>
               </div>
 
+              <template v-if="!isInventoryEditMode">
               <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Overall dimensions</p>
                 <div class="md:col-span-2">
                   <p class="mb-2 text-xs text-gray-500">Enter the overall size in Width × Depth × Height order. All fields are optional.</p>
@@ -283,6 +346,7 @@
                   </div>
                 </div>
               </div>
+              </template>
 
               <!-- Temporarily hidden while bulky delivery handling is being revised.
               <div v-if="showFinishedGoodFields" class="md:col-span-2">
@@ -299,7 +363,7 @@
             <p v-if="submitting" role="status" class="text-sm text-gray-600">Saving item, please wait...</p>
             <div class="flex justify-end gap-2 pt-2">
               <Button type="button" label="Cancel" severity="secondary" outlined size="small" class="text-sm" @click="goBack" />
-              <Button type="submit" :label="isEditMode ? 'Update Item' : 'Create Item'" icon="pi pi-check"
+              <Button type="submit" :label="isInventoryEditMode ? 'Save Inventory Settings' : isEditMode ? 'Update Item' : 'Create Item'" icon="pi pi-check"
                 :loading="submitting" :disabled="submitting" severity="warn" size="small" class="text-sm" />
             </div>
           </div>
@@ -323,6 +387,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
+import Skeleton from 'primevue/skeleton'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import Chip from 'primevue/chip'
@@ -337,15 +402,21 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 const submitting = ref(false)
+const loadingPrefill = ref(false)
 const successVisible = ref(false)
 const createdProductId = ref<number | null>(null)
 const createdHasVariants = ref(false)
 const errors = ref<Record<string, string>>({})
 const branchCount = ref(0)
+const warehouseAccessLoaded = ref(false)
+const hasWarehousePermission = ref(false)
 const submitError = ref('')
 const isEditMode = computed(() => Boolean(route.params.id))
+const isInventoryEditMode = computed(() => isEditMode.value && String(route.name || '').startsWith('inventory.products.'))
+const lockSourcingFields = computed(() => isInventoryEditMode.value && (!warehouseAccessLoaded.value || hasWarehousePermission.value))
 const showInitialStockToggle = computed(() => !isEditMode.value && branchCount.value === 1)
 const productIndexRoute = computed(() => String(route.name || '').startsWith('merchandising.products') ? 'merchandising.products' : 'inventory.products.index')
+const productSku = ref('')
 const imageInput = ref<HTMLInputElement | null>(null)
 const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
@@ -407,6 +478,7 @@ const form = reactive({
   initial_stock: null as number | null,
   add_initial_stock: false,
   reorder_point: 10 as number | null,
+  reorder_quantity: 25 as number | null,
   is_active: true,
 })
 const bulkyOptions = [{ label: 'Auto-detect', value: null }, { label: 'Bulky — special handling', value: true }, { label: 'Not bulky', value: false }]
@@ -489,8 +561,13 @@ type SupplierLink = {
 
 const categories = ref<ProductCategory[]>([])
 const canManageFinishedGoods = computed(() => authStore.hasPermission('merchandising.products.manage'))
-const showFinishedGoodFields = computed(() => form.product_type === 'finished_good' && canManageFinishedGoods.value)
+const showFinishedGoodFields = computed(() => !isInventoryEditMode.value && form.product_type === 'finished_good' && canManageFinishedGoods.value)
+const productTypeLabel = (value: string) => ({
+  finished_good: 'Product', supply: 'Supply', raw_material: 'Raw Material',
+} as Record<string, string>)[value] || value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+const unitMeasureLabel = (value: string) => unitMeasureOptions.find(option => option.value === value)?.label || value || 'Not set'
 const suppliers = ref<SupplierOption[]>([])
+const linkedProductSuppliers = ref<SupplierOption[]>([])
 const loadingSuppliers = ref(false)
 const parentCategories = computed(() => {
   const parentIds = new Set(categories.value.filter(category => category.is_active !== false && category.parent_category_id != null)
@@ -531,7 +608,10 @@ const preferredSupplierId = computed<number | null>({
   }),
 })
 
-const supplierById = (id: number) => suppliers.value.find(supplier => Number(supplier.id) === Number(id)) || null
+const supplierById = (id: number) =>
+  suppliers.value.find(supplier => Number(supplier.id) === Number(id))
+  || linkedProductSuppliers.value.find(supplier => Number(supplier.id) === Number(id))
+  || null
 const supplierNameById = (id: number) => {
   const supplier = supplierById(id)
   return supplier ? supplierDisplayName(supplier) : `Supplier #${id}`
@@ -540,6 +620,9 @@ const supplierInitialById = (id: number) => supplierNameById(id).charAt(0).toUpp
 
 const supplierDisplayName = (supplier: SupplierOption) =>
   supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`
+
+const formatCurrency = (value: number | string | null | undefined) =>
+  new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 
 const supplierInitial = (supplier: SupplierOption) =>
   supplierDisplayName(supplier).charAt(0).toUpperCase()
@@ -571,6 +654,7 @@ const loadProduct = async (id: number) => {
     const response = await inventoryService.getProduct(id)
     const product = response.data
     form.product_name = product.product_name || ''
+    productSku.value = product.sku || ''
     form.description = product.description || ''
     const knownTypes = ['finished_good', 'supply', 'raw_material']
     form.product_type = knownTypes.includes(product.product_type) ? product.product_type : 'others'
@@ -579,6 +663,7 @@ const loadProduct = async (id: number) => {
     form.category_id = product.category_id ? Number(product.category_id) : null
     form.subcategory_id = product.subcategory_id ? Number(product.subcategory_id) : null
     const linkedSuppliers: SupplierOption[] = Array.isArray(product.suppliers) ? product.suppliers : []
+    linkedProductSuppliers.value = linkedSuppliers
     form.supplier_links = linkedSuppliers.map(supplier => ({
       supplier_id: Number(supplier.id),
       supplier_price: supplier.pivot?.supplier_price == null ? null : Number(supplier.pivot.supplier_price),
@@ -668,9 +753,9 @@ const removeSelectedPhoto = () => {
 const validate = () => {
   errors.value = {}
   submitError.value = ''
-  if (!form.product_name) errors.value.product_name = 'Item name is required'
-  if (!form.product_type) errors.value.product_type = 'Item type is required'
-  if (form.product_type === 'others' && !form.custom_product_type.trim()) {
+  if (!isInventoryEditMode.value && !form.product_name) errors.value.product_name = 'Item name is required'
+  if (!isInventoryEditMode.value && !form.product_type) errors.value.product_type = 'Item type is required'
+  if (!isInventoryEditMode.value && form.product_type === 'others' && !form.custom_product_type.trim()) {
     errors.value.custom_product_type = 'Custom item type is required'
   }
   if (showFinishedGoodFields.value && !form.category_id) {
@@ -678,7 +763,10 @@ const validate = () => {
       ? 'Create a category before adding a finished good'
       : 'Category is required for a finished good'
   }
-  if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
+  if (!isInventoryEditMode.value && !form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
+  if (!isEditMode.value && (form.reorder_quantity == null || Number(form.reorder_quantity) < 1)) {
+    errors.value.reorder_quantity = 'Refill quantity must be at least 1.'
+  }
   if (showInitialStockToggle.value && form.add_initial_stock && !form.has_variants
     && (form.initial_stock == null || !Number.isFinite(Number(form.initial_stock)) || Number(form.initial_stock) < 1)) {
     errors.value.initial_stock = 'Available stock must be at least 1.'
@@ -701,41 +789,52 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     const payload = new FormData()
-    payload.append('product_name', form.product_name)
-    payload.append('product_type', form.product_type === 'others' ? form.custom_product_type.trim() : form.product_type)
-    payload.append('brand', form.brand.trim())
-    if (form.product_type !== 'finished_good') payload.append('description', form.description.trim())
-    if (showFinishedGoodFields.value) {
-      if (form.category_id != null) payload.append('category_id', String(form.category_id))
-      payload.append('subcategory_id', form.subcategory_id != null ? String(form.subcategory_id) : '')
-    }
-    if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
-    if (showFinishedGoodFields.value) {
-      if (form.base_price != null) payload.append('base_price', String(form.base_price))
-      payload.append('is_bulky', form.is_bulky === null ? '' : form.is_bulky ? '1' : '0')
-      if (!isEditMode.value) payload.append('has_variants', form.has_variants ? '1' : '0')
-    }
-    payload.append('length_cm', form.length_cm == null ? '' : String(form.length_cm))
-    payload.append('width_cm', form.width_cm == null ? '' : String(form.width_cm))
-    payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
-    payload.append('depth_cm', form.depth_cm == null ? '' : String(form.depth_cm))
-    payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
-    const additionalMeasurements = form.additional_measurements
-      .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
-      .map(({ label, value, unit }) => ({ label: label.trim(), value, unit }))
-    payload.append('additional_measurements', JSON.stringify(additionalMeasurements))
-    payload.append('supplier_links', JSON.stringify(form.supplier_links))
-    if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
-    if (showInitialStockToggle.value && form.add_initial_stock && !form.has_variants && form.initial_stock != null) {
-      payload.append('add_initial_stock', '1')
-      payload.append('initial_stock', String(form.initial_stock))
-    } else if (!isEditMode.value) {
-      payload.append('add_initial_stock', '0')
-    }
-    if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
-    payload.append('is_active', form.is_active ? '1' : '0')
-    if (imageFile.value) {
-      payload.append('product_image', imageFile.value)
+    if (isInventoryEditMode.value) {
+      payload.append('inventory_settings_only', '1')
+      if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
+      if (!hasWarehousePermission.value) {
+        if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
+        payload.append('supplier_links', JSON.stringify(form.supplier_links))
+      }
+    } else {
+      payload.append('product_name', form.product_name)
+      payload.append('product_type', form.product_type === 'others' ? form.custom_product_type.trim() : form.product_type)
+      payload.append('brand', form.brand.trim())
+      if (form.product_type !== 'finished_good') payload.append('description', form.description.trim())
+      if (showFinishedGoodFields.value) {
+        if (form.category_id != null) payload.append('category_id', String(form.category_id))
+        payload.append('subcategory_id', form.subcategory_id != null ? String(form.subcategory_id) : '')
+      }
+      if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
+      if (showFinishedGoodFields.value) {
+        if (form.base_price != null) payload.append('base_price', String(form.base_price))
+        payload.append('is_bulky', form.is_bulky === null ? '' : form.is_bulky ? '1' : '0')
+        if (!isEditMode.value) payload.append('has_variants', form.has_variants ? '1' : '0')
+      }
+      payload.append('length_cm', form.length_cm == null ? '' : String(form.length_cm))
+      payload.append('width_cm', form.width_cm == null ? '' : String(form.width_cm))
+      payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
+      payload.append('depth_cm', form.depth_cm == null ? '' : String(form.depth_cm))
+      payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
+      const additionalMeasurements = form.additional_measurements
+        .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
+        .map(({ label, value, unit }) => ({ label: label.trim(), value, unit }))
+      payload.append('additional_measurements', JSON.stringify(additionalMeasurements))
+      payload.append('supplier_links', JSON.stringify(form.supplier_links))
+      if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
+      if (showInitialStockToggle.value && form.add_initial_stock && !form.has_variants && form.initial_stock != null) {
+        payload.append('add_initial_stock', '1')
+        payload.append('initial_stock', String(form.initial_stock))
+      } else if (!isEditMode.value) {
+        payload.append('add_initial_stock', '0')
+      }
+      if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
+      payload.append('reorder_quantity', String(form.reorder_quantity ?? 25))
+      payload.append('reorder_scope', 'branch')
+      payload.append('is_active', form.is_active ? '1' : '0')
+      if (imageFile.value) {
+        payload.append('product_image', imageFile.value)
+      }
     }
 
     if (isEditMode.value) {
@@ -784,6 +883,7 @@ const handleSubmit = async () => {
 const goBack = () => router.push({ name: isEditMode.value ? 'inventory.products.index' : productIndexRoute.value })
 
 onMounted(async () => {
+  loadingPrefill.value = isInventoryEditMode.value
   const requestedType = String(route.query.type || '')
   if (['supply', 'raw_material', 'others'].includes(requestedType)) {
     form.product_type = requestedType
@@ -794,20 +894,30 @@ onMounted(async () => {
   } else if (!isEditMode.value) {
     form.product_type = 'supply'
   }
-  await Promise.all([loadCategories(), loadSuppliers(), loadBranchCount()])
-  if (isEditMode.value) {
-    await loadProduct(Number(route.params.id))
+  try {
+    await Promise.all([loadCategories(), loadBranchConfiguration()])
+    if (!lockSourcingFields.value) await loadSuppliers()
+    if (isEditMode.value) {
+      await loadProduct(Number(route.params.id))
+    }
+  } finally {
+    loadingPrefill.value = false
   }
 })
 
-const loadBranchCount = async () => {
-  if (isEditMode.value) return
+const loadBranchConfiguration = async () => {
   try {
     const response = await inventoryService.getBranches()
-    const branches = response?.data?.data ?? response?.data ?? []
-    branchCount.value = Array.isArray(branches) ? branches.length : 0
+    const payload = response?.data ?? response
+    const branches = payload?.data ?? []
+    hasWarehousePermission.value = Boolean(payload?.warehouse_enabled)
+    branchCount.value = !isEditMode.value && Array.isArray(branches) ? branches.length : 0
   } catch {
     branchCount.value = 0
+    // Fail closed in inventory edit mode if the store's plan configuration cannot be verified.
+    hasWarehousePermission.value = isInventoryEditMode.value
+  } finally {
+    warehouseAccessLoaded.value = true
   }
 }
 </script>

@@ -19,8 +19,9 @@
     <Card class="border border-slate-200 shadow-none">
       <template #content>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="w-full sm:w-80">
-            <IconField fluid><InputIcon class="pi pi-search" /><InputText v-model="search" placeholder="Search products or SKU" fluid size="small" /></IconField>
+          <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <IconField class="w-full sm:w-80" fluid><InputIcon class="pi pi-search" /><InputText v-model="search" placeholder="Search products" fluid size="small" /></IconField>
+            <Select v-model="selectedCategoryId" :options="categoryOptions" optionLabel="label" optionValue="value" class="w-full sm:w-56" size="small" aria-label="Filter by category" />
           </div>
           <div class="text-xs text-slate-500">{{ selectedRows.length }} selected · {{ filteredProducts.length }} products</div>
         </div>
@@ -44,7 +45,9 @@
         <div class="space-y-2.5 p-3">
           <div>
             <h2 class="line-clamp-2 font-semibold leading-5 text-slate-900">{{ product.product_name }}</h2>
-            <p class="mt-1 text-xs text-slate-500">{{ product.supplier_sku || product.sku }} · {{ product.category_name || label(product.product_type) }}</p>
+            <p v-if="product.category_name || product.subcategory_name" class="mt-1 text-xs text-slate-500">
+              {{ [product.category_name, product.subcategory_name].filter(Boolean).join(' · ') }}
+            </p>
           </div>
           <div class="rounded-lg bg-slate-50 p-2.5">
             <p class="text-xs text-slate-500">Cost including tax</p>
@@ -57,7 +60,7 @@
             <InputNumber :modelValue="quantityFor(product.id)" @update:modelValue="setQuantity(product.id, $event)" :min="product.minimum_order_quantity" :maxFractionDigits="0" fluid size="small" />
             <small v-if="quantityError(product)" class="text-red-600">{{ quantityError(product) }}</small>
           </div>
-          <Button fluid size="small" :label="isSelected(product.id) ? 'Remove' : 'Select Product'" :icon="isSelected(product.id) ? 'pi pi-times' : 'pi pi-plus'" :severity="isSelected(product.id) ? 'secondary' : 'warn'" :outlined="isSelected(product.id)" :disabled="!product.is_active" @click="toggleProduct(product)" />
+          <Button fluid size="small" :label="product.is_acquired ? 'Acquired' : isSelected(product.id) ? 'Remove' : 'Select Product'" :icon="product.is_acquired ? 'pi pi-check-circle' : isSelected(product.id) ? 'pi pi-times' : 'pi pi-plus'" :severity="product.is_acquired ? 'success' : isSelected(product.id) ? 'secondary' : 'warn'" :outlined="product.is_acquired || isSelected(product.id)" :disabled="!product.is_active || product.is_acquired" @click="toggleProduct(product)" />
         </div>
       </article>
     </div>
@@ -93,23 +96,43 @@ import InputIcon from 'primevue/inputicon'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 
 const route = useRoute(); const router = useRouter(); const toast = useToast(); const supplierId = Number(route.params.id)
-const loading = ref(false); const submitting = ref(false); const products = ref<any[]>([]); const supplier = ref<any>(null); const search = ref(''); const quantities = ref<Record<number, number>>({}); const selectedIds = ref<number[]>([]); const confirmationVisible = ref(false); const rfqTitle = ref('')
-const filteredProducts = computed(() => { const q = search.value.trim().toLowerCase(); return products.value.filter(product => !q || [product.product_name, product.supplier_sku, product.sku, product.category_name].some(value => String(value || '').toLowerCase().includes(q))) })
+const loading = ref(false); const submitting = ref(false); const products = ref<any[]>([]); const supplier = ref<any>(null); const search = ref(''); const selectedCategoryId = ref<number | null>(null); const quantities = ref<Record<number, number>>({}); const selectedIds = ref<number[]>([]); const confirmationVisible = ref(false); const rfqTitle = ref('')
+const categoryOptions = computed(() => {
+  const categories = new Map<number, string>()
+  products.value.forEach(product => {
+    if (product.category_id != null && product.category_name) categories.set(Number(product.category_id), String(product.category_name))
+  })
+  return [
+    { label: 'All categories', value: null },
+    ...[...categories.entries()]
+      .map(([value, label]) => ({ label, value }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ]
+})
+const filteredProducts = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  return products.value.filter(product => {
+    const matchesSearch = !q || String(product.product_name || '').toLowerCase().includes(q)
+    const matchesCategory = selectedCategoryId.value == null || Number(product.category_id) === Number(selectedCategoryId.value)
+    return matchesSearch && matchesCategory
+  })
+})
 const selectedRows = computed(() => selectedIds.value.map(id => ({ product: products.value.find(product => product.id === id), quantity: Number(quantities.value[id] || 0) })).filter(row => row.product))
 const estimatedTotal = computed(() => selectedRows.value.reduce((sum, row) => sum + row.quantity * Number(row.product.cost_including_tax || 0), 0))
-const canCreate = computed(() => supplier.value?.contract_status === 'active' && selectedRows.value.length > 0 && selectedRows.value.every(row => !quantityError(row.product)))
+const canCreate = computed(() => supplier.value?.contract_status === 'active' && selectedRows.value.length > 0 && selectedRows.value.every(row => !row.product.is_acquired && !quantityError(row.product)))
 const isSelected = (id: number) => selectedIds.value.includes(id); const quantityFor = (id: number) => quantities.value[id] || 1
 const setQuantity = (id: number, value: number | null) => { quantities.value[id] = Number(value || 0) }
 const quantityError = (product: any) => { if (!isSelected(product.id)) return ''; const quantity = quantityFor(product.id); if (quantity < Number(product.minimum_order_quantity || 1)) return `Minimum quantity is ${product.minimum_order_quantity}.`; return '' }
-const toggleProduct = (product: any) => { if (isSelected(product.id)) { selectedIds.value = selectedIds.value.filter(id => id !== product.id); delete quantities.value[product.id] } else { selectedIds.value.push(product.id); quantities.value[product.id] = Number(product.minimum_order_quantity || 1) } }
+const toggleProduct = (product: any) => { if (product.is_acquired) return; if (isSelected(product.id)) { selectedIds.value = selectedIds.value.filter(id => id !== product.id); delete quantities.value[product.id] } else { selectedIds.value.push(product.id); quantities.value[product.id] = Number(product.minimum_order_quantity || 1) } }
 const load = async () => { loading.value = true; try { const response = await procurementService.getSupplierAvailableProducts(supplierId); supplier.value = response.data?.supplier || null; products.value = response.data?.products || []; rfqTitle.value = `Request for quotation - ${supplier.value?.supplier_name || 'Supplier products'}` } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load products', detail: error?.response?.data?.message || 'Supplier products could not be loaded.', life: 3000 }) } finally { loading.value = false } }
 const openConfirmation = () => { if (canCreate.value) confirmationVisible.value = true }
 const createRfq = async () => { if (!canCreate.value || !rfqTitle.value.trim()) return; submitting.value = true; try { const response = await procurementService.createRFQ({ title: rfqTitle.value.trim(), description: `RFQ created from ${supplier.value.supplier_name}'s connected product listings.`, issue_date: new Date().toISOString().slice(0, 10), items: selectedRows.value.map(row => ({ product_id: row.product.id, variation_id: null, quantity: row.quantity, specifications: '', requirements: '' })), supplier_ids: [supplierId], rfq_type: 'purchase', currency: 'PHP', from_supplier_products: true } as any); confirmationVisible.value = false; toast.add({ severity: 'success', summary: 'RFQ created', detail: response.message || 'Draft RFQ created successfully.', life: 2500 }); router.push({ name: 'procurement.rfqs.detail', params: { id: response.data.id } }) } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to create RFQ', detail: error?.response?.data?.message || 'RFQ creation failed.', life: 3500 }) } finally { submitting.value = false } }
 const goBack = () => router.push({ name: 'procurement.suppliers.detail', params: { id: supplierId } })
-const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0)); const number = (value: unknown) => new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(Number(value || 0)); const label = (value: string) => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0)); const number = (value: unknown) => new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(Number(value || 0))
 onMounted(load)
 </script>

@@ -25,30 +25,30 @@
     </div>
 
     <template v-else>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Sales Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_today) }}</p>
               </div>
-              <Tag value="Today" severity="success" />
+              <Badge value="Today" severity="success" />
             </div>
           </template>
         </Card>
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Store Orders Today</p>
                 <p class="text-2xl font-semibold text-slate-900">{{ kpis.orders_today }}</p>
               </div>
-              <Tag value="Orders" severity="info" />
+              <Badge value="Orders" severity="info" />
             </div>
           </template>
         </Card>
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
@@ -56,26 +56,14 @@
                 <p class="text-2xl font-semibold text-slate-900">{{ formatCurrency(kpis.sales_30d) }}</p>
                 <p class="text-xs text-slate-500 mt-1">Average Order Value: {{ formatCurrency(kpis.avg_order_value_30d) }}</p>
               </div>
-              <Tag value="30 Days" severity="secondary" />
-            </div>
-          </template>
-        </Card>
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock Alerts</p>
-                <p class="text-sm text-slate-700 mt-2">Low stock: <span class="font-semibold text-slate-900">{{ kpis.low_stock_count }}</span></p>
-                <p class="text-sm text-slate-700">Out of stock: <span class="font-semibold text-slate-900">{{ kpis.out_of_stock_count }}</span></p>
-              </div>
-              <Tag value="Inventory" severity="warn" />
+              <Badge value="30 Days" severity="secondary" />
             </div>
           </template>
         </Card>
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
+        <Card class="rounded-2xl border border-slate-200 bg-white xl:col-span-2">
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
@@ -90,7 +78,7 @@
             <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p>
           </template>
         </Card>
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="mb-3">
                 <h3 class="text-base font-semibold text-slate-800">Order Status | Last 30 Days</h3>
@@ -103,7 +91,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
+        <Card class="rounded-2xl border border-slate-200 bg-white xl:col-span-2">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Top-Selling Products | Last 30 Days</h3>
@@ -112,7 +100,7 @@
             <Chart type="bar" :data="topProductsData" :options="barOptions" class="h-72" />
           </template>
         </Card>
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Procurement Requests</h3>
@@ -133,7 +121,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
+        <Card class="rounded-2xl border border-slate-200 bg-white xl:col-span-2">
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
@@ -164,7 +152,7 @@
           </template>
         </Card>
 
-        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
+        <Card class="rounded-2xl border border-slate-200 bg-white">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Store Branches</h3>
@@ -349,11 +337,3 @@ onMounted(() => {
   loadDashboard()
 })
 </script>
-
-<style scoped>
-:global(.p-card.flat-dashboard-card) {
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  box-shadow: none !important;
-}
-</style>

@@ -93,7 +93,7 @@
               <p class="truncate font-medium text-slate-900">{{ product.product_name }}</p>
               <p class="mt-1 text-xs text-slate-500">{{ product.pivot?.supplier_sku || product.sku }}</p>
               <p class="mt-2 text-sm font-semibold text-slate-900">PHP {{ formatCurrency(product.pivot?.supplier_price) }}</p>
-              <p class="mt-1 text-xs text-slate-500">{{ product.pivot?.available_stock ?? 0 }} available</p>
+              <p class="mt-1 text-xs text-slate-500">{{ availabilityLabel(product.pivot?.availability_status) }}</p>
             </div>
           </div>
           <div v-else class="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">No products are connected to this supplier yet.</div>
@@ -506,6 +506,8 @@ const createContract = () => {
 const openSupplierProducts = () => {
   router.push({ name: 'procurement.suppliers.products', params: { id: supplierId } })
 }
+
+const availabilityLabel = (value?: string) => ({ available: 'Available', limited: 'Limited availability', out_of_stock: 'Out of stock' }[String(value || 'available')] || 'Available')
 
 const viewPurchaseOrder = async (purchaseOrder: any) => {
   selectedPurchaseOrder.value = null

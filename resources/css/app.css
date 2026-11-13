@@ -172,3 +172,13 @@
 	border-color: #ea580c !important;
 	background: #ea580c !important;
 }
+
+/* Use the same subtle, centered shadow for PrimeVue cards throughout the app. */
+.p-card {
+	box-shadow: 0 0 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+.module-dashboard .p-card,
+.module-dashboard .p-card:hover {
+	box-shadow: 0 0 2px rgba(15, 23, 42, 0.08) !important;
+}

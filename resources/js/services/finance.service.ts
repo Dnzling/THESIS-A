@@ -222,6 +222,14 @@ const financeService = {
     return response.data
   },
 
+  async exportCashflowTransactions(params?: any) {
+    return axiosClient.get(`${baseUrl}/cashflow/transactions/export`, { params, responseType: 'blob' })
+  },
+
+  async printCashflowTransactions(params?: any) {
+    return axiosClient.get(`${baseUrl}/cashflow/transactions/print`, { params, responseType: 'blob' })
+  },
+
   async getCashflowTransactionDetail(id: number | string) {
     const response = await axiosClient.get(`${baseUrl}/cashflow/transactions/${id}`)
     return response.data

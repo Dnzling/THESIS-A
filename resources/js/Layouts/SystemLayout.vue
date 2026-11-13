@@ -362,6 +362,7 @@ const enabledModules = ref<string[] | null>(null)
 const sidebarOpen = ref(true)
 const subscriptionName = computed(() => {
   if (String(authStore.userRole || '').toLowerCase() === 'super_admin') return 'Platform Administration'
+  if ((authStore.userRole || '').toLowerCase().includes('supplier')) return 'Supplier'
   const name = authStore.user?.store?.subscription_name
   return name || 'Free'
 })

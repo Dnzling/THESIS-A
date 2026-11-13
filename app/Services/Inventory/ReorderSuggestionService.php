@@ -362,26 +362,27 @@ class ReorderSuggestionService
         $leadTime = (int) ($rule?->lead_time_days ?? 7);
         $reviewDays = (int) ($rule?->review_period_days ?? 7);
         $configuredAverage = (float) ($rule?->avg_daily_demand ?? 0);
+        $configuredQty = (float) ($rule?->reorder_quantity ?? $item->reorder_quantity ?? 0);
+        $configuredMax = (float) ($rule?->maximum_stock ?? $item->maximum_stock ?? 0);
         $averageDemand = $sales['units'] > 0 ? $sales['units'] / 30 : $configuredAverage;
         $demandMode = $allowsForecast && (!$rule || $rule->basis_type === 'demand_lead_time') && $leadTime > 0 && $averageDemand > 0;
+        $triggerType = $allowsForecast ? ($rule?->trigger_type ?? 'reorder_point') : 'reorder_point';
 
         if ($demandMode) {
             $trigger = ($averageDemand * $leadTime) + $safetyStock;
             $target = ($averageDemand * ($leadTime + max(0, $reviewDays))) + $safetyStock;
             $source = $sales['units'] > 0 ? 'sales_30_day' : 'configured_average_demand';
         } else {
-            $triggerType = $allowsForecast ? ($rule?->trigger_type ?? 'reorder_point') : 'reorder_point';
             $trigger = match ($triggerType) {
                 'safety_stock' => $safetyStock,
                 'seasonal' => $configuredPoint * (float) ($rule?->getSeasonalAdjustment() ?? 1),
                 default => $configuredPoint,
             };
-            $configuredQty = (float) ($rule?->reorder_quantity ?? $item->reorder_quantity ?? 0);
-            $configuredMax = (float) ($rule?->maximum_stock ?? $item->maximum_stock ?? 0);
             $target = $configuredMax > 0
                 ? $configuredMax
                 : ($configuredQty > 0 ? $currentStock + $configuredQty : $configuredPoint * 2);
-            $source = $rule ? 'configured_reorder_rule' : 'branch_inventory_reorder_point';
+            $usesBranchPointFallback = !$rule || (!$allowsForecast && $rule->basis_type === 'demand_lead_time');
+            $source = $usesBranchPointFallback ? 'branch_inventory_reorder_point' : 'configured_reorder_rule';
         }
 
         $pendingQuery = ReorderSuggestion::query()
@@ -408,15 +409,24 @@ class ReorderSuggestionService
         $priority = $this->priorityForTrigger($currentStock, $trigger);
         $metadata = [
             'source' => $source,
+            'basis_type' => $rule?->basis_type,
+            'trigger_type' => $triggerType,
+            'forecast_enabled' => $allowsForecast,
             'inventory_item_id' => (int) $item->id,
             'variation_id' => $item->variation_id ? (int) $item->variation_id : null,
             'calculation' => [
                 'sales_window_days' => 30,
+                'applied_basis_type' => $rule?->basis_type,
+                'trigger_type' => $triggerType,
+                'forecast_enabled' => $allowsForecast,
                 'units_sold' => round($sales['units'], 2),
                 'average_daily_demand' => round($averageDemand, 4),
                 'lead_time_days' => $leadTime,
                 'review_period_days' => $reviewDays,
                 'safety_stock' => $safetyStock,
+                'configured_reorder_point' => $configuredPoint,
+                'configured_refill_quantity' => $configuredQty,
+                'maximum_stock' => $configuredMax > 0 ? $configuredMax : null,
                 'reorder_trigger' => round($trigger, 2),
                 'target_stock' => round($target, 2),
             ],

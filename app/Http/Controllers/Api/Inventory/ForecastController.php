@@ -20,6 +20,10 @@ class ForecastController extends Controller
         $plan = app(ForecastPlanService::class);
         abort_unless($plan->allowsForecast($storeId), 403, 'Forecasting requires Growth or Enterprise. Use manual reorder points on this plan.');
 
+        if ($scope === 'warehouse' && $request->filled('inventory_id')) {
+            return $this->productReport($request, $storeId, $assignedBranch);
+        }
+
         $validated = $request->validate([
             'from_date' => ['nullable', 'required_with:to_date', 'date', 'before_or_equal:today'],
             'to_date' => ['nullable', 'required_with:from_date', 'date', 'after_or_equal:from_date', 'before_or_equal:today'],
@@ -146,6 +150,205 @@ class ForecastController extends Controller
             ],
             'summary' => ['products' => $rows->count(), 'reorder_now' => $rows->whereIn('status', ['Out of stock', 'Reorder now'])->count(), 'forecast_units' => round($rows->sum('forecast_30_days')), 'recommended_units' => $rows->sum('recommended')],
             'rows' => $rows->forPage($page, 15)->values(), 'total' => $rows->count(),
+        ]]);
+    }
+
+    private function productReport(Request $request, int $storeId, int $assignedBranch): JsonResponse
+    {
+        $user = $request->user();
+        $permissions = app(\App\Services\Core\PermissionService::class);
+        abort_unless(
+            $permissions->userHasPermission($user, 'warehouse.reorder.view', $storeId)
+                || $permissions->userHasPermission($user, 'warehouse.forecasting.manage', $storeId),
+            403,
+        );
+
+        $validated = $request->validate([
+            'inventory_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'from_date' => ['nullable', 'required_with:to_date', 'date', 'before_or_equal:today'],
+            'to_date' => ['nullable', 'required_with:from_date', 'date', 'after_or_equal:from_date', 'before_or_equal:today'],
+            'forecast_days' => ['nullable', 'integer', \Illuminate\Validation\Rule::in([7, 14, 30, 60, 90])],
+        ]);
+
+        $branchId = (int) ($validated['branch_id'] ?? 0);
+        if ($assignedBranch > 0) {
+            abort_if($branchId > 0 && $branchId !== $assignedBranch, 403);
+            $branchId = $assignedBranch;
+        }
+
+        $item = DB::table('branch_inventory as bi')
+            ->join('branches as b', 'b.id', '=', 'bi.branch_id')
+            ->join('products as p', 'p.id', '=', 'bi.product_id')
+            ->leftJoin('product_variations as v', 'v.id', '=', 'bi.variation_id')
+            ->where('bi.id', (int) $validated['inventory_id'])
+            ->where('bi.store_id', $storeId)
+            ->where('b.store_id', $storeId)
+            ->where('b.branch_type', 'warehouse')
+            ->whereNull('bi.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->when($branchId > 0, fn ($query) => $query->where('bi.branch_id', $branchId))
+            ->select([
+                'bi.id as inventory_id', 'bi.store_id', 'bi.branch_id', 'bi.product_id', 'bi.variation_id',
+                'bi.quantity_available', 'bi.quantity_incoming', 'bi.reorder_point as inventory_reorder_point',
+                'bi.reorder_quantity as inventory_reorder_quantity', 'bi.safety_stock as inventory_safety_stock',
+                'p.product_name', 'p.sku', 'p.product_type', 'p.unit_of_measurement', 'b.name as branch_name',
+                'v.variation_name',
+            ])
+            ->selectRaw('COALESCE(v.variation_sku, p.sku) as item_sku')
+            ->first();
+
+        abort_unless($item, 404, 'Warehouse inventory item not found.');
+
+        $rule = DB::table('reorder_rules')
+            ->where('branch_id', $item->branch_id)
+            ->where('product_id', $item->product_id)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->first();
+
+        $end = isset($validated['to_date'])
+            ? \Carbon\Carbon::parse($validated['to_date'])->endOfDay()
+            : now()->endOfDay();
+        $start = isset($validated['from_date'])
+            ? \Carbon\Carbon::parse($validated['from_date'])->startOfDay()
+            : $end->copy()->subDays(29)->startOfDay();
+        abort_if($start->diffInDays($end->copy()->startOfDay()) + 1 > 366, 422, 'Choose a date range of up to one year.');
+
+        $days = (int) $start->diffInDays($end->copy()->startOfDay()) + 1;
+        $forecastDays = (int) ($validated['forecast_days'] ?? 30);
+        $readDailyDemand = function ($rangeStart, $rangeEnd) use ($item, $storeId): array {
+            $daily = [];
+            $variationFilter = static function ($query, string $column, $variationId) {
+                return $variationId
+                    ? $query->where($column, $variationId)
+                    : $query->whereNull($column);
+            };
+
+            $pos = DB::table('sales_pos_order_items as item')
+                ->join('sales_pos_orders as orders', 'orders.id', '=', 'item.order_id')
+                ->where('orders.store_id', $storeId)
+                ->where('orders.branch_id', $item->branch_id)
+                ->where('orders.status', 'completed')
+                ->where('item.product_id', $item->product_id)
+                ->whereBetween('orders.created_at', [$rangeStart, $rangeEnd]);
+            $variationFilter($pos, 'item.variation_id', $item->variation_id);
+            foreach ($pos->selectRaw('DATE(orders.created_at) as demand_day, SUM(item.quantity) as units')
+                ->groupByRaw('DATE(orders.created_at)')->get() as $row) {
+                $date = (string) $row->demand_day;
+                $daily[$date] = ($daily[$date] ?? 0) + (float) $row->units;
+            }
+
+            $online = DB::table('ecommerce_order_items as item')
+                ->join('ecommerce_orders as orders', 'orders.id', '=', 'item.order_id')
+                ->join('branch_inventory as inventory', 'inventory.id', '=', 'item.branch_inventory_id')
+                ->where('orders.store_id', $storeId)
+                ->where('orders.assigned_branch_id', $item->branch_id)
+                ->whereIn('orders.status', ['delivered', 'completed'])
+                ->where('orders.payment_status', '!=', 'refunded')
+                ->where('inventory.store_id', $storeId)
+                ->where('inventory.branch_id', $item->branch_id)
+                ->where('inventory.id', $item->inventory_id)
+                ->whereNull('inventory.deleted_at')
+                ->whereRaw('COALESCE(orders.placed_at, orders.created_at) BETWEEN ? AND ?', [$rangeStart, $rangeEnd]);
+            $variationFilter($online, 'inventory.variation_id', $item->variation_id);
+            foreach ($online->selectRaw('DATE(COALESCE(orders.placed_at, orders.created_at)) as demand_day, SUM(item.quantity) as units')
+                ->groupByRaw('DATE(COALESCE(orders.placed_at, orders.created_at))')->get() as $row) {
+                $date = (string) $row->demand_day;
+                $daily[$date] = ($daily[$date] ?? 0) + (float) $row->units;
+            }
+
+            $returns = DB::table('ecommerce_order_returns as returns')
+                ->join('ecommerce_order_items as item', 'item.id', '=', 'returns.order_item_id')
+                ->join('ecommerce_orders as orders', 'orders.id', '=', 'returns.order_id')
+                ->join('branch_inventory as inventory', 'inventory.id', '=', 'item.branch_inventory_id')
+                ->where('orders.store_id', $storeId)
+                ->where('orders.assigned_branch_id', $item->branch_id)
+                ->where('inventory.store_id', $storeId)
+                ->where('inventory.branch_id', $item->branch_id)
+                ->where('inventory.id', $item->inventory_id)
+                ->whereNull('inventory.deleted_at')
+                ->whereIn('returns.status', ['received', 'return_received', 'refund_pending', 'refunded', 'replaced'])
+                ->whereRaw('COALESCE(orders.placed_at, orders.created_at) BETWEEN ? AND ?', [$rangeStart, $rangeEnd]);
+            $variationFilter($returns, 'inventory.variation_id', $item->variation_id);
+            foreach ($returns->selectRaw('DATE(COALESCE(orders.placed_at, orders.created_at)) as demand_day, SUM(returns.requested_quantity) as units')
+                ->groupByRaw('DATE(COALESCE(orders.placed_at, orders.created_at))')->get() as $row) {
+                $date = (string) $row->demand_day;
+                $daily[$date] = max(0, ($daily[$date] ?? 0) - (float) $row->units);
+            }
+
+            return $daily;
+        };
+
+        $dailyDemand = $readDailyDemand($start, $end);
+        $previousEnd = $start->copy()->subSecond();
+        $previousStart = $start->copy()->subDays($days);
+        $previousDemand = $readDailyDemand($previousStart, $previousEnd);
+        $series = [];
+        for ($cursor = $start->copy()->startOfDay(); $cursor->lte($end); $cursor->addDay()) {
+            $day = $cursor->toDateString();
+            $series[] = ['date' => $day, 'units' => round((float) ($dailyDemand[$day] ?? 0), 2)];
+        }
+
+        $unitsSold = array_sum($dailyDemand);
+        $previousUnits = array_sum($previousDemand);
+        $dailyAverage = $unitsSold / max(1, $days);
+        $forecastUnits = $dailyAverage * $forecastDays;
+        $available = (float) $item->quantity_available;
+        $incoming = (float) $item->quantity_incoming;
+        $reorderPoint = (float) ($rule->reorder_point ?? $item->inventory_reorder_point ?? 0);
+        $refillQuantity = (float) ($rule->reorder_quantity ?? $item->inventory_reorder_quantity ?? 0);
+        $safetyStock = (float) ($rule->safety_stock ?? $item->inventory_safety_stock ?? 0);
+        $maximumStock = (float) ($rule->maximum_stock ?? 0);
+        $ruleTargetStock = $maximumStock > 0
+            ? $maximumStock
+            : ($refillQuantity > 0 ? $available + $refillQuantity : $reorderPoint * 2);
+        $ruleSuggestedQuantity = max(0, (int) ceil($ruleTargetStock - $available));
+        $changePercent = $previousUnits > 0 ? round((($unitsSold - $previousUnits) / $previousUnits) * 100, 1) : null;
+
+        return response()->json(['data' => [
+            'product' => [
+                'inventory_id' => (int) $item->inventory_id,
+                'product_id' => (int) $item->product_id,
+                'variation_id' => $item->variation_id ? (int) $item->variation_id : null,
+                'name' => $item->product_name,
+                'variation_name' => $item->variation_name,
+                'sku' => $item->item_sku,
+                'product_type' => $item->product_type,
+                'unit' => $item->unit_of_measurement,
+                'branch_id' => (int) $item->branch_id,
+                'branch_name' => $item->branch_name,
+            ],
+            'period' => ['from' => $start->toDateString(), 'to' => $end->toDateString(), 'days' => $days],
+            'settings' => [
+                'rule_source' => $rule ? 'Configured reorder rule' : 'Branch inventory fallback',
+                'basis_type' => $rule->basis_type ?? 'reorder_point',
+                'reorder_point' => $reorderPoint,
+                'refill_quantity' => $refillQuantity,
+                'maximum_stock' => $maximumStock > 0 ? $maximumStock : null,
+                'safety_stock' => $safetyStock,
+                'lead_time_days' => $rule->lead_time_days ?? null,
+                'review_period_days' => $rule->review_period_days ?? null,
+                'average_daily_demand' => $rule->avg_daily_demand ?? null,
+            ],
+            'metrics' => [
+                'units_sold' => round($unitsSold, 2),
+                'previous_units_sold' => round($previousUnits, 2),
+                'change_percent' => $changePercent,
+                'average_daily_demand' => round($dailyAverage, 3),
+                'forecast_days' => $forecastDays,
+                'forecast_units' => round($forecastUnits, 2),
+                'available' => $available,
+                'incoming' => $incoming,
+                'days_cover' => $dailyAverage > 0 ? round($available / $dailyAverage, 1) : null,
+                'projected_stock' => round($available + $incoming - $forecastUnits, 2),
+                'suggested_replenishment' => max(0, (int) ceil($forecastUnits + $safetyStock - $available - $incoming)),
+                'rule_target_stock' => $ruleTargetStock,
+                'rule_suggested_quantity' => $ruleSuggestedQuantity,
+                'reorder_point' => $reorderPoint,
+            ],
+            'series' => $series,
+            'demand_source' => 'Completed POS and delivered e-commerce sales, net of recorded e-commerce returns.',
         ]]);
     }
 }

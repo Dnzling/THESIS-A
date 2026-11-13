@@ -7,6 +7,8 @@
         <p class="mt-1 text-xs text-slate-500">Track recorded incoming and outgoing financial activity.</p>
       </div>
       <div class="flex items-center gap-2">
+        <Button icon="pi pi-print" label="Print" severity="secondary" outlined size="small" :loading="printing" :disabled="loadingTransactions" @click="printTransactions" />
+        <Button icon="pi pi-file-excel" label="Export Excel" severity="secondary" outlined size="small" :loading="exporting" :disabled="loadingTransactions" @click="exportTransactions" />
         <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadCashflow" />
       </div>
     </div>
@@ -18,7 +20,8 @@
         <template #content>
           <div class="flex min-h-24 flex-col justify-between">
             <p class="text-xs font-medium text-slate-500">Incoming</p>
-            <p class="text-xl font-semibold text-emerald-600">₱{{ formatMoney(transactionSummary.incoming) }}</p>
+            <p class="text-3xl font-semibold text-emerald-600">₱{{ formatMoney(transactionSummary.incoming) }}</p>
+            <Divider />
             <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('incoming')">
               <i :class="comparisonIcon('incoming')" />
               {{ comparisonLabel('incoming') }} vs previous period
@@ -32,7 +35,8 @@
         <template #content>
           <div class="flex min-h-24 flex-col justify-between">
             <p class="text-xs font-medium text-slate-500">Outgoing</p>
-            <p class="text-xl font-semibold text-rose-600">₱{{ formatMoney(transactionSummary.outgoing) }}</p>
+            <p class="text-2xl font-semibold text-rose-600">₱{{ formatMoney(transactionSummary.outgoing) }}</p>
+            <Divider />
             <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('outgoing')">
               <i :class="comparisonIcon('outgoing')" />
               {{ comparisonLabel('outgoing') }} vs previous period
@@ -46,9 +50,10 @@
         <template #content>
           <div class="flex min-h-24 flex-col justify-between">
             <p class="text-xs font-medium text-slate-500">Net Movement</p>
-            <p class="text-xl font-semibold" :class="transactionSummary.net >= 0 ? 'text-emerald-600' : 'text-rose-600'">
+            <p class="text-2xl font-semibold" :class="transactionSummary.net >= 0 ? 'text-emerald-600' : 'text-rose-600'">
               {{ transactionSummary.net >= 0 ? '+' : '-' }}₱{{ formatMoney(Math.abs(transactionSummary.net)) }}
             </p>
+            <Divider />
             <p class="flex items-center gap-1 text-[11px]" :class="comparisonClass('net')">
               <i :class="comparisonIcon('net')" />
               {{ comparisonLabel('net') }} vs previous period
@@ -132,6 +137,12 @@
               </template>
             </Column>
 
+            <Column field="direction" header="Direction" sortable style="width: 120px">
+              <template #body="{ data }">
+                <Badge :value="data.direction === 'in' ? 'Incoming' : 'Outgoing'" :severity="data.direction === 'in' ? 'success' : 'warn'" class="!text-[10px]" />
+              </template>
+            </Column>
+
             <Column field="amount" header="Amount" sortable style="width: 140px">
               <template #body="{ data }">
                 <span class="font-semibold" :class="data.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'">
@@ -140,8 +151,20 @@
               </template>
             </Column>
 
+            <Column field="balance_after" header="Recorded Balance After" sortable style="width: 190px">
+              <template #body="{ data }">
+                <span class="font-medium text-slate-700">{{ data.balance_after == null ? '-' : `₱${formatMoney(data.balance_after)}` }}</span>
+              </template>
+            </Column>
+
             <Column field="reference_type" header="Source" sortable style="width: 180px">
               <template #body="{ data }">{{ formatReferenceType(data.reference_type) }}</template>
+            </Column>
+
+            <Column field="source_reference" header="Reference" style="min-width: 180px">
+              <template #body="{ data }">
+                <span class="font-medium text-slate-700">{{ data.source_reference || '-' }}</span>
+              </template>
             </Column>
 
             <Column field="payment_method" header="Method" sortable style="width: 160px">
@@ -177,8 +200,10 @@
               <Tag :value="selectedTransaction.direction === 'in' ? 'Incoming' : 'Outgoing'" :severity="selectedTransaction.direction === 'in' ? 'success' : 'warn'" class="mt-1 !text-[10px]" />
             </div>
           </div>
-          <div class="mt-4 border-t border-slate-200 pt-3">
-            <div><p class="text-slate-500">Transaction amount</p><p class="mt-1 font-semibold text-slate-800">₱{{ formatMoney(selectedTransaction.amount) }}</p></div>
+          <div class="mt-4 grid grid-cols-1 gap-3 border-t border-slate-200 pt-3 sm:grid-cols-3">
+            <div class="rounded-lg bg-white px-3 py-2"><p class="text-slate-500">Transaction amount</p><p class="mt-1 font-semibold text-slate-800">₱{{ formatMoney(selectedTransaction.amount) }}</p></div>
+            <div class="rounded-lg bg-white px-3 py-2"><p class="text-slate-500">Recorded balance before</p><p class="mt-1 font-semibold text-slate-800">{{ selectedTransaction.balance_before == null ? '-' : `₱${formatMoney(selectedTransaction.balance_before)}` }}</p></div>
+            <div class="rounded-lg bg-white px-3 py-2"><p class="text-slate-500">Recorded balance after</p><p class="mt-1 font-semibold text-slate-800">{{ selectedTransaction.balance_after == null ? '-' : `₱${formatMoney(selectedTransaction.balance_after)}` }}</p></div>
           </div>
         </section>
 
@@ -255,6 +280,8 @@ const toast = useToast()
 
 const loading = ref(false)
 const loadingTransactions = ref(false)
+const printing = ref(false)
+const exporting = ref(false)
 let transactionSearchTimer: ReturnType<typeof setTimeout> | null = null
 const transactions = ref<any[]>([])
 const transactionSummary = ref({
@@ -336,11 +363,71 @@ const formatDateTime = (value: string) => {
   })
 }
 
+const dateParam = (value?: Date) => {
+  if (!value) return undefined
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const transactionQueryParams = () => ({
+  direction: filters.value.direction || undefined,
+  reference_type: filters.value.reference_type || undefined,
+  search: filters.value.search.trim() || undefined,
+  date_from: dateParam(filters.value.date_range?.[0]),
+  date_to: dateParam(filters.value.date_range?.[1]),
+})
+
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+const exportTransactions = async () => {
+  exporting.value = true
+  try {
+    const response = await financeService.exportCashflowTransactions(transactionQueryParams())
+    saveBlob(response.data, `cashflow-${dateParam(filters.value.date_range?.[0]) || 'all-dates'}.csv`)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Export Failed', detail: error?.response?.data?.message || 'Unable to export cashflow transactions.', life: 3500 })
+  } finally {
+    exporting.value = false
+  }
+}
+
+const printTransactions = async () => {
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) {
+    toast.add({ severity: 'warn', summary: 'Pop-up Blocked', detail: 'Allow pop-ups to open the print-ready cashflow report.', life: 3500 })
+    return
+  }
+
+  printing.value = true
+  try {
+    const response = await financeService.printCashflowTransactions(transactionQueryParams())
+    const url = URL.createObjectURL(response.data)
+    printWindow.location.href = url
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (error: any) {
+    printWindow.close()
+    toast.add({ severity: 'error', summary: 'Print Failed', detail: error?.response?.data?.message || 'Unable to prepare the cashflow report.', life: 3500 })
+  } finally {
+    printing.value = false
+  }
+}
+
 const loadTransactions = async () => {
   loadingTransactions.value = true
   try {
-    const from = filters.value.date_range?.[0] ? new Date(filters.value.date_range[0]).toISOString().slice(0, 10) : undefined
-    const to = filters.value.date_range?.[1] ? new Date(filters.value.date_range[1]).toISOString().slice(0, 10) : undefined
+    const from = dateParam(filters.value.date_range?.[0])
+    const to = dateParam(filters.value.date_range?.[1])
 
     const res = await financeService.getCashflowTransactions({
       direction: filters.value.direction || undefined,
@@ -397,7 +484,7 @@ const formatReferenceType = (value: string) => {
     manual_adjustment: 'Manual Adjustment',
     cashflow_topup: 'Cashflow Top-up',
   }
-  return map[value] || (value ? value.replace(/_/g, ' ') : '-')
+  return map[value] || (value ? value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : '-')
 }
 
 const creatorName = (creator: any) => {
@@ -412,7 +499,7 @@ const transactionMetaFields = computed(() => {
   if (!meta || typeof meta !== 'object') return []
   return Object.entries(meta).map(([key, value]) => ({
     label: formatMetaLabel(key),
-    value: formatDetailValue(value),
+    value: formatSourceValue(formatMetaLabel(key), value),
   }))
 })
 
@@ -426,10 +513,20 @@ const formatDetailValue = (value: unknown) => {
 const formatSourceValue = (label: string, value: unknown) => {
   if (value === null || value === undefined || value === '') return '-'
   const normalizedLabel = label.toLowerCase()
+  if (normalizedLabel.includes('status')) return formatStatus(value)
+  if (normalizedLabel.includes('payment method')) return formatPaymentMethod(String(value))
   if ((typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))) && /amount|total|subtotal|discount|tax|shipping|salary|overtime|allowance|bonus|deduction|price|tendered|change/.test(normalizedLabel)) {
     return `₱${formatMoney(value)}`
   }
   return formatDetailValue(value)
+}
+
+const formatStatus = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '-'
+  return String(value)
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 const openTransactionDetail = async (event: any) => {
@@ -459,12 +556,13 @@ const openTransactionDetail = async (event: any) => {
 
 const formatPaymentMethod = (value: string) => {
   if (!value) return '-'
+  if (value.toLowerCase().includes('paymongo') || value.toLowerCase() === 'online_payment') return 'Online Payment'
   const map: Record<string, string> = {
     bank_transfer: 'Bank Transfer',
     credit_card: 'Credit Card',
     debit_card: 'Debit Card',
-    paymongo_gcash: 'Online Payment GCash',
     gcash: 'GCash',
+    maya: 'Maya',
   }
   return map[value] || value.replace(/_/g, ' ').replace(/\b\w/g, (s) => s.toUpperCase())
 }

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="p-4 min-h-screen">
     <div class="mb-4 flex items-center justify-between">
       <div class="flex items-center gap-2">
@@ -56,44 +56,15 @@
         <template #title>How this quantity was calculated</template>
         <template #content>
           <p class="text-sm text-gray-700">{{ suggestion.reason || 'No reason provided.' }}</p>
-          <p v-if="suggestion.calculation" class="mt-2 text-xs leading-5 text-slate-500">
-            Recent-sales formula: daily demand = units sold ÷ 30; reorder trigger = daily demand × lead time + safety stock;
-            suggested quantity targets demand across lead time and review period. When demand history or lead time is unavailable,
-            the configured reorder point and refill settings are used instead.
-          </p>
+          <p v-if="suggestion.calculation" class="mt-2 text-xs leading-5 text-slate-500">{{ calculationExplanation }}</p>
           <div v-if="suggestion.calculation" class="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Data source</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ calculationSourceLabel }}</div>
+            <div v-for="metric in calculationMetrics" :key="metric.label" class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">{{ metric.label }}</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ metric.value }}</div>
             </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Units sold (30 days)</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.units_sold ?? 0 }}</div>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Average daily demand</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.average_daily_demand ?? 0 }}</div>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Supplier lead time</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.lead_time_days || 0 }} days</div>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Safety stock</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.safety_stock ?? 0 }}</div>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Reorder trigger</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.reorder_trigger ?? 0 }}</div>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Target stock</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.target_stock ?? 0 }}</div>
-            </div>
-            <div v-if="suggestion.calculation.review_period_days" class="rounded-lg bg-slate-50 p-3">
-              <div class="text-slate-500">Review period</div>
-              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.review_period_days }} days</div>
-            </div>
+          </div>
+          <div v-if="suggestion.calculation" class="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+            Priority is a stock-risk band based on current stock versus the trigger: Critical at zero or at/below 25%, High at/below 50%, Medium at/below 75%, otherwise Low.
           </div>
         </template>
       </Card>
@@ -175,6 +146,9 @@ const normalizeSuggestion = (row: any) => ({
   variation_name: row?.variation?.variation_name || null,
   calculation: row?.metadata?.calculation || null,
   calculation_source: row?.metadata?.source || null,
+  applied_basis_type: row?.metadata?.basis_type || row?.reorder_rule?.basis_type || null,
+  forecast_enabled: row?.metadata?.forecast_enabled,
+  reorder_rule: row?.reorder_rule || null,
   branch_name: row?.branch?.name || '-',
 })
 
@@ -185,6 +159,55 @@ const calculationSourceLabel = computed(() => {
   if (source === 'branch_inventory_reorder_point') return 'Branch reorder point'
   if (source === 'configured_reorder_rule') return 'Reorder rule'
   return source || 'Manual'
+})
+
+const isDemandDriven = computed(() => ['sales_30_day', 'configured_average_demand'].includes(suggestion.value?.calculation_source))
+const appliedTriggerType = computed(() => suggestion.value?.calculation?.trigger_type || suggestion.value?.reorder_rule?.trigger_type || 'reorder_point')
+const calculationExplanation = computed(() => {
+  if (isDemandDriven.value) {
+    return 'Demand-based calculation: average daily demand Ã— supplier lead time + safety stock sets the reorder trigger. The target covers lead time plus review period and safety stock. The order quantity fills the gap from current stock to that target.'
+  }
+  if (suggestion.value?.applied_basis_type === 'demand_lead_time' && suggestion.value?.forecast_enabled === false) {
+    return 'Demand-based forecasting is unavailable for this store plan, so this suggestion falls back to the branch reorder point. The configured refill quantity or maximum stock determines the target when present.'
+  }
+  return 'Reorder-point calculation: the suggestion triggers when available stock reaches the configured threshold. The target uses maximum stock when set; otherwise it uses current stock plus refill quantity, or twice the reorder point when no refill quantity is set.'
+})
+
+const formatMetric = (value: any, digits = 0) => value === null || value === undefined || value === ''
+  ? 'â€”'
+  : Number(value).toLocaleString('en-PH', { maximumFractionDigits: digits })
+const formatWithUnit = (value: any, unit: string, digits = 0) => {
+  const formatted = formatMetric(value, digits)
+  return formatted === 'â€”' ? formatted : `${formatted} ${unit}`
+}
+
+const calculationMetrics = computed(() => {
+  const row = suggestion.value
+  const calc = row?.calculation
+  if (!row || !calc) return []
+  const rule = row.reorder_rule
+  const demandDriven = isDemandDriven.value
+  const triggerType = appliedTriggerType.value
+  const maxStock = Number(calc.maximum_stock ?? rule?.maximum_stock ?? 0)
+  const refillQty = Number(calc.configured_refill_quantity ?? rule?.reorder_quantity ?? 0)
+  const unused = 'Not used for this suggestion'
+  return [
+    { label: 'Calculation source', value: calculationSourceLabel.value },
+    { label: 'Applied rule', value: row.applied_basis_type === 'demand_lead_time' ? 'Demand and lead time' : row.applied_basis_type === 'reorder_point' ? 'Reorder point' : 'Branch inventory settings' },
+    { label: 'Available stock', value: formatMetric(row.current_stock) },
+    { label: 'Units sold · 30 days', value: demandDriven ? formatMetric(calc.units_sold, 2) : unused },
+    { label: 'Average daily demand', value: demandDriven ? formatWithUnit(calc.average_daily_demand, 'units/day', 2) : unused },
+    { label: 'Configured average daily demand', value: row.calculation_source === 'configured_average_demand' ? formatWithUnit(rule?.avg_daily_demand ?? calc.average_daily_demand, 'units/day', 2) : unused },
+    { label: 'Configured reorder point', value: !demandDriven && triggerType !== 'safety_stock' ? formatWithUnit(calc.configured_reorder_point ?? rule?.reorder_point, 'units') : unused },
+    { label: 'Configured refill quantity', value: !demandDriven && maxStock <= 0 && refillQty > 0 ? formatWithUnit(refillQty, 'units') : unused },
+    { label: 'Maximum stock', value: !demandDriven && maxStock > 0 ? formatWithUnit(maxStock, 'units') : unused },
+    { label: 'Reorder trigger', value: formatWithUnit(calc.reorder_trigger, 'units') },
+    { label: 'Target stock', value: formatWithUnit(calc.target_stock, 'units') },
+    { label: 'Supplier lead time', value: demandDriven ? formatWithUnit(calc.lead_time_days ?? rule?.lead_time_days, 'days') : unused },
+    { label: 'Review period', value: demandDriven ? formatWithUnit(calc.review_period_days ?? rule?.review_period_days, 'days') : unused },
+    { label: 'Safety stock', value: demandDriven || triggerType === 'safety_stock' ? formatWithUnit(calc.safety_stock ?? rule?.safety_stock, 'units') : unused },
+    { label: 'Suggested order quantity', value: formatWithUnit(row.suggested_quantity, 'units') },
+  ]
 })
 
 const formatQuantity = (value: unknown) => new Intl.NumberFormat('en-PH', {
