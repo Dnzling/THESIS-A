@@ -89,7 +89,16 @@
           </div>
           <Button label="View orders" severity="secondary" text size="small" @click="goToOrders" />
         </div>
-        <DataTable :value="stats.recent_orders || []" size="small" rowHover class="text-xs" @row-click="openOrder">
+        <div class="grid gap-3 sm:grid-cols-2 lg:hidden">
+          <button v-for="order in stats.recent_orders || []" :key="order.id" class="rounded-xl border border-slate-200 p-4 text-left" @click="openOrder({ data: order })">
+            <div class="flex items-start justify-between gap-2"><span class="font-semibold text-slate-900">{{ order.order_number }}</span><Badge :value="formatStatus(order.payment_status)" :severity="paymentSeverity(order.payment_status)" /></div>
+            <p class="mt-2 truncate text-xs text-slate-500">{{ order.customer_name || 'Walk-in customer' }}</p>
+            <div class="mt-3 flex items-center justify-between gap-2 text-xs"><span class="text-slate-500">{{ formatMethod(order.payment_method) }}</span><strong class="text-slate-900">{{ money(order.total_amount) }}</strong></div>
+            <p class="mt-2 text-[11px] text-slate-400">{{ formatDate(order.created_at) }}</p>
+          </button>
+          <p v-if="!(stats.recent_orders || []).length" class="col-span-full py-7 text-center text-xs text-slate-500">No sales orders have been recorded yet.</p>
+        </div>
+        <DataTable :value="stats.recent_orders || []" size="small" rowHover class="hidden text-xs lg:block" @row-click="openOrder">
           <Column field="order_number" header="Order" />
           <Column field="customer_name" header="Customer">
             <template #body="{ data }">{{ data.customer_name || 'Walk-in customer' }}</template>
@@ -115,7 +124,16 @@
           <h2 class="font-semibold text-slate-950">Recent ecommerce orders</h2>
           <p class="text-xs text-slate-500">See who last handled each online order from its delivery activity.</p>
         </div>
-        <DataTable :value="stats.recent_ecommerce_orders || []" size="small" rowHover class="text-xs" @row-click="openEcommerceOrder">
+        <div class="grid gap-3 sm:grid-cols-2 lg:hidden">
+          <button v-for="order in stats.recent_ecommerce_orders || []" :key="order.id" class="rounded-xl border border-slate-200 p-4 text-left" @click="openEcommerceOrder({ data: order })">
+            <div class="flex items-start justify-between gap-2"><span class="font-semibold text-slate-900">{{ order.order_number }}</span><Badge :value="formatStatus(order.payment_status || order.primary_status)" :severity="paymentSeverity(order.payment_status || order.primary_status)" /></div>
+            <p class="mt-2 truncate text-xs text-slate-500">{{ order.customer_name || 'Customer' }}</p>
+            <div class="mt-3 flex items-center justify-between gap-2 text-xs"><span class="text-slate-500">{{ formatMethod(order.payment_method) }}</span><strong class="text-slate-900">{{ money(order.total_amount) }}</strong></div>
+            <p class="mt-2 text-[11px] text-slate-400">{{ formatDate(order.created_at) }}</p>
+          </button>
+          <p v-if="!(stats.recent_ecommerce_orders || []).length" class="col-span-full py-7 text-center text-xs text-slate-500">No ecommerce orders have been recorded yet.</p>
+        </div>
+        <DataTable :value="stats.recent_ecommerce_orders || []" size="small" rowHover class="hidden text-xs lg:block" @row-click="openEcommerceOrder">
           <Column field="order_number" header="Order" />
           <Column field="customer_name" header="Customer">
             <template #body="{ data }">{{ data.customer_name || 'Customer' }}</template>

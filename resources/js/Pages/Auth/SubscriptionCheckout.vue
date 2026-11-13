@@ -7,12 +7,12 @@
         </div>
         <template v-if="!pageError">
           <p class="text-sm font-semibold text-orange-600">Confirming payment</p>
-          <h1 class="mt-3 text-3xl font-bold">We’re activating your subscription.</h1>
+          <h1 class="mt-3 text-3xl font-bold">We're activating your subscription.</h1>
           <p class="mx-auto mt-4 max-w-md leading-7 text-slate-600">Keep this tab open while FurniSync confirms the payment and updates your store modules.</p>
         </template>
         <template v-else>
           <p class="text-sm font-semibold text-red-600">Confirmation delayed</p>
-          <h1 class="mt-3 text-3xl font-bold">We couldn’t confirm the payment yet.</h1>
+          <h1 class="mt-3 text-3xl font-bold">We couldn't confirm the payment yet.</h1>
           <p class="mx-auto mt-4 max-w-md leading-7 text-slate-600">{{ pageError }}</p>
           <Button label="Open Billing" severity="warn" class="mt-6" @click="router.visit('/store/billing')" />
         </template>
@@ -54,7 +54,7 @@
             <section v-else class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
               <p class="text-sm font-semibold text-orange-600">Payment method</p>
               <h1 class="mt-2 text-3xl font-bold">How would you like to pay?</h1>
-              <p class="mt-2 text-sm text-slate-500">You’ll complete payment securely through PayMongo.</p>
+              <p class="mt-2 text-sm text-slate-500">You'll complete payment securely through PayMongo.</p>
 
               <div class="mt-7 grid gap-3 sm:grid-cols-2">
                 <button v-for="method in paymentMethods" :key="method.value" type="button"
@@ -96,7 +96,7 @@
             <section class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
               <p class="text-sm font-semibold text-orange-600">Required before store setup</p>
               <h2 class="mt-2 text-2xl font-bold">Review and sign the service agreement</h2>
-              <p class="mt-2 text-sm leading-6 text-slate-600">This agreement records your store’s selected {{ selectedPlan.name }} subscription. It becomes active after the trial or payment is activated.</p>
+              <p class="mt-2 text-sm leading-6 text-slate-600">This agreement records your store's selected {{ selectedPlan.name }} subscription. It becomes active after the trial or payment is activated.</p>
               <div class="mt-4 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
                 <p class="font-semibold text-slate-800">FurniSync Store Subscription Service Agreement</p>
                 <p class="mt-2">The store may use the modules and limits included in its selected plan. Paid subscriptions start after payment confirmation. Any eligible one-month trial starts when FurniSync activates it, with no charge collected during the trial period.</p>
@@ -134,7 +134,7 @@
               <p class="text-sm font-semibold text-slate-200">Included features</p>
               <ul class="mt-4 space-y-3">
                 <li v-for="feature in selectedPlan.features || []" :key="feature" class="flex gap-3 text-sm text-slate-300">
-                  <i class="pi pi-check mt-1 text-xs text-orange-400"></i><span>{{ feature }}</span>
+                  <svg class="mt-1 h-3.5 w-3.5 shrink-0 text-orange-400" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8.25 3.1 3.1L13 4.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg><span>{{ feature }}</span>
                 </li>
               </ul>
             </div>

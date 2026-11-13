@@ -108,8 +108,10 @@ class StoreSubscriptionAgreementController extends Controller
     public function activate(Request $request)
     {
         $store = $this->ownedStore($request);
-        $plan = $store->subscriptionPlan;
-        abort_unless($plan && in_array($store->subscription_status, ['trial', 'paid'], true), 409, 'Activate the selected subscription before finalizing its agreement.');
+        $planId = (int) $store->subscription_tier;
+        $subscriptionStatus = strtolower(trim((string) $store->subscription_status));
+        $plan = $planId > 0 ? SubscriptionPlan::withTrashed()->find($planId) : null;
+        abort_unless($plan && in_array($subscriptionStatus, ['trial', 'paid'], true), 409, 'Activate the selected subscription before finalizing its agreement.');
 
         $agreement = StoreSubscriptionAgreement::query()
             ->where('store_id', $store->id)

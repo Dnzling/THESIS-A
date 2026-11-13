@@ -100,10 +100,11 @@
         </aside>
       </div>
 
-      <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-5">
-          <Button v-if="status === 'pending'" label="Reject" icon="pi pi-times" severity="danger" outlined @click="rejectOpen = true" />
-        <Button v-if="status === 'pending'" :label="isBranch ? 'Approve Branch' : 'Approve Store'" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approveOpen = true" />
+      <div v-if="status === 'pending' && allDocumentsViewed" class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-5">
+        <Button label="Reject" icon="pi pi-times" severity="danger" outlined @click="rejectOpen = true" />
+        <Button :label="isBranch ? 'Approve Branch' : 'Approve Store'" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approveOpen = true" />
       </div>
+      <Message v-else-if="status === 'pending'" severity="info" :closable="false" class="mt-5">View each submitted document to unlock the approval actions ({{ viewedDocumentCount }} of {{ submittedDocuments.length }} viewed).</Message>
     </template>
 
     <div v-else class="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-700">Unable to load this verification record.</div>
@@ -162,6 +163,7 @@ import Dialog from 'primevue/dialog'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
+import Message from 'primevue/message'
 import axiosClient from '@/axios'
 
 const route = useRoute()
@@ -178,6 +180,7 @@ const documentLoading = ref(false)
 const selectedDocument = ref<any>(null)
 const documentObjectUrl = ref('')
 const objectUrls = new Set<string>()
+const viewedDocuments = ref(new Set<string>())
 
 const verification = computed(() => payload.value?.verification || null)
 const store = computed(() => payload.value?.store || null)
@@ -187,6 +190,9 @@ const owner = computed(() => payload.value?.owner || null)
 const documents = computed(() => payload.value?.documents?.documents || [])
 const submittedDocuments = computed(() => documents.value.filter((doc: any) => doc.submitted))
 const documentSummary = computed(() => payload.value?.documents?.summary || {})
+const documentKey = (doc: any) => `${doc.key}-${doc.index ?? 'main'}`
+const viewedDocumentCount = computed(() => submittedDocuments.value.filter((doc: any) => viewedDocuments.value.has(documentKey(doc))).length)
+const allDocumentsViewed = computed(() => viewedDocumentCount.value === submittedDocuments.value.length)
 const status = computed(() => payload.value?.status || 'pending')
 const fullName = (person: any) => [person?.fname, person?.lname].filter(Boolean).join(' ') || '-'
 const value = (input: any) => input === null || input === undefined || input === '' ? '-' : String(input)
@@ -248,7 +254,10 @@ const openDocument = async (doc: any) => {
   documentOpen.value = true
   documentLoading.value = true
   documentObjectUrl.value = ''
-  try { documentObjectUrl.value = createObjectUrl(await fetchBlob(doc.preview_url)) }
+  try {
+    documentObjectUrl.value = createObjectUrl(await fetchBlob(doc.preview_url))
+    viewedDocuments.value = new Set([...viewedDocuments.value, documentKey(doc)])
+  }
   catch (error: any) { toast.add({ severity: 'error', summary: 'Preview unavailable', detail: error?.response?.data?.message || 'Unable to load this attachment.', life: 3500 }) }
   finally { documentLoading.value = false }
 }

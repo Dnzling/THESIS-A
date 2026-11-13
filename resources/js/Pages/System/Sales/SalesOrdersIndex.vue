@@ -71,14 +71,14 @@
               <p class="text-xs text-gray-500">{{ data.customer_contact || '-' }}</p>
             </template>
           </Column>
-          <Column field="channel" header="Channel" style="width: 8%;">
+          <Column field="channel" header="Channel" style="width: 12%;">
             <template #body="{ data }">
               <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Wholesale' ? 'warn' : 'success'" />
             </template>
           </Column>
-          <Column field="branch_name" header="Branch">
+          <!-- <Column field="branch_name" header="Branch">
             <template #body="{ data }">{{ data.branch_name || 'Unassigned' }}</template>
-          </Column>
+          </Column> -->
           <Column field="items_count" header="Items">
             <template #body="{ data }">{{ Number(data.items_count || 0).toLocaleString() }}</template>
           </Column>
@@ -91,7 +91,7 @@
               <p class="text-xs text-gray-500 mt-1">{{ formatStatus(data.payment_status || '-') }}</p>
             </template>
           </Column>
-          <Column field="status" header="Status">
+          <Column field="status" header="Status" style="width: 15%;">
             <template #body="{ data }">
               <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
