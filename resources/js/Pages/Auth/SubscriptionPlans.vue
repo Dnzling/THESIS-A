@@ -5,7 +5,7 @@
         <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">Simple plans for modern furniture teams.</h1>
         <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Try any plan free for one month. No payment is collected during the trial.</p>
 
-        <div class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div v-if="!canStartTrial" class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <span class="text-sm font-medium" :class="!isYearly ? 'text-slate-900' : 'text-orange-500'">Monthly</span>
           <ToggleSwitch v-model="isYearly" inputId="billing-cycle-switch" aria-label="Toggle billing cycle" />
           <span class="text-sm font-medium" :class="isYearly ? 'text-slate-900' : 'text-orange-500'">Yearly</span>

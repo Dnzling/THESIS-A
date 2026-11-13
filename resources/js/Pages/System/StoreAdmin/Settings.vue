@@ -1,6 +1,7 @@
 <template>
     <div>
         <Toast />
+        <ConfirmDialog />
         <div class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -143,6 +144,24 @@
                     </template>
                 </Card>
             </div>
+
+            <Card class="border border-slate-200 shadow-sm">
+                <template #title>Subscription Agreement</template>
+                <template #content>
+                    <div v-if="agreement" class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0">
+                            <p class="font-semibold text-slate-900">{{ agreement.plan_name }} plan · {{ agreement.billing_cycle }}</p>
+                            <p class="mt-1 text-sm text-slate-600">Electronically signed by {{ agreement.signer_name }} on {{ formatAgreementDate(agreement.signed_at) }}.</p>
+                            <p class="mt-1 text-xs text-slate-500">Your signed FurniSync service agreement is saved securely for your store.</p>
+                        </div>
+                        <Button label="View Agreement" icon="pi pi-file-pdf" size="small" severity="warn" outlined class="shrink-0" @click="viewAgreement" />
+                    </div>
+                    <div v-else class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-sm text-slate-600">No active signed subscription agreement is available for this store yet.</p>
+                        <Button label="Open Billing" icon="pi pi-arrow-right" size="small" severity="secondary" outlined class="shrink-0" @click="router.visit('/store/billing')" />
+                    </div>
+                </template>
+            </Card>
 
             <Dialog v-model:visible="planDialogVisible" modal header="Available Plans" :style="{ width: '36rem' }">
                 <div class="space-y-3">
@@ -472,28 +491,16 @@
                         Simple attendance compares clock-in with opening time
                         and clock-out with closing time.
                     </p>
-                    <div class="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
-                        <div>
-                            <label class="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">Operating days <span v-if="setupAttention.operating_hours" role="status" aria-label="Operating days need setup" title="Select operating days and save the hours" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">!</span></label>
-                            <MultiSelect v-model="operatingHours.days" :options="operatingDayOptions"
-                                optionLabel="label" optionValue="value" placeholder="Select days" display="chip"
-                                fluid />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Opens at</label>
-                            <DatePicker v-model="openingTime" timeOnly hourFormat="12" size="small" fluid />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Closes at</label>
-                            <DatePicker v-model="closingTime" timeOnly hourFormat="12" size="small" fluid />
+                    <div class="space-y-2">
+                        <div v-for="day in operatingDayOptions" :key="day.value" class="grid items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 sm:grid-cols-[1fr_1fr_1fr]">
+                            <label class="flex items-center gap-2 text-sm font-medium text-slate-700"><input v-model="operatingHours.schedule[day.value].enabled" type="checkbox" class="rounded border-slate-300 text-orange-500 focus:ring-orange-500" @change="ensureDefaultOperatingHours(day.value)" />{{ day.label }}</label>
+                            <label class="text-xs text-slate-500">From<DatePicker v-model="operatingTimeModels[day.value].opens_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHours.schedule[day.value].enabled" /></label>
+                            <label class="text-xs text-slate-500">Until<DatePicker v-model="operatingTimeModels[day.value].closes_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHours.schedule[day.value].enabled" /></label>
                         </div>
                     </div>
-                    <p class="mt-2 text-xs text-slate-500">
-                        One schedule applies to all selected days. Overnight
-                        hours are not supported in Simple attendance.
-                    </p>
+                    <p class="mt-2 text-xs text-slate-500">Enabling a day defaults its hours to 8:00 AM–6:00 PM.</p>
                     <div class="mt-4 flex justify-end">
-                        <Button label="Save Operating Hours" icon="pi pi-check" :loading="savingOperatingHours"
+                        <Button label="Save Operating Hours" icon="pi pi-check" :loading="savingOperatingHours" :disabled="savingOperatingHours"
                             @click="saveOperatingHours" />
                     </div>
                 </template>
@@ -504,117 +511,49 @@
                 <template #content>
                     <div v-if="setupAttention.fulfillment_windows" class="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"><span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 font-bold text-white">!</span>Review and save the pickup and delivery windows that your store supports.</div>
                     <p class="mb-4 text-xs text-slate-500">Set broad service windows. Customers choose a date; your team confirms the exact time after ordering.</p>
-                    <div class="grid gap-5 lg:grid-cols-2">
-                        <div v-for="method in ['pickup', 'delivery'] as const" :key="method" class="rounded-xl border p-4" :class="setupAttention[method === 'pickup' ? 'pickup_window' : 'delivery_window'] ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200'">
-                            <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold capitalize text-slate-900">{{ method }} <span v-if="setupAttention[method === 'pickup' ? 'pickup_window' : 'delivery_window']" role="status" :aria-label="`${method} window setup needed`" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">!</span></h3>
-                            <label class="mb-1 block text-xs font-medium text-slate-700">Available days</label>
-                            <MultiSelect v-model="fulfillmentWindows[method].days" :options="operatingDayOptions" optionLabel="label" optionValue="value" display="chip" size="small" fluid />
-                            <div class="mt-3 grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-slate-700">From</label>
-                                    <DatePicker v-model="fulfillmentTimeModels[method].start.value" timeOnly hourFormat="12" size="small" fluid />
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-medium text-slate-700">Until</label>
-                                    <DatePicker v-model="fulfillmentTimeModels[method].end.value" timeOnly hourFormat="12" size="small" fluid />
-                                </div>
+                    <div class="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        <div v-for="method in ['pickup', 'delivery'] as const" :key="method" class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="min-w-0">
+                                <p class="text-sm font-semibold capitalize text-slate-900">{{ method }}</p>
+                                <p class="mt-0.5 text-xs text-slate-600">{{ formatWindowSummary(fulfillmentWindows[method]) }}</p>
                             </div>
-                            <div class="mt-3">
-                                <label class="mb-1 block text-xs font-medium text-slate-700">Days needed before booking</label>
-                                <InputNumber v-model="fulfillmentWindows[method].lead_days" :min="0" :max="14" size="small" fluid />
-                            </div>
+                            <div class="flex items-center gap-2"><Badge v-if="setupAttention[method === 'pickup' ? 'pickup_window' : 'delivery_window']" value="Setup needed" severity="warn" /><Button :label="method === 'pickup' ? 'Pickup' : 'Delivery'" icon="pi pi-pencil" size="small" severity="warn" outlined @click="openFulfillmentEditor(method)" /></div>
                         </div>
-                    </div>
-                    <div class="mt-4 flex justify-end">
-                        <Button label="Save service windows" size="small" severity="warn" :loading="savingFulfillmentWindows" @click="saveFulfillmentWindows" />
                     </div>
                 </template>
             </Card>
 
+            <Dialog v-model:visible="fulfillmentEditorVisible" modal :header="`${fulfillmentEditorMethod === 'pickup' ? 'Pickup' : 'Delivery'} settings`" :style="{ width: 'min(94vw, 44rem)' }">
+                <p class="mb-4 text-xs text-slate-500">Set broad service windows. Customers select a date; your team confirms the exact time after ordering.</p>
+                <div class="mb-4 flex gap-2"><Button label="Pickup" size="small" :severity="fulfillmentEditorMethod === 'pickup' ? 'warn' : 'secondary'" :outlined="fulfillmentEditorMethod !== 'pickup'" @click="fulfillmentEditorMethod = 'pickup'" /><Button label="Delivery" size="small" :severity="fulfillmentEditorMethod === 'delivery' ? 'warn' : 'secondary'" :outlined="fulfillmentEditorMethod !== 'delivery'" @click="fulfillmentEditorMethod = 'delivery'" /></div>
+                <section class="space-y-3 rounded-xl border border-slate-200 p-4">
+                        <h3 class="text-sm font-semibold capitalize text-slate-900">{{ fulfillmentEditorMethod }}</h3>
+                        <div class="flex flex-wrap gap-3"><label v-for="day in operatingDayOptions" :key="day.value" class="flex items-center gap-2 text-sm"><input v-model="fulfillmentDraft[fulfillmentEditorMethod].days" type="checkbox" :value="day.value" class="rounded border-slate-300 text-orange-500 focus:ring-orange-500" />{{ day.label }}</label></div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="mb-1 block text-xs font-medium text-slate-700">From</label><DatePicker v-model="fulfillmentTimeModels[fulfillmentEditorMethod].start.value" timeOnly hourFormat="12" size="small" fluid /></div>
+                            <div><label class="mb-1 block text-xs font-medium text-slate-700">Until</label><DatePicker v-model="fulfillmentTimeModels[fulfillmentEditorMethod].end.value" timeOnly hourFormat="12" size="small" fluid /></div>
+                        </div>
+                        <div><label class="mb-1 block text-xs font-medium text-slate-700">Days needed before booking</label><InputNumber v-model="fulfillmentDraft[fulfillmentEditorMethod].lead_days" :min="0" :max="14" size="small" fluid /></div>
+                </section>
+                <template #footer>
+                    <Button label="Cancel" severity="secondary" outlined size="small" @click="fulfillmentEditorVisible = false" />
+                    <Button label="Save windows" icon="pi pi-check" severity="warn" size="small" :loading="savingFulfillmentWindows" :disabled="savingFulfillmentWindows" @click="saveFulfillmentWindows" />
+                </template>
+            </Dialog>
+
             <Card>
                 <template #title>Attendance Geolocation</template>
                 <template #content>
-                    <p class="text-sm text-slate-600 mb-4">
-                        Set the main branch location for attendance
-                        login/clock-in. Employees must be within the radius to
-                        log in.
-                    </p>
-                    <div class="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-                        
-                        <div class="space-y-3 text-sm text-slate-700">
-                            <div>
-                                    <div class="text-xs uppercase text-slate-400">
-                                        Geofence
-                                    </div>
-                                    <div class="text-sm font-semibold">
-                                        {{
-                                            attendance.geofence_enabled
-                                                ? "Enabled"
-                                                : "Disabled"
-                                        }}
-                                    </div>
-                                </div>
-                            <div>
-                                <div class="text-xs uppercase text-slate-400">
-                                    Address
-                                </div>
-                                <div class="font-semibold">
-                                    {{ attendance.address || "Not set" }}
-                                </div>
-                            </div>
-                       
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <div class="text-xs uppercase text-slate-400">
-                                        Barangay
-                                    </div>
-                                    <div class="font-semibold">
-                                        {{ attendance.barangay || "Not set" }}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="text-xs uppercase text-slate-400">
-                                        City
-                                    </div>
-                                    <div class="font-semibold">
-                                        {{ attendance.city || "Not set" }}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="text-xs uppercase text-slate-400">
-                                        Province
-                                    </div>
-                                    <div class="font-semibold">
-                                        {{ attendance.province || "Not set" }}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="text-xs uppercase text-slate-400">
-                                        Radius (meters)
-                                    </div>
-                                    <div class="font-semibold">
-                                        {{
-                                            attendance.geofence_radius_m
-                                        }}
-                                        meters
-                                    </div>
-                                </div>
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-slate-900">{{ attendanceLocationAddress || attendance.address || 'Attendance location not set' }}</p>
+                            <p class="mt-1 text-xs text-slate-600">{{ [attendance.barangay, attendance.city, attendance.province].filter(Boolean).join(', ') || 'Set the location used for employee clock-in.' }}</p>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <Badge :value="attendance.geofence_enabled ? 'Geofence enabled' : 'Geofence disabled'" :severity="attendance.geofence_enabled ? 'success' : 'secondary'" />
+                                <Badge :value="`${attendance.geofence_radius_m || 0} m radius`" severity="info" />
                             </div>
                         </div>
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                            <div class="text-xs uppercase text-slate-400">
-                                Attendance location
-                            </div>
-                            <div class="mt-1 font-semibold text-slate-900">
-                                Update your attendance area
-                            </div>
-                            <p class="mt-2 text-xs leading-5 text-slate-500">
-                                Set the address, geofence, and radius used for
-                                employee attendance.
-                            </p>
-                            <Button class="mt-4 w-full" label="Edit Attendance Location" icon="pi pi-map-marker"
-                                outlined @click="openAttendanceEditor" />
-                        </div>
+                        <Button label="Configure" icon="pi pi-map-marker" size="small" severity="warn" outlined class="shrink-0" @click="openAttendanceEditor" />
                     </div>
                 </template>
             </Card>
@@ -694,8 +633,9 @@
                                 }}
                                     meters</span>
                             </div>
-                            <Slider v-model="attendanceDraft.geofence_radius_m" :min="0" :max="100" :step="1"
+                            <Slider v-model="attendanceDraft.geofence_radius_m" :min="50" :max="500" :step="10"
                                 class="w-full" />
+                            <p class="mt-1 text-xs text-slate-500">Radius must be between 50 and 500 meters.</p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-3 text-sm">
@@ -728,7 +668,7 @@
                     </div>
                 </div>
                 <template #footer>
-                    <Button label="Cancel" severity="secondary" text @click="attendanceEditorVisible = false" />
+                    <Button label="Cancel" severity="secondary" text @click="cancelAttendanceEditor" />
                     <Button label="Save Attendance Location" icon="pi pi-check" :loading="savingAttendance"
                         @click="saveAttendance" />
                 </template>
@@ -757,7 +697,9 @@ import Button from "primevue/button";
 import Badge from "primevue/badge";
 import Card from "primevue/card";
 import Dialog from "primevue/dialog";
+import ConfirmDialog from "primevue/confirmdialog";
 import DatePicker from "primevue/datepicker";
+import { useConfirm } from "primevue/useconfirm";
 import MultiSelect from "primevue/multiselect";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
@@ -774,7 +716,7 @@ import { useToast } from "primevue/usetoast";
 import { usePermissions } from "@/composables/usePermissions";
 import paymongoService from "@/services/paymongo.service";
 import ecommerceService from "@/services/ecommerce.service";
-import { forwardGeocodeMapbox, requireMapboxToken } from "@/utils/mapbox";
+import { forwardGeocodeMapbox, requireMapboxToken, reverseGeocodeMapbox } from "@/utils/mapbox";
 import type {
     GeoJSONSource,
     Map as MapboxMap,
@@ -802,12 +744,14 @@ const props = defineProps<{
         days?: string[];
         opens_at?: string;
         closes_at?: string;
+        schedule?: Record<string, { day?: string; opens_at?: string; closes_at?: string }>;
     } | null;
     fulfillment_windows?: Record<'pickup' | 'delivery', { days: string[]; start: string; end: string; lead_days: number }> | null;
     subscription: any;
     available_plans: any[];
     verification: any;
     onboarding: any;
+    agreement?: { plan_name: string; billing_cycle: string; signer_name: string; signed_at: string } | null;
     setup_attention?: Record<string, boolean>;
 }>();
 
@@ -824,6 +768,7 @@ const notifySetupAttentionChanged = () => {
     void refreshSetupAttention();
 };
 const savingOperatingHours = ref(false);
+const confirm = useConfirm();
 const operatingDayOptions = [
     "monday",
     "tuesday",
@@ -834,37 +779,83 @@ const operatingDayOptions = [
     "sunday",
 ].map((value) => ({ label: value[0].toUpperCase() + value.slice(1), value }));
 const savingFulfillmentWindows = ref(false);
+const fulfillmentEditorVisible = ref(false);
+const fulfillmentEditorMethod = ref<'pickup' | 'delivery'>('pickup');
 const fulfillmentWindows = reactive({
     pickup: { days: [...(props.fulfillment_windows?.pickup?.days || operatingDayOptions.slice(0, 6).map((day) => day.value))], start: props.fulfillment_windows?.pickup?.start || '09:00', end: props.fulfillment_windows?.pickup?.end || '18:00', lead_days: props.fulfillment_windows?.pickup?.lead_days ?? 1 },
     delivery: { days: [...(props.fulfillment_windows?.delivery?.days || operatingDayOptions.slice(0, 6).map((day) => day.value))], start: props.fulfillment_windows?.delivery?.start || '08:00', end: props.fulfillment_windows?.delivery?.end || '20:00', lead_days: props.fulfillment_windows?.delivery?.lead_days ?? 2 },
 });
+const fulfillmentDraft = reactive({
+    pickup: { ...fulfillmentWindows.pickup, days: [...fulfillmentWindows.pickup.days] },
+    delivery: { ...fulfillmentWindows.delivery, days: [...fulfillmentWindows.delivery.days] },
+});
 const fulfillmentTimeModels = {
     pickup: {
-        start: computed({ get: () => timeAsDate(fulfillmentWindows.pickup.start), set: (value: Date | null) => { fulfillmentWindows.pickup.start = timeAsString(value); } }),
-        end: computed({ get: () => timeAsDate(fulfillmentWindows.pickup.end), set: (value: Date | null) => { fulfillmentWindows.pickup.end = timeAsString(value); } }),
+        start: computed({ get: () => timeAsDate(fulfillmentDraft.pickup.start), set: (value: Date | null) => { fulfillmentDraft.pickup.start = timeAsString(value); } }),
+        end: computed({ get: () => timeAsDate(fulfillmentDraft.pickup.end), set: (value: Date | null) => { fulfillmentDraft.pickup.end = timeAsString(value); } }),
     },
     delivery: {
-        start: computed({ get: () => timeAsDate(fulfillmentWindows.delivery.start), set: (value: Date | null) => { fulfillmentWindows.delivery.start = timeAsString(value); } }),
-        end: computed({ get: () => timeAsDate(fulfillmentWindows.delivery.end), set: (value: Date | null) => { fulfillmentWindows.delivery.end = timeAsString(value); } }),
+        start: computed({ get: () => timeAsDate(fulfillmentDraft.delivery.start), set: (value: Date | null) => { fulfillmentDraft.delivery.start = timeAsString(value); } }),
+        end: computed({ get: () => timeAsDate(fulfillmentDraft.delivery.end), set: (value: Date | null) => { fulfillmentDraft.delivery.end = timeAsString(value); } }),
     },
 };
+const openFulfillmentEditor = (method: 'pickup' | 'delivery' = 'pickup') => {
+    for (const method of ['pickup', 'delivery'] as const) {
+        fulfillmentDraft[method].days = [...fulfillmentWindows[method].days];
+        fulfillmentDraft[method].start = fulfillmentWindows[method].start;
+        fulfillmentDraft[method].end = fulfillmentWindows[method].end;
+        fulfillmentDraft[method].lead_days = fulfillmentWindows[method].lead_days;
+    }
+    fulfillmentEditorMethod.value = method;
+    fulfillmentEditorVisible.value = true;
+};
+const formatWindowSummary = (window: { days: string[]; start: string; end: string; lead_days: number }) => {
+    const days = window.days.map((day) => day.slice(0, 3).replace(/^./, (letter) => letter.toUpperCase())).join(', ');
+    return `${days || 'No days selected'} · ${timeAsDate(window.start)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) || '—'}–${timeAsDate(window.end)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) || '—'} · ${window.lead_days} day${window.lead_days === 1 ? '' : 's'} notice`;
+};
 const saveFulfillmentWindows = () => {
-    if (Object.values(fulfillmentWindows).some((window) => !window.days.length || !window.start || !window.end || window.end <= window.start)) {
+    if (Object.values(fulfillmentDraft).some((window) => !window.days.length || !window.start || !window.end || window.end <= window.start)) {
         toast.add({ severity: 'warn', summary: 'Check service windows', detail: 'Select days and ensure each end time is after its start time.', life: 3500 });
         return;
     }
+    confirm.require({
+        header: 'Save fulfillment settings?',
+        message: `Apply the updated ${fulfillmentEditorMethod.value} availability settings?`,
+        icon: 'pi pi-question-circle',
+        rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+        acceptProps: { label: 'Save settings', severity: 'warn' },
+        accept: () => submitFulfillmentWindows(),
+    });
+};
+const submitFulfillmentWindows = () => {
     savingFulfillmentWindows.value = true;
-    router.put('/store/settings/fulfillment-windows', fulfillmentWindows, {
+    router.put('/store/settings/fulfillment-windows', fulfillmentDraft, {
         preserveScroll: true,
-        onSuccess: () => { toast.add({ severity: 'success', summary: 'Service windows saved', life: 2500 }); notifySetupAttentionChanged(); },
+        onSuccess: () => {
+            for (const method of ['pickup', 'delivery'] as const) {
+                fulfillmentWindows[method].days = [...fulfillmentDraft[method].days];
+                fulfillmentWindows[method].start = fulfillmentDraft[method].start;
+                fulfillmentWindows[method].end = fulfillmentDraft[method].end;
+                fulfillmentWindows[method].lead_days = fulfillmentDraft[method].lead_days;
+            }
+            fulfillmentEditorVisible.value = false;
+            toast.add({ severity: 'success', summary: 'Service windows saved', life: 2500 });
+            notifySetupAttentionChanged();
+        },
         onError: (errors) => toast.add({ severity: 'error', summary: 'Unable to save service windows', detail: Object.values(errors)[0] || 'Please check the fields.', life: 3500 }),
         onFinish: () => { savingFulfillmentWindows.value = false; },
     });
 };
+const formatAgreementDate = (value?: string | null) => value
+    ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+    : '—';
+const viewAgreement = () => window.open('/api/store/subscription-agreement/document', '_blank', 'noopener');
 const operatingHours = reactive({
-    days: [...(props.operating_hours?.days || [])],
-    opens_at: props.operating_hours?.opens_at || "09:00",
-    closes_at: props.operating_hours?.closes_at || "18:00",
+    schedule: Object.fromEntries(operatingDayOptions.map(({ value }) => {
+        const legacy = props.operating_hours?.schedule?.[value];
+        const enabled = props.operating_hours?.days?.includes(value) || !!legacy;
+        return [value, { enabled, opens_at: legacy?.opens_at || props.operating_hours?.opens_at || '08:00', closes_at: legacy?.closes_at || props.operating_hours?.closes_at || '18:00' }];
+    })) as Record<string, { enabled: boolean; opens_at: string; closes_at: string }>,
 });
 const timeAsDate = (value: string) => {
     const [hours, minutes] = value.split(":").map(Number);
@@ -876,21 +867,18 @@ const timeAsDate = (value: string) => {
 const timeAsString = (value: Date | null) => value instanceof Date && !Number.isNaN(value.getTime())
     ? `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`
     : "";
-const openingTime = computed({
-    get: () => timeAsDate(operatingHours.opens_at),
-    set: (value: Date | null) => { operatingHours.opens_at = timeAsString(value); },
-});
-const closingTime = computed({
-    get: () => timeAsDate(operatingHours.closes_at),
-    set: (value: Date | null) => { operatingHours.closes_at = timeAsString(value); },
-});
+const operatingTimeModels = Object.fromEntries(operatingDayOptions.map(({ value }) => [value, {
+    opens_at: computed({ get: () => timeAsDate(operatingHours.schedule[value].opens_at), set: (time: Date | null) => { operatingHours.schedule[value].opens_at = timeAsString(time); } }),
+    closes_at: computed({ get: () => timeAsDate(operatingHours.schedule[value].closes_at), set: (time: Date | null) => { operatingHours.schedule[value].closes_at = timeAsString(time); } }),
+}]));
+const ensureDefaultOperatingHours = (day: string) => {
+    if (!operatingHours.schedule[day].enabled) return;
+    operatingHours.schedule[day].opens_at = '08:00';
+    operatingHours.schedule[day].closes_at = '18:00';
+};
 const saveOperatingHours = () => {
-    if (
-        !operatingHours.days.length ||
-        !operatingHours.opens_at ||
-        !operatingHours.closes_at ||
-        operatingHours.closes_at <= operatingHours.opens_at
-    ) {
+    const enabled = Object.entries(operatingHours.schedule).filter(([, value]) => value.enabled);
+    if (!enabled.length || enabled.some(([, value]) => !value.opens_at || !value.closes_at || value.closes_at <= value.opens_at)) {
         toast.add({
             severity: "warn",
             summary: "Check operating hours",
@@ -899,10 +887,20 @@ const saveOperatingHours = () => {
         });
         return;
     }
+    confirm.require({
+        header: 'Save operating hours?',
+        message: 'Apply these operating days and hours to the first branch?',
+        icon: 'pi pi-question-circle',
+        rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+        acceptProps: { label: 'Save hours', severity: 'warn' },
+        accept: () => submitOperatingHours(),
+    });
+};
+const submitOperatingHours = () => {
     savingOperatingHours.value = true;
     router.put(
         "/store/settings/operating-hours",
-        { ...operatingHours },
+        { schedule: operatingHours.schedule },
         {
             preserveScroll: true,
             onSuccess: () => {
@@ -1058,7 +1056,7 @@ const attendance = reactive({
     province: "",
     latitude: null as number | null,
     longitude: null as number | null,
-    geofence_radius_m: 5,
+    geofence_radius_m: 50,
     geofence_enabled: false,
 });
 
@@ -1071,9 +1069,26 @@ const attendanceDraft = reactive({
     province: "",
     latitude: null as number | null,
     longitude: null as number | null,
-    geofence_radius_m: 5,
+    geofence_radius_m: 50,
     geofence_enabled: false,
 });
+const attendanceLocationAddress = ref("");
+let attendanceAddressLookupRequest = 0;
+const resolveAttendanceAddress = async (latitude: number, longitude: number) => {
+    const requestId = ++attendanceAddressLookupRequest;
+    try {
+        const address = await reverseGeocodeMapbox(latitude, longitude);
+        if (requestId === attendanceAddressLookupRequest) {
+            attendanceLocationAddress.value = address;
+            return address;
+        }
+    } catch {
+        if (requestId === attendanceAddressLookupRequest) {
+            attendanceLocationAddress.value = "";
+        }
+    }
+    return "";
+};
 
 const subscription = reactive({
     store_id: null as number | null,
@@ -1238,7 +1253,7 @@ attendance.city = props.attendance?.city || "";
 attendance.province = props.attendance?.province || "";
 attendance.latitude = props.attendance?.latitude ?? null;
 attendance.longitude = props.attendance?.longitude ?? null;
-attendance.geofence_radius_m = props.attendance?.geofence_radius_m ?? 5;
+attendance.geofence_radius_m = Math.max(50, Math.min(500, Number(props.attendance?.geofence_radius_m) || 50));
 attendance.geofence_enabled = props.attendance?.geofence_enabled ?? false;
 
 const allowedMethods = props.payments?.paymongo?.payment_method_allowed;
@@ -1492,12 +1507,20 @@ const saveAttendance = async () => {
             province: attendanceDraft.province || null,
             latitude: attendanceDraft.latitude,
             longitude: attendanceDraft.longitude,
-            geofence_radius_m: attendanceDraft.geofence_radius_m || 5,
+            geofence_radius_m: Math.max(50, Math.min(500, Number(attendanceDraft.geofence_radius_m) || 50)),
             geofence_enabled: attendanceDraft.geofence_enabled,
         },
         {
             preserveScroll: true,
             onSuccess: () => {
+                attendance.address = attendanceDraft.address;
+                attendance.barangay = attendanceDraft.barangay;
+                attendance.city = attendanceDraft.city;
+                attendance.province = attendanceDraft.province;
+                attendance.latitude = attendanceDraft.latitude;
+                attendance.longitude = attendanceDraft.longitude;
+                attendance.geofence_radius_m = Math.max(50, Math.min(500, Number(attendanceDraft.geofence_radius_m) || 50));
+                attendance.geofence_enabled = attendanceDraft.geofence_enabled;
                 attendanceEditorVisible.value = false;
                 attendanceSuccessVisible.value = true;
             },
@@ -1888,11 +1911,20 @@ const openAttendanceEditor = async () => {
         geofence_radius_m: attendance.geofence_radius_m,
         geofence_enabled: attendance.geofence_enabled,
     });
-    searchQuery.value = attendance.address || "";
+    searchQuery.value = attendanceLocationAddress.value || attendance.address || "";
     mapError.value = "";
     mapReady.value = false;
     attendanceEditorVisible.value = true;
     await loadAttendanceCities();
+};
+
+const cancelAttendanceEditor = () => {
+    attendanceEditorVisible.value = false;
+    if (attendance.latitude !== null && attendance.longitude !== null) {
+        void resolveAttendanceAddress(attendance.latitude, attendance.longitude);
+    } else {
+        attendanceLocationAddress.value = "";
+    }
 };
 
 const handleAttendanceDialogShow = async () => {
@@ -1962,6 +1994,8 @@ const syncLocation = (lat: number, lng: number) => {
         }
         attendanceDraft.latitude = lat;
         attendanceDraft.longitude = lng;
+        const resolvedAddress = await resolveAttendanceAddress(lat, lng);
+        if (resolvedAddress) attendanceDraft.address = resolvedAddress;
     })();
 };
 
@@ -2473,6 +2507,9 @@ const handleUpgradePrompt = () => {
 
 onMounted(async () => {
     void refreshSetupAttention();
+    if (attendance.latitude !== null && attendance.longitude !== null) {
+        await resolveAttendanceAddress(attendance.latitude, attendance.longitude);
+    }
     const params = new URLSearchParams(window.location.search);
     if (params.get("profile_updated") === "1") {
         showProfileResponse(true, "Your store profile was updated successfully.");

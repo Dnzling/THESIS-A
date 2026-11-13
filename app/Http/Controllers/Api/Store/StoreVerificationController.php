@@ -12,6 +12,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class StoreVerificationController extends Controller
 {
@@ -83,7 +84,21 @@ class StoreVerificationController extends Controller
                 'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
                 'tax_certificate_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
                 'business_permit_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+                'additional_files' => ['nullable', 'array', 'max:5'],
+                'additional_files.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+                'additional_metadata' => ['nullable', 'json'],
             ]);
+
+            $additionalMetadata = json_decode((string) $request->input('additional_metadata', '[]'), true);
+            $additionalMetadata = is_array($additionalMetadata) ? array_values($additionalMetadata) : [];
+            Validator::make($additionalMetadata, [
+                '*.label' => ['nullable', 'string', 'max:255'],
+                '*.reference_number' => ['nullable', 'string', 'max:100'],
+                '*.expires_at' => ['nullable', 'date'],
+            ])->validate();
+            if (count($request->file('additional_files', [])) !== count($additionalMetadata)) {
+                return response()->json(['success' => false, 'message' => 'Each additional attachment needs matching review details.'], 422);
+            }
 
             $legitimacyIssues = $this->validateUploadedDocuments($request);
             if (!empty($legitimacyIssues)) {
@@ -129,6 +144,17 @@ class StoreVerificationController extends Controller
                 }
             }
 
+            $otherDocuments = [];
+            foreach ($request->file('additional_files', []) as $index => $file) {
+                $metadata = $additionalMetadata[$index] ?? [];
+                $otherDocuments[] = [
+                    'path' => $file->store("store-verifications/{$store->id}/additional", 'public'),
+                    'label' => trim((string) ($metadata['label'] ?? 'Additional document')) ?: 'Additional document',
+                    'reference_number' => filled($metadata['reference_number'] ?? null) ? (string) $metadata['reference_number'] : null,
+                    'expires_at' => filled($metadata['expires_at'] ?? null) ? (string) $metadata['expires_at'] : null,
+                ];
+            }
+
             // Create or update verification record
             $verification = StoreVerification::updateOrCreate(
                 ['store_id' => $store->id], // Use $store->id, not $store->store_id
@@ -143,7 +169,7 @@ class StoreVerificationController extends Controller
                         'registration_expires_at' => $validated['registration_expires_at'] ?? null,
                         'tax_expires_at' => $validated['tax_expires_at'] ?? null,
                         'permit_expires_at' => $validated['permit_expires_at'] ?? null,
-                        'other_documents' => null,
+                        'other_documents' => $otherDocuments,
                         'reviewed_at' => null,
                         'reviewed_by' => null,
                         'rejection_reason' => null,
@@ -300,6 +326,24 @@ class StoreVerificationController extends Controller
                 'expires_at' => $validated['document_type'] === 'mayor'
                     ? $this->documentAutoValidationService->extractDocumentExpiration($text) : null,
                 'message' => $number ? 'Possible reference number found. Confirm it against the document.' : 'Reference number not found. Check the image and enter it manually.',
+            ]]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    public function extractAdditionalDocument(Request $request)
+    {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
+        $request->validate([
+            'document_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ]);
+        $path = $request->file('document_file')->store('store-verifications/tmp-additional', 'public');
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            return response()->json(['success' => true, 'data' => [
+                'reference_number' => $this->documentAutoValidationService->extractDocumentReference($text, 'other'),
+                'expires_at' => $this->documentAutoValidationService->extractDocumentExpiration($text),
             ]]);
         } finally {
             Storage::disk('public')->delete($path);
@@ -847,8 +891,9 @@ class StoreVerificationController extends Controller
                 false,
                 (string) $path,
                 ['application/pdf', 'image/jpeg', 'image/png'],
-                5120,
-                $index
+                10240,
+                $index,
+                is_array($document) ? $document : []
             );
         }
 
@@ -878,7 +923,8 @@ class StoreVerificationController extends Controller
         ?string $path,
         array $allowedMimes,
         int $maxKb,
-        ?int $index = null
+        ?int $index = null,
+        array $metadata = []
     ): array {
         $disk = Storage::disk('public');
         $submitted = filled($path);
@@ -904,14 +950,23 @@ class StoreVerificationController extends Controller
             'tax_certificate_file' => 'tax_expires_at',
             'business_permit_file' => 'permit_expires_at',
         ][$key] ?? null;
-        $expiresAt = $expiryField ? $verification->{$expiryField} : null;
-        if ($expiresAt && $expiresAt->isPast()) {
+        $referenceField = [
+            'gov_id_front_file' => 'gov_id_number',
+            'gov_id_back_file' => 'gov_id_number',
+            'business_registration_file' => 'business_registration_number',
+            'tax_certificate_file' => 'tax_certificate_number',
+            'business_permit_file' => 'permit_number',
+        ][$key] ?? null;
+        $expiresAt = $key === 'other_documents'
+            ? ($metadata['expires_at'] ?? null)
+            : ($expiryField ? $verification->{$expiryField} : null);
+        if ($expiresAt && \Illuminate\Support\Carbon::parse($expiresAt)->isPast()) {
             $issues[] = 'Document has expired.';
         }
 
         return [
             'key' => $key,
-            'label' => $label,
+            'label' => (string) ($metadata['label'] ?? $label),
             'index' => $index,
             'required' => $required,
             'submitted' => $submitted,
@@ -919,7 +974,10 @@ class StoreVerificationController extends Controller
             'exists' => $exists,
             'size_kb' => $sizeKb,
             'mime_type' => $mime,
-            'expires_at' => $expiresAt?->toDateString(),
+            'reference_number' => $key === 'other_documents'
+                ? ($metadata['reference_number'] ?? null)
+                : ($referenceField ? $verification->{$referenceField} : null),
+            'expires_at' => $expiresAt ? (is_object($expiresAt) ? $expiresAt->toDateString() : (string) $expiresAt) : null,
             'is_valid' => $submitted ? empty($issues) : !$required,
             'issues' => $issues,
             'download_url' => $submitted

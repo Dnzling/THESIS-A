@@ -1,5 +1,6 @@
 <template>
   <div class="p-6  min-h-screen">
+    <ConfirmDialog />
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
@@ -86,7 +87,7 @@
           <!-- <Column :expander="true" style="width: 3rem" /> -->
           <Column header="Date" style="width: 120px">
             <template #body="{ data }">
-              <span class="text-sm text-gray-700">{{ formatDate(data?.created_at) }}</span>
+              <span class="text-sm text-gray-700">{{ formatDateTime(data?.created_at) }}</span>
             </template>
           </Column>
           <Column field="pr_number" header="PR No." style="width: 140px">
@@ -139,6 +140,10 @@
                 <Button icon="pi pi-eye" text rounded
                   @click="router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
+                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-pencil" text rounded severity="warn"
+                  @click.stop="editPR(data.id)" v-tooltip="'Edit Draft'" />
+                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-trash" text rounded severity="danger"
+                  @click.stop="confirmDeletePR(data)" v-tooltip="'Delete Draft'" />
               </div>
             </template>
           </Column>
@@ -232,11 +237,17 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
+const authStore = useAuthStore()
+const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
 const loading = ref(true)
 const requisitions = ref<any[]>([])
 const expandedRows = ref<any[]>([])
@@ -329,10 +340,35 @@ const getPersonName = (person: any): string => {
   return name || source?.full_name || 'N/A'
 }
 
-const formatDate = (value: string | null | undefined): string => {
+const formatDateTime = (value: string | null | undefined): string => {
   if (!value) return '-'
   const d = new Date(value)
-  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  return d.toLocaleString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
+const editPR = (id: number) => router.push({ name: 'inventory.requisites.edit', params: { id } })
+
+const confirmDeletePR = (pr: any) => {
+  confirm.require({
+    header: 'Delete Purchase Requisition',
+    message: `Delete draft ${pr.pr_number || 'purchase requisition'}? This action cannot be undone.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptLabel: 'Delete',
+    acceptProps: { severity: 'warn' },
+    accept: async () => {
+      try {
+        await procurementService.deletePurchaseRequisition(Number(pr.id))
+        toast.add({ severity: 'success', summary: 'Deleted', detail: 'Draft purchase requisition deleted.', life: 3000 })
+        await loadRequisitions(currentPage.value)
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete this requisition.', life: 3500 })
+      }
+    },
+  })
 }
 
 const loadRequisitions = async (page: number = 1) => {

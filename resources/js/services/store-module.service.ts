@@ -21,6 +21,21 @@ export const storeModuleService = {
     return response.data
   },
 
+  async updateFulfillmentWindows(payload: unknown) {
+    const response = await axiosClient.put(`${baseUrl}/settings/fulfillment-windows`, payload)
+    return response.data
+  },
+
+  async getSuspensionHistory() {
+    const response = await axiosClient.get(`${baseUrl}/settings/suspensions`)
+    return response.data
+  },
+
+  async createSuspension(payload: { reason: string; start_date: string; end_date: string | null }) {
+    const response = await axiosClient.post(`${baseUrl}/settings/suspensions`, payload)
+    return response.data
+  },
+
   async getEcommercePerformance(days = 30) {
     const response = await axiosClient.get(`${baseUrl}/ecommerce`, { params: { days } })
     return response.data

@@ -36,13 +36,16 @@
                             period
                         </p>
                     </div>
-                    <Select
-                        v-model="days"
-                        :options="periods"
-                        optionLabel="label"
-                        optionValue="value"
+                    <DatePicker
+                        v-model="dateRange"
+                        selectionMode="range"
+                        dateFormat="M d, yy"
+                        :manualInput="false"
+                        :maxDate="today"
+                        showIcon
                         size="small"
-                        @change="refresh"
+                        placeholder="Select date range"
+                        @date-select="dateRangeChanged"
                     />
                 </div>
                 <div v-if="loading" class="space-y-2">
@@ -238,20 +241,28 @@ import Skeleton from "primevue/skeleton";
 import Paginator from "primevue/paginator";
 import Message from "primevue/message";
 import Button from "primevue/button";
+import DatePicker from "primevue/datepicker";
 
 const warehouse = window.location.pathname.startsWith("/warehouse/");
 const endpoint = warehouse
     ? "/api/warehouse/forecasting"
     : "/api/inventory/forecasting";
-const periods = [
-    { label: "Last 30 days", value: 30 },
-    { label: "Last 60 days", value: 60 },
-    { label: "Last 90 days", value: 90 },
-];
 const statuses = ["Out of stock", "Reorder now", "Watch", "Projected excess", "Healthy"].map(
     (value) => ({ label: value, value }),
 );
-const days = ref(30);
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const defaultStart = new Date(today);
+defaultStart.setDate(defaultStart.getDate() - 29);
+const dateRange = ref<Date[]>([defaultStart, new Date(today)]);
+const selectedPeriodDays = computed(() => {
+    if (dateRange.value?.length !== 2 || !dateRange.value[0] || !dateRange.value[1]) return 30;
+    const start = new Date(dateRange.value[0]);
+    const end = new Date(dateRange.value[1]);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1);
+});
 const branchId = ref<number | null>(null);
 const status = ref<string | null>(null);
 const search = ref("");
@@ -264,6 +275,7 @@ const branches = ref<any[]>([]);
 const trend = ref<any[]>([]);
 const consolidated = ref<any[]>([]);
 const consolidatedEnabled = ref(false);
+const warehouseEnabled = ref(false);
 const summary = ref<any>({
     products: 0,
     reorder_now: 0,
@@ -300,22 +312,37 @@ const performAction = (data: any) => {
         viewItem(data);
         return;
     }
-    const path = warehouse ? "/warehouse/purchase-requisitions/create" : "/inventory/purchase-orders/create";
+    const useWarehouseTransfer = !warehouse && warehouseEnabled.value;
+    const path = warehouse
+        ? "/warehouse/purchase-requisitions/create"
+        : useWarehouseTransfer
+          ? "/inventory/stock-requests/create"
+          : "/inventory/purchase-orders/create";
     const params = warehouse
         ? new URLSearchParams({
               branch_inventory_id: String(data.id),
               branch_id: String(data.branch_id),
               product_id: String(data.product_id),
               requested_quantity: String(Math.max(1, Number(data.recommended || 0))),
-              notes: `Restock requested from the ${days.value}-day forecast.`,
+              notes: `Restock requested from the ${selectedPeriodDays.value}-day forecast.`,
           })
+        : useWarehouseTransfer
+          ? new URLSearchParams({
+                type: "transfer",
+                stock_view_prefill: "1",
+                product_id: String(data.product_id),
+                variation_id: String(data.variation_id || 0),
+                requested_quantity: String(Math.max(1, Number(data.recommended || 0))),
+                receiving_branch_id: String(data.branch_id),
+                notes: `Restock requested from the ${selectedPeriodDays.value}-day forecast.`,
+            })
         : new URLSearchParams({
               forecast_prefill: "1",
               product_id: String(data.product_id),
               variation_id: String(data.variation_id || 0),
               quantity_ordered: String(Math.max(1, Number(data.recommended || 0))),
               branch_id: String(data.branch_id),
-              forecast_days: String(days.value),
+              forecast_days: String(selectedPeriodDays.value),
           });
     router.visit(`${path}?${params.toString()}`);
 };
@@ -347,13 +374,24 @@ function refresh() {
     page.value = 1;
     load();
 }
+function dateRangeChanged() {
+    if (dateRange.value?.length === 2 && dateRange.value[0] && dateRange.value[1]) refresh();
+}
+function dateParam(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
 async function load() {
+    if (dateRange.value?.length !== 2 || !dateRange.value[0] || !dateRange.value[1]) return;
     loading.value = true;
     error.value = "";
     try {
         const response = await axios.get(endpoint, {
             params: {
-                days: days.value,
+                from_date: dateParam(dateRange.value[0]),
+                to_date: dateParam(dateRange.value[1]),
                 branch_id: branchId.value,
                 search: search.value,
                 status: status.value,
@@ -367,6 +405,7 @@ async function load() {
         trend.value = data.trend || [];
         consolidated.value = data.consolidated || [];
         consolidatedEnabled.value = !!data.plan_features?.consolidated;
+        warehouseEnabled.value = !!data.plan_features?.warehouse;
         summary.value = data.summary || {};
     } catch (err: any) {
         error.value =

@@ -45,8 +45,6 @@ Route::prefix('finance')->group(function () {
     Route::get('/cashflow/account', [FinanceCashflowController::class, 'accountSummary']);
     Route::get('/cashflow/transactions', [FinanceCashflowController::class, 'transactions']);
     Route::get('/cashflow/transactions/{id}', [FinanceCashflowController::class, 'transactionDetail']);
-    Route::post('/cashflow/top-up', [FinanceCashflowController::class, 'topUp']);
-    Route::post('/cashflow/adjust', [FinanceCashflowController::class, 'adjust']);
     Route::get('/receivables', [FinanceReceivablesController::class, 'index']);
     Route::get('/receivables/{source}/{id}', [FinanceReceivablesController::class, 'show']);
     Route::get('/payroll', [FinancePayrollController::class, 'index']);

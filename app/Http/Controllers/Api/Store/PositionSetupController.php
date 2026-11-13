@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Core\Role;
 use App\Models\Hr\Department;
 use App\Models\Store\Store;
+use App\Models\Store\StoreSubscriptionAgreement;
 use App\Services\Store\StoreTrialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class PositionSetupController extends Controller
     public function index(Request $request)
     {
         $store = $this->ownedStore($request);
+        $this->ensureAgreementIsSigned($store);
         $enabledModules = app(\App\Services\Modules\ModuleAccessService::class)->enabledModuleKeysForStore((int) $store->id);
         $modules = DB::table('stores')
             ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
@@ -82,18 +84,29 @@ class PositionSetupController extends Controller
     public function store(Request $request)
     {
         $store = $this->ownedStore($request);
+        $this->ensureAgreementIsSigned($store);
         if (!app(StoreTrialService::class)->needsPositionSetup($store)) {
             return response()->json(['message' => 'Position setup is not required.'], 409);
         }
 
-        $validated = $request->validate(['positions' => 'required|array', 'positions.*' => 'required|string|max:120']);
+        $validated = $request->validate([
+            'positions' => 'required|array', 'positions.*' => 'required|string|max:120',
+            'operating_hours' => 'required|array|min:1', 'operating_hours.*.day' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'operating_hours.*.opens_at' => 'required|date_format:H:i', 'operating_hours.*.closes_at' => 'required|date_format:H:i',
+            'fulfillment_windows.pickup.days' => 'required|array|min:1', 'fulfillment_windows.pickup.days.*' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'fulfillment_windows.pickup.start' => 'required|date_format:H:i', 'fulfillment_windows.pickup.end' => 'required|date_format:H:i', 'fulfillment_windows.pickup.lead_days' => 'required|integer|between:0,14',
+            'fulfillment_windows.delivery.days' => 'required|array|min:1', 'fulfillment_windows.delivery.days.*' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'fulfillment_windows.delivery.start' => 'required|date_format:H:i', 'fulfillment_windows.delivery.end' => 'required|date_format:H:i', 'fulfillment_windows.delivery.lead_days' => 'required|integer|between:0,14',
+        ]);
+        foreach ($validated['operating_hours'] as $row) if ($row['closes_at'] <= $row['opens_at']) throw ValidationException::withMessages(['operating_hours' => 'Each closing time must be later than its opening time.']);
+        foreach (['pickup', 'delivery'] as $method) if ($validated['fulfillment_windows'][$method]['end'] <= $validated['fulfillment_windows'][$method]['start']) throw ValidationException::withMessages(['fulfillment_windows' => 'Each fulfillment end time must be later than its start time.']);
         $suggestions = collect($this->index($request)->getData(true)['suggestions'])->keyBy('key');
         $selected = collect($validated['positions'])->unique();
         if ($selected->diff($suggestions->keys())->isNotEmpty()) {
             throw ValidationException::withMessages(['positions' => 'One or more positions are not included in your current plan.']);
         }
 
-        DB::transaction(function () use ($store, $request, $selected, $suggestions) {
+        DB::transaction(function () use ($store, $request, $selected, $suggestions, $validated) {
             $locked = Store::query()->whereKey($store->id)->lockForUpdate()->firstOrFail();
             if (!app(StoreTrialService::class)->needsPositionSetup($locked)) {
                 return;
@@ -124,6 +137,24 @@ class PositionSetupController extends Controller
                     DB::table('role_permissions')->updateOrInsert(['role_id' => $role->id, 'permission_id' => $id], ['created_at' => now(), 'updated_at' => now()]);
                 }
             }
+            $settings = is_array($locked->settings) ? $locked->settings : [];
+            $settings['simple_operating_hours'] = [
+                'days' => array_values(array_column($validated['operating_hours'], 'day')),
+                'opens_at' => $validated['operating_hours'][0]['opens_at'],
+                'closes_at' => $validated['operating_hours'][0]['closes_at'],
+                'schedule' => collect($validated['operating_hours'])->keyBy('day')->all(),
+            ];
+            $settings['fulfillment_windows'] = $validated['fulfillment_windows'];
+            $locked->settings = $settings;
+            $firstBranch = $locked->branches()->orderBy('id')->first();
+            if ($firstBranch) {
+                $openingHours = is_array($firstBranch->opening_hours) ? $firstBranch->opening_hours : [];
+                $openingHours['days'] = array_values(array_column($validated['operating_hours'], 'day'));
+                $openingHours['schedule'] = collect($validated['operating_hours'])->keyBy('day')->all();
+                $openingHours['fulfillment_windows'] = $validated['fulfillment_windows'];
+                $firstBranch->opening_hours = $openingHours;
+                $firstBranch->save();
+            }
             $locked->update(['position_setup_completed_at' => now()]);
         });
 
@@ -135,5 +166,19 @@ class PositionSetupController extends Controller
     {
         abort_unless($request->user()?->hasRole('owner') && $request->user()?->store_id, 403);
         return Store::findOrFail((int) $request->user()->store_id);
+    }
+
+    private function ensureAgreementIsSigned(Store $store): void
+    {
+        if (!app(StoreTrialService::class)->needsPositionSetup($store)) {
+            return;
+        }
+
+        $plan = $store->subscriptionPlan;
+        abort_unless($plan && StoreSubscriptionAgreement::query()
+            ->where('store_id', $store->id)
+            ->where('plan_key', $plan->plan_key)
+            ->where('status', 'active')
+            ->exists(), 403, 'Sign and activate the store subscription agreement before continuing setup.');
     }
 }

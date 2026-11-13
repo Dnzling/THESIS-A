@@ -92,6 +92,35 @@
                 <p v-if="billingForm.phone_number">{{ billingForm.phone_number }}</p>
               </div>
             </section>
+
+            <section class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
+              <p class="text-sm font-semibold text-orange-600">Required before store setup</p>
+              <h2 class="mt-2 text-2xl font-bold">Review and sign the service agreement</h2>
+              <p class="mt-2 text-sm leading-6 text-slate-600">This agreement records your store’s selected {{ selectedPlan.name }} subscription. It becomes active after the trial or payment is activated.</p>
+              <div class="mt-4 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+                <p class="font-semibold text-slate-800">FurniSync Store Subscription Service Agreement</p>
+                <p class="mt-2">The store may use the modules and limits included in its selected plan. Paid subscriptions start after payment confirmation. Any eligible one-month trial starts when FurniSync activates it, with no charge collected during the trial period.</p>
+                <p class="mt-2">The store is responsible for maintaining accurate business and account information, protecting its credentials, and reviewing plan pricing, renewal, expiration, and cancellation details shown in the system.</p>
+                <p class="mt-2">By signing, you confirm that you are authorized to accept these terms for {{ storeName }} and authorize FurniSync to provide the selected subscription service.</p>
+              </div>
+              <label class="mt-4 flex items-start gap-2 text-sm text-slate-700">
+                <input v-model="agreementAccepted" type="checkbox" class="mt-1 accent-orange-500" />
+                <span>I have read and agree to this service agreement on behalf of the store.</span>
+              </label>
+              <div class="mt-4">
+                <label class="mb-1 block text-sm font-medium text-slate-700">Authorized representative</label>
+                <InputText v-model="signerName" fluid autocomplete="name" placeholder="Full legal name" />
+              </div>
+              <div class="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <span class="text-sm font-medium text-slate-700">Draw your signature</span>
+                  <Button label="Clear" icon="pi pi-eraser" severity="secondary" text size="small" @click="clearSignature" />
+                </div>
+                <canvas ref="signatureCanvas" width="900" height="180" class="h-36 w-full touch-none rounded-lg border border-dashed border-slate-300 bg-white" aria-label="Draw electronic signature" @pointerdown="startSignature" @pointermove="drawSignature" @pointerup="stopSignature" @pointercancel="stopSignature" @pointerleave="stopSignature" />
+                <p class="mt-1 text-xs text-slate-500">Use a mouse, stylus, or finger. Your signature is attached to the saved PDF agreement.</p>
+                <p v-if="agreementSaved" class="mt-2 text-xs font-medium text-emerald-700"><i class="pi pi-check-circle mr-1" />Signature saved. It will be attached to the active agreement.</p>
+              </div>
+            </section>
           </div>
 
           <aside class="rounded-3xl bg-slate-950 p-6 text-white shadow-2xl sm:p-8 lg:sticky lg:top-8">
@@ -117,7 +146,7 @@
               <div class="flex justify-between gap-4 border-t border-white/10 pt-4 text-lg font-bold text-white"><span>Due today</span><span>{{ formatMoney(isTrialCheckout ? 0 : planAmount) }}</span></div>
             </div>
 
-            <Button :label="isTrialCheckout ? 'Activate Free Trial' : 'Continue to secure payment'" class="mt-7 w-full !py-3" :loading="paymentInitializing" :disabled="!isTrialCheckout && !selectedMethod" @click="subscribe" />
+            <Button :label="isTrialCheckout ? 'Activate Free Trial' : 'Continue to secure payment'" class="mt-7 w-full !py-3" :loading="paymentInitializing || signing" :disabled="(!isTrialCheckout && !selectedMethod) || !agreementAccepted || !signatureDrawn || !signerName.trim()" @click="subscribe" />
             <p v-if="paymentError" class="mt-4 text-sm leading-6 text-red-300">{{ paymentError }}</p>
             <p v-if="isTrialCheckout" class="mt-5 text-xs leading-5 text-slate-400">No payment will be collected today. After the trial, choose a paid plan to continue using paid features.</p>
             <p v-else class="mt-5 text-xs leading-5 text-slate-500">Your plan is activated only after PayMongo confirms a successful payment. FurniSync does not store card or wallet credentials.</p>
@@ -146,6 +175,13 @@ const loading = ref(true)
 const pageError = ref('')
 const paymentError = ref('')
 const paymentInitializing = ref(false)
+const agreementAccepted = ref(false)
+const agreementSaved = ref(false)
+const signatureDrawn = ref(false)
+const signing = ref(false)
+const isDrawingSignature = ref(false)
+const signatureCanvas = ref<HTMLCanvasElement | null>(null)
+const signerName = ref('')
 const savingAddress = ref(false)
 const editingAddress = ref(false)
 const addressMessage = ref('')
@@ -170,17 +206,71 @@ const accountName = computed(() => {
   const user: any = authStore.currentUser
   return user?.full_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Store account'
 })
+const storeName = computed(() => String((authStore.currentUser as any)?.store?.name || (authStore.currentUser as any)?.store_name || 'your store'))
 const billingAddress = computed(() => [billingForm.address, billingForm.barangay, billingForm.city, billingForm.province].filter(Boolean).join(', '))
 
 const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(amount)
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const normalizeStatus = (value: unknown) => String(value || '').toLowerCase()
 
+const startSignature = (event: PointerEvent) => {
+  const canvas = signatureCanvas.value
+  const context = canvas?.getContext('2d')
+  if (!canvas || !context) return
+  canvas.setPointerCapture(event.pointerId)
+  const rect = canvas.getBoundingClientRect()
+  context.beginPath()
+  context.moveTo((event.clientX - rect.left) * canvas.width / rect.width, (event.clientY - rect.top) * canvas.height / rect.height)
+  context.strokeStyle = '#172033'
+  context.lineWidth = 3
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  isDrawingSignature.value = true
+}
+const drawSignature = (event: PointerEvent) => {
+  if (!isDrawingSignature.value || !signatureCanvas.value) return
+  const context = signatureCanvas.value.getContext('2d')
+  if (!context) return
+  const rect = signatureCanvas.value.getBoundingClientRect()
+  context.lineTo((event.clientX - rect.left) * signatureCanvas.value.width / rect.width, (event.clientY - rect.top) * signatureCanvas.value.height / rect.height)
+  context.stroke()
+  signatureDrawn.value = true
+  agreementSaved.value = false
+}
+const stopSignature = () => { isDrawingSignature.value = false }
+const clearSignature = () => {
+  const canvas = signatureCanvas.value
+  canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+  signatureDrawn.value = false
+  agreementSaved.value = false
+}
+const saveSignedAgreement = async () => {
+  if (agreementSaved.value || signing.value) return
+  const signature = signatureCanvas.value?.toDataURL('image/png')
+  if (!signature || !signatureDrawn.value || !agreementAccepted.value || !signerName.value.trim()) {
+    throw new Error('Please accept the agreement, enter your name, and draw your signature.')
+  }
+  signing.value = true
+  try {
+    await axiosClient.post('/api/store/subscription-agreement/sign', {
+      plan_key: selectedPlan.value?.plan_key,
+      billing_cycle: billingCycle.value,
+      signer_name: signerName.value.trim(),
+      accepted: agreementAccepted.value,
+      signature,
+    }, { headers: { 'X-Suppress-Success-Dialog': '1' } })
+    agreementSaved.value = true
+  } finally {
+    signing.value = false
+  }
+}
+
 const goBack = () => router.visit(`/subscription-plans${storeId.value ? `?store_id=${storeId.value}` : ''}`)
 
 const loadCheckout = async () => {
   try {
     await authStore.fetchCurrentUser()
+    if (!signerName.value) signerName.value = accountName.value
     const planKey = String(params.get('plan') || '').toLowerCase()
     if (!planKey || !storeId.value) throw new Error('Choose a subscription plan before opening checkout.')
 
@@ -242,14 +332,23 @@ const saveBillingAddress = async (): Promise<boolean> => {
 const subscribe = async () => {
   if (!selectedPlan.value || (!isTrialCheckout.value && !selectedMethod.value) || paymentInitializing.value) return
   paymentError.value = ''
+  paymentInitializing.value = true
+
+  try {
+    await saveSignedAgreement()
+  } catch (error: any) {
+    paymentError.value = error?.response?.data?.message || error?.message || 'Unable to save the signed agreement.'
+    paymentInitializing.value = false
+    return
+  }
 
   if (isTrialCheckout.value) {
-    paymentInitializing.value = true
     try {
       await axiosClient.put(`/api/stores/${storeId.value}/subscription`, {
         subscription_tier: String(selectedPlan.value.plan_key).toLowerCase(),
         setup_mode: 'trial',
       })
+      await axiosClient.post('/api/store/subscription-agreement/activate')
       await authStore.fetchCurrentUser({ reloadPermissions: true })
       router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
     } catch (error: any) {
@@ -263,6 +362,7 @@ const subscribe = async () => {
   if (!billingAddress.value) {
     editingAddress.value = true
     paymentError.value = 'Add and save your billing address before continuing.'
+    paymentInitializing.value = false
     return
   }
 
@@ -297,6 +397,7 @@ const syncSubscriptionFromIntent = async (pendingPlan: any) => {
   const intentData = latest?.data?.data ?? latest?.data ?? null
   if (!['succeeded', 'paid'].includes(normalizeStatus(intentData?.status ?? intentData?.attributes?.status))) return false
   await authStore.fetchCurrentUser({ reloadPermissions: true })
+  await axiosClient.post('/api/store/subscription-agreement/activate')
   if (pendingPlan?.plan_key) localStorage.removeItem('pending_subscription_plan')
   return true
 }

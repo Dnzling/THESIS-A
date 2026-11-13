@@ -41,6 +41,8 @@ class BranchController extends Controller
                 'data' => $branches,
                 'store_location' => $store,
                 'can_create_warehouse' => $this->canCreateWarehouse($user),
+                'warehouse_enabled' => app(\App\Services\Inventory\ForecastPlanService::class)
+                    ->allowsWarehouse((int) $user->store_id),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -99,7 +101,7 @@ class BranchController extends Controller
                     'store_id' => $storeId,
                     'branch_code' => $branchCode,
                     'contact_number' => $contactNumber,
-                    'status' => 'active',
+                    'status' => 'unverified',
                     'province' => $validated['province'] ?? 'Cavite',
                     'barangay' => $validated['barangay'] ?? $store?->barangay,
                     'branch_type' => $validated['branch_type'] ?? 'storefront',

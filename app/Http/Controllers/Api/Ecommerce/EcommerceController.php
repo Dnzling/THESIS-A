@@ -531,10 +531,18 @@ class EcommerceController extends Controller
                 ->where('branch_inventory.store_id', $storeId)
                 ->where('branch_inventory.quantity_available', '>', 0)
                 ->whereExists(function ($branchQuery) {
+                    $today = now()->toDateString();
                     $branchQuery->selectRaw('1')->from('branches')
                         ->whereColumn('branches.id', 'branch_inventory.branch_id')
                         ->where('branches.branch_type', 'storefront')
-                        ->where('branches.status', 'active');
+                        ->where('branches.status', 'active')
+                        ->whereNotExists(function ($suspensions) use ($today) {
+                            $suspensions->selectRaw('1')
+                                ->from('branch_service_suspensions')
+                                ->whereColumn('branch_service_suspensions.branch_id', 'branches.id')
+                                ->where('branch_service_suspensions.start_date', '<=', $today)
+                                ->where(fn ($active) => $active->whereNull('branch_service_suspensions.end_date')->orWhere('branch_service_suspensions.end_date', '>=', $today));
+                        });
                 })
                 ->where('branch_inventory.stock_status', '!=', 'out_of_stock');
         });
@@ -1829,7 +1837,8 @@ class EcommerceController extends Controller
             (int) $cart->store_id,
             $itemsForCheckout,
             $fulfillmentMethod === 'pickup' ? null : $customerLatitude,
-            $fulfillmentMethod === 'pickup' ? null : $customerLongitude
+            $fulfillmentMethod === 'pickup' ? null : $customerLongitude,
+            $validated['requested_fulfillment_date']
         );
 
         if (!$fulfillmentBranch) {
@@ -4454,12 +4463,21 @@ class EcommerceController extends Controller
         int $storeId,
         $itemsForCheckout,
         ?float $customerLatitude = null,
-        ?float $customerLongitude = null
+        ?float $customerLongitude = null,
+        ?string $fulfillmentDate = null
     ): ?Branch {
+        $fulfillmentDate ??= now()->toDateString();
         $candidateBranches = Branch::query()
             ->where('store_id', $storeId)
             ->where('status', 'active')
             ->where('branch_type', 'storefront')
+            ->whereNotExists(function ($suspensions) use ($fulfillmentDate) {
+                $suspensions->selectRaw('1')
+                    ->from('branch_service_suspensions')
+                    ->whereColumn('branch_service_suspensions.branch_id', 'branches.id')
+                    ->where('branch_service_suspensions.start_date', '<=', $fulfillmentDate)
+                    ->where(fn ($active) => $active->whereNull('branch_service_suspensions.end_date')->orWhere('branch_service_suspensions.end_date', '>=', $fulfillmentDate));
+            })
             ->get(['id', 'name', 'city', 'province', 'latitude', 'longitude']);
 
         if ($candidateBranches->isEmpty()) {

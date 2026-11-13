@@ -60,7 +60,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
-const canManage = auth.hasPermission('store.expenses.manage')
+const canManage = auth.hasPermission('admin.maintenance.manage')
 const loading = ref(true)
 const error = ref('')
 const branchName = ref('')

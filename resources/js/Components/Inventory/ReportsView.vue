@@ -90,6 +90,8 @@
             <Column header="Suggested Action" style="min-width: 185px">
               <template #body="{ data }">
                 <Badge v-if="data.action_key === 'monitor'" :value="data.action" :severity="data.severity" />
+                <Button v-else-if="data.action_key === 'request_discount'" label="Request Discount" severity="warn"
+                  outlined rounded size="small" @click="openDiscountRequest(data)" />
                 <Button v-else :label="data.action" :severity="data.severity === 'danger' ? 'danger' : 'warn'"
                   outlined rounded size="small" @click="performAction(data)" />
               </template>
@@ -99,6 +101,47 @@
         </template>
       </template>
     </Card>
+
+    <Dialog v-model:visible="discountDialogVisible" modal header="Request a Discount" :style="{ width: 'min(94vw, 36rem)' }" :breakpoints="{ '640px': '95vw' }">
+      <div v-if="discountProduct" class="max-h-[70vh] space-y-5 overflow-y-auto">
+        <Message severity="info" :closable="false">
+          This sends a proposal to Merchandising for review. It will not change the product's live price or create a promotion automatically.
+        </Message>
+
+        <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p class="text-sm font-semibold text-slate-900">{{ discountProduct.product_name }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ discountProduct.variation_name || discountProduct.sku || 'Finished good' }} · {{ discountProduct.branch }}</p>
+          <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
+            <div><p class="text-slate-500">Report period</p><p class="mt-1 font-medium text-slate-800">{{ reportRangeLabel }}</p></div>
+            <div><p class="text-slate-500">Units sold</p><p class="mt-1 font-medium text-slate-800">{{ discountProduct.units_sold }}</p></div>
+            <div><p class="text-slate-500">Available stock</p><p class="mt-1 font-medium text-slate-800">{{ discountProduct.available }}</p></div>
+            <div><p class="text-slate-500">Days of cover</p><p class="mt-1 font-medium text-slate-800">{{ discountProduct.days_cover ?? 'No sales pace' }}</p></div>
+            <div class="col-span-2"><p class="text-slate-500">Stock value</p><p class="mt-1 font-medium text-slate-800">{{ money(discountProduct.stock_value) }}</p></div>
+          </div>
+        </section>
+
+        <div class="space-y-1">
+          <label class="block text-sm font-medium text-slate-700">Discount offer <span class="text-red-500">*</span></label>
+          <div class="grid grid-cols-[1fr_1.2fr] gap-3">
+            <Select v-model="discountType" :options="discountTypes" optionLabel="label" optionValue="value" size="small" fluid />
+            <InputNumber v-model="discountValue" :min="0.01" :max="discountType === 'percentage' ? 100 : undefined" :suffix="discountType === 'percentage' ? '%' : undefined" :mode="discountType === 'fixed' ? 'currency' : 'decimal'" :currency="discountType === 'fixed' ? 'PHP' : undefined" :minFractionDigits="discountType === 'fixed' ? 2 : 0" :maxFractionDigits="2" placeholder="Enter discount" size="small" fluid />
+          </div>
+          <small class="text-slate-500">Enter a value greater than zero. The offer is only a proposal until Merchandising creates a promotion.</small>
+        </div>
+
+        <div class="space-y-1">
+          <label for="discount-request-reason" class="block text-sm font-medium text-slate-700">Why this product should be promoted <span class="text-red-500">*</span></label>
+          <Textarea id="discount-request-reason" v-model="discountReason" rows="5" autoResize fluid maxlength="1500" />
+          <small class="text-slate-500">Pre-filled from the report. You can add context before submitting.</small>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <Button label="Cancel" severity="secondary" outlined size="small" @click="discountDialogVisible = false" />
+          <Button label="Submit Request" icon="pi pi-send" severity="warn" size="small" :loading="discountSaving"
+            :disabled="!discountValue || discountValue <= 0 || !discountReason.trim()" @click="submitDiscountRequest" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -111,6 +154,12 @@ import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import Skeleton from 'primevue/skeleton'
+import Dialog from 'primevue/dialog'
+import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
+import Textarea from 'primevue/textarea'
+import Message from 'primevue/message'
+import merchandisingService from '@/services/merchandising.service'
 
 type ReportType = 'slow_movers' | 'fast_movers' | 'aging' | 'transactions'
 type ReportRow = Record<string, any>
@@ -124,6 +173,16 @@ const rows = ref<ReportRow[]>([])
 const loading = ref(true)
 const limited = ref(false)
 const errorMessage = ref('')
+const discountDialogVisible = ref(false)
+const discountSaving = ref(false)
+const discountProduct = ref<ReportRow | null>(null)
+const discountType = ref<'percentage' | 'fixed'>('percentage')
+const discountValue = ref<number | null>(null)
+const discountReason = ref('')
+const discountTypes = [
+  { label: 'Percentage off', value: 'percentage' },
+  { label: 'Fixed amount off', value: 'fixed' },
+]
 let requestNumber = 0
 
 const copy: Record<ReportType, { title: string; description: string; empty: string }> = {
@@ -161,6 +220,9 @@ const periodLabel = computed(() => {
   const days = Math.max(1, Math.round((dateRange.value[1].getTime() - dateRange.value[0].getTime()) / 86400000) + 1)
   return `${days} days`
 })
+const reportRangeLabel = computed(() => dateRange.value?.[0] && dateRange.value?.[1]
+  ? `${date(dateRange.value[0].toISOString())} – ${date(dateRange.value[1].toISOString())}`
+  : periodLabel.value)
 const metrics = computed(() => {
   const data = visibleRows.value
   if (selectedReport.value === 'transactions') return [
@@ -229,6 +291,39 @@ const performAction = (data: ReportRow) => {
       notes: `Restock requested from the ${label(selectedReport.value)} report.`,
     },
   })
+}
+
+const openDiscountRequest = (data: ReportRow) => {
+  discountProduct.value = data
+  discountType.value = 'percentage'
+  discountValue.value = null
+  const stock = Number(data.available || 0)
+  const value = money(data.stock_value)
+  discountReason.value = Number(data.units_sold || 0) === 0
+    ? `No units sold during the selected ${periodLabel.value}. ${stock} units remain at ${data.branch}, representing ${value} in stock value. A discount may help improve sell-through.`
+    : `${data.units_sold} units sold during the selected ${periodLabel.value}, while ${stock} units remain at ${data.branch}${data.days_cover != null ? ` with about ${data.days_cover} days of cover` : ''}. A discount may help improve sell-through.`
+  discountDialogVisible.value = true
+}
+
+const submitDiscountRequest = async () => {
+  if (!discountProduct.value || !discountValue.value || discountValue.value <= 0 || !discountReason.value.trim()) return
+  discountSaving.value = true
+  try {
+    const response = await merchandisingService.createDiscountRequest({
+      branch_inventory_id: discountProduct.value.id,
+      report_period_start: apiDate(dateRange.value[0]),
+      report_period_end: apiDate(dateRange.value[1]),
+      discount_type: discountType.value,
+      discount_value: discountValue.value,
+      reason: discountReason.value.trim(),
+    })
+    discountDialogVisible.value = false
+    toast.add({ severity: 'success', summary: 'Request submitted', detail: response.data?.message || response.message || 'Merchandising received the discount request.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Could not submit request', detail: error?.response?.data?.message || 'Please review the request and try again.', life: 4000 })
+  } finally {
+    discountSaving.value = false
+  }
 }
 
 const exportCsv = () => {

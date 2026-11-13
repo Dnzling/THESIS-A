@@ -508,7 +508,12 @@
         <p class="text-sm text-gray-600">
           Add a short note for the customer/internal team. Notes are required when rejecting.
         </p>
-        <div v-if="pendingStatus === 'approved'" class="space-y-2">
+        <div v-if="pendingStatus === 'approved' && isInitialInvestigationDecision" class="rounded-lg border border-orange-200 bg-orange-50 p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-orange-800">Investigator recommendation</p>
+          <p class="mt-1 text-sm font-semibold text-slate-900">{{ prettyStatus(investigationTicket?.recommended_resolution) }}</p>
+          <p class="mt-1 text-xs text-slate-600">The investigator's recommendation will be used for this return. You can approve or reject the case, but the resolution is not selected again here.</p>
+        </div>
+        <div v-else-if="pendingStatus === 'approved'" class="space-y-2">
           <label class="block text-sm text-gray-600">Resolution</label>
           <Select v-model="pendingReturnType" :options="returnTypeOptions" optionLabel="label" optionValue="value"
             placeholder="Select refund or replacement" class="w-full" />
@@ -821,7 +826,10 @@ const returnDisplayStatus = computed(() => {
 const canApprove = computed(() => {
   if (!authStore.hasPermission('crm.returns.manage')) return false
   const status = String(returnRequest.value?.status || '')
-  if (status === 'pending_verification') return String(investigationTicket.value?.status || '') === 'completed'
+  if (status === 'pending_verification') {
+    return String(investigationTicket.value?.status || '') === 'completed'
+      && ['refund', 'replacement'].includes(String(investigationTicket.value?.recommended_resolution || ''))
+  }
   if (status !== 'approved' || returnRequest.value?.inspected_at) return false
   return !['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
 })
@@ -896,6 +904,16 @@ const pendingStatus = ref<'approved' | 'rejected'>('approved')
 const pendingReviewNotes = ref('')
 const pendingPickupDate = ref<Date | null>(null)
 const pendingReturnType = ref<'refund' | 'replacement' | null>(null)
+const isInitialInvestigationDecision = computed(() => pendingStatus.value === 'approved'
+  && String(returnRequest.value?.status || '') === 'pending_verification'
+  && String(investigationTicket.value?.status || '') === 'completed')
+const effectiveReturnType = computed<'refund' | 'replacement' | null>(() => {
+  if (isInitialInvestigationDecision.value) {
+    const recommendation = String(investigationTicket.value?.recommended_resolution || '')
+    return recommendation === 'refund' || recommendation === 'replacement' ? recommendation : null
+  }
+  return pendingReturnType.value
+})
 const returnTypeOptions = [
   { label: 'Replacement (recommended)', value: 'replacement' },
   { label: 'Refund (exception only)', value: 'refund' },
@@ -923,10 +941,10 @@ const rejectReasonOptions = [
 
 
 const notesContinueDisabled = computed(() => {
-  if (pendingStatus.value === 'approved') return !pendingReturnType.value
+  if (pendingStatus.value === 'approved') return !effectiveReturnType.value
     || !pendingChargeResponsibility.value
     || !pendingPickupDate.value
-    || (pendingReturnType.value === 'refund' && !pendingRefundExceptionReason.value)
+    || (effectiveReturnType.value === 'refund' && !pendingRefundExceptionReason.value)
   if (pendingStatus.value !== 'rejected') return false
   const hasReason = !!String(pendingRejectReason.value || '').trim().length
   const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
@@ -958,8 +976,8 @@ const closeNotesDialog = () => {
 }
 
 const confirmUpdate = (nextStatus: 'approved' | 'rejected') => {
-  if (nextStatus === 'approved' && !pendingReturnType.value) {
-    toast.add({ severity: 'warn', summary: 'Required', detail: 'Select Refund or Replacement.', life: 2500 })
+  if (nextStatus === 'approved' && !effectiveReturnType.value) {
+    toast.add({ severity: 'warn', summary: 'Investigation outcome required', detail: 'The investigator must recommend Refund or Replacement before this return can be approved.', life: 3000 })
     return
   }
   if (nextStatus === 'approved' && !pendingPickupDate.value) {
@@ -1009,9 +1027,9 @@ const updateStatus = async (nextStatus: 'approved' | 'rejected') => {
     const combinedRejectNotes = rejectReason && rejectNotes ? `${rejectReason}\n\n${rejectNotes}` : (rejectReason || rejectNotes)
     const res = await crmService.updateReturnStatus(id.value, {
       status: nextStatus,
-      return_type: nextStatus === 'approved' ? pendingReturnType.value || undefined : undefined,
+      return_type: nextStatus === 'approved' && !isInitialInvestigationDecision.value ? pendingReturnType.value || undefined : undefined,
       charge_responsibility: nextStatus === 'approved' ? pendingChargeResponsibility.value : undefined,
-      refund_exception_reason: nextStatus === 'approved' && pendingReturnType.value === 'refund' ? pendingRefundExceptionReason.value || undefined : undefined,
+      refund_exception_reason: nextStatus === 'approved' && effectiveReturnType.value === 'refund' ? pendingRefundExceptionReason.value || undefined : undefined,
       pickup_scheduled_at: nextStatus === 'approved' && pendingPickupDate.value ? dateForApi(pendingPickupDate.value) : undefined,
       review_notes: nextStatus === 'rejected' ? combinedRejectNotes : (pendingReviewNotes.value || undefined),
     })

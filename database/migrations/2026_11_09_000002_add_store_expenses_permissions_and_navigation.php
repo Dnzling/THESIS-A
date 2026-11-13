@@ -43,7 +43,7 @@ return new class extends Migration
 
         DB::table('navigation_items')->updateOrInsert(['name' => 'store.expenses'], [
             'display_name' => 'Maintenance & Expenses',
-            'module' => 'store',
+            'module' => 'admin',
             'section' => 'Store',
             'route_name' => 'store.expenses',
             'route_path' => '/store/expenses',

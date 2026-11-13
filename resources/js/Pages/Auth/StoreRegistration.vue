@@ -207,6 +207,8 @@ const selectPin = async (latitude: number, longitude: number) => {
     marker?.setLngLat(coordinates)
   }
 
+  void reverseGeocodeStoreAddress(longitude, latitude, requestId)
+
   try {
     const response = await axiosClient.post('/api/stores/validate-location', {
       latitude: form.value.latitude,
@@ -219,6 +221,25 @@ const selectPin = async (latitude: number, longitude: number) => {
     if (requestId !== locationRequest) return
     pinStatus.value = 'invalid'
     pinError.value = error?.response?.data?.message || 'Could not verify the pin. Please try again.'
+  }
+}
+
+const reverseGeocodeStoreAddress = async (longitude: number, latitude: number, requestId: number) => {
+  try {
+    const params = new URLSearchParams({
+      longitude: String(longitude),
+      latitude: String(latitude),
+      types: 'address',
+      language: 'en',
+      access_token: requireMapboxToken(),
+    })
+    const response = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?${params}`)
+    if (!response.ok) return
+    const feature = (await response.json())?.features?.[0]
+    const address = String(feature?.properties?.full_address || feature?.properties?.name || '').trim()
+    if (address && requestId === locationRequest) form.value.address = address
+  } catch {
+    // The owner can still enter the address manually if reverse geocoding is unavailable.
   }
 }
 
@@ -275,6 +296,7 @@ const selectLocationSuggestion = async (suggestion: typeof locationSuggestions.v
   const selectedAddress = suggestion.address || suggestion.name
   skipSearchQuery = selectedAddress
   locationSearch.value = selectedAddress
+  form.value.address = selectedAddress
   locationSuggestions.value = []
   showLocationSuggestions.value = false
   pinError.value = ''

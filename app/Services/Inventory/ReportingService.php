@@ -127,8 +127,8 @@ class ReportingService
         $rows = match ($report) {
             'slow_movers' => $rows->filter(fn ($row) => $row['available'] > 0 && (($row['units_sold'] === 0 && $row['days_listed'] >= 30) || ($row['days_cover'] ?? 0) > 60))
                 ->map(function ($row) {
-                    $row['action'] = $row['units_sold'] === 0 ? 'Review price or promote' : 'Reduce next replenishment';
-                    $row['action_key'] = 'review_product';
+                    $row['action'] = 'Request Discount';
+                    $row['action_key'] = 'request_discount';
                     $row['severity'] = 'warn';
                     return $row;
                 })->sortByDesc('stock_value'),

@@ -157,7 +157,9 @@ class ReturnPickupController extends Controller
                 'returnRequest.salesOrderItem:id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
                 'returnRequest.user:id,fname,lname,email',
             ])
-            ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId));
+            ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId))
+            // Replacement returns are dispatched as a paired exchange from the replacement workflow.
+            ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'));
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
@@ -273,6 +275,14 @@ class ReturnPickupController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
 
+        $pickup->loadMissing('returnRequest:id,return_type,replacement_status');
+        if ($pickup->returnRequest?->return_type === 'replacement') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reserve the replacement stock first, then assign the replacement from Deliveries so the replacement and return pickup travel on the same trip.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'driver_user_id' => ['required', 'exists:users,id'],
             'vehicle_id' => ['required', 'exists:ecommerce_delivery_vehicles,id'],
@@ -373,6 +383,19 @@ class ReturnPickupController extends Controller
         }
         if ($request->user()->hasRole('driver') && (int) $pickup->driver_user_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'This return pickup is not assigned to you.'], 403);
+        }
+
+        $pickup->loadMissing('returnRequest:id,return_type,replacement_status,replacement_trip_id');
+        if ($pickup->returnRequest?->return_type === 'replacement') {
+            $isPairedTrip = $pickup->trip_id
+                && (int) $pickup->trip_id === (int) $pickup->returnRequest->replacement_trip_id
+                && in_array((string) $pickup->returnRequest->replacement_status, ['out_for_delivery', 'delivered'], true);
+            if (!$isPairedTrip || ($request->has('status') && $request->input('status') !== 'delivered')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This return pickup can only be completed as part of its reserved replacement delivery trip.',
+                ], 422);
+            }
         }
 
         $validated = $request->validate([

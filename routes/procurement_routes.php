@@ -67,6 +67,7 @@ Route::prefix('procurement')->group(function () {
         Route::put('/{id}', [SupplierController::class, 'update']);
         Route::delete('/{id}', [SupplierController::class, 'destroy']);
         Route::get('/{id}/products', [SupplierController::class, 'products']);
+        Route::get('/{id}/available-products', [SupplierController::class, 'availableProducts']);
         Route::post('/{id}/products', [SupplierController::class, 'attachProducts']);
         Route::get('/{id}/performance', [SupplierController::class, 'performance']);
         Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory']);

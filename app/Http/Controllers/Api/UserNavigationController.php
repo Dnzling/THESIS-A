@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Core\NavigationItem;
 use App\Models\Core\Permission;
+use App\Models\Store\Branch;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,7 @@ class UserNavigationController extends Controller
             }
 
             // Refresh user to ensure store_id comes from users table
-            $user = $user->fresh(['role', 'store']);
+            $user = $user->fresh(['role', 'store', 'employee']);
             
             // Get permissions based on role
             $permissionPayload = $this->getUserPermissionsWithMeta($user);
@@ -185,6 +186,13 @@ class UserNavigationController extends Controller
     {
         $roleName = strtolower($user->role->name ?? '');
         $allowedModules = $this->getOwnerAllowedModules($user);
+        $storeId = (int) ($user->store_id ?: $user->employee?->store_id ?: 0);
+        $branchId = (int) ($user->branch_id ?: $user->employee?->branch_id ?: 0);
+        $isMainBranchUser = $storeId > 0 && $branchId > 0 && Branch::query()
+            ->where('store_id', $storeId)
+            ->whereKey($branchId)
+            ->where('is_main_branch', true)
+            ->exists();
 
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
@@ -196,6 +204,10 @@ class UserNavigationController extends Controller
         $accessibleNavigation = [];
 
         foreach ($navigationItems as $navItem) {
+            if ($isMainBranchUser && $navItem->module === 'store') {
+                continue;
+            }
+
             if ($roleName === 'owner' && !empty($allowedModules)) {
                 $whitelist = ['owner', 'store', 'system', 'admin'];
                 if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
@@ -209,7 +221,7 @@ class UserNavigationController extends Controller
                     'id' => $navItem->id,
                     'name' => $navItem->name,
                     'display_name' => $navItem->display_name,
-                    'module' => $navItem->module,
+                    'module' => $navItem->name === 'store.expenses' ? 'admin' : $navItem->module,
                     'route_name' => $navItem->route_name,
                     'route_path' => $navItem->route_path,
                     'icon' => $navItem->icon,

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPortalController
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierVerificationController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierRFQFeedbackController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackController;
+use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierProductListingController;
 use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,10 @@ Route::prefix('supplier-portal')->group(function () {
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
         Route::put('/payment-account', [SupplierPortalController::class, 'updatePaymentAccount']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
+        Route::get('/products', [SupplierProductListingController::class, 'index']);
+        Route::get('/products/options', [SupplierProductListingController::class, 'options']);
+        Route::post('/products', [SupplierProductListingController::class, 'store']);
+        Route::get('/products/{listingId}', [SupplierProductListingController::class, 'show'])->whereNumber('listingId');
         Route::get('/stores/linked', [SupplierPortalController::class, 'getLinkedStores']);
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
         Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);

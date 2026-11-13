@@ -278,6 +278,26 @@ class SupplierService {
     return response.data
   }
 
+  async getProductListings(params?: { search?: string; store_id?: number; status?: 'active' | 'inactive'; per_page?: number; page?: number }) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products`, { params })
+    return response.data
+  }
+
+  async getProductListingOptions() {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products/options`)
+    return response.data
+  }
+
+  async createProductListing(data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/products`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return response.data
+  }
+
+  async getProductListing(id: number | string) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/products/${id}`)
+    return response.data
+  }
+
   async getLinkedStores() {
     const response = await axiosClient.get(`${this.portalBaseUrl}/stores/linked`)
     return response.data

@@ -12,13 +12,23 @@
                     stay on each product.
                 </p>
             </div>
-            <Button
-                v-if="canManage"
-                label="Create Promotion"
-                icon="pi pi-plus"
-                @click="openCreate"
-                size="small"
-            />
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    label="Discount Requests"
+                    icon="pi pi-inbox"
+                    severity="secondary"
+                    outlined
+                    @click="router.push({ name: 'merchandising.discount-requests' })"
+                    size="small"
+                />
+                <Button
+                    v-if="canManage"
+                    label="Create Promotion"
+                    icon="pi pi-plus"
+                    @click="openCreate"
+                    size="small"
+                />
+            </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -504,6 +514,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
 import { useAuthStore } from "../../../../stores/auth";
@@ -528,6 +539,7 @@ import ToggleSwitch from "primevue/toggleswitch";
 
 const toast = useToast(),
     confirm = useConfirm(),
+    router = useRouter(),
     authStore = useAuthStore();
 const canManage = computed(() =>
     authStore.hasPermission("merchandising.pricing.manage")

@@ -320,7 +320,8 @@ class ReplacementController extends Controller
         });
 
         return response()->json(['success' => true, 'message' => $result['reserved']
-            ? 'Replacement stock reserved.' : 'Not enough stock. Case is awaiting stock.', 'data' => $result['case']]);
+            ? 'The full replacement quantity is reserved and is now ready for Logistics. Assign it to a trip to carry the replacement to the customer and bring the returned item back together.'
+            : 'Not enough stock. Case is awaiting stock.', 'data' => $result['case']]);
     }
 
     private function replacementUnitPrice(BranchInventory $inventory): float

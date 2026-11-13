@@ -65,6 +65,7 @@
           <p class="mt-0.5 text-xs text-slate-500">Manage your business connections and payout details.</p>
         </div>
         <div class="flex flex-wrap gap-2">
+          <Button label="Product listings" icon="pi pi-box" severity="secondary" outlined size="small" @click="router.push('/supplier-portal/products')" />
           <Button label="Linked stores" icon="pi pi-building" severity="secondary" outlined size="small" @click="router.push('/supplier-portal/stores')" />
           <Button label="Payment account" icon="pi pi-credit-card" severity="secondary" outlined size="small" @click="openPaymentDialog" />
         </div>

@@ -260,7 +260,11 @@ class BranchExpenseController extends Controller
     {
         $user = $request->user();
         abort_unless($user && $user->store_id && $user->branch_id, 403, 'Your account must be assigned to a store branch.');
-        abort_unless($user->hasPermissionTo($permission, (int) $user->store_id), 403, 'You are not authorized to access branch expenses.');
+        $hasPermission = $user->hasPermissionTo($permission, (int) $user->store_id);
+        if (in_array($permission, ['store.expenses.view', 'store.expenses.manage'], true)) {
+            $hasPermission = $hasPermission || $user->hasPermissionTo('admin.maintenance.manage', (int) $user->store_id);
+        }
+        abort_unless($hasPermission, 403, 'You are not authorized to access branch expenses.');
 
         $branch = Branch::query()
             ->whereKey((int) $user->branch_id)
@@ -297,7 +301,8 @@ class BranchExpenseController extends Controller
                 ? Storage::disk('local')->mimeType($row->receipt_path)
                 : null,
             'can_approve' => $request->user()->hasPermissionTo('store.expenses.approve', (int) $row->store_id),
-            'can_manage' => $request->user()->hasPermissionTo('store.expenses.manage', (int) $row->store_id),
+            'can_manage' => $request->user()->hasPermissionTo('admin.maintenance.manage', (int) $row->store_id)
+                || $request->user()->hasPermissionTo('store.expenses.manage', (int) $row->store_id),
         ];
     }
 }

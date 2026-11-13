@@ -9,8 +9,8 @@
         </p>
       </div>
   
-      <div class="mb-8 flex justify-center">
-        <div class="flex w-full max-w-4xl items-center gap-3">
+      <div class="mb-8 overflow-x-auto">
+        <div class="mx-auto flex min-w-[52rem] max-w-6xl items-center gap-3">
           <div class="flex items-center gap-3">
             <div :class="[
               'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
@@ -58,8 +58,10 @@
             ]">
               5
             </div>
-            <span :class="currentStep >= 5 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
+            <span :class="currentStep >= 5 ? 'font-semibold text-slate-950' : 'text-slate-400'">Attachments</span>
           </div>
+          <div class="h-1 flex-1 rounded-full" :class="currentStep >= 6 ? 'bg-orange-500' : 'bg-slate-200'"></div>
+          <div class="flex items-center gap-3"><div :class="['flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold', currentStep >= 6 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500']">6</div><span :class="currentStep >= 6 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span></div>
         </div>
       </div>
       <div class="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -89,6 +91,7 @@ const emit = defineEmits<Emits>()
 // Async components
 const OwnerIdStep = defineAsyncComponent(() => import('./steps/OwnerIdStep.vue'))
 const BusinessDocumentStep = defineAsyncComponent(() => import('./steps/BusinessDocumentStep.vue'))
+const AdditionalDocumentsStep = defineAsyncComponent(() => import('./steps/AdditionalDocumentsStep.vue'))
 const ReviewStep = defineAsyncComponent(() => import('./steps/ReviewStep.vue'))
 
 // Current step
@@ -115,6 +118,7 @@ const formData = ref({
   mayorPermit: null as File | null,
   permitExpiresAt: '',
   additionalNotes: '',
+  additionalDocuments: [] as Array<{ label: string; file: File; reference_number: string; expires_at: string }>,
   termsAccepted: false,
   privacyAccepted: false
 })
@@ -124,7 +128,8 @@ const stepComponents = {
   2: BusinessDocumentStep,
   3: BusinessDocumentStep,
   4: BusinessDocumentStep,
-  5: ReviewStep
+  5: AdditionalDocumentsStep,
+  6: ReviewStep
 }
 
 // Get current component based on step
@@ -145,8 +150,8 @@ const scrollToTop = () => {
 
 // Navigation with scroll
 const goToNextStep = () => {
-  if (currentStep.value < 5) {
-    currentStep.value = Math.min(currentStep.value + 1, 5)
+  if (currentStep.value < 6) {
+    currentStep.value = Math.min(currentStep.value + 1, 6)
     nextTick(scrollToTop) // Scroll after DOM updates
   }
 }
@@ -159,7 +164,7 @@ const goToPrevStep = () => {
 }
 
 const goToStep = (step: number) => {
-  if (step >= 1 && step <= 5) {
+  if (step >= 1 && step <= 6) {
     currentStep.value = step
     nextTick(scrollToTop) // Scroll after DOM updates
   }

@@ -9,6 +9,7 @@ use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Models\Store\StoreSubscriptionAgreement;
 use App\Services\Modules\ModuleAccessService;
 use App\Services\Store\CaviteLocationService;
 use Carbon\Carbon;
@@ -36,8 +37,22 @@ class StoreSettingsController extends Controller
         $storeId = (int) ($store?->id ?? 0);
         $mainBranch = $store?->branches()->orderByDesc('is_main_branch')->first();
         $storeSettings = is_array($store?->settings) ? $store->settings : [];
-        $operatingHours = $storeSettings['simple_operating_hours'] ?? [];
+        $activeAgreement = $store
+            ? StoreSubscriptionAgreement::query()->where('store_id', $store->id)->where('status', 'active')->latest('activated_at')->first()
+            : null;
+        $firstBranch = $store?->branches()->orderBy('id')->first();
+        $operatingHours = $firstBranch?->opening_hours ?: ($storeSettings['simple_operating_hours'] ?? []);
         $savedWindows = $storeSettings['fulfillment_windows'] ?? [];
+        $branchSchedule = is_array($operatingHours['schedule'] ?? null) ? $operatingHours['schedule'] : [];
+        $hasValidOperatingHours = $branchSchedule
+            ? collect($branchSchedule)->contains(fn ($hours) => is_array($hours)
+                && !empty($hours['opens_at'])
+                && !empty($hours['closes_at'])
+                && (string) $hours['closes_at'] > (string) $hours['opens_at'])
+            : (!empty($operatingHours['days'])
+                && !empty($operatingHours['opens_at'])
+                && !empty($operatingHours['closes_at'])
+                && (string) $operatingHours['closes_at'] > (string) $operatingHours['opens_at']);
         $isSimpleSetupPlan = in_array(strtolower((string) ($subscriptionPlan?->plan_key ?? $store?->subscription_tier)), ['free', 'simple'], true);
         $hasValidWindow = static fn ($window): bool => is_array($window)
             && !empty($window['days'])
@@ -46,13 +61,7 @@ class StoreSettingsController extends Controller
             && (string) $window['end'] > (string) $window['start'];
         $setupAttention = [
             'photo_upload' => empty($mainBranch?->logo_path),
-            'operating_hours' => $isSimpleSetupPlan && (
-                !is_array($operatingHours)
-                || empty($operatingHours['days'])
-                || empty($operatingHours['opens_at'])
-                || empty($operatingHours['closes_at'])
-                || (string) $operatingHours['closes_at'] <= (string) $operatingHours['opens_at']
-            ),
+            'operating_hours' => $isSimpleSetupPlan && !$hasValidOperatingHours,
             'pickup_window' => !$hasValidWindow($savedWindows['pickup'] ?? null),
             'delivery_window' => !$hasValidWindow($savedWindows['delivery'] ?? null),
         ];
@@ -148,7 +157,7 @@ class StoreSettingsController extends Controller
                 ->toArray() ?? [],
             'attendance' => $this->resolveAttendanceSettings($store?->id),
             'attendance_geolocation_available' => $store && $this->planIncludesAttendanceRecording($store),
-            'operating_hours' => $storeSettings['simple_operating_hours'] ?? null,
+            'operating_hours' => $operatingHours,
             'fulfillment_windows' => $store ? app(\App\Services\Ecommerce\FulfillmentWindowService::class)->settings($store) : null,
             'setup_attention' => $setupAttention,
             'subscription' => [
@@ -157,6 +166,12 @@ class StoreSettingsController extends Controller
                 'ends_at' => $endsAt?->toDateString(),
                 'modules' => $enabledModules,
             ],
+            'agreement' => $activeAgreement ? [
+                'plan_name' => $activeAgreement->plan_name,
+                'billing_cycle' => $activeAgreement->billing_cycle,
+                'signer_name' => $activeAgreement->signer_name,
+                'signed_at' => $activeAgreement->signed_at?->toIso8601String(),
+            ] : null,
             'available_plans' => $availablePlans,
             'verification' => $this->resolveVerificationStatus($store),
             'onboarding' => [
@@ -175,23 +190,37 @@ class StoreSettingsController extends Controller
         abort_unless(in_array($store->subscription_tier, ['free', 'simple'], true), 403);
 
         $validated = $request->validate([
-            'days' => ['required', 'array', 'min:1'],
-            'days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])],
-            'opens_at' => ['required', 'date_format:H:i'],
-            'closes_at' => ['required', 'date_format:H:i'],
+            'schedule' => ['required', 'array'],
+            'schedule.*.enabled' => ['required', 'boolean'],
+            'schedule.*.opens_at' => ['nullable', 'date_format:H:i'],
+            'schedule.*.closes_at' => ['nullable', 'date_format:H:i'],
         ]);
-        if ($validated['closes_at'] <= $validated['opens_at']) {
-            return back()->withErrors(['closes_at' => 'Closing time must be later than opening time.']);
+        $allowedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        $schedule = [];
+        foreach ($allowedDays as $day) {
+            $entry = $validated['schedule'][$day] ?? ['enabled' => false];
+            if (!$entry['enabled']) continue;
+            if (empty($entry['opens_at']) || empty($entry['closes_at']) || $entry['closes_at'] <= $entry['opens_at']) {
+                return back()->withErrors(["schedule.$day.closes_at" => 'Each closing time must be later than opening time.']);
+            }
+            $schedule[$day] = ['day' => $day, 'opens_at' => $entry['opens_at'], 'closes_at' => $entry['closes_at']];
         }
+        if (!$schedule) return back()->withErrors(['schedule' => 'Enable at least one operating day.']);
 
         $settings = is_array($store->settings) ? $store->settings : [];
-        $settings['simple_operating_hours'] = [
-            'days' => array_values(array_unique($validated['days'])),
-            'opens_at' => $validated['opens_at'],
-            'closes_at' => $validated['closes_at'],
-        ];
+        $first = reset($schedule);
+        $settings['simple_operating_hours'] = ['days' => array_keys($schedule), 'opens_at' => $first['opens_at'], 'closes_at' => $first['closes_at'], 'schedule' => $schedule];
         $store->settings = $settings;
         $store->save();
+        $branch = $store->branches()->orderBy('id')->first();
+        if ($branch) {
+            $openingHours = is_array($branch->opening_hours) ? $branch->opening_hours : [];
+            $openingHours['days'] = array_keys($schedule);
+            $openingHours['schedule'] = $schedule;
+            $openingHours['fulfillment_windows'] = $settings['fulfillment_windows'] ?? ($openingHours['fulfillment_windows'] ?? []);
+            $branch->opening_hours = $openingHours;
+            $branch->save();
+        }
 
         return back()->with('success', 'Operating hours updated.');
     }
@@ -218,6 +247,13 @@ class StoreSettingsController extends Controller
         $settings['fulfillment_windows'] = $validated;
         $store->settings = $settings;
         $store->save();
+        $branch = $store->branches()->orderBy('id')->first();
+        if ($branch) {
+            $openingHours = is_array($branch->opening_hours) ? $branch->opening_hours : [];
+            $openingHours['fulfillment_windows'] = $validated;
+            $branch->opening_hours = $openingHours;
+            $branch->save();
+        }
 
         return back()->with('success', 'Pickup and delivery windows updated.');
     }
@@ -512,7 +548,7 @@ class StoreSettingsController extends Controller
             'province' => 'nullable|string|max:100',
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
-            'geofence_radius_m' => 'nullable|integer|min:0|max:100',
+            'geofence_radius_m' => 'required|integer|min:50|max:500',
             'geofence_enabled' => 'nullable|boolean',
         ];
     }
@@ -537,7 +573,7 @@ class StoreSettingsController extends Controller
             'province' => $validated['province'] ?? $branch->province,
             'latitude' => $validated['latitude'],
             'longitude' => $validated['longitude'],
-            'geofence_radius_m' => $validated['geofence_radius_m'] ?? $branch->geofence_radius_m ?? 5,
+            'geofence_radius_m' => $validated['geofence_radius_m'],
             'geofence_enabled' => array_key_exists('geofence_enabled', $validated)
                 ? (bool) $validated['geofence_enabled']
                 : (bool) $branch->geofence_enabled,
@@ -610,7 +646,7 @@ class StoreSettingsController extends Controller
                 'province' => '',
                 'latitude' => null,
                 'longitude' => null,
-                'geofence_radius_m' => 5,
+                'geofence_radius_m' => 50,
                 'geofence_enabled' => false,
             ];
         }
@@ -638,7 +674,7 @@ class StoreSettingsController extends Controller
             'province' => (string) ($branch?->province ?? ''),
             'latitude' => $branch?->latitude !== null ? (float) $branch->latitude : null,
             'longitude' => $branch?->longitude !== null ? (float) $branch->longitude : null,
-            'geofence_radius_m' => (int) ($branch?->geofence_radius_m ?? 5),
+            'geofence_radius_m' => max(50, min(500, (int) ($branch?->geofence_radius_m ?? 50))),
             'geofence_enabled' => (bool) ($branch?->geofence_enabled ?? false),
         ];
     }

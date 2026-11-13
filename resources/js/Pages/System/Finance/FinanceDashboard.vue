@@ -4,7 +4,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
-          <p class="mt-1 text-sm text-slate-500">Cash position, obligations, and financial performance at a glance.</p>
+          <p class="mt-1 text-sm text-slate-500">Track financial activity, obligations, and performance at a glance.</p>
         </div>
         <Button icon="pi pi-refresh" text :loading="loading" @click="loadDashboard" />
       </div>
@@ -100,7 +100,7 @@
         <template #content>
           <div class="space-y-3">
             <Button fluid icon="pi pi-wallet" label="Review Payables" outlined @click="goTo('finance.payables')" />
-            <Button fluid icon="pi pi-chart-line" label="Cashflow" outlined @click="goTo('finance.cashflow')" />
+            <Button fluid icon="pi pi-chart-line" label="Track Cash Flow" outlined @click="goTo('finance.cashflow')" />
             <Button fluid icon="pi pi-money-bill" label="Process Expenses" outlined @click="goTo('finance.expenses')" />
             <Button fluid icon="pi pi-users" label="Approve Payroll" outlined @click="goTo('finance.payroll')" />
             <Button fluid icon="pi pi-chart-bar" label="View Reports" outlined @click="goTo('finance.reports')" />

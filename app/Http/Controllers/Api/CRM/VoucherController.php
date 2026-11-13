@@ -138,6 +138,7 @@ class VoucherController extends Controller
 
         $voucher = EcommerceVoucher::create([
             'store_id' => $storeId,
+            'created_by' => $user->id,
             'voucher_name' => trim((string) $validated['voucher_name']),
             'voucher_slots' => (int) ($validated['voucher_slots'] ?? 0),
             'code' => $code,
@@ -175,9 +176,13 @@ class VoucherController extends Controller
             ->distinct('user_id')
             ->count('user_id');
 
+        $creator = $voucher->createdBy()->first(['id', 'fname', 'lname', 'email']);
+        $creatorName = trim(implode(' ', array_filter([$creator?->fname, $creator?->lname])));
+
         return response()->json([
             'success' => true,
             'data' => array_merge($voucher->toArray(), [
+                'created_by_name' => $creatorName !== '' ? $creatorName : ($creator?->email ?: null),
                 'used_order_count' => $usedOrderCount,
                 'used_customer_count' => $usedCustomerCount,
                 'remaining_slots' => (int) $voucher->voucher_slots > 0

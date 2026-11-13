@@ -6,42 +6,50 @@
         <h1 class="text-lg font-bold text-gray-900">Products</h1>
         <p class="text-xs text-gray-500">Manage product details, ecommerce pricing, media, and variations.</p>
       </div>
-      <Button v-if="authStore.hasPermission('inventory.product.manage')" label="Add Product in Inventory" size="small"
-        @click="createProduct" />
+      <div class="flex flex-wrap items-center gap-2">
+        <SplitButton v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" :model="createProductOptions"
+          @click="createProduct" />
+        <Button v-if="!canManageProducts && canViewCategories" label="Categories" icon="pi pi-folder" severity="secondary" outlined size="small"
+          @click="router.push({ name: 'merchandising.categories' })" />
+        <Button v-if="!canManageProducts && canViewVariations" label="Variants" icon="pi pi-list" severity="secondary" outlined size="small"
+          @click="router.push({ name: 'merchandising.variations' })" />
+        <Button v-if="!canManageProducts && canViewArchivedProducts" label="Archived Products" icon="pi pi-inbox"
+          severity="secondary" outlined size="small" @click="router.push({ name: 'merchandising.products.archived' })" />
+      </div>
     </div>
   
     <!-- Filters Card -->
     <Card class="border border-gray-200 shadow-sm">
       <template #content>
-        <div class="mb-4 grid grid-cols-1 items-end gap-4 md:grid-cols-6">
-          <IconField class="w-full md:col-span-2">
+        <div class="mb-4 flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-center">
+          <IconField class="w-full md:w-80 md:shrink-0">
             <InputIcon class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search by product name or SKU" class="w-full text-sm"
               size="small" @input="onFilterChange" />
           </IconField>
   
           <Select v-model="filters.category_id" :options="categories" optionLabel="category_name" optionValue="id"
-            placeholder="All Categories" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
+            placeholder="All Categories" class="w-full text-sm md:w-44 md:shrink-0" size="small" showClear @change="onFilterChange" />
   
           <Select v-model="filters.is_active" :options="activeStatuses" optionLabel="label" optionValue="value"
-            placeholder="Status" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
+            placeholder="Status" class="w-full text-sm md:w-44 md:shrink-0" size="small" showClear @change="onFilterChange" />
 
           <Select v-model="filters.product_type" :options="productTypeOptions" optionLabel="label" optionValue="value"
-            placeholder="Type" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
+            placeholder="Type" class="w-full text-sm md:w-40 md:shrink-0" size="small" showClear @change="onFilterChange" />
 
           <Select v-model="filters.branch_id" :options="branches" optionLabel="name" optionValue="id"
-            placeholder="All branches" class="w-full text-sm" size="small" showClear @change="onFilterChange" />
+            placeholder="All branches" class="w-full text-sm md:w-44 md:shrink-0" size="small" showClear @change="onFilterChange" />
 
-          <div v-if="hasActiveFilters" class="flex justify-end">
+          <div v-if="hasActiveFilters" class="flex justify-end md:ml-auto">
             <Button @click="resetFilters" label="Clear All" severity="danger" size="small" class="text-sm" />
           </div>
         </div>
         <p class="mb-3 text-xs text-slate-500">Select a branch to see promotions limited to that branch. All branches shows store-wide offers only.</p>
   
-        <div v-if="selectedProducts.length" class="m-4 flex flex-wrap gap-2 border-t border-gray-100 p-4">
-          <Button v-if="selectedProducts.length > 0" @click="bulkActivate" icon="pi pi-check" label="Activate"
+        <div v-if="canManageProducts && selectedProducts.length" class="m-4 flex flex-wrap gap-2 border-t border-gray-100 p-4">
+          <Button @click="bulkActivate" icon="pi pi-check" label="Activate"
             severity="warn" size="small" class="text-sm" />
-          <Button v-if="selectedProducts.length > 0" @click="bulkDeactivate" icon="pi pi-times" label="Deactivate"
+          <Button @click="bulkDeactivate" icon="pi pi-times" label="Deactivate"
             severity="warn" outlined size="small" class="text-sm" />
         </div>
 
@@ -65,7 +73,7 @@
             </div>
           </template>
   
-          <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+          <Column v-if="canManageProducts" selectionMode="multiple" headerStyle="width: 3rem"></Column>
   
           <Column field="product_name" header="Product" sortable style="min-width: 240px">
             <template #body="{ data }">
@@ -109,12 +117,7 @@
   
           <Column field="base_price" header="Price/Unit" sortable>
             <template #body="{ data }">
-              <div>
-                <p v-if="Number(data.effective_price) < Number(data.regular_price)" class="text-xs font-semibold text-orange-700">₱{{ formatPrice(data.effective_price) }} <span class="text-[11px]">({{ data.discount_percentage }}% off)</span></p>
-                <p class="text-xs" :class="Number(data.effective_price) < Number(data.regular_price) ? 'text-gray-500 line-through' : 'text-gray-900'">
-                  ₱{{ formatPrice(data.regular_price ?? data.base_price) }}/<b>{{ data.unit_of_measurement || 'unit' }}</b>
-                </p>
-              </div>
+              <p class="text-xs text-gray-900">₱{{ formatPrice(data.base_price) }}/<b>{{ data.unit_of_measurement || 'unit' }}</b></p>
             </template>
           </Column>
 
@@ -128,7 +131,7 @@
   
           <Column frozen alignFrozen="left">
             <template #body="{ data }">
-              <Button icon="pi pi-ellipsis-h" outlined rounded size="small" aria-label="Product actions"
+              <Button v-if="canViewProducts" icon="pi pi-ellipsis-h" outlined rounded size="small" aria-label="Product actions"
                 @click.stop="openActionMenu($event, data)" />
             </template>
           </Column>
@@ -140,15 +143,15 @@
     <!-- Archive Confirmation -->
     <Dialog v-model:visible="deleteDialogVisible" header="Archive Product" :modal="true" class="w-96">
       <div class="flex items-center gap-3">
-        <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
+        <i class="pi pi-exclamation-triangle text-4xl text-orange-600"></i>
         <div>
           <p class="font-semibold">Archive {{ currentProduct?.product_name || 'this product' }}?</p>
           <p class="text-sm text-gray-600 mt-1">The product will be removed from active product lists.</p>
         </div>
       </div>
       <template #footer>
-        <Button @click="deleteDialogVisible = false" label="Cancel" severity="secondary" text />
-        <Button @click="deleteProduct" label="Archive" icon="pi pi-box" severity="danger" :loading="deleting" />
+        <Button @click="deleteDialogVisible = false" label="Cancel" severity="secondary" outlined />
+        <Button @click="deleteProduct" label="Archive" icon="pi pi-box" severity="warn" :loading="deleting" />
       </template>
     </Dialog>
   </div>
@@ -158,13 +161,24 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
+import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRoute, useRouter } from 'vue-router'
+import SplitButton from 'primevue/splitbutton'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const canManageProducts = computed(() => authStore.hasPermission('merchandising.products.manage'))
+const canViewProducts = computed(() => authStore.hasAnyPermission([
+  'merchandising.products.view', 'merchandising.products.manage', 'merchandising.products.approve', 'merchandising.products.delete',
+]))
+const canViewCategories = computed(() => authStore.hasAnyPermission(['merchandising.categories.view', 'merchandising.categories.manage']))
+const canViewVariations = computed(() => authStore.hasAnyPermission(['merchandising.variations.view', 'merchandising.variations.manage', 'merchandising.variations.edit']))
+const canViewArchivedProducts = computed(() => authStore.hasAnyPermission([
+  'merchandising.products.view', 'merchandising.products.manage', 'merchandising.products.approve', 'merchandising.products.delete', 'inventory.products.manage',
+]))
 
 // State
 const products = ref([])
@@ -198,8 +212,10 @@ const activeStatuses = [
   { label: 'Inactive', value: false }
 ]
 const productTypeOptions = [
+  { label: 'All Types', value: null },
   { label: 'Product', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' }
+  { label: 'Supplies', value: 'supply' },
+  { label: 'Materials', value: 'raw_material' }
 ]
 const hasActiveFilters = computed(() => Boolean(
   filters.search.trim()
@@ -288,8 +304,22 @@ const viewProduct = (productId: number) => {
 }
 
 const createProduct = () => {
-  router.push({ name: 'inventory.products.create' })
+  router.push({ name: 'merchandising.products.create' })
 }
+
+const createProductOptions = computed(() => {
+  const options: any[] = []
+  if (canViewCategories.value) {
+    options.push({ label: 'Categories', icon: 'pi pi-folder', command: () => router.push({ name: 'merchandising.categories' }) })
+  }
+  if (canViewVariations.value) {
+    options.push({ label: 'Variants', icon: 'pi pi-list', command: () => router.push({ name: 'merchandising.variations' }) })
+  }
+  if (canViewArchivedProducts.value) {
+    options.push({ label: 'Archived Products', icon: 'pi pi-inbox', command: () => router.push({ name: 'merchandising.products.archived' }) })
+  }
+  return options
+})
 
 const editProduct = (productId: number) => {
   router.push({
@@ -300,20 +330,24 @@ const editProduct = (productId: number) => {
 
 const actionMenuItems = computed(() => {
   const product = actionProduct.value
-  const items: any[] = [
-    {
-      label: 'View',
-      icon: 'pi pi-eye',
-      command: () => product?.id && viewProduct(product.id)
-    }
-  ]
+  const items: any[] = []
 
-  if (authStore.hasPermission('merchandising.products.update')) {
+  if (canViewProducts.value) {
+    items.push({ label: 'View', icon: 'pi pi-eye', command: () => product?.id && viewProduct(product.id) })
+  }
+
+  if (canManageProducts.value) {
     items.push({
-      label: 'Configure',
+      label: 'Edit',
       icon: 'pi pi-pencil',
       command: () => product?.id && editProduct(product.id)
     })
+  }
+
+  if (product?.price_approval_status === 'pending' && authStore.hasPermission('merchandising.products.approve')) {
+    items.push({ separator: true })
+    items.push({ label: 'Approve Price', icon: 'pi pi-check', command: () => approvePrice(product) })
+    items.push({ label: 'Reject Price', icon: 'pi pi-times', command: () => rejectPrice(product) })
   }
 
   if (authStore.hasPermission('merchandising.products.delete')) {
@@ -339,7 +373,7 @@ const productRowClass = () => ({ 'cursor-pointer hover:bg-orange-50': true })
 const onProductRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null
   if (target?.closest('button, input, a')) return
-  if (event?.data?.id) viewProduct(event.data.id)
+  if (canViewProducts.value && event?.data?.id) viewProduct(event.data.id)
 }
 
 const getPrimaryImage = (product: any) => {
@@ -381,10 +415,7 @@ const getSupplierNumber = (product: any) => {
 }
 
 const canApprovePricing = () => {
-  return authStore.hasPermission('finance.all.approve')
-    || authStore.hasPermission('finance.settings.approve.store')
-    || authStore.hasPermission('finance.settings.approve.all')
-    || authStore.hasPermission('finance.purchase-orders.approve')
+  return authStore.hasPermission('merchandising.products.approve')
 }
 
 const priceApprovalLabel = (status?: string) => {
@@ -440,7 +471,7 @@ const confirmDelete = (product: any) => {
 const deleteProduct = async () => {
   deleting.value = true
   try {
-    await merchandisingService.deleteProduct(currentProduct.value.id)
+    await inventoryService.archiveProduct(currentProduct.value.id)
     toast.add({ severity: 'success', summary: 'Archived', detail: 'Product archived successfully', life: 3000 })
     deleteDialogVisible.value = false
     loadProducts()

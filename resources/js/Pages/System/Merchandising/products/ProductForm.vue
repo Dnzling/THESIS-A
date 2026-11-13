@@ -15,7 +15,7 @@
     </div>
   
     <!-- Form -->
-    <form v-else @submit.prevent="handleSubmit">
+    <form v-else @submit.prevent="confirmProductSubmit">
       <!-- iOS-style Header -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-4">
@@ -25,10 +25,10 @@
           </button>
           <div>
             <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">
-              Configure Product
+              {{ isEditMode ? 'Configure Product' : 'Create Product' }}
             </h1>
             <p class="text-sm text-gray-500 mt-1">
-              Configure storefront presentation for an existing inventory product.
+              {{ isEditMode ? 'Configure storefront presentation for an existing inventory product.' : 'Create a catalog product and set up its inventory details.' }}
             </p>
           </div>
         </div>
@@ -42,18 +42,19 @@
         <!-- Form (left) -->
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div class="p-6 space-y-10">
-            <!-- Product Information -->
+            <!-- Product basics, classification, and details -->
             <section class="space-y-6">
-              <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+              <div v-if="isEditMode" class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
                 <p class="font-semibold">Inventory product: {{ form.product_name || 'Loading...' }}</p>
                 <p class="mt-1">SKU {{ form.sku || '—' }} · {{ formatCurrencyPHP(form.base_price || 0) }} · {{ form.brand || 'No brand' }}</p>
                 <p class="mt-2 text-xs">Name, category, supplier, pricing, dimensions, and stock are managed in Inventory.</p>
                 <Button type="button" label="Edit Inventory Details" icon="pi pi-external-link" text size="small" class="mt-2" @click="router.push({ name: 'inventory.products.edit', params: { id: route.params.id } })" />
               </div>
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">Storefront Presentation</h2>
-                <p class="text-sm text-gray-500 mt-1">Customer-facing details for this inventory product</p>
+                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Storefront Presentation' : 'Product Setup' }}</h2>
+                <p class="text-sm text-gray-500 mt-1">{{ isEditMode ? 'Customer-facing details for this inventory product' : 'Product identity, classification, and descriptive details.' }}</p>
               </div>
+              <h3 v-if="!isEditMode" class="text-sm font-semibold text-slate-800">1. Product Basics</h3>
               <!-- Product Name -->
               <div v-if="showInventoryFields" class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">
@@ -80,12 +81,14 @@
                 <small v-if="errors.sku" class="text-red-500">{{ errors.sku }}</small>
                 <small v-else-if="!isEditMode" class="text-gray-500">A unique SKU will be assigned automatically.</small>
               </div>
+
+              <h3 v-if="!isEditMode" class="border-t border-gray-100 pt-4 text-sm font-semibold text-slate-800">2. Classification and discovery</h3>
   
               <!-- Category, Subcategory & Unit -->
               <div v-if="showInventoryFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">
-                    Category <span class="text-red-500">*</span>
+                    Category <span v-if="form.product_type === 'finished_good'" class="text-red-500">*</span>
                   </label>
                   <div class="flex gap-2 ">
                     <Select v-model="form.category_id" :options="categories" optionLabel="category_name" optionValue="id"
@@ -96,12 +99,16 @@
                   </div>
                   <small v-if="errors.category_id" class="text-red-500">{{ errors.category_id }}</small>
                 </div>
-  
-            
+                <div v-if="form.product_type === 'finished_good'" class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700">Subcategory</label>
+                  <Select v-model="form.subcategory_id" :options="subcategoryOptions" optionLabel="category_name" optionValue="id"
+                    placeholder="Select a subcategory" showClear fluid class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                </div>
                 <div class="space-y-2">
-                  <label class="text-sm font-medium text-gray-700">Unit</label>
+                  <label class="text-sm font-medium text-gray-700">Unit <span class="text-red-500">*</span></label>
                   <Select v-model="form.unit_code" :options="unitOptions" optionLabel="label" optionValue="value"
                     placeholder="Select unit" showClear class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                  <small v-if="errors.unit_of_measurement" class="text-red-500">{{ errors.unit_of_measurement }}</small>
                 </div>
               </div>
   
@@ -159,93 +166,29 @@
                 </small>
               </div>
   
-              <!-- Description -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Description</label>
-                <Editor v-model="form.description" editorStyle="height: 320px"
-                  class="w-full bg-gray-50 border-gray-200 rounded-xl overflow-hidden" />
-                <small class="text-gray-500 text-xs">You can format text (bold, italic, lists, links).</small>
-              </div>
-  
-              <!-- Dimensions -->
-              <div v-if="showInventoryFields" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500">Length (cm)</label>
-                  <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                </div>
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500">Width (cm)</label>
-                  <InputNumber v-model="form.width_cm" :minFractionDigits="2" suffix=" cm" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                </div>
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500">Height (cm)</label>
-                  <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                </div>
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500">Depth (cm)</label>
-                  <InputNumber v-model="form.depth_cm" :minFractionDigits="2" suffix=" cm" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                </div>
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500">Weight (kg)</label>
-                  <InputNumber v-model="form.weight_kg" :minFractionDigits="2" suffix=" kg" :min="0"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
-                </div>
-              </div>
-  
-              <!-- Flags -->
-              <div class="flex flex-wrap gap-4 pt-2">
-                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
-                  <Checkbox v-model="form.is_featured" inputId="featured" :binary="true" />
-                  <label for="featured" class="text-sm text-gray-700 cursor-pointer">Featured</label>
-                </div>
-                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
-                  <Checkbox v-model="form.is_new_arrival" inputId="newArrival" :binary="true" />
-                  <label for="newArrival" class="text-sm text-gray-700 cursor-pointer">New Arrival</label>
-                </div>
-                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
-                  <Checkbox v-model="form.is_bestseller" inputId="bestseller" :binary="true" />
-                  <label for="bestseller" class="text-sm text-gray-700 cursor-pointer">Bestseller</label>
-                </div>
-                <div v-if="form.product_type === 'finished_good'" class="flex items-center gap-2">
-                  <Checkbox v-model="form.assembly_required" inputId="assembly" :binary="true" />
-                  <label for="assembly" class="text-sm text-gray-700 cursor-pointer">Assembly Required</label>
-                </div>
-                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
-                  <Checkbox v-model="form.is_customizable" inputId="customizable" :binary="true" />
-                  <label for="customizable" class="text-sm text-gray-700 cursor-pointer">Customization Available</label>
-                </div>
-                <div v-if="showInventoryFields" class="flex items-center gap-2">
-                  <Checkbox v-model="form.is_active" inputId="active" :binary="true" />
-                  <label for="active" class="text-sm text-gray-700 cursor-pointer">Active</label>
-                </div>
-              </div>
             </section>
   
             <!-- Pricing -->
-            <section v-if="isEditMode" class="space-y-6">
+            <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
-                <p class="text-sm text-gray-500 mt-1">Selling and cost prices are managed in Inventory. Use Promotions to schedule discounts.</p>
+                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Pricing' : '3. Pricing' }}</h2>
+                <p class="text-sm text-gray-500 mt-1">{{ isEditMode ? 'Selling and cost prices are managed in Inventory. Use Promotions to schedule discounts.' : 'Set the product selling and inventory cost prices.' }}</p>
               </div>
   
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Selling Price</label>
                   <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH"
-                    disabled :min="0" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
+                    :disabled="isEditMode" :min="0" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
                   <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
-                  <small class="text-gray-500 text-xs">Managed in Inventory.</small>
+                  <small class="text-gray-500 text-xs">{{ isEditMode ? 'Managed in Inventory.' : 'Customer-facing selling price.' }}</small>
                 </div>
   
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Cost Price</label>
                   <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH"
-                    :min="0" disabled class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
-                  <small class="text-gray-500 text-xs">Auto-managed value (read-only)</small>
+                    :min="0" :disabled="isEditMode" class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
+                  <small class="text-gray-500 text-xs">{{ isEditMode ? 'Auto-managed value (read-only)' : 'Used for inventory valuation.' }}</small>
                 </div>
   
               </div>
@@ -274,11 +217,131 @@
                 <small v-if="errors.price_change_reason" class="text-red-500">{{ errors.price_change_reason }}</small>
               </div>
             </section>
+
+            <section v-if="showInventoryFields" class="space-y-5">
+              <div class="border-b border-gray-100 pb-4">
+                <h2 class="text-xl font-semibold text-gray-900">4. Inventory Setup</h2>
+                <p class="mt-1 text-sm text-gray-500">Set up variants, optional opening stock, and the reorder threshold.</p>
+              </div>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div v-if="form.product_type === 'finished_good'" class="flex items-center gap-2">
+                  <Checkbox v-model="form.has_variants" inputId="product_has_variants" :binary="true" />
+                  <label for="product_has_variants" class="text-sm text-gray-700">This product has separate variants</label>
+                </div>
+                <div v-if="showInitialStockToggle && !form.has_variants" class="space-y-2">
+                  <div class="flex items-center gap-2">
+                    <Checkbox v-model="form.add_initial_stock" inputId="product_add_initial_stock" :binary="true" />
+                    <label for="product_add_initial_stock" class="text-sm text-gray-700">Add initial stock</label>
+                  </div>
+                  <div v-if="form.add_initial_stock">
+                    <label class="text-sm font-medium text-gray-700">Available Stock <span class="text-red-500">*</span></label>
+                    <InputNumber v-model="form.initial_stock" :min="1" placeholder="1" class="w-full" fluid />
+                    <small v-if="errors.initial_stock" class="text-red-500">{{ errors.initial_stock }}</small>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700">Reorder Threshold</label>
+                  <InputNumber v-model="form.reorder_point" :min="0" placeholder="10" class="w-full" fluid />
+                </div>
+                <div class="flex items-center gap-2">
+                  <Checkbox v-model="form.is_active" inputId="active" :binary="true" />
+                  <label for="active" class="text-sm text-gray-700 cursor-pointer">Active</label>
+                </div>
+              </div>
+            </section>
+
+            <section class="space-y-6">
+              <div class="border-b border-gray-100 pb-4">
+                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Product Details' : '5. Product Details' }}</h2>
+                <p class="mt-1 text-sm text-gray-500">Add the product description, physical specifications, and special handling information.</p>
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-gray-700">Description</label>
+                <Editor v-model="form.description" editorStyle="height: 320px"
+                  class="w-full bg-gray-50 border-gray-200 rounded-xl overflow-hidden" />
+                <small class="text-gray-500 text-xs">You can format text (bold, italic, lists, links).</small>
+              </div>
+              <div v-if="showInventoryFields" class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Length (cm)</label>
+                  <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Width (cm)</label>
+                  <InputNumber v-model="form.width_cm" :minFractionDigits="2" suffix=" cm" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Height (cm)</label>
+                  <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Depth (cm)</label>
+                  <InputNumber v-model="form.depth_cm" :minFractionDigits="2" suffix=" cm" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-gray-500">Weight (kg)</label>
+                  <InputNumber v-model="form.weight_kg" :minFractionDigits="2" suffix=" kg" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                </div>
+              </div>
+              <div v-if="showInventoryFields" class="rounded-xl border border-slate-200">
+                <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  :aria-expanded="additionalMeasurementsExpanded" @click="additionalMeasurementsExpanded = !additionalMeasurementsExpanded">
+                  <span>
+                    <span class="block text-sm font-semibold text-slate-800">Additional Measurements</span>
+                    <span class="mt-0.5 block text-xs text-slate-500">Optional furniture dimensions and custom measurements</span>
+                  </span>
+                  <i class="pi text-slate-500" :class="additionalMeasurementsExpanded ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+                </button>
+                <div v-if="additionalMeasurementsExpanded" class="space-y-4 border-t border-slate-200 p-4">
+                  <div class="max-w-md">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">Furniture template</label>
+                    <Select v-model="selectedMeasurementTemplate" :options="measurementTemplateOptions" optionLabel="label" optionValue="value"
+                      class="w-full text-sm" placeholder="Choose a furniture type" showClear size="small"
+                      @change="addTemplateMeasurements" />
+                    <small class="mt-1 block text-xs text-slate-500">Templates suggest relevant fields; fill in only the measurements you know.</small>
+                  </div>
+
+                  <div v-if="form.additional_measurements.length" class="space-y-3">
+                    <div v-for="(measurement, index) in form.additional_measurements" :key="measurement.id"
+                      class="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.7fr)_120px_auto] sm:items-end">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Measurement name</label>
+                        <InputText v-model="measurement.label" class="w-full" size="small" placeholder="e.g. Seat Height" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Value</label>
+                        <InputNumber v-model="measurement.value" class="w-full" fluid size="small" :min="0.01" :maxFractionDigits="2" placeholder="Enter value" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Unit</label>
+                        <Select v-model="measurement.unit" :options="measurementUnitOptions" optionLabel="label" optionValue="value" class="w-full" size="small" />
+                      </div>
+                      <Button type="button" icon="pi pi-trash" severity="danger" text rounded aria-label="Remove measurement"
+                        @click="removeAdditionalMeasurement(index)" />
+                    </div>
+                  </div>
+                  <div class="flex justify-start">
+                    <Button type="button" label="Add custom measurement" icon="pi pi-plus" severity="secondary" outlined size="small"
+                      @click="addCustomMeasurement" />
+                  </div>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-4">
+                <div v-if="form.product_type === 'finished_good'" class="flex items-center gap-2">
+                  <Checkbox v-model="form.assembly_required" inputId="assembly" :binary="true" />
+                  <label for="assembly" class="text-sm text-gray-700 cursor-pointer">Assembly Required</label>
+                </div>
+                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
+                  <Checkbox v-model="form.is_customizable" inputId="customizable" :binary="true" />
+                  <label for="customizable" class="text-sm text-gray-700 cursor-pointer">Customization Available</label>
+                </div>
+              </div>
+            </section>
   
             <!-- Assets -->
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">Assets</h2>
+                <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Media' : '6. Media' }}</h2>
                 <p class="text-sm text-gray-500 mt-1">Upload 3D models and product images</p>
               </div>
               <!-- 3D Model Upload -->
@@ -333,9 +396,10 @@
                   <Tag value="Existing Model" severity="info" class="mt-2 w-full justify-center" />
                 </div>
   
-                <div v-if="existingModelPreviewUrl" class="space-y-2">
-                  <p class="text-xs font-medium text-gray-500">3D Preview</p>
-                  <Model3DPreview :model-url="existingModelPreviewUrl" :model-format="existingModel?.model_format"
+                <div v-if="previewModelObjectUrl || existingModelPreviewUrl" class="space-y-2">
+                  <p class="text-xs font-medium text-gray-500">{{ form.modelFile ? 'Uploaded Model Preview' : '3D Preview' }}</p>
+                  <Model3DPreview :model-url="previewModelObjectUrl || existingModelPreviewUrl"
+                    :model-format="form.modelFile ? form.modelFile.name.split('.').pop()?.toLowerCase() : existingModel?.model_format"
                     :auth-token="previewAuthToken" :camera-x="form.default_camera_angle_x"
                     :camera-y="form.default_camera_angle_y" :zoom="form.default_zoom_level" height="280px" />
                 </div>
@@ -418,10 +482,10 @@
             <section class="space-y-6">
               <div class="flex items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div>
-                  <h2 class="text-xl font-semibold text-gray-900">Variations</h2>
-                  <p class="text-sm text-gray-500 mt-1">Variants are defined in Inventory and shown here for storefront preview.</p>
+                  <h2 class="text-xl font-semibold text-gray-900">{{ isEditMode ? 'Variations' : '7. Variations' }}</h2>
+                  <p class="text-sm text-gray-500 mt-1">Create sellable variants with their own automatically generated SKUs.</p>
                 </div>
-                <Button v-if="authStore.hasPermission('inventory.product.manage')" type="button" icon="pi pi-external-link" label="Manage in Inventory" outlined @click="router.push({ name: 'inventory.product-variations' })" />
+                <Button v-if="isEditMode" type="button" icon="pi pi-plus" label="Add Variant" severity="warn" size="small" :loading="initializingVariant" @click="addVariant" />
               </div>
               <Message v-if="!isEditMode" severity="info" :closable="false">
                 Save the parent product first, then add variants while editing it.
@@ -510,9 +574,7 @@
                   </div>
   
                   <div class="absolute top-3 left-3 flex flex-wrap gap-2">
-                    <Tag v-if="form.is_new_arrival" value="New" severity="info" />
-                    <Tag v-if="form.is_bestseller" value="Bestseller" severity="success" />
-                    <Tag v-if="form.is_featured" value="Featured" severity="warn" />
+                    <Tag v-for="tagId in form.tag_ids" :key="`preview-image-tag-${tagId}`" :value="tagName(tagId)" severity="secondary" />
                   </div>
                 </div>
               </div>
@@ -615,7 +677,7 @@
                   </div>
                 </div>
                 <div class="mt-6 border-t border-gray-200 px-4 pt-4">
-                  <Button type="submit" label="Save Presentation" :loading="submitting" fluid />
+                  <Button type="submit" :label="isEditMode ? 'Save Presentation' : 'Create Product'" :loading="submitting" :disabled="submitting" fluid />
                 </div>
               </div>
   
@@ -639,6 +701,14 @@
       </div>
     </form>
   
+    <Dialog v-model:visible="successVisible" modal :closable="false" header="Product created" :style="{ width: 'min(92vw, 26rem)' }">
+      <p class="text-sm text-gray-600">{{ createdHasVariants ? 'The product and its SKU were created. Continue to add the product variants.' : 'The product and its SKU were created successfully.' }}</p>
+      <template #footer>
+        <Button v-if="createdHasVariants && createdProductId" label="Add Variants" severity="warn" size="small" @click="router.push({ name: 'merchandising.products.edit', params: { id: createdProductId } })" />
+        <Button label="View Products" severity="warn" size="small" @click="router.push({ name: 'merchandising.products' })" />
+      </template>
+    </Dialog>
+
     <!-- Crop Dialog -->
     <Dialog v-model:visible="cropDialogVisible" header="Crop Image to Square" :modal="true" class="rounded-2xl"
       :style="{ width: '500px' }">
@@ -742,10 +812,14 @@ const load3dUpgradePlan = async () => {
 }
 
 const isEditMode = computed(() => !!route.params.id)
-// Core product fields are edited only in Inventory; this form configures presentation.
-const showInventoryFields = false
+const showInventoryFields = computed(() => !isEditMode.value)
+const branchCount = ref(0)
+const showInitialStockToggle = computed(() => showInventoryFields.value && branchCount.value === 1)
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
 const submitting = ref(false)
+const successVisible = ref(false)
+const createdProductId = ref<number | null>(null)
+const createdHasVariants = ref(false)
 const loadingData = ref(false)
 const loadingCategories = ref(false)
 const loadingTags = ref(false)
@@ -817,10 +891,57 @@ const getModelPreviewUrl = (model: any): string => {
 const existingModelPreviewUrl = computed(() => getModelPreviewUrl(existingModel.value))
 const previewAuthToken = computed(() => authStore.token || localStorage.getItem('auth_token') || localStorage.getItem('access_token'))
 
+type AdditionalMeasurement = { id: string; label: string; value: number | null; unit: string }
+const additionalMeasurementsExpanded = ref(false)
+const selectedMeasurementTemplate = ref<string | null>(null)
+const measurementUnitOptions = [
+  { label: 'Centimeters (cm)', value: 'cm' }, { label: 'Millimeters (mm)', value: 'mm' },
+  { label: 'Meters (m)', value: 'm' }, { label: 'Inches (in)', value: 'in' },
+  { label: 'Feet (ft)', value: 'ft' }, { label: 'Kilograms (kg)', value: 'kg' },
+  { label: 'Grams (g)', value: 'g' }, { label: 'Pounds (lb)', value: 'lb' },
+]
+const measurementTemplates: Record<string, string[]> = {
+  'Sofa/Couch': ['Seat Height', 'Seat Depth', 'Seat Width', 'Arm Height', 'Back Height'],
+  'Dining Chair': ['Seat Height', 'Seat Depth', 'Seat Width', 'Back Height'],
+  'Bar Stool': ['Seat Height', 'Footrest Height', 'Seat Diameter'],
+  'Dining Table': ['Tabletop Thickness', 'Apron Clearance'],
+  'Coffee Table': ['Tabletop Thickness', 'Shelf Height'],
+  'Bed Frame': ['Mattress Width', 'Mattress Length', 'Headboard Height', 'Footboard Height', 'Under-bed Clearance'],
+  'Wardrobe': ['Hanging Height', 'Shelf Spacing', 'Drawer Height'],
+  'Dresser': ['Drawer Interior Height', 'Drawer Interior Width', 'Drawer Depth'],
+  'Cabinet': ['Shelf Spacing', 'Internal Width', 'Internal Depth'],
+  'Bookshelf': ['Shelf Spacing', 'Shelf Depth'],
+  'Office Desk': ['Work Surface Thickness', 'Knee Clearance'],
+  'TV Stand': ['Shelf Spacing', 'Internal Shelf Height'],
+  'Recliner': ['Seat Height', 'Seat Depth', 'Arm Height', 'Reclined Depth'],
+  'Ottoman': ['Seat Height'],
+  'Round Table': ['Diameter', 'Tabletop Thickness', 'Base Diameter'],
+  'L-Shaped Sofa': ['Seat Height', 'Seat Depth', 'Left Section Width', 'Right Section Width', 'Arm Height'],
+  'Bunk Bed': ['Mattress Width', 'Mattress Length', 'Clearance Between Bunks', 'Guardrail Height', 'Under-bed Clearance'],
+}
+const measurementTemplateOptions = Object.keys(measurementTemplates).map(value => ({ label: value, value }))
+const newMeasurement = (label = ''): AdditionalMeasurement => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  label,
+  value: null,
+  unit: 'cm',
+})
+const addTemplateMeasurements = () => {
+  const template = selectedMeasurementTemplate.value
+  if (!template) return
+  const existingLabels = new Set(form.value.additional_measurements.map(item => item.label.trim().toLowerCase()))
+  form.value.additional_measurements.push(...(measurementTemplates[template] || [])
+    .filter(label => !existingLabels.has(label.toLowerCase()))
+    .map(newMeasurement))
+}
+const addCustomMeasurement = () => form.value.additional_measurements.push(newMeasurement())
+const removeAdditionalMeasurement = (index: number) => form.value.additional_measurements.splice(index, 1)
+
 const form = ref({
   product_name: '',
   sku: '',
   category_id: null,
+  subcategory_id: null as number | null,
   unit_code: null as string | null,
   product_type: 'finished_good',
   brand: '',
@@ -831,18 +952,23 @@ const form = ref({
   description: '',
   base_price: 0.00,
   cost_price: '',
+  has_variants: false,
+  add_initial_stock: false,
+  initial_stock: null as number | null,
+  reorder_point: 10,
   discounted_price: null,
   length_cm: null,
   width_cm: null,
   height_cm: null,
   depth_cm: null,
   weight_kg: null,
+  additional_measurements: [] as AdditionalMeasurement[],
   assembly_required: false,
   is_customizable: false,
   is_featured: false,
   is_new_arrival: false,
   is_bestseller: false,
-  is_active: false,
+  is_active: true,
   meta_title: '',
   meta_description: '',
   meta_keywords: '',
@@ -858,9 +984,9 @@ const form = ref({
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
 const units = ref<any[]>([])
-const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' }
-]
+const subcategoryOptions = computed(() => categories.value.filter((category: any) =>
+  Number(category.parent_category_id) === Number(form.value.category_id)
+))
 
 const previewShow3d = ref(false)
 const previewModelObjectUrl = ref<string>('')
@@ -1229,6 +1355,14 @@ const loadProduct = async () => {
       height_cm: product.height_cm,
       depth_cm: product.depth_cm,
       weight_kg: product.weight_kg,
+      additional_measurements: Array.isArray(product.additional_measurements)
+        ? product.additional_measurements.map((measurement: any, index: number) => ({
+          id: `saved-${measurement.id ?? index}`,
+          label: String(measurement.label || ''),
+          value: measurement.value == null ? null : Number(measurement.value),
+          unit: measurement.unit || 'cm',
+        }))
+        : [],
       assembly_required: product.assembly_required || false,
       is_customizable: product.is_customizable || false,
       is_featured: product.is_featured || false,
@@ -1246,17 +1380,6 @@ const loadProduct = async () => {
       default_camera_angle_y: form.value.default_camera_angle_y,
       default_zoom_level: form.value.default_zoom_level
     })
-
-    if (product.product_type === 'raw_material') {
-      toast.add({
-        severity: 'warn',
-        summary: 'Not Available',
-        detail: 'Raw materials are hidden in merchandising.',
-        life: 3000
-      })
-      router.push({ name: 'merchandising.products' })
-      return
-    }
 
     originalBasePrice.value = product.base_price
 
@@ -1851,6 +1974,16 @@ const saveVariation = async () => {
 const validateForm = () => {
   errors.value = {}
 
+  if (!form.value.product_name.trim()) errors.value.product_name = 'Product name is required.'
+  if (!isEditMode.value && form.value.product_type === 'finished_good' && !form.value.category_id) {
+    errors.value.category_id = categories.value.length ? 'Category is required.' : 'Create a category before adding a product.'
+  }
+  if (!isEditMode.value && !form.value.unit_code) errors.value.unit_of_measurement = 'Unit is required.'
+  if (!isEditMode.value && showInitialStockToggle.value && form.value.add_initial_stock && !form.value.has_variants
+    && (form.value.initial_stock == null || Number(form.value.initial_stock) < 1)) {
+    errors.value.initial_stock = 'Available stock must be at least 1.'
+  }
+
   if (isRawMaterialType.value) {
     form.value.discounted_price = null
     form.value.is_featured = false
@@ -1861,9 +1994,95 @@ const validateForm = () => {
   return Object.keys(errors.value).length === 0
 }
 
+const confirmProductSubmit = () => {
+  if (!validateForm()) {
+    toast.add({ severity: 'warn', summary: 'Validation Error', detail: 'Please correct the highlighted fields before saving.', life: 3500 })
+    return
+  }
+
+  confirm.require({
+    header: isEditMode.value ? 'Save product changes?' : 'Create this product?',
+    message: isEditMode.value
+      ? 'Save the updated product presentation and details?'
+      : 'Create this product with the information entered in the form?',
+    icon: 'pi pi-question-circle',
+    rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+    acceptProps: { label: isEditMode.value ? 'Save changes' : 'Create product', severity: 'warn' },
+    accept: () => { void handleSubmit() },
+  })
+}
+
 const handleSubmit = async () => {
   if (!isEditMode.value) {
-    router.push({ name: 'inventory.products.create' })
+    if (!validateForm()) {
+      toast.add({ severity: 'warn', summary: 'Validation Error', detail: 'Please correct the highlighted fields before saving.', life: 3500 })
+      return
+    }
+
+    submitting.value = true
+    try {
+      const createPayload: Record<string, any> = {
+        product_name: form.value.product_name.trim(),
+        product_type: form.value.product_type,
+        brand: form.value.brand?.trim() || null,
+        description: form.value.description || null,
+        category_id: form.value.product_type === 'finished_good' ? form.value.category_id : null,
+        subcategory_id: form.value.product_type === 'finished_good' ? form.value.subcategory_id : null,
+        unit_of_measurement: form.value.unit_code,
+        base_price: Number(form.value.base_price || 0),
+        cost_price: form.value.cost_price === '' ? null : Number(form.value.cost_price),
+        discounted_price: form.value.product_type === 'finished_good' ? form.value.discounted_price : null,
+        length_cm: form.value.length_cm,
+        width_cm: form.value.width_cm,
+        height_cm: form.value.height_cm,
+        depth_cm: form.value.depth_cm,
+        weight_kg: form.value.weight_kg,
+        additional_measurements: form.value.additional_measurements
+          .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
+          .map(({ label, value, unit }) => ({ label: label.trim(), value, unit })),
+        assembly_required: form.value.assembly_required,
+        is_active: form.value.is_active,
+        tag_ids: form.value.tag_ids,
+        has_variants: form.value.product_type === 'finished_good' && form.value.has_variants,
+        reorder_point: form.value.reorder_point,
+        add_initial_stock: showInitialStockToggle.value && form.value.add_initial_stock && !form.value.has_variants,
+      }
+      if (createPayload.add_initial_stock) createPayload.initial_stock = form.value.initial_stock
+
+      const response = await inventoryService.createProduct(createPayload, true)
+      const product = response?.data?.data || response?.data || {}
+      const productId = Number(product.id)
+      if (!productId) throw new Error(response?.message || 'Product was created but its identifier was not returned.')
+
+      createdProductId.value = productId
+      createdHasVariants.value = Boolean(createPayload.has_variants)
+      form.value.sku = product.sku || ''
+
+      // Save storefront fields and uploaded assets after inventory creates the product and its SKU.
+      try {
+        await merchandisingService.updateProduct(productId, {
+          collection_name: form.value.collection_name,
+          room_ids: form.value.product_type === 'finished_good' ? form.value.room_ids : [],
+          is_customizable: form.value.is_customizable,
+          is_featured: form.value.is_featured,
+          is_new_arrival: form.value.is_new_arrival,
+          is_bestseller: form.value.is_bestseller,
+          meta_title: form.value.meta_title,
+          meta_description: form.value.meta_description,
+          meta_keywords: form.value.meta_keywords,
+        } as any)
+        if (form.value.modelFile) await upload3DModel(productId)
+        if (form.value.imageFiles?.length) await uploadImages(productId)
+      } catch (metadataError: any) {
+        toast.add({ severity: 'warn', summary: 'Product created', detail: metadataError?.response?.data?.message || 'Some storefront details or assets could not be saved. You can update them from the product edit page.', life: 5000 })
+      }
+      successVisible.value = true
+    } catch (error: any) {
+      if (error.response?.status === 422) errors.value = error.response.data.errors || {}
+      toast.add({ severity: 'error', summary: 'Unable to create product', detail: error.response?.data?.message || error.message || 'Please check the form and try again.', life: 5000 })
+    } finally {
+      submitting.value = false
+    }
     return
   }
   if (!validateForm()) {
@@ -1892,6 +2111,9 @@ const handleSubmit = async () => {
       height_cm: form.value.height_cm,
       depth_cm: form.value.depth_cm,
       weight_kg: form.value.weight_kg,
+      additional_measurements: form.value.additional_measurements
+        .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
+        .map(({ label, value, unit }) => ({ label: label.trim(), value, unit })),
       assembly_required: form.value.assembly_required,
       is_customizable: form.value.is_customizable,
       is_featured: form.value.is_featured,
@@ -2047,26 +2269,26 @@ const uploadImages = async (productId: number) => {
 }
 
 onMounted(async () => {
-  if (route.name === 'merchandising.products.raw.create') {
-    toast.add({
-      severity: 'info',
-      summary: 'Updated Flow',
-      detail: 'Raw materials are hidden in merchandising.',
-      life: 2600
-    })
-    router.replace({ name: 'merchandising.products.create' })
-    return
-  }
-  form.value.product_type = 'finished_good'
+  if (route.name === 'merchandising.products.supplies.create') form.value.product_type = 'supply'
+  if (route.name === 'merchandising.products.materials.create' || route.name === 'merchandising.products.raw.create') form.value.product_type = 'raw_material'
   await authStore.loadPermissions()
   load3dUpgradePlan()
-  loadCategories()
-  loadUnits()
-  loadTags()
+  await Promise.all([loadCategories(), loadUnits(), loadTags(), loadInitialStockBranchCount()])
   loadRooms()
   loadProduct()
   loadVariations()
 })
+
+const loadInitialStockBranchCount = async () => {
+  if (isEditMode.value) return
+  try {
+    const response = await inventoryService.getBranches()
+    const branches = response?.data?.data ?? response?.data ?? []
+    branchCount.value = Array.isArray(branches) ? branches.length : 0
+  } catch {
+    branchCount.value = 0
+  }
+}
 </script>
 <style scoped>
 /* iOS-style shadows */

@@ -1,5 +1,6 @@
 <template>
   <div class="space-y-6 p-4 md:p-6">
+    <ConfirmDialog />
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
       <div>
@@ -97,9 +98,12 @@
         <DataTable v-else rowHover :value="orders" :paginator="true" :rows="10"
           :rowsPerPageOptions="[10, 20, 50]" responsive-layout="scroll" class="p-datatable-sm">
 
-          <Column header="Order Date" style="width: 9%" sortable>
+          <Column header="Order Date / Time" style="width: 12%" sortable>
             <template #body="{ data }">
-              <span class="text-sm text-gray-700">{{ formatDate(data.order_date) }}</span>
+              <div>
+                <p class="text-sm text-gray-700">{{ formatDate(data.order_date) }}</p>
+                <p class="text-xs text-gray-500">Created {{ formatDateTime(data.created_at) }}</p>
+              </div>
             </template>
           </Column>
           <!-- PO Number -->
@@ -150,6 +154,10 @@
             <template #body="{ data }">
               <div class="justify-center">
                 <Button icon="pi pi-eye" label="View" outlined rounded @click="viewPO(data)" v-tooltip="'View'" size="small" />
+                <Button v-if="canManagePurchaseOrders && data.status === 'draft'" icon="pi pi-pencil" text rounded severity="warn"
+                  @click.stop="editPO(data)" v-tooltip="'Edit Draft'" size="small" />
+                <Button v-if="canManagePurchaseOrders && data.status === 'draft'" icon="pi pi-trash" text rounded severity="danger"
+                  :loading="deletingPoId === Number(data.id)" @click.stop="confirmDeletePO(data)" v-tooltip="'Delete Draft'" size="small" />
               </div>
             </template>
           </Column>
@@ -174,6 +182,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Toast from 'primevue/toast'
 import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
@@ -181,6 +191,7 @@ import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
@@ -188,6 +199,7 @@ const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurem
 const orders = ref<any[]>([])
 const suppliers = ref<any[]>([])
 const loading = ref(true)
+const deletingPoId = ref<number | null>(null)
 const stats = ref({
   totalCount: 0,
   pendingApproval: 0,
@@ -332,6 +344,13 @@ function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function formatDateTime(date: string | null | undefined): string {
+  if (!date) return 'Time unavailable'
+  return new Date(date).toLocaleString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-PH').format(value)
 }
@@ -355,6 +374,34 @@ function viewPO(po: any) {
   router.push({
     name: 'procurement.purchase-orders.detail',
     params: { id: po.id },
+  })
+}
+
+function editPO(po: any) {
+  router.push({ name: 'procurement.purchase-orders.edit', params: { id: po.id } })
+}
+
+function confirmDeletePO(po: any) {
+  confirm.require({
+    header: 'Delete Draft Purchase Order',
+    message: `Delete draft ${po.po_number || 'purchase order'}? This action cannot be undone.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptLabel: 'Delete',
+    acceptProps: { severity: 'warn' },
+    accept: async () => {
+      deletingPoId.value = Number(po.id)
+      try {
+        await procurementService.deletePurchaseOrder(Number(po.id))
+        toast.add({ severity: 'success', summary: 'Deleted', detail: 'Draft purchase order deleted.', life: 3000 })
+        await loadOrders()
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete this purchase order.', life: 3500 })
+      } finally {
+        deletingPoId.value = null
+      }
+    },
   })
 }
 

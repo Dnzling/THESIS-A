@@ -540,6 +540,25 @@ class InventoryService {
     return response.data
   }
 
+  async getArchivedProducts(params?: { page?: number; per_page?: number; search?: string }) {
+    const response = await axiosClient.get(`${this.baseUrl}/products/archived`, { params })
+    return response.data
+  }
+
+  async restoreProduct(id: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/products/${id}/restore`, undefined, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    return response.data
+  }
+
+  async permanentlyDeleteArchivedProduct(id: number) {
+    const response = await axiosClient.delete(`${this.baseUrl}/products/${id}/purge`, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    return response.data
+  }
+
   async getProductTypes() {
     const response = await axiosClient.get(`${this.baseUrl}/products/types`)
     return response.data

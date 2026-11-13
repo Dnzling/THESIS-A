@@ -53,17 +53,23 @@
         </template>
       </Card>
   
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-orange-300 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="rounded-xl bg-gradient-to-b from-orange-500 to-orange-700 p-5">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider">Outstanding Amount</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-white/95">Total Outstanding</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                <i class="pi pi-credit-card text-sm"></i>
+                <i class="pi pi-credit-card text-sm text-white"></i>
               </div>
             </div>
             <Skeleton v-if="loading || loadingPayments" width="7rem" height="1.75rem" />
-            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+            <template v-else>
+              <p class="text-xl font-bold text-white">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px] text-white/95">
+                <i :class="outstandingComparisonIcon" />
+                {{ outstandingComparisonLabel }} · invoices from last 28 days vs previous 28 days
+              </p>
+            </template>
           </div>
         </template>
       </Card>
@@ -210,6 +216,10 @@ import financeService from '../../../services/finance.service'
 const loading = ref(true)
 const payables = ref<any[]>([])
 const supplierPayments = ref<any[]>([])
+const payableSummary = ref({
+  current: { outstanding_amount: 0, period_outstanding_amount: 0 },
+  previous: { period_outstanding_amount: 0 },
+})
 const loadingPayments = ref(true)
 const router = useRouter()
 const filters = ref({
@@ -278,16 +288,27 @@ const stats = computed(() => {
   const pendingInvoices = payables.value.filter((row) => normalize(row?.status) === 'pending_approval').length
   const approvedInvoices = payables.value.filter((row) => normalize(row?.status) === 'approved').length
   const pendingPayments = supplierPayments.value.filter((row) => normalize(row?.status) === 'pending_approval').length
-  const outstandingAmount = payables.value
-    .filter((row) => normalize(row?.payment_status) !== 'paid' && normalize(row?.status) !== 'paid')
-    .reduce((sum, row) => sum + Number(row?.amount || 0), 0)
-
   return {
     pendingInvoices,
     approvedInvoices,
     pendingPayments,
-    outstandingAmount,
+    outstandingAmount: Number(payableSummary.value.current.outstanding_amount || 0),
   }
+})
+
+const outstandingComparisonLabel = computed(() => {
+  const current = Number(payableSummary.value.current.period_outstanding_amount || 0)
+  const previous = Number(payableSummary.value.previous.period_outstanding_amount || 0)
+  if (previous === 0) return current === 0 ? '0.0%' : 'New'
+  const percent = ((current - previous) / Math.abs(previous)) * 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`
+})
+
+const outstandingComparisonIcon = computed(() => {
+  const current = Number(payableSummary.value.current.period_outstanding_amount || 0)
+  const previous = Number(payableSummary.value.previous.period_outstanding_amount || 0)
+  if (current === previous) return 'pi pi-minus'
+  return current > previous ? 'pi pi-arrow-up' : 'pi pi-arrow-down'
 })
 
 const loadPayables = async () => {
@@ -295,6 +316,10 @@ const loadPayables = async () => {
   try {
     const res = await financeService.getPayables()
     payables.value = res.data || []
+    payableSummary.value = {
+      current: { outstanding_amount: 0, period_outstanding_amount: 0, ...(res.summary?.current || {}) },
+      previous: { period_outstanding_amount: 0, ...(res.summary?.previous || {}) },
+    }
   } finally {
     loading.value = false
   }

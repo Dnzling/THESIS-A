@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen space-y-4 p-4 text-xs">
+  <div class="flex min-h-[calc(100dvh-8rem)] flex-col gap-4 p-4 text-xs">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold text-slate-900">Vouchers</h1>
@@ -7,11 +7,11 @@
       </div>
       <div class="flex items-center gap-2">
         <Button icon="pi pi-plus" label="Create Voucher" severity="warn" size="small" @click="goCreate" />
-        <Button icon="pi pi-refresh" label="Refresh" severity="warn" size="small" outlined :loading="loading" @click="load" />
+        <Button class="font-semibold" icon="pi pi-refresh" label="Refresh" severity="warn" size="small" outlined :loading="loading" @click="load" />
       </div>
     </div>
 
-    <Card class="border border-slate-200 shadow-sm">
+    <Card class="voucher-card flex-1 border border-slate-200 shadow-sm">
       <template #content>
         <div class="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_auto_auto]">
           <IconField><InputIcon class="pi pi-search" /><InputText v-model="filters.search" placeholder="Search voucher code" class="w-full text-sm" size="small" @keyup.enter="load" /></IconField>
@@ -21,10 +21,10 @@
         </div>
 
         <div v-if="loading" class="space-y-3 py-3" aria-label="Loading vouchers"><Skeleton v-for="row in 6" :key="row" height="2.5rem" /></div>
-        <DataTable v-else :value="rows" size="small" class="text-xs" rowHover paginator :rows="15" :rowsPerPageOptions="[15, 25, 50]" scrollable @row-click="goShow($event.data.id)">
+        <DataTable v-else :value="rows" size="small" class="voucher-table text-sm" rowHover paginator :rows="15" :rowsPerPageOptions="[15, 25, 50]" scrollable @row-click="goShow($event.data.id)">
           <template #empty><div class="py-8 text-center text-xs text-slate-500">No vouchers found.</div></template>
           <Column field="voucher_name" header="Name" />
-          <Column field="code" header="Code" />
+          <Column field="code" header="Code" class="font-semibold"/>
           <Column field="voucher_slots" header="Maximum Uses" />
           <Column header="Performance">
             <template #body="{ data }">
@@ -124,3 +124,34 @@ const goShow = (id: number | string) => router.visit(`/merchandising/vouchers/${
 
 onMounted(load)
 </script>
+
+<style scoped>
+:deep(.voucher-card.p-card),
+:deep(.voucher-card .p-card-body),
+:deep(.voucher-card .p-card-content),
+:deep(.voucher-table.p-datatable) {
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.voucher-card .p-card-body),
+:deep(.voucher-card .p-card-content),
+:deep(.voucher-table.p-datatable) {
+  flex: 1 1 auto;
+}
+
+:deep(.voucher-table .p-paginator-bottom) {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+}
+
+:deep(.voucher-card.p-card) {
+  position: relative;
+}
+
+:deep(.voucher-table.p-datatable) {
+  padding-bottom: 4rem;
+}
+</style>

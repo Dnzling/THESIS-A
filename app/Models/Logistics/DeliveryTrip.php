@@ -28,10 +28,15 @@ class DeliveryTrip extends Model
         'notes',
         'created_by',
         'updated_by',
+        'dispatched_by',
+        'dispatched_at',
+        'route_distances',
     ];
 
     protected $casts = [
         'scheduled_departure_at' => 'datetime',
+        'dispatched_at' => 'datetime',
+        'route_distances' => 'array',
         'assistant_user_ids' => 'array',
     ];
 
@@ -48,6 +53,11 @@ class DeliveryTrip extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_user_id');
+    }
+
+    public function dispatchedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'dispatched_by');
     }
 
     public function ecommerceDeliveries(): HasMany

@@ -108,6 +108,7 @@ class ProductController extends Controller
             'height_cm' => $data['height_cm'] ?? null,
             'depth_cm' => $data['depth_cm'] ?? null,
             'weight_kg' => $data['weight_kg'] ?? null,
+            'additional_measurements' => $data['additional_measurements'] ?? [],
             'is_bulky' => $data['is_bulky'] ?? null,
             'assembly_required' => $data['assembly_required'] ?? false,
             'discounted_price' => $productType === 'finished_good' && $discountedPrice !== '' && $discountedPrice !== null
@@ -118,6 +119,9 @@ class ProductController extends Controller
             'unit_of_measurement' => $data['unit_of_measurement'] ?? null,
             'supplier_name' => $data['supplier_name'] ?? null,
             'initial_stock' => $data['initial_stock'] ?? null,
+            'reorder_point' => array_key_exists('reorder_point', $data)
+                ? (int) $data['reorder_point']
+                : 10,
             'created_by' => auth()->id(),
         ];
 
@@ -279,6 +283,7 @@ class ProductController extends Controller
                     'height_cm',
                     'depth_cm',
                     'weight_kg',
+                    'additional_measurements',
                     'unit_of_measurement',
                     'supplier_name',
                     'initial_stock',
@@ -480,12 +485,28 @@ class ProductController extends Controller
      * Create new product
      * POST /api/inventory/products
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, PermissionService $permissions): JsonResponse
     {
         try {
             $context = $this->getUserContext();
+            $user = auth()->user();
+            $canManage = $user && (
+                $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+                || $permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])
+            );
+            if (!$canManage) {
+                return response()->json(['success' => false, 'message' => 'You cannot create products.'], 403);
+            }
+
+            if ($request->input('product_type', 'finished_good') === 'finished_good'
+                && !$permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])) {
+                throw ValidationException::withMessages([
+                    'product_type' => 'Finished goods must be created from the store-wide Product Catalog.',
+                ]);
+            }
 
             $this->normalizeSupplierLinks($request);
+            $this->normalizeAdditionalMeasurements($request);
 
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
@@ -502,6 +523,10 @@ class ProductController extends Controller
                 'height_cm' => 'nullable|numeric|min:0',
                 'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
                 'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'nullable|array|max:3',
@@ -525,7 +550,13 @@ class ProductController extends Controller
                 'supplier_links.*.lead_time_days' => 'nullable|integer|min:0',
                 'supplier_links.*.is_preferred_supplier' => 'nullable|boolean',
                 'has_variants' => 'sometimes|boolean',
-                'initial_stock' => 'nullable|numeric|min:0',
+                'add_initial_stock' => 'sometimes|boolean',
+                'initial_stock' => [
+                    Rule::requiredIf(fn () => $request->boolean('add_initial_stock') && !$request->boolean('has_variants')),
+                    'nullable',
+                    'numeric',
+                    'min:1',
+                ],
                 'reorder_point' => 'nullable|integer|min:0',
                 'is_active' => 'boolean',
                 'variations' => 'prohibited',
@@ -545,7 +576,14 @@ class ProductController extends Controller
             }
 
             $hasVariants = (bool) ($validated['has_variants'] ?? false);
-            $initialStock = $hasVariants ? 0 : (int) ($validated['initial_stock'] ?? 0);
+            $addInitialStock = (bool) ($validated['add_initial_stock'] ?? false);
+            $branchCount = Branch::query()->where('store_id', $context['store_id'])->count();
+            if ($addInitialStock && ($hasVariants || $branchCount !== 1)) {
+                throw ValidationException::withMessages([
+                    'add_initial_stock' => 'Initial stock can only be added during creation when the store has exactly one branch and the product has no variants.',
+                ]);
+            }
+            $initialStock = $addInitialStock && !$hasVariants ? (int) ($validated['initial_stock'] ?? 0) : 0;
             $branchId = (int) $context['branch_id'];
             $employeeId = Employee::query()
                 ->where('user_id', auth()->id())
@@ -611,6 +649,14 @@ class ProductController extends Controller
                     'stock_status' => 'out_of_stock',
                 ]
             );
+
+            // Product creation observers may have already created this row. Keep
+            // the submitted branch default instead of retaining the schema fallback.
+            $submittedReorderPoint = (int) ($validated['reorder_point'] ?? 10);
+            if ((int) $inventory->reorder_point !== $submittedReorderPoint) {
+                $inventory->reorder_point = $submittedReorderPoint;
+                $inventory->save();
+            }
 
             if ($initialStock > 0 && (int) $inventory->quantity_on_hand === 0) {
                 $quantityBefore = (int) $inventory->quantity_on_hand;
@@ -691,14 +737,23 @@ class ProductController extends Controller
      * Update product
      * PUT /api/inventory/products/{id}
      */
-    public function update(Request $request, int $id): JsonResponse
+    public function update(Request $request, int $id, PermissionService $permissions): JsonResponse
     {
         try {
             $context = $this->getUserContext();
+            $user = auth()->user();
+            $canManage = $user && (
+                $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+                || $permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])
+            );
+            if (!$canManage) {
+                return response()->json(['success' => false, 'message' => 'You cannot update products.'], 403);
+            }
 
             $product = Product::where('store_id', $context['store_id'])->findOrFail($id);
 
             $this->normalizeSupplierLinks($request);
+            $this->normalizeAdditionalMeasurements($request);
 
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
@@ -715,6 +770,10 @@ class ProductController extends Controller
                 'height_cm' => 'nullable|numeric|min:0',
                 'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
                 'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'sometimes|array|max:3',
@@ -756,6 +815,13 @@ class ProductController extends Controller
             }
 
             $productType = $validated['product_type'] ?? $product->product_type;
+            if ($productType === 'finished_good'
+                && $product->product_type !== 'finished_good'
+                && !$permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])) {
+                throw ValidationException::withMessages([
+                    'product_type' => 'Finished goods must be created from the store-wide Product Catalog.',
+                ]);
+            }
             if ($productType === 'finished_good' && empty($validated['category_id']) && !$product->category_id) {
                 throw ValidationException::withMessages(['category_id' => 'Select a category for finished goods.']);
             }
@@ -785,6 +851,9 @@ class ProductController extends Controller
                 'height_cm' => $validated['height_cm'] ?? $product->height_cm,
                 'depth_cm' => array_key_exists('depth_cm', $validated) ? $validated['depth_cm'] : $product->depth_cm,
                 'weight_kg' => array_key_exists('weight_kg', $validated) ? $validated['weight_kg'] : $product->weight_kg,
+                'additional_measurements' => array_key_exists('additional_measurements', $validated)
+                    ? ($validated['additional_measurements'] ?? [])
+                    : $product->additional_measurements,
                 'is_bulky' => array_key_exists('is_bulky', $validated) ? $validated['is_bulky'] : $product->is_bulky,
                 'assembly_required' => $validated['assembly_required'] ?? $product->assembly_required,
                 'cost_price' => $validated['cost_price'] ?? $validated['unit_cost'] ?? $product->cost_price,
@@ -880,28 +949,198 @@ class ProductController extends Controller
         }
     }
 
+    private function normalizeAdditionalMeasurements(Request $request): void
+    {
+        if (!$request->exists('additional_measurements')) {
+            return;
+        }
+
+        $measurements = $request->input('additional_measurements');
+        if (is_string($measurements)) {
+            if (trim($measurements) === '') {
+                $measurements = [];
+            } else {
+                $measurements = json_decode($measurements, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw ValidationException::withMessages([
+                        'additional_measurements' => 'Additional measurements contain invalid data.',
+                    ]);
+                }
+            }
+        }
+
+        if ($measurements !== null && !is_array($measurements)) {
+            throw ValidationException::withMessages([
+                'additional_measurements' => 'Additional measurements must be a list of measurement values.',
+            ]);
+        }
+
+        $request->merge(['additional_measurements' => $measurements]);
+    }
+
     public function archive(int $id, PermissionService $permissions): JsonResponse
     {
         $context = $this->getUserContext();
         $user = auth()->user();
 
-        if (!$user || !$permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])) {
+        $canArchive = $user && (
+            $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.delete', $context['store_id'])
+        );
+        if (!$canArchive) {
             return response()->json(['success' => false, 'message' => 'You cannot archive products.'], 403);
         }
 
-        $product = Product::query()
-            ->where('store_id', $context['store_id'])
-            ->findOrFail($id);
+        $product = DB::transaction(function () use ($context, $id): Product {
+            $product = Product::query()
+                ->where('store_id', $context['store_id'])
+                ->lockForUpdate()
+                ->findOrFail($id);
 
-        if ($product->is_active) {
-            $product->update(['is_active' => false]);
+            if ($this->productHasStockAcrossStore((int) $context['store_id'], $id, true)) {
+                throw ValidationException::withMessages([
+                    'product' => 'This product cannot be archived while it has stock in any branch. Reduce all branch and variant stock to zero first.',
+                ]);
+            }
+
+            $product->delete();
+
+            return $product;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product archived. Its stock and history were preserved.',
+            'data' => ['id' => $product->id, 'deleted_at' => $product->deleted_at],
+        ]);
+    }
+
+    public function archived(Request $request, PermissionService $permissions): JsonResponse
+    {
+        $context = $this->getUserContext();
+        $user = auth()->user();
+        $canView = $user && (
+            $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.view', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.manage', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.approve', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.delete', $context['store_id'])
+        );
+        if (!$canView) {
+            return response()->json(['success' => false, 'message' => 'You cannot view archived products.'], 403);
+        }
+
+        $query = Product::onlyTrashed()
+            ->where('store_id', $context['store_id'])
+            ->with(['category:id,category_name', 'subcategory:id,category_name,parent_category_id']);
+
+        if ($request->filled('search')) {
+            $search = (string) $request->input('search');
+            $query->where(fn ($builder) => $builder
+                ->where('product_name', 'like', "%{$search}%")
+                ->orWhere('sku', 'like', "%{$search}%"));
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Item archived. Its stock and history were preserved.',
-            'data' => ['id' => $product->id, 'is_active' => false],
+            'data' => $query->orderByDesc('deleted_at')->paginate(min(max((int) $request->input('per_page', 15), 1), 100)),
         ]);
+    }
+
+    public function restore(int $id, PermissionService $permissions): JsonResponse
+    {
+        $context = $this->getUserContext();
+        $user = auth()->user();
+        $canRestore = $user && (
+            $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.delete', $context['store_id'])
+        );
+        if (!$canRestore) {
+            return response()->json(['success' => false, 'message' => 'You cannot restore products.'], 403);
+        }
+
+        $product = Product::onlyTrashed()
+            ->where('store_id', $context['store_id'])
+            ->findOrFail($id);
+        $product->restore();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product restored successfully.',
+            'data' => $product->fresh(['category', 'subcategory']),
+        ]);
+    }
+
+    public function purgeArchived(int $id, PermissionService $permissions): JsonResponse
+    {
+        $context = $this->getUserContext();
+        $user = auth()->user();
+        $canDelete = $user && (
+            $permissions->userHasPermission($user, 'inventory.products.manage', $context['store_id'])
+            || $permissions->userHasPermission($user, 'merchandising.products.delete', $context['store_id'])
+        );
+        if (!$canDelete) {
+            return response()->json(['success' => false, 'message' => 'You cannot permanently delete products.'], 403);
+        }
+
+        try {
+            DB::transaction(function () use ($context, $id): void {
+                $product = Product::onlyTrashed()
+                    ->where('store_id', $context['store_id'])
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                if ($this->productHasStockAcrossStore((int) $context['store_id'], $id, true)) {
+                    throw ValidationException::withMessages([
+                        'product' => 'This product has stock in at least one branch and cannot be permanently deleted.',
+                    ]);
+                }
+
+                // Remove only empty balance rows. Historical or transactional references
+                // remain protected by their foreign keys and roll the delete back.
+                BranchInventory::query()
+                    ->where('store_id', $context['store_id'])
+                    ->where('product_id', $id)
+                    ->where('quantity_on_hand', '<=', 0)
+                    ->where('quantity_available', '<=', 0)
+                    ->where('quantity_reserved', '<=', 0)
+                    ->where('quantity_damaged', '<=', 0)
+                    ->delete();
+
+                $product->forceDelete();
+            });
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Illuminate\Database\QueryException $exception) {
+            if (str_starts_with((string) $exception->getCode(), '23')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This product is referenced by inventory or business history and cannot be permanently deleted. It can remain archived.',
+                ], 422);
+            }
+            throw $exception;
+        }
+
+        return response()->json(['success' => true, 'message' => 'Archived product permanently deleted.']);
+    }
+
+    private function productHasStockAcrossStore(int $storeId, int $productId, bool $lock = false): bool
+    {
+        $query = BranchInventory::query()
+            ->where('store_id', $storeId)
+            ->where('product_id', $productId);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get(['quantity_on_hand', 'quantity_available', 'quantity_reserved', 'quantity_damaged'])
+            ->contains(fn (BranchInventory $stock): bool =>
+                (float) $stock->quantity_on_hand > 0
+                || (float) $stock->quantity_available > 0
+                || (float) $stock->quantity_reserved > 0
+                || (float) $stock->quantity_damaged > 0
+            );
     }
 
     /**

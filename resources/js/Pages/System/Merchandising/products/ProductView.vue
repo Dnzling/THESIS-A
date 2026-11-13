@@ -25,7 +25,7 @@
           outlined
           @click="openView3DModal" 
         />
-        <Button 
+        <Button v-if="authStore.hasPermission('merchandising.products.manage')"
           label="Edit"
           icon="pi pi-pencil" 
           severity="warn"
@@ -178,6 +178,17 @@
                 <p class="mt-1 font-semibold text-slate-900">
                   {{ product.weight_kg ? `${product.weight_kg} kg` : 'N/A' }}
                 </p>
+              </div>
+            </div>
+
+            <div v-if="product.additional_measurements?.length" class="mt-4 border-t border-slate-100 pt-4">
+              <p class="mb-3 text-sm font-semibold text-slate-800">Additional Measurements</p>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                <div v-for="(measurement, index) in product.additional_measurements" :key="`${measurement.label}-${index}`"
+                  class="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <p class="text-xs text-slate-500">{{ measurement.label }}</p>
+                  <p class="mt-1 font-semibold text-slate-900">{{ measurement.value }} {{ measurement.unit }}</p>
+                </div>
               </div>
             </div>
 

@@ -137,6 +137,17 @@ const formatMoney = (value: number | string) => {
   return new Intl.NumberFormat('en-PH').format(amount)
 }
 
+const formatDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
 const payPeriods = computed(() => {
   const groups = new Map<number, any>()
 

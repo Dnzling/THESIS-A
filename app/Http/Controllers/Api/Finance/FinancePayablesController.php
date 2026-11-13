@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Invoice\Invoice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class FinancePayablesController extends Controller
 {
@@ -34,9 +35,44 @@ class FinancePayablesController extends Controller
                 ];
             });
 
+        $today = Carbon::today();
+        $currentStart = $today->copy()->subDays(27);
+        $previousStart = $currentStart->copy()->subDays(28);
+        $previousEnd = $currentStart->copy()->subSecond();
+        $remainingBalance = static fn (array $invoice): float => max(
+            0,
+            (float) ($invoice['amount'] ?? 0) - (float) ($invoice['payment_amount'] ?? 0)
+        );
+        $sumOutstanding = static function (Carbon $start, Carbon $end) use ($invoices, $remainingBalance): float {
+            return (float) $invoices
+                ->filter(function (array $invoice) use ($start, $end): bool {
+                    if (in_array(strtolower((string) ($invoice['payment_status'] ?? '')), ['paid', 'refunded', 'cancelled'], true)
+                        || strtolower((string) ($invoice['status'] ?? '')) === 'paid'
+                        || empty($invoice['invoice_created_at'])) {
+                        return false;
+                    }
+
+                    return Carbon::parse($invoice['invoice_created_at'])->betweenIncluded($start, $end);
+                })
+                ->sum($remainingBalance);
+        };
+        $totalOutstanding = (float) $invoices
+            ->filter(fn (array $invoice): bool => !in_array(strtolower((string) ($invoice['payment_status'] ?? '')), ['paid', 'refunded', 'cancelled'], true)
+                && strtolower((string) ($invoice['status'] ?? '')) !== 'paid')
+            ->sum($remainingBalance);
+
         return response()->json([
             'success' => true,
             'data' => $invoices->values(),
+            'summary' => [
+                'current' => [
+                    'outstanding_amount' => $totalOutstanding,
+                    'period_outstanding_amount' => $sumOutstanding($currentStart, $today->copy()->endOfDay()),
+                ],
+                'previous' => [
+                    'period_outstanding_amount' => $sumOutstanding($previousStart, $previousEnd),
+                ],
+            ],
         ]);
     }
 }

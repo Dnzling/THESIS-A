@@ -10,6 +10,7 @@ use App\Models\Core\User;
 use Illuminate\Support\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class FinanceReceivablesController extends Controller
 {
@@ -28,6 +29,8 @@ class FinanceReceivablesController extends Controller
         if (in_array($source, ['all', 'ecommerce'], true)) {
             $rows = $rows->merge($this->ecommerceRows($request));
         }
+
+        $summary = $this->outstandingPeriodSummary($rows);
 
         if ($search !== '') {
             $needle = strtolower($search);
@@ -50,7 +53,37 @@ class FinanceReceivablesController extends Controller
         return response()->json([
             'success' => true,
             'data' => $rows,
+            'summary' => $summary,
         ]);
+    }
+
+    private function outstandingPeriodSummary(Collection $rows): array
+    {
+        $today = Carbon::today();
+        $currentStart = $today->copy()->subDays(27);
+        $previousStart = $currentStart->copy()->subDays(28);
+        $previousEnd = $currentStart->copy()->subSecond();
+
+        $sumOpenReceivables = static function (Carbon $start, Carbon $end) use ($rows): float {
+            return (float) $rows
+                ->filter(function (array $row) use ($start, $end): bool {
+                    if (!in_array($row['status'] ?? '', ['pending', 'partial'], true) || empty($row['created_at'])) {
+                        return false;
+                    }
+
+                    return Carbon::parse($row['created_at'])->betweenIncluded($start, $end);
+                })
+                ->sum(fn (array $row): float => (float) ($row['amount'] ?? 0));
+        };
+
+        return [
+            'current' => [
+                'outstanding_amount' => $sumOpenReceivables($currentStart, $today->copy()->endOfDay()),
+            ],
+            'previous' => [
+                'outstanding_amount' => $sumOpenReceivables($previousStart, $previousEnd),
+            ],
+        ];
     }
 
     public function show(Request $request, string $source, int $id): JsonResponse

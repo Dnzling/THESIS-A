@@ -23,6 +23,7 @@ class StoreBranch extends Model
         'name', 'address', 'barangay', 'city', 'province', 'contact_number',
         'email', 'latitude', 'longitude', 'geofence_radius_m',
         'geofence_enabled', 'logo_path',
+        'opening_hours',
     ];
 
     protected $casts = [
@@ -31,6 +32,7 @@ class StoreBranch extends Model
         'geofence_radius_m' => 'integer',
         'geofence_enabled' => 'boolean',
         'is_main_branch' => 'boolean',
+        'opening_hours' => 'array',
     ];
 
     protected $appends = ['logo_url'];

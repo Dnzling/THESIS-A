@@ -64,7 +64,7 @@
 
            <Column header="Ordered" style="width: 9rem">
             <template #body="{ data }">
-              <span class="text-sm text-slate-600">{{ formatDateTime(data.created_at) }}</span>
+              <span class="text-xs text-slate-600">{{ formatDateTime(data.created_at) }}</span>
             </template>
           </Column>
   
@@ -89,7 +89,7 @@
           </Column>
   
 
-          <Column header="Status" style="width: 11rem">
+          <Column header="Status" style="width: 14rem">
             <template #body="{ data }">
               <Badge v-if="data.delivery_status" :value="formatDeliveryStatus(data.delivery_status)"
                 :severity="deliverySeverity(data.delivery_status)" />

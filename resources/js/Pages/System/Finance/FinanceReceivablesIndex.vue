@@ -53,17 +53,23 @@
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-orange-300 shadow-sm">
         <template #content>
-          <div class="p-5">
+          <div class="rounded-xl p-5 bg-gradient-to-b from-orange-500 to-orange-700" >
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wider">Outstanding Amount</span>
+              <span class="text-xs font-medium uppercase tracking-wider text-white/95">Outstanding · 28 Days</span>
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                <i class="pi pi-credit-card text-sm"></i>
+                <i class="pi pi-credit-card text-sm text-white"></i>
               </div>
             </div>
             <Skeleton v-if="loading" width="7rem" height="1.75rem" />
-            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+            <template v-else>
+              <p class="text-xl font-bold text-white">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+              <p class="mt-1 flex items-center gap-1 text-[11px] text-white/95">
+                <i :class="outstandingComparisonIcon" />
+                {{ outstandingComparisonLabel }} vs previous 28 days
+              </p>
+            </template>
           </div>
         </template>
       </Card>
@@ -129,9 +135,9 @@
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
 
-           <Column field="created_at" header="Date & Time" sortable style="min-width: 190px">
+           <Column field="created_at" header="Date & Time" sortable style="min-width: 9rem">
               <template #body="{ data }">
-                <span class="text-sm">{{ formatDateTime(data.created_at) }}</span>
+                <span class="text-xs">{{ formatDateTime(data.created_at) }}</span>
               </template>
             </Column>
 
@@ -143,7 +149,7 @@
 
             <Column field="source_type" header="Source" style="width: 120px">
               <template #body="{ data }">
-                <Tag
+                <Badge
                   :value="data.source_type === 'ecommerce' ? 'Ecommerce' : 'In Store'"
                   :severity="data.source_type === 'ecommerce' ? 'info' : 'success'"
                 />
@@ -273,16 +279,30 @@ const stats = computed(() => {
     return !Number.isNaN(due.getTime()) && due < now
   }).length
 
-  const outstandingAmount = receivables.value
-    .filter((row) => row.status !== 'paid')
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
-
   return {
     pendingCount,
     paidCount,
     overdueCount,
-    outstandingAmount,
+    outstandingAmount: Number(receivablesSummary.value.current.outstanding_amount || 0),
   }
+})
+
+const emptyPeriodSummary = () => ({ outstanding_amount: 0 })
+const receivablesSummary = ref({ current: emptyPeriodSummary(), previous: emptyPeriodSummary() })
+
+const outstandingComparisonLabel = computed(() => {
+  const current = Number(receivablesSummary.value.current.outstanding_amount || 0)
+  const previous = Number(receivablesSummary.value.previous.outstanding_amount || 0)
+  if (previous === 0) return current === 0 ? '0.0%' : 'New'
+  const percent = ((current - previous) / Math.abs(previous)) * 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`
+})
+
+const outstandingComparisonIcon = computed(() => {
+  const current = Number(receivablesSummary.value.current.outstanding_amount || 0)
+  const previous = Number(receivablesSummary.value.previous.outstanding_amount || 0)
+  if (current === previous) return 'pi pi-minus'
+  return current > previous ? 'pi pi-arrow-up' : 'pi pi-arrow-down'
 })
 
 const loadReceivables = async () => {
@@ -297,6 +317,10 @@ const loadReceivables = async () => {
 
     const res = await financeService.getReceivables(params)
     receivables.value = res.data || []
+    receivablesSummary.value = {
+      current: { ...emptyPeriodSummary(), ...(res.summary?.current || {}) },
+      previous: { ...emptyPeriodSummary(), ...(res.summary?.previous || {}) },
+    }
   } finally {
     loading.value = false
   }

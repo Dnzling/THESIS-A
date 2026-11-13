@@ -1,8 +1,8 @@
 <template>
-  <div class="space-y-6">
+  <div class="min-h-screen space-y-6">
     <div class="">
       <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900">Store Overview</h1>
+        <h1 class="text-2xl font-semibold text-slate-900">Store Wide Overview</h1>
       </div>
     </div>
     <div v-if="dashboard?.store?.subscription_status === 'trial'" class="rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-sm text-orange-900">
@@ -26,7 +26,7 @@
 
     <template v-else>
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
@@ -37,7 +37,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
@@ -48,7 +48,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
@@ -60,7 +60,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
@@ -75,7 +75,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="xl:col-span-2">
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
@@ -90,7 +90,7 @@
             <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p>
           </template>
         </Card>
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="mb-3">
                 <h3 class="text-base font-semibold text-slate-800">Order Status | Last 30 Days</h3>
@@ -103,7 +103,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="xl:col-span-2">
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Top-Selling Products | Last 30 Days</h3>
@@ -112,7 +112,7 @@
             <Chart type="bar" :data="topProductsData" :options="barOptions" class="h-72" />
           </template>
         </Card>
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Procurement Requests</h3>
@@ -133,7 +133,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card class="xl:col-span-2">
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none xl:col-span-2">
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
@@ -164,7 +164,7 @@
           </template>
         </Card>
 
-        <Card>
+        <Card class="flat-dashboard-card rounded-2xl border border-slate-200 bg-white shadow-none">
           <template #content>
             <div class="mb-3">
               <h3 class="text-base font-semibold text-slate-800">Store Branches</h3>
@@ -349,3 +349,11 @@ onMounted(() => {
   loadDashboard()
 })
 </script>
+
+<style scoped>
+:global(.p-card.flat-dashboard-card) {
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: none !important;
+}
+</style>

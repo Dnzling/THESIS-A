@@ -78,7 +78,7 @@
                 icon="pi pi-plus"
                 size="small"
                 class="mt-4"
-                @click="router.push({ name: 'inventory.products.create' })"
+                @click="router.push({ name: 'merchandising.products.create' })"
               />
             </div>
           </template>

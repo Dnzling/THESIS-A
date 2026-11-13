@@ -3,6 +3,7 @@
 namespace App\Models\CRM;
 
 use App\Models\Store\Store;
+use App\Models\Core\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -12,6 +13,7 @@ class EcommerceVoucher extends Model
 
     protected $fillable = [
         'store_id',
+        'created_by',
         'voucher_name',
         'voucher_slots',
         'code',
@@ -36,5 +38,10 @@ class EcommerceVoucher extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

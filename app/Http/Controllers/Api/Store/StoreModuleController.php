@@ -6,10 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Store\StoreBranch;
+use App\Models\Store\BranchVerification;
+use App\Models\Store\BranchServiceSuspension;
+use App\Models\Store\Store;
 use App\Models\Hr\Employee;
 use App\Models\Hr\ShiftSwapRequest;
 use App\Services\Core\PermissionService;
 use App\Services\Store\CaviteLocationService;
+use App\Services\Ecommerce\FulfillmentWindowService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class StoreModuleController extends Controller
 {
@@ -139,7 +144,123 @@ class StoreModuleController extends Controller
 
     public function settings(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'data' => $this->branchPayload($this->branchFor($request))]);
+        $branch = $this->branchFor($request);
+        $today = now()->toDateString();
+        $suspensionToday = BranchServiceSuspension::query()
+            ->where('store_id', $branch->store_id)
+            ->where('branch_id', $branch->id)
+            ->where('start_date', '<=', $today)
+            ->where(fn ($query) => $query->whereNull('end_date')->orWhere('end_date', '>=', $today))
+            ->latest('start_date')
+            ->first();
+        $verification = BranchVerification::query()->where('store_id', $branch->store_id)->where('branch_id', $branch->id)->first();
+        $documents = collect($verification?->documents ?? [])->values()->map(function (array $document, int $index) use ($verification, $request) {
+            $canOpenDocuments = $request->user()?->hasRole('owner') || $request->user()?->hasRole('super_admin');
+            return [
+                'key' => $document['key'] ?? 'additional',
+                'label' => $document['label'] ?? 'Branch document',
+                'reference_number' => $document['reference_number'] ?? null,
+                'expires_at' => $document['expires_at'] ?? null,
+                'preview_url' => $canOpenDocuments ? url("/api/branch-verification/{$verification->id}/documents/{$index}/preview") : null,
+                'download_url' => $canOpenDocuments ? url("/api/branch-verification/{$verification->id}/documents/{$index}/download") : null,
+            ];
+        });
+
+        return response()->json(['success' => true, 'data' => [
+            ...$this->branchPayload($branch),
+            'fulfillment_windows' => app(FulfillmentWindowService::class)->settings(Store::query()->findOrFail($branch->store_id)),
+            'suspension_today' => $suspensionToday,
+            'verification' => [
+                'status' => $branch->status,
+                'submitted_at' => $verification?->submitted_at,
+                'reviewed_at' => $verification?->reviewed_at,
+                'rejection_reason' => $verification?->rejection_reason,
+                'documents' => $documents,
+            ],
+        ]]);
+    }
+
+    public function updateFulfillmentWindows(Request $request): JsonResponse
+    {
+        $branch = $this->branchFor($request);
+        $validated = $request->validate([
+            'pickup.days' => ['required', 'array', 'min:1'],
+            'pickup.days.*' => ['required', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
+            'pickup.start' => ['required', 'date_format:H:i'],
+            'pickup.end' => ['required', 'date_format:H:i', 'after:pickup.start'],
+            'pickup.lead_days' => ['required', 'integer', 'between:0,14'],
+            'delivery.days' => ['required', 'array', 'min:1'],
+            'delivery.days.*' => ['required', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
+            'delivery.start' => ['required', 'date_format:H:i'],
+            'delivery.end' => ['required', 'date_format:H:i', 'after:delivery.start'],
+            'delivery.lead_days' => ['required', 'integer', 'between:0,14'],
+        ]);
+
+        $store = Store::query()->findOrFail($branch->store_id);
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $settings['fulfillment_windows'] = $validated;
+        $store->settings = $settings;
+        $store->save();
+
+        $firstBranch = StoreBranch::query()->where('store_id', $store->id)->orderBy('id')->first();
+        if ($firstBranch) {
+            $openingHours = is_array($firstBranch->opening_hours) ? $firstBranch->opening_hours : [];
+            $openingHours['fulfillment_windows'] = $validated;
+            $firstBranch->opening_hours = $openingHours;
+            $firstBranch->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pickup and delivery windows updated.',
+            'data' => $validated,
+        ]);
+    }
+
+    public function suspensionHistory(Request $request): JsonResponse
+    {
+        $branch = $this->branchFor($request);
+        $suspensions = BranchServiceSuspension::query()
+            ->where('store_id', $branch->store_id)
+            ->where('branch_id', $branch->id)
+            ->latest('start_date')
+            ->latest('id')
+            ->get();
+
+        return response()->json(['success' => true, 'data' => $suspensions]);
+    }
+
+    public function createSuspension(Request $request): JsonResponse
+    {
+        $branch = $this->branchFor($request);
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+            'start_date' => 'required|date_format:Y-m-d|after_or_equal:today',
+            'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
+        ]);
+
+        $query = BranchServiceSuspension::query()
+            ->where('store_id', $branch->store_id)
+            ->where('branch_id', $branch->id)
+            ->where(function ($overlap) use ($validated) {
+                if (!empty($validated['end_date'])) {
+                    $overlap->where('start_date', '<=', $validated['end_date']);
+                }
+            })
+            ->where(fn ($overlap) => $overlap->whereNull('end_date')->orWhere('end_date', '>=', $validated['start_date']));
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages(['start_date' => 'These dates overlap an existing branch suspension.']);
+        }
+
+        $suspension = BranchServiceSuspension::query()->create([
+            ...$validated,
+            'store_id' => $branch->store_id,
+            'branch_id' => $branch->id,
+            'created_by' => $request->user()->id,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Branch service suspension created.', 'data' => $suspension], 201);
     }
 
     public function updateSettings(Request $request, CaviteLocationService $locationService): JsonResponse
@@ -153,21 +274,50 @@ class StoreModuleController extends Controller
             'barangay' => 'nullable|string|max:100',
             'city' => 'required|string|max:100',
             'province' => 'required|string|max:100',
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'geofence_enabled' => 'sometimes|boolean',
-            'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
+            'geofence_radius_m' => 'required|integer|min:50|max:500',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'opening_hours' => 'sometimes|array',
+            'opening_hours.clear' => 'sometimes|boolean',
+            'opening_hours.days' => 'required_with:opening_hours.schedule|array|min:1',
+            'opening_hours.days.*' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'opening_hours.schedule' => 'nullable|array',
+            'opening_hours.schedule.*.day' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'opening_hours.schedule.*.opens_at' => 'required|date_format:H:i',
+            'opening_hours.schedule.*.closes_at' => 'required|date_format:H:i',
         ]);
 
-        try {
-            if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'latitude' => 'Choose a store location inside Cavite province.',
-                ]);
+        if (data_get($validated, 'opening_hours.clear')) {
+            $validated['opening_hours'] = ['days' => [], 'schedule' => []];
+        }
+
+        foreach (($validated['opening_hours']['schedule'] ?? []) as $hours) {
+            if ($hours['closes_at'] <= $hours['opens_at']) {
+                throw ValidationException::withMessages(['opening_hours' => 'Each closing time must be later than opening time.']);
             }
-        } catch (\RuntimeException $exception) {
-            abort(503, $exception->getMessage());
+        }
+
+        $hasLatitude = filled($validated['latitude'] ?? null);
+        $hasLongitude = filled($validated['longitude'] ?? null);
+        if ($hasLatitude !== $hasLongitude) {
+            throw ValidationException::withMessages(['latitude' => 'Both latitude and longitude are required to save a location.']);
+        }
+        if (($validated['geofence_enabled'] ?? false) && !$hasLatitude) {
+            throw ValidationException::withMessages(['latitude' => 'Set a branch location before enabling the geofence.']);
+        }
+
+        if ($hasLatitude && $hasLongitude) {
+            try {
+                if (!$locationService->contains((float) $validated['latitude'], (float) $validated['longitude'])) {
+                    throw ValidationException::withMessages([
+                        'latitude' => 'Choose a store location inside Cavite province.',
+                    ]);
+                }
+            } catch (\RuntimeException $exception) {
+                abort(503, $exception->getMessage());
+            }
         }
 
         unset($validated['logo']);
@@ -253,6 +403,7 @@ class StoreModuleController extends Controller
             'latitude' => $branch->latitude, 'longitude' => $branch->longitude,
             'geofence_enabled' => (bool) $branch->geofence_enabled,
             'geofence_radius_m' => $branch->geofence_radius_m,
+            'opening_hours' => is_array($branch->opening_hours) ? $branch->opening_hours : [],
             'logo_url' => $branch->logo_url,
         ];
     }

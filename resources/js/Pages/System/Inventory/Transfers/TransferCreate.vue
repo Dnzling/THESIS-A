@@ -886,7 +886,14 @@ onMounted(async () => {
 
     await loadBranches()
 
-    if (userBranchId) {
+    const requestedReceivingBranchId = Number(route.query.receiving_branch_id || 0)
+    const requestedReceivingBranch = branches.value.find((branch: any) =>
+      Number(branch.id) === requestedReceivingBranchId
+      && String(branch.branch_type || '').toLowerCase() !== 'warehouse'
+    )
+    if (requestedReceivingBranch) {
+      form.to_branch_id = requestedReceivingBranchId
+    } else if (userBranchId) {
       form.to_branch_id = userBranchId
     } else if (branches.value.length > 0) {
       form.to_branch_id = Number(branches.value[0].id)

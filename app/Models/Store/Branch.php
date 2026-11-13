@@ -52,6 +52,7 @@ class Branch extends Model
         'branch_code',
         'is_main_branch',
         'branch_type',
+        'opening_hours',
     ];
 
     /**

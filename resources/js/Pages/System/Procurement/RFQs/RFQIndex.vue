@@ -1,5 +1,6 @@
 <template>
   <div class="p-6 min-h-screen">
+    <ConfirmDialog />
     <!-- Header -->
     <div class="mb-6 flex justify-between items-center">
       <div>
@@ -97,9 +98,12 @@
           responsiveLayout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage"
           @page="onPageChange" :rowsPerPageOptions="[15, 25, 50]" @row-click="onRowClick" :rowClass="rowClass">
   
-          <Column header="Date" style="width: 120px">
+          <Column header="Date / Time" style="width: 150px">
             <template #body="{ data }">
-              <span class="text-sm text-gray-700">{{ formatDate(data.issue_date) }}</span>
+              <div>
+                <p class="text-sm text-gray-700">{{ formatDate(data.issue_date) }}</p>
+                <p class="text-xs text-gray-500">Created {{ formatDateTime(data.created_at) }}</p>
+              </div>
             </template>
           </Column>
   
@@ -147,6 +151,10 @@
                 <Button icon="pi pi-eye" outlined rounded 
                   @click="router.push({ name: 'procurement.rfqs.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
+                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-pencil" text rounded severity="warn"
+                  @click.stop="editRFQ(data.id)" v-tooltip="'Edit Draft'" />
+                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-trash" text rounded severity="danger"
+                  @click.stop="confirmDeleteRFQ(data)" v-tooltip="'Delete Draft'" />
               </div>
             </template>
           </Column>
@@ -238,12 +246,15 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
 
@@ -297,7 +308,30 @@ const getPersonName = (person: any): string => {
 const formatDateTime = (date: string | null): string => {
   if (!date) return 'N/A'
   const d = new Date(date)
-  return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+const editRFQ = (id: number) => router.push({ name: 'procurement.rfqs.create', query: { rfq_id: id } })
+
+const confirmDeleteRFQ = (rfq: any) => {
+  confirm.require({
+    header: 'Delete Draft RFQ',
+    message: `Delete draft ${rfq.rfq_number || 'request for quotation'}? This action cannot be undone.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptLabel: 'Delete',
+    acceptProps: { severity: 'warn' },
+    accept: async () => {
+      try {
+        await procurementService.deleteRFQ(Number(rfq.id))
+        toast.add({ severity: 'success', summary: 'Deleted', detail: 'Draft RFQ deleted.', life: 3000 })
+        await loadRFQs(currentPage.value)
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete this RFQ.', life: 3500 })
+      }
+    },
+  })
 }
 
 const capitalizeWords = (str: string | null): string => {

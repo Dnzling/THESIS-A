@@ -5,27 +5,22 @@
         <h1 class="text-2xl font-semibold text-slate-900">{{ branch?.name || 'Branch Detail' }}</h1>
         <p class="text-sm text-slate-600">{{ branch?.branch_code || branch?.code || '' }}</p>
       </div>
-      <Button label="Edit Branch" icon="pi pi-pencil" @click="openEditDialog" />
+      <div class="flex flex-wrap items-center gap-2">
+        <Tag :value="branchStatusLabel" :severity="branchStatusSeverity" rounded />
+        <Button v-if="['unverified', 'rejected'].includes(branch?.status)" label="Verify Branch" icon="pi pi-file-check" severity="warn" @click="router.visit(`/system/store/verification?branch_id=${branchId}`)" />
+        <Button label="Edit Branch" icon="pi pi-pencil" severity="secondary" outlined @click="openEditDialog" />
+      </div>
     </div>
   
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-700">
-          <div>
-            <div class="text-xs text-slate-500 uppercase">Address</div>
-            <div class="font-medium text-slate-900">{{ branch?.address || '—' }}</div>
-            <div class="text-slate-500">{{ [branch?.barangay, branch?.city, branch?.province].filter(Boolean).join(', ') }}</div>
-          </div>
-        
-          <div>
-            <div class="text-xs text-slate-500 uppercase">Geofence Radius</div>
-            <Tag :value="branch?.geofence_radius_m ? branch.geofence_radius_m + ' m' : 'Not set'" severity="info" />
-          </div>
+        <div class="grid grid-cols-1 gap-4 text-sm text-slate-700 md:grid-cols-3">
+          <div><div class="text-xs uppercase text-slate-500">Address</div><div class="font-medium text-slate-900">{{ branch?.address || 'Not set' }}</div><div class="text-slate-500">{{ [branch?.barangay, branch?.city, branch?.province].filter(Boolean).join(', ') }}</div></div>
+          <div><div class="text-xs uppercase text-slate-500">Geofence Radius</div><Tag :value="branch?.geofence_radius_m ? branch.geofence_radius_m + ' m' : 'Not set'" severity="info" /></div>
         </div>
       </template>
     </Card>
-  
-    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
         <div class="mb-4"><h2 class="text-sm font-semibold text-slate-900">Branch performance</h2><p class="text-xs text-slate-500">Completed sales in the last 30 days and current stock health.</p></div>
         <div v-if="performanceLoading" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Skeleton v-for="n in 4" :key="n" height="5rem" /></div>
@@ -106,74 +101,26 @@
   
     <Dialog v-model:visible="showEdit" modal header="Edit Branch" class="w-full max-w-4xl">
       <div class="space-y-5">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">Branch Name *</label>
-            <InputText v-model="form.name" placeholder="Branch name" class="w-full" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">Branch Type</label>
-            <Select v-if="canCreateWarehouse || form.branch_type !== 'warehouse'" v-model="form.branch_type" :options="branchTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
-            <div v-else class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Warehouse</div>
-          </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Branch Name *</label><InputText v-model="form.name" placeholder="Branch name" class="w-full" /></div>
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Branch Type</label><Select v-if="canCreateWarehouse || form.branch_type !== 'warehouse'" v-model="form.branch_type" :options="branchTypeOptions" optionLabel="label" optionValue="value" class="w-full" /><div v-else class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Warehouse</div></div>
         </div>
-
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">Province</label>
-            <Select v-model="form.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select province" filter :loading="isProvincesLoading" :disabled="form.branch_type !== 'warehouse'" @change="onProvinceChange" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">City *</label>
-            <Select v-model="form.cityId" :options="cityOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select city" :loading="isCitiesLoading" :disabled="!form.provinceId" @change="onCityChange" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">Barangay</label>
-            <Select v-model="form.barangay" :options="barangayOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select barangay" :loading="isBarangaysLoading" :disabled="!form.cityId" />
-          </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Province</label><Select v-model="form.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select province" filter :loading="isProvincesLoading" :disabled="form.branch_type !== 'warehouse'" @change="onProvinceChange" /></div>
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">City *</label><Select v-model="form.cityId" :options="cityOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select city" :loading="isCitiesLoading" :disabled="!form.provinceId" @change="onCityChange" /></div>
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Barangay</label><Select v-model="form.barangay" :options="barangayOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select barangay" :loading="isBarangaysLoading" :disabled="!form.cityId" /></div>
         </div>
-
-        
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-600">Address *</label>
-          <InputText v-model="form.address" placeholder="Street, building, area" class="w-full" />
+        <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Address *</label><InputText v-model="form.address" placeholder="Street, building, area" class="w-full" /></div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Search Location</label><div class="flex gap-2"><InputText v-model="searchQuery" placeholder="Type address or place" class="flex-1" /><Button label="Search" icon="pi pi-search" :loading="searching" @click="searchLocation" /></div><small class="text-xs text-slate-500">Search and pick on map to update coordinates.</small></div>
+          <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Geofence Radius (meters)</label><Slider v-model="form.geofence_radius_m" :min="0" :max="100" :step="10" class="w-full" /><div class="text-xs text-slate-600">{{ form.geofence_radius_m || 0 }} m</div><div class="flex items-center gap-2 pt-1"><InputSwitch v-model="form.geofence_enabled" /><span class="text-sm text-slate-700">Geofence Enabled</span></div></div>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="space-y-4">
-            <div class="space-y-2">
-              <label class="text-xs font-semibold text-slate-600">Search Location</label>
-              <div class="flex gap-2">
-                <InputText v-model="searchQuery" placeholder="Type address or place" class="flex-1" />
-                <Button label="Search" icon="pi pi-search" @click="searchLocation" :loading="searching" />
-              </div>
-              <small class="text-xs text-slate-500">Search and pick on map to update coordinates.</small>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <label class="text-xs font-semibold text-slate-600">Geofence Radius (meters)</label>
-            <Slider v-model="form.geofence_radius_m" :min="0" :max="100" :step="10" class="w-full" />
-            <div class="text-xs text-slate-600">{{ form.geofence_radius_m || 0 }} m</div>
-            <div class="flex items-center gap-2 pt-1">
-              <InputSwitch v-model="form.geofence_enabled" />
-              <span class="text-sm text-slate-700">Geofence Enabled</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="h-80 rounded-xl overflow-hidden border border-slate-200">
-          <div id="branch-map" class="h-full w-full"></div>
-        </div>
-        <small v-if="locationError" class="text-xs text-red-600">{{ locationError }}</small>
-        <small v-else-if="locationChecking" class="text-xs text-slate-500">Checking that the pin is inside Cavite...</small>
-        <small v-else-if="locationValid" class="text-xs text-emerald-700">Pin confirmed inside Cavite province.</small>
-        <small v-if="mapError" class="text-xs text-red-600">{{ mapError }}</small>
+        <div class="h-80 overflow-hidden rounded-xl border border-slate-200"><div id="branch-map" class="h-full w-full"></div></div>
+        <small v-if="locationError" class="text-xs text-red-600">{{ locationError }}</small><small v-else-if="locationChecking" class="text-xs text-slate-500">Checking that the pin is inside Cavite...</small><small v-else-if="locationValid" class="text-xs text-emerald-700">Pin confirmed inside Cavite province.</small><small v-if="mapError" class="text-xs text-red-600">{{ mapError }}</small>
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="showEdit = false" />
-        <Button label="Save Branch" :loading="saving" @click="saveBranch" />
+        <Button label="Save Branch" :loading="saving" :disabled="saving" @click="saveBranch" />
       </template>
     </Dialog>
   </div>
@@ -205,6 +152,8 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 
 const branchId = Number(window.location.pathname.match(/\/store\/branches\/(\d+)/)?.[1] || 0)
 const branch = ref<any>(null)
+const branchStatusLabel = computed(() => ({ unverified: 'Unverified', pending: 'Pending verification', rejected: 'Needs resubmission', active: 'Active' }[branch.value?.status] || branch.value?.status || 'Unverified'))
+const branchStatusSeverity = computed(() => ({ unverified: 'warn', pending: 'info', rejected: 'danger', active: 'success' }[branch.value?.status] || 'secondary'))
 const canCreateWarehouse = ref(false)
 const showEdit = ref(false)
 const saving = ref(false)
@@ -320,9 +269,6 @@ const loadBranch = async () => {
   form.value.longitude = data?.longitude || ''
   form.value.geofence_radius_m = data?.geofence_radius_m || 0
   form.value.geofence_enabled = data?.geofence_enabled ?? false
-  if (showEdit.value) {
-    initMap()
-  }
 }
 
 const fetchProvinces = async () => {
@@ -597,48 +543,21 @@ watch(
 
 watch(
   () => showEdit.value,
-  async (visible) => {
-    if (visible) {
-      await nextTick()
-      await initMap()
-    }
-  }
+  async visible => { if (visible) { await nextTick(); await initMap() } }
 )
 
 const saveBranch = async () => {
   if (!form.value.name.trim() || !form.value.address.trim() || !form.value.city.trim()) {
-    showResponseDialog({
-      severity: 'error',
-      title: 'Missing Branch Details',
-      message: 'Please enter the branch name and address, and select a city.',
-    })
+    showResponseDialog({ severity: 'error', title: 'Missing Branch Details', message: 'Please enter the branch name and address, and select a city.' })
     return
   }
-
-  if (form.value.latitude && form.value.longitude && !(await validateBranchLocation(Number(form.value.latitude), Number(form.value.longitude)))) {
-    redrawShapes()
-    return
-  }
-
+  if (form.value.latitude && form.value.longitude && !(await validateBranchLocation(Number(form.value.latitude), Number(form.value.longitude)))) { redrawShapes(); return }
   saving.value = true
   try {
-    await axiosClient.put(`/api/branches/${branchId}`, {
-      name: form.value.name.trim(),
-      branch_type: form.value.branch_type,
-      address: form.value.address || null,
-      province: form.value.province || null,
-      city: form.value.city || null,
-      barangay: form.value.barangay || null,
-      latitude: form.value.latitude || null,
-      longitude: form.value.longitude || null,
-      geofence_radius_m: form.value.geofence_radius_m || 0,
-      geofence_enabled: form.value.geofence_enabled,
-    })
+    await axiosClient.put(`/api/branches/${branchId}`, { name: form.value.name.trim(), branch_type: form.value.branch_type, address: form.value.address || null, province: form.value.province || null, city: form.value.city || null, barangay: form.value.barangay || null, latitude: form.value.latitude || null, longitude: form.value.longitude || null, geofence_radius_m: form.value.geofence_radius_m || 0, geofence_enabled: form.value.geofence_enabled })
     showEdit.value = false
     await loadBranch()
-  } finally {
-    saving.value = false
-  }
+  } finally { saving.value = false }
 }
 
 async function searchLocation() {

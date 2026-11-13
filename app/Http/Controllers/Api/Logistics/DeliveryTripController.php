@@ -25,6 +25,7 @@ use App\Services\Logistics\ReplacementDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class DeliveryTripController extends Controller
@@ -34,12 +35,17 @@ class DeliveryTripController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorizeTripViewer($request);
+        $countRelations = ['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns'];
+        if ($this->supportsSupplierPickupTrips()) {
+            $countRelations[] = 'purchaseOrderShipments';
+        }
+
         $query = DeliveryTrip::query()
             ->with([
                 'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
                 'driver:id,fname,lname,email',
             ])
-            ->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns', 'purchaseOrderShipments']);
+            ->withCount($countRelations);
 
         $this->applyTenantScope($request, $query);
         if ($this->isDriverOnly($request)) {
@@ -128,6 +134,7 @@ class DeliveryTripController extends Controller
                 ->where('store_id', $storeId)
                 ->whereNull('trip_id')
                 ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
+                ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
                 ->findOrFail((int) $validated['order_id']);
             $address = (string) $order->pickup_address;
             $orderWeight = $this->returnPickupWeight($order);
@@ -163,7 +170,11 @@ class DeliveryTripController extends Controller
         // A replacement and its return pickup are one customer exchange stop.
         $orderStops = 1;
         $pairedPickupWeight = $source === 'replacement' ? ($pairedPickupWeight ?? 0.0) : 0.0;
-        $orderArea = $source === 'sales' ? $this->salesAreaKey($order) : $this->areaKey($address);
+        $countRelations = ['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns'];
+        if ($this->supportsSupplierPickupTrips()) {
+            $countRelations[] = 'purchaseOrderShipments';
+        }
+
         $query = DeliveryTrip::query()->with([
             'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
             'driver:id,fname,lname,email',
@@ -181,17 +192,16 @@ class DeliveryTripController extends Controller
             'replacementReturns.replacementInventory.product:id,weight_kg',
             'replacementReturns.replacementInventory.variation:id,weight_kg',
             'replacementReturns.replacementBranch:id,latitude,longitude',
-        ])->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups', 'stockTransfers', 'replacementReturns', 'purchaseOrderShipments'])
+        ])->withCount($countRelations)
             ->where('store_id', $storeId)
             ->where('status', 'planned');
         $this->applyTenantScope($request, $query);
 
-        $compatible = $query->orderByDesc('created_at')->get()->map(function (DeliveryTrip $trip) use ($orderArea, $orderWeight, $orderStops, $pairedPickupWeight, $replacementWeight, $source, $order) {
+        $compatible = $query->orderByDesc('created_at')->get()->map(function (DeliveryTrip $trip) use ($orderWeight, $orderStops, $pairedPickupWeight, $replacementWeight, $source, $order) {
             $capacity = (float) ($trip->vehicle?->capacity_kg ?? 0);
             $weight = $this->currentTripWeight($trip);
             $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
             $stops = $this->tripStopCount($trip);
-            $tripArea = $this->tripAreaKey($trip);
 
             if ($source === 'replacement' && $order->pickup?->trip_id && (int) $order->pickup->trip_id !== (int) $trip->id) return null;
             $requiredStops = $orderStops - ($source === 'replacement' && (int) ($order->pickup?->trip_id ?? 0) === (int) $trip->id ? 1 : 0);
@@ -200,7 +210,6 @@ class DeliveryTripController extends Controller
                 : $orderWeight;
             if ($maxStops > 0 && ($stops + $requiredStops) > $maxStops) return null;
             if ($capacity > 0 && ($weight + $requiredWeight) > $capacity) return null;
-            if ($tripArea && $tripArea !== $orderArea) return null;
 
             $driverName = trim((string) ($trip->driver?->fname . ' ' . $trip->driver?->lname));
             return [
@@ -251,7 +260,7 @@ class DeliveryTripController extends Controller
                 'salesDeliveries.order.items.product:id,weight_kg',
                 'salesDeliveries.order.items.variation:id,weight_kg',
                 'salesDeliveries.order.items.branchInventory.variation:id,weight_kg',
-                'returnPickups.returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,requested_quantity',
+                'returnPickups.returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,requested_quantity,return_type,replacement_trip_id',
                 'returnPickups.returnRequest.order:id,order_number,shipping_name,shipping_address',
                 'returnPickups.returnRequest.orderItem:id,product_id,product_name,sku',
                 'returnPickups.returnRequest.orderItem.product:id,weight_kg',
@@ -292,6 +301,7 @@ class DeliveryTripController extends Controller
             $this->scopeAssignedTrips($query, (int) $request->user()->id);
         }
         $trip = $query->findOrFail($id);
+        $trip->loadMissing('dispatchedBy:id,fname,lname');
         $trip->returnPickups->each(fn (ReturnPickup $pickup) => $pickup->returnRequest?->normalizeSourceRelationsForDisplay());
         $trip->setAttribute('assistant_users', User::query()
             ->whereIn('id', $trip->assistant_user_ids ?? [])
@@ -749,6 +759,10 @@ class DeliveryTripController extends Controller
         DB::transaction(function () use ($trip, $validated, $request) {
             $trip->status = (string) $validated['status'];
             $trip->updated_by = $request->user()->id;
+            if ((string) $validated['status'] === 'out_for_delivery') {
+                $trip->dispatched_by = $request->user()->id;
+                $trip->dispatched_at = now();
+            }
             $trip->save();
 
             if ((string) $validated['status'] === 'out_for_delivery') {
@@ -797,15 +811,59 @@ class DeliveryTripController extends Controller
                             ]);
                         }
                     });
-                $trip->salesDeliveries()
-                    ->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])
-                    ->update(['status' => 'out_for_delivery', 'dispatched_at' => $now, 'out_for_delivery_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
-                $trip->returnPickups()
-                    ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
-                    ->update(['status' => 'out_for_delivery', 'out_for_delivery_at' => $now, 'driver_user_id' => $trip->driver_user_id, 'vehicle_id' => $trip->vehicle_id, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
-                $trip->stockTransfers()
-                    ->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])
-                    ->update(['delivery_status' => 'in_transit', 'updated_at' => $now]);
+                $trip->salesDeliveries()->with('order')->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])->get()
+                    ->each(function (SalesOrderDelivery $delivery) use ($request, $now): void {
+                        $from = (string) $delivery->status;
+                        $delivery->update(['status' => 'out_for_delivery', 'dispatched_at' => $delivery->dispatched_at ?: $now, 'out_for_delivery_at' => $delivery->out_for_delivery_at ?: $now, 'updated_by' => $request->user()->id]);
+                        if ($delivery->order && $delivery->order->status !== 'out_for_delivery') {
+                            $order = $delivery->order;
+                            $order->status = 'out_for_delivery';
+                            $order->save();
+                        }
+                        SalesOrderDeliveryLog::query()->create([
+                            'delivery_id' => $delivery->id, 'sales_order_id' => $delivery->sales_order_id,
+                            'store_id' => $delivery->store_id, 'event_type' => 'status_updated',
+                            'status_from' => $from, 'status_to' => 'out_for_delivery',
+                            'message' => 'Trip dispatched; order is out for delivery.', 'created_by' => $request->user()->id,
+                        ]);
+                    });
+                $trip->returnPickups()->whereIn('status', ['ready_for_dispatch', 'scheduled', 'assigned'])->get()
+                    ->each(function (ReturnPickup $pickup) use ($request, $trip, $now): void {
+                        $from = (string) $pickup->status;
+                        $pickup->update([
+                            'status' => 'out_for_delivery', 'out_for_delivery_at' => $pickup->out_for_delivery_at ?: $now,
+                            'picked_up_at' => $pickup->picked_up_at ?: $now, 'driver_user_id' => $trip->driver_user_id,
+                            'vehicle_id' => $trip->vehicle_id, 'updated_by' => $request->user()->id,
+                        ]);
+                        ReturnPickupLog::query()->create([
+                            'return_pickup_id' => $pickup->id, 'event_type' => 'status_updated',
+                            'status_from' => $from, 'status_to' => 'out_for_delivery',
+                            'message' => 'Trip dispatched; return pickup is out for delivery.', 'created_by' => $request->user()->id,
+                        ]);
+                    });
+                $trip->stockTransfers()->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])->get()
+                    ->each(function ($transfer) use ($request, $trip, $now): void {
+                        $transfer->delivery_status = 'out_for_delivery';
+                        $transfer->status = 'out_for_delivery';
+                        $transfer->out_for_delivery_at = $transfer->out_for_delivery_at ?: $now;
+                        $actor = $request->user();
+                        $actorName = trim((string) ($actor?->fname.' '.$actor?->lname)) ?: 'Logistics';
+                        $reference = $this->tripReference($trip);
+                        $transfer->notes = trim((string) $transfer->notes."\nLOG2|".$now->toDateTimeString()."|".$actorName."|custom_note|Trip {$reference} dispatched; transfer is out for delivery.");
+                        $transfer->save();
+                    });
+                $trip->purchaseOrderShipments()->whereIn('status', ['pending', 'assigned', 'ready_for_dispatch'])->get()
+                    ->each(function (PurchaseOrderShipment $shipment) use ($request, $now): void {
+                        $shipment->status = 'out_for_delivery';
+                        $shipment->dispatched_at = $shipment->dispatched_at ?: $now;
+                        $shipment->out_for_delivery_at = $shipment->out_for_delivery_at ?: $now;
+                        $shipment->save();
+                        $shipment->purchaseOrder?->update(['status' => 'out_for_delivery']);
+                        PurchaseOrderDeliveryLog::query()->create([
+                            'shipment_id' => $shipment->id, 'created_by' => $request->user()->id,
+                            'event_type' => 'status_updated', 'notes' => 'Trip dispatched; supplier pickup is out for delivery.', 'logged_at' => $now,
+                        ]);
+                    });
                 $trip->replacementReturns()
                     ->whereIn('replacement_status', ['reserved', 'assigned'])
                     ->with('replacementDriver')
@@ -873,7 +931,7 @@ class DeliveryTripController extends Controller
             'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement', 'pickup'])],
         ]);
 
-        $query = DeliveryTrip::query()->with('vehicle');
+        $query = DeliveryTrip::query()->with('vehicle.branch:id,latitude,longitude');
         $this->applyTenantScope($request, $query);
         $trip = $query->findOrFail($id);
         $currentWeight = $this->currentTripWeight($trip);
@@ -897,28 +955,22 @@ class DeliveryTripController extends Controller
             default => $this->stockTransferSuggestionRows($trip),
         };
 
-        $targetArea = $this->tripAreaKey($trip);
-
-        $groups = collect($rows)->groupBy('area_key');
-        if (!$targetArea) {
-            $targetArea = $groups->sortByDesc(fn ($group) => $group->count())->keys()->first();
-        }
-
-        $selected = [];
+        $selected = $this->orderByNearestNextStop($rows, $trip);
         $selectedWeight = 0.0;
-        foreach (($groups->get($targetArea, collect()))->sortBy('distance_km') as $row) {
-            if (count($selected) >= $remainingStops) break;
+        $eligible = [];
+        foreach ($selected as $row) {
+            if (count($eligible) >= $remainingStops) break;
             $weight = (float) ($row['weight_kg'] ?? 0);
             if (($selectedWeight + $weight) > $remainingWeight) continue;
-            unset($row['area_key']);
-            $row['stop_sequence'] = count($selected) + 1;
-            $selected[] = $row;
+            $row['stop_sequence'] = count($eligible) + 1;
+            $eligible[] = $row;
             $selectedWeight += $weight;
         }
+        $selected = $eligible;
 
         return response()->json(['success' => true, 'data' => [
             'orders' => $selected,
-            'area' => $targetArea,
+            'area' => null,
             'selected_weight_kg' => round($selectedWeight, 2),
             'remaining_capacity_kg' => $capacityKg > 0 ? round(max(0, $remainingWeight - $selectedWeight), 2) : null,
         ]]);
@@ -936,7 +988,9 @@ class DeliveryTripController extends Controller
                     'order_number' => $order->order_number, 'customer_name' => $order->shipping_name,
                     'delivery_address' => $order->shipping_address, 'order_status' => $order->status,
                     'distance_km' => $distance, 'weight_kg' => $this->orderWeight($order->items ?? []),
-                    'area_key' => $this->areaKey((string) $order->shipping_address)];
+                    'origin_latitude' => $order->assignedBranch?->latitude, 'origin_longitude' => $order->assignedBranch?->longitude,
+                    'destination_latitude' => $order->customer_latitude, 'destination_longitude' => $order->customer_longitude,
+                    ];
             })->all();
     }
 
@@ -953,29 +1007,34 @@ class DeliveryTripController extends Controller
                     'order_number' => $order->order_number, 'customer_name' => $order->customer_name,
                     'delivery_address' => $order->delivery_address, 'order_status' => $order->status,
                     'distance_km' => $distance, 'weight_kg' => $this->orderWeight($order->items ?? []),
-                    'area_key' => $this->salesAreaKey($order)];
+                    'origin_latitude' => $order->branch?->latitude, 'origin_longitude' => $order->branch?->longitude,
+                    'destination_latitude' => $order->delivery_latitude, 'destination_longitude' => $order->delivery_longitude,
+                    ];
             })->all();
     }
 
     private function returnPickupSuggestionRows(DeliveryTrip $trip): array
     {
-        return ReturnPickup::query()->with(['returnRequest.orderItem.product:id,weight_kg'])
+        return ReturnPickup::query()->with(['returnRequest.orderItem.product:id,weight_kg', 'destinationBranch:id,latitude,longitude'])
             ->where('store_id', $trip->store_id)->whereNull('trip_id')
             ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
+            ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
             ->get()->map(function (ReturnPickup $pickup) {
                 return ['id' => 'return-'.$pickup->id, 'source_type' => 'return_pickup', 'order_id' => $pickup->id,
                     'order_number' => $pickup->returnRequest?->return_number ?: 'Return #'.$pickup->id,
                     'customer_name' => $pickup->pickup_name, 'delivery_address' => $pickup->pickup_address,
                     'order_status' => $pickup->status, 'distance_km' => (float) ($pickup->distance_km ?? 0),
+                    'origin_latitude' => $pickup->destinationBranch?->latitude, 'origin_longitude' => $pickup->destinationBranch?->longitude,
+                    'destination_latitude' => $pickup->pickup_latitude, 'destination_longitude' => $pickup->pickup_longitude,
                     'weight_kg' => $this->returnPickupWeight($pickup),
-                    'area_key' => $this->areaKey((string) $pickup->pickup_address)];
+                    ];
             })->all();
     }
 
     private function supplierPickupSuggestionRows(DeliveryTrip $trip): array
     {
         return PurchaseOrder::query()
-            ->with(['supplier:id,supplier_name,address', 'branch:id,name,address,city,province', 'items.product:id,weight_kg', 'shipment'])
+            ->with(['supplier:id,supplier_name,address,latitude,longitude', 'branch:id,name,address,city,province,latitude,longitude', 'items.product:id,weight_kg', 'shipment'])
             ->where('store_id', $trip->store_id)
             ->where('status', 'supplier_accepted')
             ->where(fn ($query) => $query->whereNull('fulfillment_method')->orWhere('fulfillment_method', '!=', 'supplier_delivery'))
@@ -995,8 +1054,9 @@ class DeliveryTripController extends Controller
                     'order_status' => 'supplier_accepted',
                     'delivery_date' => $order->shipment?->expected_delivery_date ?? $order->expected_delivery_date,
                     'distance_km' => 0,
+                    'origin_latitude' => $order->supplier?->latitude, 'origin_longitude' => $order->supplier?->longitude,
+                    'destination_latitude' => $order->branch?->latitude, 'destination_longitude' => $order->branch?->longitude,
                     'weight_kg' => $weight,
-                    'area_key' => $this->areaKey($address),
                 ];
             })->all();
     }
@@ -1020,8 +1080,9 @@ class DeliveryTripController extends Controller
                     'delivery_address' => $address,
                     'order_status' => $transfer->status,
                     'distance_km' => $this->haversineDistance($transfer->fromBranch?->latitude, $transfer->fromBranch?->longitude, $transfer->toBranch?->latitude, $transfer->toBranch?->longitude),
+                    'origin_latitude' => $transfer->fromBranch?->latitude, 'origin_longitude' => $transfer->fromBranch?->longitude,
+                    'destination_latitude' => $transfer->toBranch?->latitude, 'destination_longitude' => $transfer->toBranch?->longitude,
                     'weight_kg' => $this->stockTransferWeight($transfer),
-                    'area_key' => $this->areaKey($address),
                 ];
             })->all();
     }
@@ -1056,13 +1117,14 @@ class DeliveryTripController extends Controller
                     'delivery_address' => $address,
                     'order_status' => $replacement->replacement_status,
                     'distance_km' => $this->haversineDistance($origin?->latitude, $origin?->longitude, $lat, $lng),
+                    'origin_latitude' => $origin?->latitude, 'origin_longitude' => $origin?->longitude,
+                    'destination_latitude' => $lat, 'destination_longitude' => $lng,
                     'weight_kg' => max(
                         $this->replacementWeight($replacement),
                         $replacement->pickup && (int) ($replacement->pickup->trip_id ?? 0) !== (int) $trip->id
                             ? $this->returnPickupWeight($replacement->pickup)
                             : 0.0
                     ),
-                    'area_key' => $this->areaKey($address),
                 ];
             })->all();
     }
@@ -1090,26 +1152,38 @@ class DeliveryTripController extends Controller
         return $this->itemUnitWeight($item) * max(0, $quantity);
     }
 
-    private function areaKey(string $address): string
+    private function orderByNearestNextStop(array $rows, DeliveryTrip $trip): array
     {
-        $parts = array_values(array_filter(array_map(fn ($part) => trim(mb_strtolower($part)), explode(',', $address))));
-        return implode(', ', array_slice($parts, 0, 2)) ?: 'unknown area';
-    }
+        $currentLatitude = null;
+        $currentLongitude = null;
+        $remaining = collect($rows)->values();
+        $ordered = [];
 
-    private function salesAreaKey(SalesOrder $order): string
-    {
-        $province = trim(mb_strtolower((string) $order->delivery_province));
-        $city = trim(mb_strtolower((string) $order->delivery_city));
-        if ($province !== '' && $city !== '') {
-            return "{$province}, {$city}";
+        while ($remaining->isNotEmpty()) {
+            $ranked = $remaining->map(function (array $row, int $index) use ($currentLatitude, $currentLongitude): array {
+                $distance = $currentLatitude === null || $currentLongitude === null
+                    ? $this->haversineDistance($row['origin_latitude'] ?? null, $row['origin_longitude'] ?? null, $row['destination_latitude'] ?? null, $row['destination_longitude'] ?? null)
+                    : $this->haversineDistance($currentLatitude, $currentLongitude, $row['destination_latitude'] ?? null, $row['destination_longitude'] ?? null);
+                if ($distance <= 0) $distance = (float) ($row['distance_km'] ?? 0);
+                return ['index' => $index, 'distance' => $distance, 'row' => $row];
+            })->sort(function (array $left, array $right): int {
+                return ($left['distance'] <=> $right['distance']) ?: ($left['index'] <=> $right['index']);
+            })->values();
+
+            $next = $ranked->first();
+            if (!$next) break;
+            $row = $next['row'];
+            $row['distance_km'] = round((float) $next['distance'], 2);
+            unset($row['origin_latitude'], $row['origin_longitude'], $row['destination_latitude'], $row['destination_longitude']);
+            $ordered[] = $row;
+            $chosen = $next['row'];
+            $currentLatitude = $chosen['destination_latitude'] ?? null;
+            $currentLongitude = $chosen['destination_longitude'] ?? null;
+            $remaining->forget((int) $next['index']);
+            $remaining = $remaining->values();
         }
 
-        $parts = array_values(array_filter(array_map(fn ($part) => trim(mb_strtolower($part)), explode(',', (string) $order->delivery_address))));
-        if (count($parts) >= 3) {
-            return implode(', ', array_reverse(array_slice($parts, -2)));
-        }
-
-        return $this->areaKey((string) $order->delivery_address);
+        return $ordered;
     }
 
     private function haversineDistance($originLat, $originLng, $destinationLat, $destinationLng): float
@@ -1128,6 +1202,8 @@ class DeliveryTripController extends Controller
             'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup', 'stock_transfer', 'replacement', 'pickup'])],
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'integer|min:1',
+            'route_distances' => ['nullable', 'array'],
+            'route_distances.*' => ['numeric', 'min:0', 'max:100000'],
         ]);
 
         $query = DeliveryTrip::query()->with(['vehicle', 'driver']);
@@ -1145,15 +1221,12 @@ class DeliveryTripController extends Controller
         $added = 0;
         $skipped = 0;
         $overCapacity = 0;
-        $areaMismatch = 0;
         $addedOrderNumbers = [];
         $capacityKg = (float) ($trip->vehicle?->capacity_kg ?? 0);
         $currentWeight = $this->currentTripWeight($trip);
         $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
         $currentStops = $this->tripStopCount($trip);
-        $targetArea = $this->tripAreaKey($trip);
-
-        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, &$areaMismatch, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$targetArea, &$addedOrderNumbers) {
+        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers) {
             if ($validated['source_type'] === 'ecommerce') {
                 $orders = EcommerceOrder::query()
                     ->with(['items.product:id,weight_kg'])
@@ -1164,13 +1237,6 @@ class DeliveryTripController extends Controller
                 foreach ($orders as $order) {
                     if ((string) $order->status !== 'ready_for_dispatch') {
                         $skipped++;
-                        continue;
-                    }
-
-                    $orderArea = $this->areaKey((string) $order->shipping_address);
-                    $targetArea = $targetArea ?: $orderArea;
-                    if ($orderArea !== $targetArea) {
-                        $areaMismatch++;
                         continue;
                     }
 
@@ -1251,12 +1317,6 @@ class DeliveryTripController extends Controller
                     ->get();
 
                 foreach ($orders as $order) {
-                    $orderArea = $this->salesAreaKey($order);
-                    $targetArea = $targetArea ?: $orderArea;
-                    if ($orderArea !== $targetArea) {
-                        $areaMismatch++;
-                        continue;
-                    }
                     if ($maxStops > 0 && $currentStops >= $maxStops) {
                         $overCapacity++;
                         continue;
@@ -1327,12 +1387,11 @@ class DeliveryTripController extends Controller
             } elseif ($validated['source_type'] === 'return_pickup') {
                 $pickups = ReturnPickup::query()->with(['returnRequest.orderItem.product:id,weight_kg'])
                     ->whereIn('id', $validated['order_ids'])->where('store_id', $trip->store_id)
-                    ->whereNull('trip_id')->whereIn('status', ['ready_for_dispatch', 'scheduled'])->get();
+                    ->whereNull('trip_id')->whereIn('status', ['ready_for_dispatch', 'scheduled'])
+                    ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
+                    ->get();
 
                 foreach ($pickups as $pickup) {
-                    $pickupArea = $this->areaKey((string) $pickup->pickup_address);
-                    $targetArea = $targetArea ?: $pickupArea;
-                    if ($pickupArea !== $targetArea) { $areaMismatch++; continue; }
                     if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
                     $pickupWeight = $this->returnPickupWeight($pickup);
                     if ($capacityKg > 0 && ($currentWeight + $pickupWeight) > $capacityKg) { $overCapacity++; continue; }
@@ -1376,9 +1435,6 @@ class DeliveryTripController extends Controller
                         continue;
                     }
                     $address = $this->replacementDeliveryAddress($replacement);
-                    $replacementArea = $this->areaKey($address);
-                    $targetArea = $targetArea ?: $replacementArea;
-                    if ($replacementArea !== $targetArea) { $areaMismatch++; continue; }
                     if ($maxStops > 0 && ($currentStops + 1) > $maxStops) { $overCapacity++; continue; }
                     $replacementWeight = $this->replacementWeight($replacement);
                     $pickupWeight = $pickup && !$pickupAlreadyOnTrip ? $this->returnPickupWeight($pickup) : 0.0;
@@ -1425,9 +1481,6 @@ class DeliveryTripController extends Controller
 
                 foreach ($orders as $order) {
                     $address = collect([$order->branch?->address, $order->branch?->city, $order->branch?->province])->filter()->implode(', ');
-                    $pickupArea = $this->areaKey($address);
-                    $targetArea = $targetArea ?: $pickupArea;
-                    if ($pickupArea && $targetArea && $pickupArea !== $targetArea) { $areaMismatch++; continue; }
                     $shipment = $order->shipment;
                     if ($shipment && $shipment->trip_id && (int) $shipment->trip_id !== (int) $trip->id) { $skipped++; continue; }
                     if ($shipment && (string) $shipment->status !== 'pending') { $skipped++; continue; }
@@ -1483,9 +1536,6 @@ class DeliveryTripController extends Controller
 
                 foreach ($transfers as $transfer) {
                     $address = collect([$transfer->toBranch?->address, $transfer->toBranch?->city, $transfer->toBranch?->province])->filter()->implode(', ');
-                    $transferArea = $this->areaKey($address);
-                    $targetArea = $targetArea ?: $transferArea;
-                    if ($transferArea !== $targetArea) { $areaMismatch++; continue; }
                     if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
                     $transferWeight = $this->stockTransferWeight($transfer);
                     if ($capacityKg > 0 && ($currentWeight + $transferWeight) > $capacityKg) { $overCapacity++; continue; }
@@ -1509,6 +1559,11 @@ class DeliveryTripController extends Controller
                     $currentStops++;
                 }
             }
+
+            if ($added > 0 && !empty($validated['route_distances'])) {
+                $trip->route_distances = array_merge($trip->route_distances ?? [], $validated['route_distances']);
+                $trip->save();
+            }
         });
 
         if ($added === 0 && $overCapacity > 0) {
@@ -1520,14 +1575,6 @@ class DeliveryTripController extends Controller
                     'skipped' => $skipped,
                     'over_capacity' => $overCapacity,
                 ],
-            ], 422);
-        }
-
-        if ($added === 0 && $areaMismatch > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => "Selected orders do not match this trip's delivery area ({$targetArea}).",
-                'data' => ['added' => 0, 'skipped' => $skipped, 'over_capacity' => $overCapacity, 'area_mismatch' => $areaMismatch],
             ], 422);
         }
 
@@ -1549,8 +1596,6 @@ class DeliveryTripController extends Controller
         $message = "Orders added to trip ({$added}).";
         if ($overCapacity > 0) {
             $message .= " {$overCapacity} skipped due to capacity.";
-        } elseif ($areaMismatch > 0) {
-            $message .= " {$areaMismatch} skipped because they belong to another delivery area.";
         } elseif ($skipped > 0) {
             $message .= " {$skipped} skipped.";
         }
@@ -1562,7 +1607,6 @@ class DeliveryTripController extends Controller
                 'added' => $added,
                 'skipped' => $skipped,
                 'over_capacity' => $overCapacity,
-                'area_mismatch' => $areaMismatch,
             ],
         ]);
     }
@@ -1673,20 +1717,6 @@ class DeliveryTripController extends Controller
         );
     }
 
-    private function tripAreaKey(DeliveryTrip $trip): ?string
-    {
-        $areas = collect()
-            ->merge($trip->ecommerceDeliveries()->with('order:id,shipping_address')->get()->map(fn ($delivery) => $delivery->order ? $this->areaKey((string) $delivery->order->shipping_address) : null))
-            ->merge($trip->salesDeliveries()->with('order:id,delivery_address,delivery_province,delivery_city')->get()->map(fn ($delivery) => $delivery->order ? $this->salesAreaKey($delivery->order) : null))
-            ->merge($trip->returnPickups()->pluck('pickup_address')->map(fn ($address) => $this->areaKey((string) $address)))
-            ->merge($trip->stockTransfers()->with('toBranch:id,address,city,province')->get()->map(fn ($transfer) => $this->areaKey(collect([$transfer->toBranch?->address, $transfer->toBranch?->city, $transfer->toBranch?->province])->filter()->implode(', '))))
-            ->merge($trip->replacementReturns()->with(['order', 'salesOrder'])->get()->map(fn ($replacement) => $this->areaKey($this->replacementDeliveryAddress($replacement))))
-            ->merge($trip->purchaseOrderShipments()->with('purchaseOrder.branch:id,address,city,province')->get()->map(fn ($shipment) => $this->areaKey(collect([$shipment->purchaseOrder?->branch?->address, $shipment->purchaseOrder?->branch?->city, $shipment->purchaseOrder?->branch?->province])->filter()->implode(', '))))
-            ->filter();
-
-        return $areas->countBy()->sortDesc()->keys()->first();
-    }
-
     private function returnPickupWeight(ReturnPickup $pickup): float
     {
         $return = $pickup->returnRequest;
@@ -1718,15 +1748,26 @@ class DeliveryTripController extends Controller
                 ->whereNotIn('replacement_status', ['delivered', 'cancelled']))
             ->count();
 
-        return (int) $trip->ecommerceDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
+        $count = (int) $trip->ecommerceDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
             + (int) $trip->salesDeliveries()->whereNotIn('status', ['delivered', 'cancelled'])->count()
             + (int) $activePickups->count()
             + (int) $trip->stockTransfers()->where(fn ($query) => $query
                 ->whereNull('delivery_status')
                 ->orWhereNotIn('delivery_status', ['delivered', 'cancelled']))->count()
             + (int) $trip->replacementReturns()->whereNotIn('replacement_status', ['delivered', 'cancelled'])->count()
-            + (int) $trip->purchaseOrderShipments()->whereNotIn('status', ['delivered', 'cancelled'])->count()
             - $pairedPickups;
+
+        if ($this->supportsSupplierPickupTrips()) {
+            $count += (int) $trip->purchaseOrderShipments()->whereNotIn('status', ['delivered', 'cancelled'])->count();
+        }
+
+        return $count;
+    }
+
+    private function supportsSupplierPickupTrips(): bool
+    {
+        return Schema::hasTable('purchase_order_shipments')
+            && Schema::hasColumn('purchase_order_shipments', 'trip_id');
     }
 
     private function currentTripWeight(DeliveryTrip $trip): float
@@ -1757,8 +1798,11 @@ class DeliveryTripController extends Controller
             'replacementReturns.replacementInventory:id,product_id,variation_id',
             'replacementReturns.replacementInventory.product:id,weight_kg',
             'replacementReturns.replacementInventory.variation:id,weight_kg',
-            'purchaseOrderShipments.purchaseOrder.items.product:id,weight_kg',
         ]);
+
+        if ($this->supportsSupplierPickupTrips()) {
+            $trip->loadMissing('purchaseOrderShipments.purchaseOrder.items.product:id,weight_kg');
+        }
 
         foreach ($trip->ecommerceDeliveries as $delivery) {
             if (in_array(strtolower((string) $delivery->status), ['delivered', 'cancelled'], true)) continue;
@@ -1794,11 +1838,13 @@ class DeliveryTripController extends Controller
             $weight += max($replacementWeight, $pickupWeight);
         }
 
-        foreach ($trip->purchaseOrderShipments as $shipment) {
-            if (in_array(strtolower((string) $shipment->status), ['delivered', 'cancelled'], true)) continue;
-            $weight += collect($shipment->purchaseOrder?->items ?? [])->sum(
-                fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0)
-            );
+        if ($this->supportsSupplierPickupTrips()) {
+            foreach ($trip->purchaseOrderShipments as $shipment) {
+                if (in_array(strtolower((string) $shipment->status), ['delivered', 'cancelled'], true)) continue;
+                $weight += collect($shipment->purchaseOrder?->items ?? [])->sum(
+                    fn ($item) => (float) ($item->product?->weight_kg ?? 0) * (float) ($item->quantity_ordered ?? 0)
+                );
+            }
         }
 
         return $weight;
@@ -1958,8 +2004,11 @@ class DeliveryTripController extends Controller
                     $removed++;
                 }
             } elseif ($validated['source_type'] === 'return_pickup') {
-                $pickups = ReturnPickup::query()->where('trip_id', $trip->id)
-                    ->whereIn('id', $validated['order_ids'])->get();
+                $pickups = ReturnPickup::query()->with('returnRequest:id,return_type')
+                    ->where('trip_id', $trip->id)
+                    ->whereIn('id', $validated['order_ids'])
+                    ->whereDoesntHave('returnRequest', fn ($query) => $query->where('return_type', 'replacement'))
+                    ->get();
                 foreach ($pickups as $pickup) {
                     if (!in_array((string) $pickup->status, ['assigned', 'ready_for_dispatch', 'scheduled'], true)) continue;
                     ReturnPickupLog::query()->create([

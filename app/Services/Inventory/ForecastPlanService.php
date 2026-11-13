@@ -24,4 +24,21 @@ class ForecastPlanService
     {
         return in_array($this->key($storeId), ['enterprise', 'unlimited'], true);
     }
+
+    public function allowsWarehouse(int $storeId): bool
+    {
+        if ($storeId < 1) {
+            return false;
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $storeId)
+            ->whereIn('permissions.name', ['warehouse.warehouses.view', 'warehouse.dashboard.view'])
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->exists();
+    }
 }

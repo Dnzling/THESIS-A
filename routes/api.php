@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\RolePermissionController;
 use App\Http\Controllers\Api\Store\StoreVerificationController;
+use App\Http\Controllers\Api\Store\BranchVerificationController;
 
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
 use App\Http\Controllers\Api\Store\PositionSetupController;
+use App\Http\Controllers\Api\Store\StoreSubscriptionAgreementController;
 use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
@@ -226,6 +228,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::prefix('store')->group(function () {
         Route::get('/position-setup', [PositionSetupController::class, 'index']);
         Route::post('/position-setup', [PositionSetupController::class, 'store']);
+        Route::post('/subscription-agreement/sign', [StoreSubscriptionAgreementController::class, 'sign']);
+        Route::post('/subscription-agreement/activate', [StoreSubscriptionAgreementController::class, 'activate']);
+        Route::get('/subscription-agreement/document', [StoreSubscriptionAgreementController::class, 'document']);
         Route::get('/dashboard', [StoreDashboardController::class, 'index']);
         Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ownerSales']);
         Route::get('/attendance', [\App\Http\Controllers\Api\Store\BranchAttendanceController::class, 'index']);
@@ -259,6 +264,9 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'branchSales']);
         Route::get('/settings', 'settings');
         Route::match(['put', 'post'], '/settings', 'updateSettings');
+        Route::put('/settings/fulfillment-windows', 'updateFulfillmentWindows');
+        Route::get('/settings/suspensions', 'suspensionHistory');
+        Route::post('/settings/suspensions', 'createSuspension');
         Route::get('/ecommerce', 'ecommerce');
     });
     require __DIR__ . '/store_routes.php';
@@ -440,12 +448,18 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
     Route::post('store-verification/business-registration/extract', [StoreVerificationController::class, 'extractBusinessRegistration']);
     Route::post('store-verification/business-document/extract', [StoreVerificationController::class, 'extractBusinessDocument']);
+    Route::post('store-verification/additional-document/extract', [StoreVerificationController::class, 'extractAdditionalDocument']);
+    Route::post('branch-verification/extract', [BranchVerificationController::class, 'extract']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
     Route::get('store-verification/{verification}/documents/{document}/preview', [StoreVerificationController::class, 'previewDocument']);
     Route::get('store-verification/{verification}/documents/{document}/download', [StoreVerificationController::class, 'downloadDocument']);
     Route::post('store-verification/{verification}/documents/{document}/auto-validate', [StoreVerificationController::class, 'autoValidateDocument']);
     Route::post('store-verification/{verification}/documents/auto-validate-all', [StoreVerificationController::class, 'autoValidateAllDocuments']);
+    Route::get('branch-verifications', [BranchVerificationController::class, 'index']);
+    Route::get('branch-verification/{verification}', [BranchVerificationController::class, 'show']);
+    Route::post('branch-verification/{verification}/review', [BranchVerificationController::class, 'review']);
+    Route::get('branch-verification/{verification}/documents/{index}/{mode}', [BranchVerificationController::class, 'document']);
     Route::prefix('stores')->controller(StoreController::class)->group(function () {
         Route::get('hasStore', 'hasStore');
         Route::post('validate-location', 'validateLocation');
@@ -478,6 +492,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::post('/', 'store')->middleware('subscription.capacity:branches');
         Route::get('{branch}/performance', 'performance');
         Route::get('{branch}/employees', 'employees');
+        Route::prefix('{branch}/verification')->controller(BranchVerificationController::class)->group(function () {
+            Route::get('status', 'status');
+            Route::post('submit', 'submit');
+        });
         Route::get('{branch}', 'show');
         Route::put('{branch}', 'update')->middleware('subscription.capacity:branch_update');
         Route::delete('{branch}', 'destroy');

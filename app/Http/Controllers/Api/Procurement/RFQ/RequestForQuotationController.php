@@ -744,7 +744,48 @@ class RequestForQuotationController extends Controller
             'items.*.requirements' => 'nullable|string',
             'supplier_ids' => 'required|array|min:1',
             'supplier_ids.*' => 'exists:suppliers,id',
+            'from_supplier_products' => 'sometimes|boolean',
         ]);
+
+        if ($request->boolean('from_supplier_products')) {
+            if (count($validated['supplier_ids']) !== 1) {
+                throw ValidationException::withMessages([
+                    'supplier_ids' => 'Select exactly one supplier when creating an RFQ from supplier products.',
+                ]);
+            }
+
+            $storeId = (int) auth()->user()->store_id;
+            $supplierId = (int) $validated['supplier_ids'][0];
+            $supplier = Supplier::query()->where('store_id', $storeId)->find($supplierId);
+            if (!$supplier) {
+                throw ValidationException::withMessages(['supplier_ids' => 'The selected supplier is not connected to your store.']);
+            }
+
+            foreach ($validated['items'] as $index => $item) {
+                $productBelongsToStore = Product::query()
+                    ->where('store_id', $storeId)
+                    ->where('id', (int) $item['product_id'])
+                    ->exists();
+                $listing = DB::table('supplier_products')
+                    ->where('supplier_id', $supplierId)
+                    ->where('product_id', (int) $item['product_id'])
+                    ->first();
+
+                if (!$productBelongsToStore || !$listing) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_id" => 'This product is not available from the selected supplier for your store.',
+                    ]);
+                }
+
+                $quantity = (int) $item['quantity'];
+                $minimum = (int) ($listing->minimum_order_quantity ?? 1);
+                if ($quantity < $minimum) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.quantity" => "Quantity must be at least the supplier minimum of {$minimum}.",
+                    ]);
+                }
+            }
+        }
 
         DB::beginTransaction();
         try {

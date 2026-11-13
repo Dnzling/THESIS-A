@@ -99,6 +99,7 @@ type ViewStatus = 'pending' | 'approved' | 'rejected' | 'all'
 
 interface StoreRecord {
   verificationId: number
+  verificationType: 'store' | 'branch'
   storeName: string
   ownerName: string
   ownerEmail: string
@@ -155,6 +156,7 @@ const activeTitle = computed(() => statusCards.value.find((item) => item.value =
 const extractRows = (response: any) => response?.data?.data?.data || response?.data?.data || []
 const mapStore = (item: any): StoreRecord => {
   const store = item.store || {}
+  const branch = item.branch || null
   const summary = item.documents_summary || {}
   const documents = item.documents || []
   const count = Number(summary.total_submitted ?? documents.length ?? 0)
@@ -162,10 +164,11 @@ const mapStore = (item: any): StoreRecord => {
 
   return {
     verificationId: Number(item.id),
-    storeName: store.store_name || store.name || item.store_name || 'Unnamed store',
+    verificationType: item.verification_type === 'branch' ? 'branch' : 'store',
+    storeName: branch ? `${branch.name || 'Branch'} · ${store.store_name || store.name || 'Store'}` : (store.store_name || store.name || item.store_name || 'Unnamed store'),
     ownerName: item.owner?.full_name || [item.owner?.fname, item.owner?.lname].filter(Boolean).join(' ') || store.owner_name || item.owner_name || 'Owner not provided',
     ownerEmail: item.owner?.email || store.email || item.owner_email || 'No email provided',
-    address: [item.address || store.address, item.city || store.city, store.province].filter(Boolean).join(', ') || 'Address not provided',
+    address: [branch?.address || item.address || store.address, branch?.barangay || item.barangay, branch?.city || item.city || store.city, branch?.province || store.province].filter(Boolean).join(', ') || 'Address not provided',
     status: String(item.verification_status || 'pending').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
     submittedAt: item.submitted_at || item.created_at || null,
     documentCount: count,
@@ -176,20 +179,25 @@ const mapStore = (item: any): StoreRecord => {
 const fetchStores = async () => {
   loading.value = true
   try {
-    const [pending, approved, rejected] = await Promise.all([
+    const [pending, approved, rejected, branchPending, branchApproved, branchRejected] = await Promise.all([
       axiosClient.get('/api/pending-verification', { params: { per_page: 100 } }),
       axiosClient.get('/api/store-verifications', { params: { status: 'approved', per_page: 100 } }),
       axiosClient.get('/api/store-verifications', { params: { status: 'rejected', per_page: 100 } }),
+      axiosClient.get('/api/branch-verifications', { params: { status: 'pending', per_page: 100 } }),
+      axiosClient.get('/api/branch-verifications', { params: { status: 'approved', per_page: 100 } }),
+      axiosClient.get('/api/branch-verifications', { params: { status: 'rejected', per_page: 100 } }),
     ])
-    pendingStores.value = extractRows(pending).map(mapStore)
-    approvedStores.value = extractRows(approved).map(mapStore)
-    rejectedStores.value = extractRows(rejected).map(mapStore)
+    pendingStores.value = [...extractRows(pending), ...extractRows(branchPending)].map(mapStore)
+    approvedStores.value = [...extractRows(approved), ...extractRows(branchApproved)].map(mapStore)
+    rejectedStores.value = [...extractRows(rejected), ...extractRows(branchRejected)].map(mapStore)
   } finally {
     loading.value = false
   }
 }
 
-const openStore = (store: StoreRecord) => router.push({ name: 'admin.store-validation.show', params: { id: store.verificationId } })
+const openStore = (store: StoreRecord) => store.verificationType === 'branch'
+  ? router.push(`/admin/store-validation/branch/${store.verificationId}`)
+  : router.push({ name: 'admin.store-validation.show', params: { id: store.verificationId } })
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 const statusSeverity = (status: string) => ({ Pending: 'warn', Approved: 'success', Rejected: 'danger' }[status] || 'secondary')
 const formatDate = (value: string | null) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Not available'

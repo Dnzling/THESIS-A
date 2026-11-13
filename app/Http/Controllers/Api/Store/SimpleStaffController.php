@@ -205,9 +205,11 @@ class SimpleStaffController extends Controller
             }
 
             abort_unless(is_array($hours) && !empty($hours['days']) && !empty($hours['opens_at']) && !empty($hours['closes_at']), 422, 'Store operating hours have not been configured.');
-            abort_unless(in_array(strtolower($now->format('l')), $hours['days'], true), 422, 'The store is not scheduled to operate today.');
-            $opening = Carbon::parse($now->toDateString() . ' ' . $hours['opens_at']);
-            $closing = Carbon::parse($now->toDateString() . ' ' . $hours['closes_at']);
+            $today = strtolower($now->format('l'));
+            abort_unless(in_array($today, $hours['days'], true), 422, 'The store is not scheduled to operate today.');
+            $todayHours = $hours['schedule'][$today] ?? $hours;
+            $opening = Carbon::parse($now->toDateString() . ' ' . $todayHours['opens_at']);
+            $closing = Carbon::parse($now->toDateString() . ' ' . $todayHours['closes_at']);
             abort_unless($closing->greaterThan($opening), 422, 'Store operating hours are invalid.');
             $existing = DB::table('simple_employee_attendances')
                 ->where('employee_id', $employee->id)

@@ -7,68 +7,7 @@
       </div>
     </div>
 
-    <!-- iOS-style Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</span>
-              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                <i class="pi pi-clock text-orange-600 text-sm"></i>
-              </div>
-            </div>
-            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Approved</span>
-              <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                <i class="pi pi-check-circle text-green-600 text-sm"></i>
-              </div>
-            </div>
-            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Rejected</span>
-              <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                <i class="pi pi-times-circle text-red-600 text-sm"></i>
-              </div>
-            </div>
-            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.rejected }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium uppercase tracking-wider">Total Amount</span>
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-credit-card text-sm"></i>
-              </div>
-            </div>
-            <Skeleton v-if="loading" width="7rem" height="1.75rem" />
-            <p v-else class="text-xl font-bold">₱{{ formatNumber(stats.totalAmount) }}</p>
-          </div>
-        </template>
-      </Card>
-    </div>
+ 
 
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
       <template #header>

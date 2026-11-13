@@ -146,6 +146,14 @@ class MerchandisingService {
         const response = await axiosClient.delete(`${this.baseUrl}/promotions/${id}`)
         return response.data
     }
+    async getDiscountRequests(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/discount-requests`, { params })
+        return response.data
+    }
+    async createDiscountRequest(data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/discount-requests`, data)
+        return response.data
+    }
     async getActivityLog(params: any) {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/activity`, { params })
         return response.data

@@ -58,7 +58,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const checkingWarehouse = ref(true)
 const hasWarehouseBranch = ref(false)
-const hasWarehousePermission = computed(() => authStore.hasPermission('warehouse.dashboard.view') || authStore.hasPermission('warehouse.warehouses.view'))
+const hasWarehousePermission = ref(false)
 const canCreatePurchase = computed(() => !hasWarehousePermission.value && (authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage')))
 const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
 const isLegacyPrEdit = computed(() => route.name === 'inventory.stock-requests.edit' && Boolean(route.params.id))
@@ -81,6 +81,7 @@ onMounted(async () => {
     const payload = response?.data ?? response
     const branches = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
     hasWarehouseBranch.value = branches.some((branch: any) => String(branch.branch_type || '').toLowerCase() === 'warehouse')
+    hasWarehousePermission.value = Boolean(payload?.warehouse_enabled)
   } catch {
     hasWarehouseBranch.value = false
   } finally {

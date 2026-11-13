@@ -1,5 +1,6 @@
 <template>
   <div class="p-6 bg-gray-50 min-h-screen">
+    <ConfirmDialog />
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">Supplier Contracts</h1>
@@ -136,6 +137,7 @@
                 <p class="text-xs font-semibold mt-1" :class="getExpiryClass(data?.end_date)">
                   {{ calculateDaysRemaining(data?.end_date) }}
                 </p>
+                <p class="mt-1 text-xs text-gray-500">Created {{ formatDateTime(data?.created_at) }}</p>
               </div>
             </template>
           </Column>
@@ -175,7 +177,7 @@
                 <Button v-if="canManageSupplierContracts && data?.status === 'draft'" icon="pi pi-pencil" text rounded severity="warning" 
                   @click="editContract(data?.id)" v-tooltip="'Edit'" />
                 <Button v-if="canManageSupplierContracts && data?.status === 'draft'" icon="pi pi-trash" text rounded severity="danger" 
-                  @click="deleteContract(data?.id)" v-tooltip="'Delete'" />
+                  :loading="deletingContractId === Number(data?.id)" @click="deleteContract(data)" v-tooltip="'Delete'" />
               </div>
             </template>
           </Column>
@@ -261,11 +263,14 @@
 import { onMounted, ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const loading = ref(false)
@@ -277,6 +282,7 @@ const total = ref(0)
 const filterStatus = ref<string | null>(null)
 const filterType = ref<string | null>(null)
 const filterSupplier = ref<string>('')
+const deletingContractId = ref<number | null>(null)
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
@@ -310,6 +316,13 @@ const formatDate = (date: string | null): string => {
   if (!date) return 'N/A'
   const d = new Date(date)
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+const formatDateTime = (date: string | null): string => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleString('en-PH', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  })
 }
 
 const calculateDaysRemaining = (deadline: string | null): string => {
@@ -381,8 +394,28 @@ const editContract = (id: number) => {
   router.push({ name: 'procurement.supplier-contracts.edit', params: { id } })
 }
 
-const deleteContract = (id: number) => {
-  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Delete coming soon', life: 3000 })
+const deleteContract = (contract: any) => {
+  confirm.require({
+    header: 'Delete Draft Supplier Contract',
+    message: `Delete draft ${contract?.contract_number || 'supplier contract'}? This action cannot be undone.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptLabel: 'Delete',
+    acceptProps: { severity: 'warn' },
+    accept: async () => {
+      deletingContractId.value = Number(contract?.id)
+      try {
+        await procurementService.deleteSupplierContract(contract.id)
+        toast.add({ severity: 'success', summary: 'Deleted', detail: 'Draft supplier contract deleted.', life: 3000 })
+        await loadContracts(currentPage.value)
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete this supplier contract.', life: 3500 })
+      } finally {
+        deletingContractId.value = null
+      }
+    },
+  })
 }
 
 const downloadDocument = (filePath: string) => {

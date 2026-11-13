@@ -244,6 +244,11 @@ class ProcurementService {
     return response.data
   }
 
+  async getSupplierAvailableProducts(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/available-products`)
+    return response.data
+  }
+
   async getProductHistory(idOrParams: number | Record<string, any>, params?: any) {
     if (typeof idOrParams === 'number') {
       const response = await axiosClient.get(`${this.baseUrl}/products/${idOrParams}/history`, { params })

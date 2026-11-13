@@ -50,14 +50,14 @@
           <template #empty>
             <div class="py-8 text-center text-sm text-slate-500">{{ driverOnly ? 'No assigned trips found.' : 'No delivery trips match these filters.' }}</div>
           </template>
-          <Column field="created_at" header="Date" sortable style="min-width: 12rem"><template #body="{ data }"><span class="whitespace-nowrap text-xs text-slate-600">{{ formatDateTime(data.created_at) }}</span></template></Column>
-          <Column header="Trip Reference" style="min-width: 12rem"><template #body="{ data }"><span class="font-semibold text-slate-900">{{ tripReference(data) }}</span></template></Column>
+          <Column field="created_at" header="Date" sortable style="min-width: 8rem"><template #body="{ data }"><span class="whitespace-nowrap text-xs text-slate-600">{{ formatDateTime(data.created_at) }}</span></template></Column>
+          <Column header="Trip Reference" style="min-width: 10rem"><template #body="{ data }"><span class="font-semibold text-slate-900">{{ tripReference(data) }}</span></template></Column>
           <Column header="Driver" style="min-width: 11rem"><template #body="{ data }">{{ data.driver ? `${data.driver.fname} ${data.driver.lname}` : '-' }}</template></Column>
           <Column header="Vehicle" style="min-width: 12rem"><template #body="{ data }">{{ data.vehicle ? `${data.vehicle.vehicle_name} (${data.vehicle.plate_number})` : '-' }}</template></Column>
           <Column header="Stops" style="width: 6rem"><template #body="{ data }">{{ (data.ecommerce_deliveries_count || 0) + (data.sales_deliveries_count || 0) + (data.return_pickups_count || 0) + (data.stock_transfers_count || 0) + (data.replacement_returns_count || 0) }}</template></Column>
-          <Column field="status" header="Status" sortable style="width: 15rem"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
-          <Column field="scheduled_departure_at" header="Departure" sortable style="min-width: 10rem"><template #body="{ data }">{{ formatDateOnly(data.scheduled_departure_at) }}</template></Column>
-          <Column header="Actions" style="min-width: 10rem">
+          <Column field="status" header="Status" sortable style="min-width: 10rem"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
+          <Column field="scheduled_departure_at" header="Departure" sortable style="min-width: 8rem"><template #body="{ data }">{{ formatDateOnly(data.scheduled_departure_at) }}</template></Column>
+          <Column header="Actions" style="min-width: 5rem">
             <template #body="{ data }">
               <div class="flex items-center gap-2">
                 <Button v-if="pendingOrderId && data.status === 'planned' && canManage" label="Add Order" size="small" severity="warn" :loading="addingToTripId === data.id" @click="addPendingOrder(data.id)" />

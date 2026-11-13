@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text rounded @click="goBack" />
         <div>
-          <h1 class="text-lg font-bold text-gray-800">{{ isEditMode ? 'Edit Item' : 'Create Item' }}</h1>
+          <h1 class="text-lg font-bold text-gray-800">{{ isEditMode ? 'Edit Product' : 'Create Product' }}</h1>
         </div>
       </div>
 
@@ -156,9 +156,16 @@
                 <small v-if="errors.unit_of_measurement" class="text-red-500">{{ errors.unit_of_measurement }}</small>
               </div>
 
-              <div v-if="!isEditMode && !form.has_variants">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Available Stock</label>
-                <InputNumber v-model="form.initial_stock" :min="0" class="w-full text-sm" fluid size="small" placeholder="0"/>
+              <div v-if="showInitialStockToggle && !form.has_variants" class="md:col-span-2">
+                <div class="flex items-center gap-2">
+                  <Checkbox v-model="form.add_initial_stock" :binary="true" inputId="add_initial_stock" />
+                  <label for="add_initial_stock" class="text-sm font-medium text-gray-700">Add initial stock</label>
+                </div>
+                <div v-if="form.add_initial_stock" class="mt-3 max-w-sm">
+                  <label class="mb-1 block text-sm font-medium text-gray-700">Available Stock <span class="text-red-500">*</span></label>
+                  <InputNumber v-model="form.initial_stock" :min="1" class="w-full text-sm" fluid size="small" placeholder="1" />
+                  <small v-if="errors.initial_stock" class="text-red-500">{{ errors.initial_stock }}</small>
+                </div>
               </div>
               <div v-else-if="!isEditMode && form.has_variants" class="md:col-span-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
                 Opening stock is entered for each variant through Inventory after you add its options. This prevents parent stock from being mistaken for a sellable variant.
@@ -221,18 +228,61 @@
                 </div>
               </div>
 
-              <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Shipping details</p>
+              <p class="md:col-span-2 border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wide text-orange-700">Overall dimensions</p>
                 <div class="md:col-span-2">
-                  <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
-                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <InputNumber v-model="form.length_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Length" suffix=" cm" />
+                  <p class="mb-2 text-xs text-gray-500">Enter the overall size in Width × Depth × Height order. All fields are optional.</p>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <InputNumber v-model="form.width_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Width" suffix=" cm" />
-                    <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
                     <InputNumber v-model="form.depth_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Depth" suffix=" cm" />
+                    <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
                     <InputNumber v-model="form.weight_kg" class="w-full text-sm" fluid size="small" :min="0" placeholder="Weight" suffix=" kg" />
                   </div>
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
                 </div>
+
+              <div class="md:col-span-2 rounded-xl border border-slate-200">
+                <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  :aria-expanded="additionalMeasurementsExpanded" @click="additionalMeasurementsExpanded = !additionalMeasurementsExpanded">
+                  <span>
+                    <span class="block text-sm font-semibold text-slate-800">Additional Measurements</span>
+                    <span class="mt-0.5 block text-xs text-slate-500">Optional furniture dimensions and custom measurements</span>
+                  </span>
+                  <i class="pi text-slate-500" :class="additionalMeasurementsExpanded ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+                </button>
+                <div v-if="additionalMeasurementsExpanded" class="space-y-4 border-t border-slate-200 p-4">
+                  <div class="max-w-md">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">Furniture template</label>
+                    <Select v-model="selectedMeasurementTemplate" :options="measurementTemplateOptions" optionLabel="label" optionValue="value"
+                      class="w-full text-sm" placeholder="Choose a furniture type" showClear size="small"
+                      @change="addTemplateMeasurements" />
+                    <small class="mt-1 block text-xs text-slate-500">Templates suggest relevant fields; fill in only the measurements you know.</small>
+                  </div>
+
+                  <div v-if="form.additional_measurements.length" class="space-y-3">
+                    <div v-for="(measurement, index) in form.additional_measurements" :key="measurement.id"
+                      class="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.7fr)_120px_auto] sm:items-end">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Measurement name</label>
+                        <InputText v-model="measurement.label" class="w-full" size="small" placeholder="e.g. Seat Height" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Value</label>
+                        <InputNumber v-model="measurement.value" class="w-full" fluid size="small" :min="0.01" :maxFractionDigits="2" placeholder="Enter value" />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-600">Unit</label>
+                        <Select v-model="measurement.unit" :options="measurementUnitOptions" optionLabel="label" optionValue="value" class="w-full" size="small" />
+                      </div>
+                      <Button type="button" icon="pi pi-trash" severity="danger" text rounded aria-label="Remove measurement"
+                        @click="removeAdditionalMeasurement(index)" />
+                    </div>
+                  </div>
+                  <div class="flex justify-start">
+                    <Button type="button" label="Add custom measurement" icon="pi pi-plus" severity="secondary" outlined size="small"
+                      @click="addCustomMeasurement" />
+                  </div>
+                </div>
+              </div>
 
               <!-- Temporarily hidden while bulky delivery handling is being revised.
               <div v-if="showFinishedGoodFields" class="md:col-span-2">
@@ -261,7 +311,7 @@
       <p class="text-sm text-gray-600">{{ isEditMode ? 'Your changes were saved successfully.' : createdHasVariants ? 'Product created. Add its first sellable variant next.' : 'The item was created successfully.' }}</p>
       <template #footer>
         <Button v-if="!isEditMode && createdHasVariants && createdProductId" label="Add First Variant" severity="warn" size="small" @click="router.push({ name: 'inventory.product-variations.create', query: { product_id: createdProductId } })" />
-        <Button label="View Products" severity="warn" size="small" @click="router.push({ name: 'inventory.products.index' })" />
+        <Button label="View Products" severity="warn" size="small" @click="router.push({ name: productIndexRoute })" />
       </template>
     </Dialog>
 
@@ -291,18 +341,24 @@ const successVisible = ref(false)
 const createdProductId = ref<number | null>(null)
 const createdHasVariants = ref(false)
 const errors = ref<Record<string, string>>({})
+const branchCount = ref(0)
 const submitError = ref('')
 const isEditMode = computed(() => Boolean(route.params.id))
+const showInitialStockToggle = computed(() => !isEditMode.value && branchCount.value === 1)
+const productIndexRoute = computed(() => String(route.name || '').startsWith('merchandising.products') ? 'merchandising.products' : 'inventory.products.index')
 const imageInput = ref<HTMLInputElement | null>(null)
 const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
 const removePhotoPopover = ref<any>(null)
-const productTypeOptions = [
+const allProductTypeOptions = [
   { label: 'Product', value: 'finished_good' },
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' },
 ]
+const productTypeOptions = computed(() => isEditMode.value
+  ? allProductTypeOptions
+  : allProductTypeOptions.filter(option => option.value !== 'finished_good'))
 const variantModeOptions = [
   { label: 'One SKU (no options)', value: false },
   { label: 'Multiple variants (options have separate SKUs)', value: true },
@@ -330,7 +386,7 @@ const unitMeasureOptions = [
 
 const form = reactive({
   product_name: '',
-  product_type: 'finished_good',
+  product_type: 'supply',
   has_variants: false,
   custom_product_type: '',
   brand: '',
@@ -345,13 +401,62 @@ const form = reactive({
   height_cm: null as number | null,
   depth_cm: null as number | null,
   weight_kg: null as number | null,
+  additional_measurements: [] as AdditionalMeasurement[],
   is_bulky: null as boolean | null,
   unit_of_measurement: '',
   initial_stock: null as number | null,
+  add_initial_stock: false,
   reorder_point: 10 as number | null,
   is_active: true,
 })
 const bulkyOptions = [{ label: 'Auto-detect', value: null }, { label: 'Bulky — special handling', value: true }, { label: 'Not bulky', value: false }]
+
+type AdditionalMeasurement = { id: string; label: string; value: number | null; unit: string }
+const additionalMeasurementsExpanded = ref(false)
+const selectedMeasurementTemplate = ref<string | null>(null)
+const measurementUnitOptions = [
+  { label: 'Centimeters (cm)', value: 'cm' }, { label: 'Millimeters (mm)', value: 'mm' },
+  { label: 'Meters (m)', value: 'm' }, { label: 'Inches (in)', value: 'in' },
+  { label: 'Feet (ft)', value: 'ft' }, { label: 'Kilograms (kg)', value: 'kg' },
+  { label: 'Grams (g)', value: 'g' }, { label: 'Pounds (lb)', value: 'lb' },
+]
+const measurementTemplates: Record<string, string[]> = {
+  'Sofa/Couch': ['Seat Height', 'Seat Depth', 'Seat Width', 'Arm Height', 'Back Height'],
+  'Dining Chair': ['Seat Height', 'Seat Depth', 'Seat Width', 'Back Height'],
+  'Bar Stool': ['Seat Height', 'Footrest Height', 'Seat Diameter'],
+  'Dining Table': ['Tabletop Thickness', 'Apron Clearance'],
+  'Coffee Table': ['Tabletop Thickness', 'Shelf Height'],
+  'Bed Frame': ['Mattress Width', 'Mattress Length', 'Headboard Height', 'Footboard Height', 'Under-bed Clearance'],
+  'Wardrobe': ['Hanging Height', 'Shelf Spacing', 'Drawer Height'],
+  'Dresser': ['Drawer Interior Height', 'Drawer Interior Width', 'Drawer Depth'],
+  'Cabinet': ['Shelf Spacing', 'Internal Width', 'Internal Depth'],
+  'Bookshelf': ['Shelf Spacing', 'Shelf Depth'],
+  'Office Desk': ['Work Surface Thickness', 'Knee Clearance'],
+  'TV Stand': ['Shelf Spacing', 'Internal Shelf Height'],
+  'Recliner': ['Seat Height', 'Seat Depth', 'Arm Height', 'Reclined Depth'],
+  'Ottoman': ['Seat Height'],
+  'Round Table': ['Diameter', 'Tabletop Thickness', 'Base Diameter'],
+  'L-Shaped Sofa': ['Seat Height', 'Seat Depth', 'Left Section Width', 'Right Section Width', 'Arm Height'],
+  'Bunk Bed': ['Mattress Width', 'Mattress Length', 'Clearance Between Bunks', 'Guardrail Height', 'Under-bed Clearance'],
+}
+const measurementTemplateOptions = Object.keys(measurementTemplates).map(value => ({ label: value, value }))
+const newMeasurement = (label = ''): AdditionalMeasurement => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  label,
+  value: null,
+  unit: 'cm',
+})
+const addTemplateMeasurements = () => {
+  const template = selectedMeasurementTemplate.value
+  if (!template) return
+  const existingLabels = new Set(form.additional_measurements.map(item => item.label.trim().toLowerCase()))
+  const suggestions = measurementTemplates[template] || []
+  form.additional_measurements.push(...suggestions
+    .filter(label => !existingLabels.has(label.toLowerCase()))
+    .map(newMeasurement))
+}
+const addCustomMeasurement = () => form.additional_measurements.push(newMeasurement())
+const removeAdditionalMeasurement = (index: number) => form.additional_measurements.splice(index, 1)
 
 type ProductCategory = {
   id: number
@@ -491,6 +596,14 @@ const loadProduct = async (id: number) => {
     form.height_cm = product.height_cm != null ? Number(product.height_cm) : null
     form.depth_cm = product.depth_cm != null ? Number(product.depth_cm) : null
     form.weight_kg = product.weight_kg != null ? Number(product.weight_kg) : null
+    form.additional_measurements = Array.isArray(product.additional_measurements)
+      ? product.additional_measurements.map((measurement: any, index: number) => ({
+        id: `saved-${measurement.id ?? index}`,
+        label: String(measurement.label || ''),
+        value: measurement.value == null ? null : Number(measurement.value),
+        unit: measurement.unit || 'cm',
+      }))
+      : []
     form.is_bulky = product.is_bulky == null ? null : Boolean(product.is_bulky)
     form.unit_of_measurement = product.unit_of_measurement || ''
     form.reorder_point = product.inventory?.[0]?.reorder_point ?? 10
@@ -566,6 +679,10 @@ const validate = () => {
       : 'Category is required for a finished good'
   }
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
+  if (showInitialStockToggle.value && form.add_initial_stock && !form.has_variants
+    && (form.initial_stock == null || !Number.isFinite(Number(form.initial_stock)) || Number(form.initial_stock) < 1)) {
+    errors.value.initial_stock = 'Available stock must be at least 1.'
+  }
   form.supplier_links.forEach((link, index) => {
     if (link.supplier_price == null || !Number.isFinite(Number(link.supplier_price)) || Number(link.supplier_price) < 0) {
       errors.value[`supplier_links.${index}.supplier_price`] = "Enter this supplier's unit price."
@@ -603,10 +720,17 @@ const handleSubmit = async () => {
     payload.append('height_cm', form.height_cm == null ? '' : String(form.height_cm))
     payload.append('depth_cm', form.depth_cm == null ? '' : String(form.depth_cm))
     payload.append('weight_kg', form.weight_kg == null ? '' : String(form.weight_kg))
+    const additionalMeasurements = form.additional_measurements
+      .filter(measurement => measurement.label.trim() && measurement.value != null && Number(measurement.value) > 0)
+      .map(({ label, value, unit }) => ({ label: label.trim(), value, unit }))
+    payload.append('additional_measurements', JSON.stringify(additionalMeasurements))
     payload.append('supplier_links', JSON.stringify(form.supplier_links))
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
-    if (!isEditMode.value && !form.has_variants && form.initial_stock != null) {
+    if (showInitialStockToggle.value && form.add_initial_stock && !form.has_variants && form.initial_stock != null) {
+      payload.append('add_initial_stock', '1')
       payload.append('initial_stock', String(form.initial_stock))
+    } else if (!isEditMode.value) {
+      payload.append('add_initial_stock', '0')
     }
     if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
     payload.append('is_active', form.is_active ? '1' : '0')
@@ -657,12 +781,33 @@ const handleSubmit = async () => {
   }
 }
 
-const goBack = () => router.push({ name: 'inventory.items' })
+const goBack = () => router.push({ name: isEditMode.value ? 'inventory.products.index' : productIndexRoute.value })
 
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadSuppliers()])
+  const requestedType = String(route.query.type || '')
+  if (['supply', 'raw_material', 'others'].includes(requestedType)) {
+    form.product_type = requestedType
+  } else if (route.name === 'merchandising.products.supplies.create') {
+    form.product_type = 'supply'
+  } else if (route.name === 'merchandising.products.materials.create' || route.name === 'merchandising.products.raw.create') {
+    form.product_type = 'raw_material'
+  } else if (!isEditMode.value) {
+    form.product_type = 'supply'
+  }
+  await Promise.all([loadCategories(), loadSuppliers(), loadBranchCount()])
   if (isEditMode.value) {
     await loadProduct(Number(route.params.id))
   }
 })
+
+const loadBranchCount = async () => {
+  if (isEditMode.value) return
+  try {
+    const response = await inventoryService.getBranches()
+    const branches = response?.data?.data ?? response?.data ?? []
+    branchCount.value = Array.isArray(branches) ? branches.length : 0
+  } catch {
+    branchCount.value = 0
+  }
+}
 </script>

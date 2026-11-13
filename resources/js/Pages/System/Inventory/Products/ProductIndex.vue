@@ -6,24 +6,10 @@
         <h1 class="text-lg font-bold text-gray-900">Product Catalog</h1>
         <p class="text-xs text-gray-500">Manage product details, categories, suppliers, and purchasing costs.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <Button v-if="canManageProducts" label="Import File" icon="pi pi-upload" severity="secondary" rounded outlined
-          size="small" @click="router.push({ name: 'inventory.products.import' })" />
-        <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" rounded @click="router.push({name: 'inventory.products.create'})"/>
-        <Button v-if="canManageProducts" icon="pi pi-ellipsis-h" outlined rounded contrast size="small" aria-label="Product actions"
-          @click="productCreateMenu?.toggle($event)" />
-        <Menu ref="productCreateMenu" :model="productCreateItems" popup />
-      </div>
+      <SplitButton v-if="canCreateInventoryItems" label="Add Branch Item" icon="pi pi-plus" size="small"
+        :model="createItemOptions" @click="createInventoryItem('supply')" />
     </div>
 
-    <div v-if="!loading && totalRecords === 0 && !hasActiveFilters" class="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex items-start gap-3 text-amber-900">
-        <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span>
-        <div><p class="text-sm font-semibold">Add your first product</p><p class="mt-1 text-xs">Your inventory catalog is empty. Create a product to start tracking stock and sales.</p></div>
-      </div>
-      <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" class="shrink-0" @click="router.push({ name: 'inventory.products.create' })" />
-    </div>
-  
     <Card class="border border-gray-200 shadow-sm">
       <template #content>
         <!-- Filters -->
@@ -234,10 +220,14 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
+import SplitButton from 'primevue/splitbutton'
 import { useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const canCreateInventoryItems = computed(() => authStore.hasAnyPermission([
+  'inventory.products.manage', 'merchandising.products.manage',
+]))
 const toast = useToast()
 
 // State
@@ -250,17 +240,6 @@ const deleteDialogVisible = ref(false)
 const deleting = ref(false)
 const currentProduct = ref<any>(null)
 const showBranchOnly = ref(false)
-const productCreateMenu = ref<any>(null)
-const canManageProducts = computed(() =>
-  authStore.hasPermission('inventory.products.manage')
-)
-const productCreateItems = computed(() => [
-  { label: 'Categories', icon: 'pi pi-folder', command: () => router.push({ name: 'inventory.product-categories' }) },
-  // { label: 'Create Category', icon: 'pi pi-folder-plus', command: () => router.push({ name: 'inventory.product-categories.create' }) },
-  { label: 'Variations', icon: 'pi pi-list', command: () => router.push({ name: 'inventory.product-variations' }) },
-  // { label: 'Create Variation', icon: 'pi pi-sitemap', command: () => router.push({ name: 'inventory.product-variations.create' }) },
-])
-
 const filters = reactive({
   search: '',
   category_id: null,
@@ -295,6 +274,16 @@ const hasActiveFilters = computed(() => {
 })
 
 // Methods
+const createInventoryItem = (type: 'supply' | 'raw_material' | 'others') => {
+  router.push({ name: 'inventory.products.create', query: { type } })
+}
+
+const createItemOptions = [
+  { label: 'Supplies', icon: 'pi pi-box', command: () => createInventoryItem('supply') },
+  { label: 'Raw Materials', icon: 'pi pi-wrench', command: () => createInventoryItem('raw_material') },
+  { label: 'Others', icon: 'pi pi-ellipsis-h', command: () => createInventoryItem('others') },
+]
+
 const loadProducts = async () => {
   loading.value = true
   try {

@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Models\ProductCatalog\ProductAsset;
 
 class SupplierController extends Controller
 {
@@ -218,7 +219,7 @@ class SupplierController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $supplier = Supplier::with([
+        $supplier = Supplier::where('store_id', Auth::user()->store_id)->with([
             'store:id,name,store_code,city,province,address',
             'contracts.rejectedBy:id,fname,lname',
             'products',
@@ -755,6 +756,65 @@ class SupplierController extends Controller
         return response()->json([
             'success' => true,
             'data' => $products,
+        ]);
+    }
+
+    public function availableProducts(int $id, Request $request): JsonResponse
+    {
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+        $productModels = $supplier->products()
+            ->with('category:id,category_name')
+            ->select(
+                'products.id', 'products.product_name', 'products.sku',
+                'products.category_id', 'products.product_type', 'products.unit_of_measurement', 'products.is_active'
+            )
+            ->get();
+
+        $assets = ProductAsset::query()
+            ->whereIn('product_id', $productModels->pluck('id'))
+            ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
+            ->orderByDesc('is_primary')
+            ->orderBy('display_order')
+            ->get()
+            ->unique('product_id')
+            ->keyBy('product_id');
+
+        $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
+        $products = $productModels->map(function ($product) use ($assets, $taxRate, $supplier) {
+            $baseCost = round((float) $product->pivot->supplier_price, 2);
+            $taxAmount = round($baseCost * ($taxRate / 100), 2);
+
+            return [
+                'id' => (int) $product->id,
+                'product_name' => $product->product_name,
+                'sku' => $product->sku,
+                'supplier_sku' => $product->pivot->supplier_sku,
+                'category_name' => $product->category?->category_name,
+                'product_type' => $product->product_type,
+                'unit_of_measurement' => $product->unit_of_measurement,
+                'available_stock' => (int) ($product->pivot->available_stock ?? 0),
+                'minimum_order_quantity' => (int) ($product->pivot->minimum_order_quantity ?? 1),
+                'lead_time_days' => (int) ($product->pivot->lead_time_days ?? 7),
+                'base_cost' => $baseCost,
+                'tax_rate' => round($taxRate, 2),
+                'tax_amount' => $taxAmount,
+                'cost_including_tax' => round($baseCost + $taxAmount, 2),
+                'is_tax_exempt' => (bool) $supplier->is_tax_exempt,
+                'is_active' => (bool) $product->is_active,
+                'image_url' => $assets->get($product->id)?->thumbnail_url,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'supplier' => [
+                    'id' => (int) $supplier->id,
+                    'supplier_name' => $supplier->supplier_name,
+                    'contract_status' => $supplier->hasActiveContract() ? 'active' : 'inactive',
+                ],
+                'products' => $products,
+            ],
         ]);
     }
 

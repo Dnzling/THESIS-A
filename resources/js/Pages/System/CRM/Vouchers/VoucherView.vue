@@ -11,7 +11,7 @@
           </div>
           <div class="flex items-center gap-2">
             <Button icon="pi pi-pencil" label="Edit" severity="warn" size="small" @click="openEdit" />
-            <Button icon="pi pi-arrow-left" aria-label="Back to vouchers" v-tooltip.bottom="'Back to vouchers'" rounded outlined severity="secondary" @click="router.visit('/merchandising/vouchers')" />
+
           </div>
         </div>
       </template>
@@ -28,6 +28,8 @@
           <div><p class="text-xs text-slate-500">Maximum Discount</p><p class="mt-1 font-semibold text-slate-900">{{ voucher.max_discount_amount ? money(voucher.max_discount_amount) : 'No limit' }}</p></div>
           <div><p class="text-xs text-slate-500">Valid From</p><p class="mt-1 font-semibold text-slate-900">{{ dt(voucher.starts_at) }}</p></div>
           <div><p class="text-xs text-slate-500">Valid Until</p><p class="mt-1 font-semibold text-slate-900">{{ dt(voucher.ends_at) }}</p></div>
+          <div><p class="text-xs text-slate-500">Created By</p><p class="mt-1 font-semibold text-slate-900">{{ voucher.created_by_name || 'Not recorded' }}</p></div>
+          <div><p class="text-xs text-slate-500">Created At</p><p class="mt-1 font-semibold text-slate-900">{{ dateTime(voucher.created_at) }}</p></div>
           <div><p class="text-xs text-slate-500">Usage Limit</p><p class="mt-1 font-semibold text-slate-900">{{ Number(voucher.voucher_slots || 0) > 0 ? Number(voucher.voucher_slots) : 'Unlimited' }}</p></div>
         </div>
       </template>
@@ -263,6 +265,7 @@ const saveEdit = async () => {
 const money = (v: number | string | null | undefined) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 const dt = (v: string | null | undefined) => (v ? new Date(v).toLocaleString('en-PH') : '-')
+const dateTime = (v: string | null | undefined) => (v ? new Date(v).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '-')
 const isExpired = (row: any) => !!row?.ends_at && new Date(row.ends_at).getTime() < Date.now()
 const statusLabel = (row: any) => (isExpired(row) ? 'Expired' : row?.is_active ? 'Active' : 'Draft')
 const statusSeverity = (row: any) => (isExpired(row) ? 'danger' : row?.is_active ? 'success' : 'warn')

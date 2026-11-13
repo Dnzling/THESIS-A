@@ -35,15 +35,15 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
     $inertia('/store/team', 'System/Store/Team', 'store.team', 'Branch Team');
     Route::get('/store/expenses', function (\App\Services\Core\PermissionService $permissions) use ($render) {
-        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.view'), 403);
+        abort_unless($permissions->userHasPermission(request()->user(), 'admin.maintenance.manage'), 403);
         return $render('System/Store/Expenses/Index', ['title' => 'Maintenance & Expenses']);
     })->name('store.expenses');
     Route::get('/store/expenses/create', function (\App\Services\Core\PermissionService $permissions) use ($render) {
-        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.manage'), 403);
+        abort_unless($permissions->userHasPermission(request()->user(), 'admin.maintenance.manage'), 403);
         return $render('System/Store/Expenses/Create', ['title' => 'Create Expense Request']);
     })->name('store.expenses.create');
     Route::get('/store/expenses/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) use ($render) {
-        abort_unless($permissions->userHasPermission(request()->user(), 'store.expenses.view'), 403);
+        abort_unless($permissions->userHasPermission(request()->user(), 'admin.maintenance.manage'), 403);
         return $render('System/Store/Expenses/Detail', ['title' => 'Expense Request Details']);
     })->whereNumber('id')->name('store.expenses.detail');
     Route::get('/store/team/employees/{id}', function (int $id, \App\Services\Core\PermissionService $permissions) {
@@ -105,6 +105,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Verification');
         $inertia('/admin/store-validation/{id}', 'System/Admin/StoreVerificationShow', 'admin.store-validation.show', 'Store Verification Details');
+        $inertia('/admin/store-validation/branch/{id}', 'System/Admin/StoreVerificationShow', 'admin.branch-validation.show', 'Branch Verification Details');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
         $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
         $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
@@ -303,6 +304,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/procurement/suppliers/create', 'System/Procurement/Suppliers/SupplierCreate', 'procurement.suppliers.create', 'Create Supplier');
     $inertia('/procurement/suppliers/verified/{portalId}', 'System/Procurement/Suppliers/VerifiedSupplierShow', 'procurement.suppliers.verified.show', 'Verified Supplier');
     $inertia('/procurement/suppliers/{id}', 'System/Procurement/Suppliers/SupplierDetail', 'procurement.suppliers.detail', 'Supplier Details');
+    $inertia('/procurement/suppliers/{id}/products', 'System/Procurement/Suppliers/SupplierProducts', 'procurement.suppliers.products', 'Supplier Products');
     $inertia('/procurement/suppliers/{id}/edit', 'System/Procurement/Suppliers/SupplierEdit', 'procurement.suppliers.edit', 'Edit Supplier');
     $inertia('/procurement/supplier-contracts', 'System/Procurement/SupplierContracts/SupplierContractIndex', 'procurement.supplier-contracts.index', 'Supplier Contracts');
     $inertia('/procurement/supplier-contracts/create', 'System/Procurement/SupplierContracts/SupplierContractCreate', 'procurement.supplier-contracts.create', 'Create Contract');
@@ -454,8 +456,11 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
     $inertia('/merchandising/products', 'System/Merchandising/products/ProductIndex', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
-    Route::redirect('/merchandising/products/new', '/inventory/products/create')->name('merchandising.products.create');
-    Route::redirect('/merchandising/products/raw/new', '/merchandising/products/new')->name('merchandising.products.raw.create');
+    $inertia('/merchandising/products/archived', 'System/Merchandising/products/ArchivedProducts', 'merchandising.products.archived', 'Archived Products', 'Review and restore archived products');
+    $inertia('/merchandising/products/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.create', 'Add Product', 'Create a catalog product');
+    $inertia('/merchandising/products/supplies/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.supplies.create', 'Add Supply', 'Create a supplier supply product');
+    $inertia('/merchandising/products/materials/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.materials.create', 'Add Material', 'Create a raw material product');
+    $inertia('/merchandising/products/raw/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.raw.create', 'Add Raw Material', 'Create a catalog product');
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
     $inertia('/merchandising/variations', 'System/Merchandising/variations/VariationsList', 'merchandising.variations', 'Product Variations', 'Manage colors, sizes, and materials');
@@ -475,6 +480,16 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/attributes/new', 'System/Merchandising/attributes/AttributeForm', 'merchandising.attributes.create', 'Add Attribute', 'Create a new product attribute');
     $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Collections', 'Manage product tags and collections');
     $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Promotions & Discounts', 'Create store promotions for products and categories');
+    Route::get('/merchandising/discount-requests', function (\App\Services\Core\PermissionService $permissions) use ($render) {
+        $user = request()->user();
+        $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
+        abort_unless($permissions->userHasPermission($user, 'merchandising.pricing.view', $storeId ? (int) $storeId : null), 403);
+
+        return $render('System/Merchandising/pricing/DiscountRequests', [
+            'title' => 'Discount Requests',
+            'subtitle' => 'Review discount proposals submitted from inventory reports',
+        ]);
+    })->name('merchandising.discount-requests');
     Route::get('/merchandising/vouchers', function (\App\Services\Core\PermissionService $permissions) use ($render) {
         $user = request()->user();
         $storeId = $user->store_id ?: \App\Models\Hr\Employee::query()->where('user_id', $user->id)->value('store_id');
@@ -521,6 +536,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/supplier-portal/pos/{id}/view', 'System/Supplier/SupplierPODetail', 'supplier.pos.view', 'Purchase Order Details');
     $inertia('/supplier-portal/pos/{id}/invoice-view', 'System/Supplier/SupplierInvoiceDetail', 'supplier.pos.invoice-view', 'Invoice Details');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
+    $inertia('/supplier-portal/products', 'System/Supplier/SupplierProductListings', 'supplier.products', 'Product Listings');
+    $inertia('/supplier-portal/products/create', 'System/Supplier/SupplierProductCreate', 'supplier.products.create', 'Create Product');
+    $inertia('/supplier-portal/products/{id}', 'System/Supplier/SupplierProductDetail', 'supplier.products.detail', 'Product Details');
     $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
     $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details'); 
     $inertia('/supplier-portal/contracts/create', 'System/Supplier/SupplierContractCreate', 'supplier.contracts.create', 'Create Contract');

@@ -59,6 +59,11 @@
               <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Trip created</p>
               <p class="mt-2 text-slate-900">{{ formatDateTime(trip.created_at) }}</p>
             </div>
+            <div v-if="trip.dispatched_at || trip.dispatched_by">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Dispatched by</p>
+              <p class="mt-2 text-slate-900">{{ [trip.dispatched_by?.fname, trip.dispatched_by?.lname].filter(Boolean).join(' ') || 'Unknown user' }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ formatDateTime(trip.dispatched_at) }}</p>
+            </div>
             <div class="sm:col-span-2 lg:col-span-1">
               <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
               <p class="mt-2 whitespace-pre-line text-slate-700">{{ trip.notes || 'No notes added.' }}</p>
@@ -132,7 +137,8 @@
               <span v-if="row.delivery_date">Delivery: {{ formatDateOnly(row.delivery_date) }}</span>
               <span>Weight: {{ Number(row.weight_kg || 0).toFixed(2) }} kg</span>
             </div>
-            <div class="mt-4 flex flex-wrap gap-2"><Button label="View" icon="pi pi-eye" size="small" outlined @click="openAssignedOrderDetail(row)" /><Button v-if="canManage && trip?.status === 'planned'" label="Remove" icon="pi pi-times" size="small" severity="danger" outlined @click="removeOrder(row)" /></div>
+            <p v-if="row.is_replacement_pair" class="mt-2 text-xs font-medium text-orange-700">Paired with the replacement for one customer exchange.</p>
+            <div class="mt-4 flex flex-wrap gap-2"><Button label="View" icon="pi pi-eye" size="small" outlined @click="openAssignedOrderDetail(row)" /><Button v-if="canManage && trip?.status === 'planned' && !row.is_replacement_pair" label="Remove" icon="pi pi-times" size="small" severity="danger" outlined @click="removeOrder(row)" /></div>
           </article>
         </div>
         <DataTable v-if="assignedOrders.length" :value="assignedOrders" dataKey="id" rowHover class="hidden lg:block">
@@ -145,6 +151,9 @@
           <Column header="Weight" style="width: 7rem">
             <template #body="{ data }"><span class="whitespace-nowrap text-slate-600">{{ Number(data.weight_kg || 0).toFixed(2) }} kg</span></template>
           </Column>
+          <Column header="Route km" style="width: 7rem">
+            <template #body="{ data }"><span class="whitespace-nowrap text-slate-600">{{ data.distance_km === undefined ? '—' : `${Number(data.distance_km).toFixed(2)} km` }}</span></template>
+          </Column>
           <Column header="Status" style="width: 9rem">
             <template #body="{ data }">
               <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
@@ -152,7 +161,7 @@
           </Column>
           <Column header="Actions" style="width: 9rem">
             <template #body="{ data }">
-              <div class="flex items-center gap-1"><Button icon="pi pi-eye" text rounded aria-label="View stop" @click="openAssignedOrderDetail(data)" /><Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-times" text rounded severity="danger" aria-label="Remove stop" @click="removeOrder(data)" /></div>
+              <div class="flex items-center gap-1"><Button icon="pi pi-eye" text rounded aria-label="View stop" @click="openAssignedOrderDetail(data)" /><Button v-if="canManage && trip?.status === 'planned' && !data.is_replacement_pair" icon="pi pi-times" text rounded severity="danger" aria-label="Remove stop" @click="removeOrder(data)" /></div>
             </template>
           </Column>
         </DataTable>
@@ -178,9 +187,9 @@
           <strong>{{ capacityRemaining.toFixed(2) }}</strong> kg
           <span v-if="willExceedCapacity" class="ml-2 font-semibold text-rose-600">Over capacity</span>
         </div>
-        <div v-if="selectedOrders.length && suggestedArea" class="mb-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-800">
-          Suggested batch: {{ selectedOrders.length }} order{{ selectedOrders.length === 1 ? '' : 's' }} for <strong>{{ suggestedArea }}</strong>,
-          selected by delivery area, distance, vehicle weight, and stop limit. Review, then click <strong>Add to Trip</strong>.
+        <p class="mb-3 text-xs text-slate-500">Route km starts with a map-pin estimate and can be adjusted manually. Saved route km are for trip planning and do not change customer shipping fees.</p>
+        <div v-if="selectedOrders.length" class="mb-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+          Suggested route: {{ selectedOrders.length }} stop{{ selectedOrders.length === 1 ? '' : 's' }} ordered from the nearest starting point, then by the nearest next stop. Adjust route distance as needed, then click <strong>Add to Trip</strong>.
         </div>
   
         <DataTable :value="availableOrders" dataKey="id" stripedRows selectionMode="multiple" :loading="loadingAvailable" class="text-sm"
@@ -211,9 +220,9 @@
               <Tag :value="formatStatusLabel(data.order_status)" severity="info" />
             </template>
           </Column>
-          <Column header="Distance (km)" style="width: 8rem">
+          <Column header="Route distance (km)" style="width: 11rem">
             <template #body="{ data }">
-              <span class="text-xs text-slate-500">{{ Number(data.distance_km || 0).toFixed(2) }}</span>
+              <InputNumber v-model="data.distance_km" size="small" :min="0" :maxFractionDigits="2" suffix=" km" inputClass="!w-24" />
             </template>
           </Column>
           <Column header="Weight (kg)" style="width: 7rem">
@@ -302,6 +311,7 @@ import MultiSelect from 'primevue/multiselect'
 import DatePicker from 'primevue/datepicker'
 import Badge from 'primevue/badge'
 import Textarea from 'primevue/textarea'
+import InputNumber from 'primevue/inputnumber'
 import Tag from 'primevue/tag'
 import Dialog from 'primevue/dialog'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -344,7 +354,6 @@ const tripReference = computed(() => trip.value ? `TRIP-${new Date(trip.value.cr
 const availableOrders = ref<any[]>([])
 const loadingAvailable = ref(false)
 const loadingSuggestion = ref(false)
-const suggestedArea = ref('')
 const selectedOrders = ref<any[]>([])
 const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement' | 'pickup'>('ecommerce')
 const availablePage = ref(1)
@@ -379,6 +388,7 @@ const assignedOrders = computed(() => {
     delivery_date: d.estimated_delivery_at || d.order?.requested_fulfillment_date,
     requested_fulfillment_date: d.order?.requested_fulfillment_date,
     status: d.status,
+    distance_km: trip.value.route_distances?.[`ecommerce:${d.order_id}`],
     weight_kg: calcWeight(d.order?.items || []),
     order_id: d.order?.id,
     is_return: false,
@@ -391,6 +401,7 @@ const assignedOrders = computed(() => {
     address: d.order?.delivery_address,
     delivery_date: d.scheduled_delivery_at,
     status: d.status,
+    distance_km: trip.value.route_distances?.[`sales:${d.sales_order_id}`],
     weight_kg: calcWeight(d.order?.items || []),
     order_id: d.order?.id,
     is_return: false,
@@ -403,9 +414,12 @@ const assignedOrders = computed(() => {
     address: p.pickup_address,
     delivery_date: p.scheduled_at,
     status: p.status,
+    distance_km: trip.value.route_distances?.[`return_pickup:${p.id}`],
     weight_kg: calcReturnWeight(p.return_request),
     order_id: p.id,
     is_return: true,
+    is_replacement_pair: p.return_request?.return_type === 'replacement'
+      && Number(p.return_request?.replacement_trip_id) === Number(trip.value.id),
   }))
   const transfers = (trip.value.stock_transfers || []).map((transfer: any) => ({
     id: `t-${transfer.id}`,
@@ -415,6 +429,7 @@ const assignedOrders = computed(() => {
     address: [transfer.to_branch?.address, transfer.to_branch?.city, transfer.to_branch?.province].filter(Boolean).join(', '),
     delivery_date: transfer.expected_delivery_date,
     status: transfer.delivery_status || 'assigned',
+    distance_km: trip.value.route_distances?.[`stock_transfer:${transfer.id}`],
     weight_kg: (transfer.items || []).reduce((total: number, item: any) => total + unitWeight(item) * Number(item.shipped_quantity ?? item.approved_quantity ?? item.requested_quantity ?? 0), 0),
     order_id: transfer.id,
     is_return: false,
@@ -429,6 +444,7 @@ const assignedOrders = computed(() => {
       address: replacement.source_type === 'pos' ? order?.delivery_address : order?.shipping_address,
       delivery_date: trip.value.scheduled_departure_at,
       status: replacement.replacement_status,
+      distance_km: trip.value.route_distances?.[`replacement:${replacement.id}`],
       weight_kg: calcReturnWeight(replacement),
       order_id: replacement.id,
       is_return: false,
@@ -445,6 +461,7 @@ const assignedOrders = computed(() => {
       address: [order?.branch?.address, order?.branch?.city, order?.branch?.province].filter(Boolean).join(', '),
       delivery_date: shipment.expected_delivery_date || trip.value.scheduled_departure_at,
       status: shipment.status || 'pending',
+      distance_km: trip.value.route_distances?.[`pickup:${order?.id}`],
       weight_kg: items.reduce((total: number, item: any) => total + Number(item.product?.weight_kg || 0) * Number(item.quantity_ordered || 0), 0),
       order_id: order?.id,
       is_return: false,
@@ -507,7 +524,6 @@ const suggestBatch = async () => {
   try {
     const res = await logisticsService.getTripSuggestions(trip.value.id, availableSource.value)
     const rows = res?.data?.orders || []
-    suggestedArea.value = res?.data?.area || ''
     availableOrders.value = rows
     availableTotal.value = rows.length
     availablePage.value = 1
@@ -515,7 +531,7 @@ const suggestBatch = async () => {
     toast.add({
       severity: rows.length ? 'info' : 'warn',
       summary: rows.length ? 'Batch Suggested' : 'No Eligible Batch',
-      detail: rows.length ? `${rows.length} order(s) selected for ${suggestedArea.value}.` : 'No ready orders fit the same delivery area and vehicle limits.',
+      detail: rows.length ? `${rows.length} order(s) ordered by nearest next stop.` : 'No ready orders fit the vehicle limits.',
       life: 3500,
     })
   } catch (error: any) {
@@ -697,6 +713,7 @@ const submitSelectedOrders = async () => {
     const res = await logisticsService.addOrdersToTrip(trip.value.id, {
       source_type: availableSource.value,
       order_ids: selectedOrderIds.value,
+      route_distances: Object.fromEntries(selectedOrders.value.map((row: any) => [`${availableSource.value}:${row.order_id}`, Number(row.distance_km || 0)])),
     })
     const added = Number(res?.data?.added || 0)
     const overCapacity = Number(res?.data?.over_capacity || 0)

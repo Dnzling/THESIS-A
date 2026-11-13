@@ -20,8 +20,18 @@ class ForecastController extends Controller
         $plan = app(ForecastPlanService::class);
         abort_unless($plan->allowsForecast($storeId), 403, 'Forecasting requires Growth or Enterprise. Use manual reorder points on this plan.');
 
-        $days = (int) $request->integer('days', 30);
-        abort_unless(in_array($days, [30, 60, 90], true), 422);
+        $validated = $request->validate([
+            'from_date' => ['nullable', 'required_with:to_date', 'date', 'before_or_equal:today'],
+            'to_date' => ['nullable', 'required_with:from_date', 'date', 'after_or_equal:from_date', 'before_or_equal:today'],
+        ]);
+        $end = isset($validated['to_date'])
+            ? \Carbon\Carbon::parse($validated['to_date'])->endOfDay()
+            : now()->endOfDay();
+        $start = isset($validated['from_date'])
+            ? \Carbon\Carbon::parse($validated['from_date'])->startOfDay()
+            : $end->copy()->subDays(29)->startOfDay();
+        abort_if($start->diffInDays($end->copy()->startOfDay()) + 1 > 366, 422, 'Choose a date range of up to one year.');
+        $days = (int) $start->diffInDays($end->copy()->startOfDay()) + 1;
         $branchId = (int) $request->integer('branch_id');
         if ($assignedBranch > 0) {
             abort_if($branchId > 0 && $branchId !== $assignedBranch, 403);
@@ -34,8 +44,6 @@ class ForecastController extends Controller
             : $branches->where('branch_type', '!=', 'warehouse');
         $branches = $branches->when($branchId, fn ($q) => $q->where('id', $branchId))->get(['id', 'name']);
         $branchIds = $branches->pluck('id')->all();
-        $since = now()->subDays($days - 1)->startOfDay();
-
         $stock = DB::table('branch_inventory as bi')
             ->join('products as p', 'p.id', '=', 'bi.product_id')
             ->leftJoin('product_variations as v', 'v.id', '=', 'bi.variation_id')
@@ -50,14 +58,14 @@ class ForecastController extends Controller
             ->join('products as p', 'p.id', '=', 't.product_id')
             ->where('p.product_type', 'finished_good')
             ->where('t.store_id', $storeId)->whereIn('t.branch_id', $branchIds)
-            ->where('t.quantity_change', '<', 0)->where('t.transaction_date', '>=', $since)
+            ->where('t.quantity_change', '<', 0)->whereBetween('t.transaction_date', [$start, $end])
             ->selectRaw('t.branch_id, t.product_id, t.variation_id, SUM(ABS(t.quantity_change)) as units')
             ->groupBy('t.branch_id', 't.product_id', 't.variation_id')->get()
             ->keyBy(fn ($row) => implode(':', [$row->branch_id, $row->product_id, $row->variation_id ?? 0]));
         $trend = DB::table('inventory_transactions as t')->join('products as p', 'p.id', '=', 't.product_id')
             ->where('t.store_id', $storeId)->where('p.product_type', 'finished_good')
             ->whereIn('t.branch_id', $branchIds)->where('t.quantity_change', '<', 0)
-            ->where('t.transaction_date', '>=', $since)
+            ->whereBetween('t.transaction_date', [$start, $end])
             ->selectRaw('DATE(t.transaction_date) as day, SUM(ABS(t.quantity_change)) as units')
             ->groupByRaw('DATE(t.transaction_date)')->orderBy('day')->get();
 
@@ -110,7 +118,7 @@ class ForecastController extends Controller
                 ->join('products as p', 'p.id', '=', 't.product_id')
                 ->where('t.store_id', $storeId)->whereIn('t.branch_id', $storefrontIds)
                 ->where('p.product_type', 'finished_good')->where('t.quantity_change', '<', 0)
-                ->where('t.transaction_date', '>=', $since)
+                ->whereBetween('t.transaction_date', [$start, $end])
                 ->selectRaw('t.product_id, t.variation_id, SUM(ABS(t.quantity_change)) as units')
                 ->groupBy('t.product_id', 't.variation_id')->get();
             $warehouseStock = DB::table('branch_inventory')
@@ -131,7 +139,11 @@ class ForecastController extends Controller
 
         return response()->json(['data' => [
             'branches' => $branches, 'trend' => $trend,
-            'consolidated' => $consolidated, 'plan_features' => ['consolidated' => $plan->allowsConsolidated($storeId)],
+            'consolidated' => $consolidated,
+            'plan_features' => [
+                'consolidated' => $plan->allowsConsolidated($storeId),
+                'warehouse' => $plan->allowsWarehouse($storeId),
+            ],
             'summary' => ['products' => $rows->count(), 'reorder_now' => $rows->whereIn('status', ['Out of stock', 'Reorder now'])->count(), 'forecast_units' => round($rows->sum('forecast_30_days')), 'recommended_units' => $rows->sum('recommended')],
             'rows' => $rows->forPage($page, 15)->values(), 'total' => $rows->count(),
         ]]);

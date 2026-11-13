@@ -4,6 +4,7 @@ namespace App\Services\Logistics;
 
 use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Core\User;
+use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Logistics\DeliveryTrip;
@@ -63,6 +64,28 @@ class ReplacementDispatchService
             $case->replacement_status = 'out_for_delivery';
             $case->replacement_dispatched_at = now();
             $case->save();
+
+            if ($case->source_type === 'pos' && $case->salesOrder && $case->salesOrder->status !== 'out_for_delivery') {
+                $case->salesOrder->status = 'out_for_delivery';
+                $case->salesOrder->save();
+            } elseif ($case->source_type !== 'pos' && $case->order && $case->order->status !== 'out_for_delivery') {
+                $order = $case->order;
+                $previousStatus = (string) $order->status;
+                $order->status = 'out_for_delivery';
+                $order->save();
+                if ($delivery = $order->delivery) {
+                    EcommerceDeliveryLog::query()->create([
+                        'delivery_id' => $delivery->id,
+                        'order_id' => $order->id,
+                        'store_id' => $order->store_id,
+                        'event_type' => 'status_updated',
+                        'status_from' => $previousStatus,
+                        'status_to' => 'out_for_delivery',
+                        'message' => 'Replacement dispatched on a delivery trip.',
+                        'created_by' => $actor->id,
+                    ]);
+                }
+            }
         });
     }
 }

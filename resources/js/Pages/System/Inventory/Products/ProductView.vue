@@ -126,6 +126,16 @@
                 <p class="text-xs text-gray-600 mb-1">Dimensions</p>
                 <p class="text-lg font-semibold text-gray-900">{{ dimensionsLabel }}</p>
               </div>
+              <div v-if="product.additional_measurements?.length" class="sm:col-span-2">
+                <p class="mb-2 text-xs text-gray-600">Additional Measurements</p>
+                <div class="flex flex-wrap gap-2">
+                  <div v-for="(measurement, index) in product.additional_measurements" :key="`${measurement.label}-${index}`"
+                    class="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                    <p class="text-[11px] text-slate-500">{{ measurement.label }}</p>
+                    <p class="font-semibold text-slate-900">{{ measurement.value }} {{ measurement.unit }}</p>
+                  </div>
+                </div>
+              </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Created</p>
                 <p class="text-lg font-semibold text-gray-900">{{ formatDateTime(displayItem?.created_at || product.created_at) }}</p>
@@ -557,11 +567,11 @@ const priceLabel = computed(() => {
 
 const dimensionsLabel = computed(() => {
   const parts = [
-    displayItem.value?.length_cm ? `${displayItem.value.length_cm} cm` : null,
-    displayItem.value?.width_cm ? `${displayItem.value.width_cm} cm` : null,
-    displayItem.value?.height_cm ? `${displayItem.value.height_cm} cm` : null,
-    displayItem.value?.depth_cm ? `${displayItem.value.depth_cm} cm` : null,
-    displayItem.value?.weight_kg ? `${displayItem.value.weight_kg} kg` : null,
+    displayItem.value?.width_cm ? `Width ${displayItem.value.width_cm} cm` : null,
+    displayItem.value?.depth_cm ? `Depth ${displayItem.value.depth_cm} cm` : null,
+    displayItem.value?.height_cm ? `Height ${displayItem.value.height_cm} cm` : null,
+    displayItem.value?.length_cm ? `Legacy length ${displayItem.value.length_cm} cm` : null,
+    displayItem.value?.weight_kg ? `Weight ${displayItem.value.weight_kg} kg` : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(' × ') : 'N/A'

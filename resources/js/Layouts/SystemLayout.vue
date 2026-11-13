@@ -2,9 +2,9 @@
   <Head v-if="pageTitle" :title="pageTitle" />
   <Toast group="system-notifications" position="top-right" />
   <div
-    class="flex h-screen w-full max-w-[100vw] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_38%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)]">
+    class="flex h-screen w-full ">
     <!-- Sidebar -->
-    <aside class="sidebar bg-white flex flex-col z-30 overflow-y-auto shadow-lg"
+    <aside class="sidebar bg-orange-100 flex flex-col z-30 overflow-y-auto shadow-lg"
       :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
       <!-- Logo section -->
       <div class="px-4 py-4">
@@ -15,7 +15,7 @@
           </div>
           <div v-if="sidebarOpen" class="leading-tight">
             <span class="portal-brand text-orange-400">FURNISYNC</span>
-            <p class="mt-1 text-xs font-semibold text-slate-500">{{ subscriptionName }}</p>
+            <p class="mt-1 text-xs font-semibold text-black">{{ subscriptionName }}</p>
           </div>
           </div>
         </div>
@@ -37,7 +37,7 @@
               <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
                 :value="moduleGroup.module">
                 <AccordionHeader size="small">
-                  <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
+                  <span class="uppercase tracking-wider text-xs font-bold text-orange-950">
                     {{ formatModuleName(moduleGroup.module) }}
                   </span>
                 </AccordionHeader>
@@ -45,15 +45,15 @@
                   <div class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
                     <Link v-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
-                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors group"
-                      :class="{ 'bg-orange-50 text-orange-600': isActive(item.route_path) }">
+                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-orange-950 hover:bg-orange-200 transition-colors group"
+                      :class="{ 'bg-orange-400 !text-white hover:!bg-orange-500 hover:!text-white': isActive(item.route_path) }">
                     <div class="flex items-center space-x-3 flex-1">
                       <i :class="[
                         item.icon || 'pi pi-circle',
                         'w-4',
                         isActive(item.route_path)
-                          ? 'text-orange-600'
-                          : 'text-gray-400 group-hover:text-orange-500'
+                          ? 'text-white'
+                          : 'text-orange-950 group-hover:text-orange-950'
                       ]"></i>
                       <span>{{ item.display_name }}</span>
                     </div>
@@ -89,8 +89,8 @@
               v-for="item in moduleGroup.items"
               :key="item.id"
               :href="item.route_path"
-              class="relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-600"
-              :class="{ 'bg-orange-100 text-orange-600': isActive(item.route_path) }"
+              class="relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-orange-950 transition-colors hover:bg-orange-200 hover:text-orange-950"
+              :class="{ 'bg-orange-400 !text-white hover:!bg-orange-500 hover:!text-white': isActive(item.route_path) }"
               v-tooltip.right="navItemTooltip(item)"
               :aria-label="navItemTooltip(item)"
             >
@@ -682,6 +682,21 @@ const groupedNavigation = computed(() => {
   }
 
   if (isSupplierRole) {
+    const supplierProductsItem = {
+      id: -904,
+      name: 'supplier.products',
+      display_name: 'Product Listings',
+      module: 'supplier',
+      route_name: 'supplier.products',
+      route_path: '/supplier-portal/products',
+      icon: 'pi pi-box',
+      parent_id: null,
+      display_order: 20,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    }
     const supplierPaymentItem = {
       id: -902,
       name: 'supplier.payment_account',
@@ -699,6 +714,9 @@ const groupedNavigation = computed(() => {
     }
 
     const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    if (!existingPaths.has(supplierProductsItem.route_path)) {
+      baseNavigation = [...baseNavigation, supplierProductsItem]
+    }
     if (!existingPaths.has(supplierPaymentItem.route_path)) {
       baseNavigation = [...baseNavigation, supplierPaymentItem]
     }
@@ -814,6 +832,7 @@ const formatModuleName = (module: string): string => {
   if (module === 'warehouse') return 'Warehouse'
   if (module == 'hr') return 'Human Resources'
   if (module === 'merchandising') return 'Product Catalog'
+  if (module === 'crm') return 'Customer Relations'
 
   return module
     .replace(/_/g, ' ')
@@ -1058,6 +1077,14 @@ watch(isAuthenticated, (value) => {
 
 .system-navigation-accordion :deep(.p-accordionheader) {
   padding: 0.7rem 1rem;
+}
+
+.system-navigation-accordion :deep(.p-accordionpanel),
+.system-navigation-accordion :deep(.p-accordionheader),
+.system-navigation-accordion :deep(.p-accordioncontent),
+.system-navigation-accordion :deep(.p-accordioncontent-content) {
+  background: transparent !important;
+  border-color: #fed7aa;
 }
 
 .sidebar {

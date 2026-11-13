@@ -991,7 +991,7 @@ const performConfirmedAction = async () => {
       showRejectDialog.value = false
       rejectReason.value = ''
     } else if (action === 'edit') {
-      router.push({ name: 'procurement.purchase-requisitions.edit', params: { id: requisitionId } })
+      router.push({ name: 'inventory.requisites.edit', params: { id: requisitionId } })
       return
     } else if (action === 'delete') {
       res = await procurementService.deletePurchaseRequisition(requisitionId)

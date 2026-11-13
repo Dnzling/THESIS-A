@@ -13,6 +13,8 @@ use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Store\Branch;
 use App\Models\Inventory\ReorderRule;
+use App\Services\Core\PermissionService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,11 +23,42 @@ use Illuminate\Validation\ValidationException;
 
 class ProductController extends BaseController
 {
+    private function hasProductPermission(array $permissions): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+
+        $permissionService = app(PermissionService::class);
+        foreach ($permissions as $permission) {
+            if ($permissionService->userHasPermission($user, $permission, (int) $this->getStoreId())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function productPermissionDenied(string $permission): JsonResponse
+    {
+        return $this->errorResponse("You do not have permission to {$permission} products.", 403);
+    }
+
     /**
      * Display a listing of products.
      */
     public function index(Request $request)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
             $storeId = (int) $this->getStoreId();
             $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
@@ -149,6 +182,10 @@ class ProductController extends BaseController
      */
     public function store(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
                 'sku' => 'nullable|string|max:50',
@@ -170,6 +207,10 @@ class ProductController extends BaseController
                 'height_cm' => 'nullable|numeric|min:0',
                 'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
@@ -329,6 +370,15 @@ class ProductController extends BaseController
      */
     public function show($id)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())
                              ->with([
@@ -385,6 +435,15 @@ class ProductController extends BaseController
      */
     public function get3dData($id)
     {
+        if (!$this->hasProductPermission([
+            'merchandising.products.view',
+            'merchandising.products.manage',
+            'merchandising.products.approve',
+            'merchandising.products.delete',
+        ])) {
+            return $this->productPermissionDenied('view');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())
                              ->select('id', 'sku', 'product_name', 'description', 'length_cm', 'width_cm', 'height_cm', 'depth_cm')
@@ -454,6 +513,10 @@ class ProductController extends BaseController
      */
     public function update(Request $request, $id)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())->findOrFail($id);
 
@@ -479,6 +542,10 @@ class ProductController extends BaseController
                 'height_cm' => 'nullable|numeric|min:0',
                 'depth_cm' => 'nullable|numeric|min:0',
                 'weight_kg' => 'nullable|numeric|min:0',
+                'additional_measurements' => 'sometimes|nullable|array|max:40',
+                'additional_measurements.*.label' => 'required|string|max:80',
+                'additional_measurements.*.value' => 'required|numeric|gt:0',
+                'additional_measurements.*.unit' => 'required|string|in:cm,mm,m,in,ft,kg,g,lb',
                 'assembly_required' => 'boolean',
                 'is_customizable' => 'boolean',
                 'is_featured' => 'boolean',
@@ -596,11 +663,88 @@ class ProductController extends BaseController
         }
     }
 
+    public function approvePrice(Request $request, int $id): JsonResponse
+    {
+        if (!$this->hasProductPermission(['merchandising.products.approve'])) {
+            return $this->productPermissionDenied('approve price changes for');
+        }
+
+        $product = Product::byStore($this->getStoreId())->findOrFail($id);
+        if ($product->price_approval_status !== 'pending') {
+            return $this->errorResponse('This product has no pending price change.', 422);
+        }
+
+        DB::transaction(function () use ($product, $request): void {
+            $oldPrice = (float) $product->base_price;
+            if ($product->pending_base_price !== null) {
+                $product->base_price = $product->pending_base_price;
+            }
+            if ($product->pending_discounted_price !== null) {
+                $product->discounted_price = $product->pending_discounted_price;
+            }
+
+            $product->price_approval_status = 'approved';
+            $product->price_approved_by = $this->getEmployeeId();
+            $product->price_approved_at = now();
+            $product->price_approval_notes = $request->input('notes');
+            $product->pending_base_price = null;
+            $product->pending_discounted_price = null;
+            $product->save();
+
+            if ($oldPrice !== (float) $product->base_price) {
+                PricingHistory::create([
+                    'store_id' => $this->getStoreId(),
+                    'product_id' => $product->id,
+                    'old_price' => $oldPrice,
+                    'new_price' => $product->base_price,
+                    'price_type' => 'Base',
+                    'reason' => $request->input('notes', 'Product price change approved'),
+                    'effective_date' => now(),
+                    'created_by' => $this->getEmployeeId(),
+                ]);
+            }
+        });
+
+        return $this->successResponse(
+            Product::byStore($this->getStoreId())->findOrFail($id),
+            'Product price change approved.'
+        );
+    }
+
+    public function rejectPrice(Request $request, int $id): JsonResponse
+    {
+        if (!$this->hasProductPermission(['merchandising.products.approve'])) {
+            return $this->productPermissionDenied('reject price changes for');
+        }
+
+        $validated = $this->validateRequest($request, [
+            'reason' => 'required|string|max:500',
+        ]);
+        $product = Product::byStore($this->getStoreId())->findOrFail($id);
+        if ($product->price_approval_status !== 'pending') {
+            return $this->errorResponse('This product has no pending price change.', 422);
+        }
+
+        $product->price_approval_status = 'rejected';
+        $product->price_rejected_by = $this->getEmployeeId();
+        $product->price_rejected_at = now();
+        $product->price_approval_notes = $validated['reason'];
+        $product->pending_base_price = null;
+        $product->pending_discounted_price = null;
+        $product->save();
+
+        return $this->successResponse($product, 'Product price change rejected.');
+    }
+
     /**
      * Remove the specified product.
      */
     public function destroy($id)
     {
+        if (!$this->hasProductPermission(['merchandising.products.delete'])) {
+            return $this->productPermissionDenied('delete');
+        }
+
         try {
             $product = Product::byStore($this->getStoreId())->findOrFail($id);
 
@@ -646,6 +790,10 @@ class ProductController extends BaseController
      */
     public function bulkStatus(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.manage'])) {
+            return $this->productPermissionDenied('manage');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
                 'product_ids' => 'required|array',
@@ -710,6 +858,10 @@ class ProductController extends BaseController
      */
     public function bulkDelete(Request $request)
     {
+        if (!$this->hasProductPermission(['merchandising.products.delete'])) {
+            return $this->productPermissionDenied('delete');
+        }
+
         try {
             $validated = $this->validateRequest($request, [
                 'product_ids' => 'required|array',

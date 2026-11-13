@@ -1,9 +1,9 @@
 <template>
   <div class="space-y-6">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 5</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 6</p>
       <h2 class="mt-1 text-2xl font-bold text-slate-950">Review and submit</h2>
-      <p class="mt-2 text-sm text-slate-600">Confirm the owner ID and business documents before sending this for admin review.</p>
+      <p class="mt-2 text-sm text-slate-600">Confirm the owner ID, business documents, and optional attachments before sending this for admin review.</p>
     </div>
 
     <ReviewSection title="Owner Primary ID" :canEdit="true" @edit="$emit('edit-step', 1)">
@@ -29,6 +29,17 @@
       <InfoItem label="Expires" :value="formData.permitExpiresAt" />
       <FilePreview :file="formData.mayorPermit" label="Mayor's permit" />
       <InfoItem v-if="formData.additionalNotes" label="Additional Notes" :value="formData.additionalNotes" />
+    </ReviewSection>
+
+    <ReviewSection v-if="submittedAdditionalDocuments.length" title="Additional Attachments" :canEdit="true" @edit="$emit('edit-step', 5)">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div v-for="(document, index) in submittedAdditionalDocuments" :key="index" class="rounded-xl border border-slate-200 bg-white p-4">
+          <InfoItem label="Document" :value="document.label || document.file?.name || 'Additional document'" />
+          <InfoItem v-if="document.reference_number" label="Reference number" :value="document.reference_number" />
+          <InfoItem v-if="document.expires_at" label="Expiration date" :value="document.expires_at" />
+          <FilePreview :file="document.file" :label="document.label || `Attachment ${index + 1}`" />
+        </div>
+      </div>
     </ReviewSection>
 
     <div class="rounded-2xl border border-orange-100 bg-orange-50/50 p-5">
@@ -130,6 +141,7 @@ const localForm = ref({
 })
 
 const idLabel = (value: string) => idLabels[value] || value || 'Not provided'
+const submittedAdditionalDocuments = computed(() => (Array.isArray(props.formData.additionalDocuments) ? props.formData.additionalDocuments : []).filter((document: any) => document.file instanceof File))
 const syncForm = () => emit('update:formData', { ...localForm.value })
 
 const hasRequiredData = computed(() =>
@@ -193,6 +205,16 @@ const submitVerification = async () => {
     appendFile(payload, 'business_registration_file', props.formData.registrationPermit)
     appendFile(payload, 'tax_certificate_file', props.formData.taxCertificate)
     appendFile(payload, 'business_permit_file', props.formData.mayorPermit)
+    const additionalDocuments = submittedAdditionalDocuments.value
+    const additionalMetadata = additionalDocuments.map((document: any, index: number) => {
+      appendFile(payload, 'additional_files[]', document.file)
+      return {
+        label: document.label || document.file?.name || `Additional document ${index + 1}`,
+        reference_number: document.reference_number || null,
+        expires_at: document.expires_at || null,
+      }
+    })
+    payload.append('additional_metadata', JSON.stringify(additionalMetadata))
 
     const response = await axiosClient.post(`/api/stores/${props.formData.storeId}/verification/submit`, payload, {
       headers: { 'Content-Type': 'multipart/form-data' },

@@ -318,7 +318,7 @@ class UnifiedDeliveryController extends Controller
                 'driver:id,fname,lname,phone_number',
                 'vehicle:id,vehicle_name,plate_number,vehicle_type',
                 'destinationBranch:id,name,address,latitude,longitude,contact_number',
-                'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,status,created_at',
+                'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,status,return_type,replacement_trip_id,created_at',
                 'returnRequest.order:id,order_number,assigned_branch_id,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude,created_at',
                 'returnRequest.order.assignedBranch:id,name,latitude,longitude',
                 'returnRequest.orderItem:id,order_id,product_id,quantity,unit_price',
@@ -330,6 +330,13 @@ class UnifiedDeliveryController extends Controller
                 'returnRequest.user:id,fname,lname,email',
             ])
             ->where('store_id', $storeId)
+            ->where(function ($query): void {
+                $query->whereDoesntHave('returnRequest', fn ($return) => $return->where('return_type', 'replacement'))
+                    ->orWhereHas('returnRequest', fn ($return) => $return
+                        ->where('return_type', 'replacement')
+                        ->whereNotNull('replacement_trip_id')
+                        ->whereColumn('ecommerce_order_returns.replacement_trip_id', 'logistics_return_pickups.trip_id'));
+            })
             ->get()
             ->map(function (ReturnPickup $pickup): array {
                 $return = $pickup->returnRequest;

@@ -52,7 +52,7 @@
               showIcon fluid size="small" placeholder="Select dates" />
           </div>
           <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" outlined size="small" @click="clearFilters" />
-          <Button v-if="canCreateActiveRequest" :label="activeType === 'purchase' ? 'Create Supplier Request' : 'Create Stock Transfer'"
+          <Button v-if="canCreateActiveRequest" :label="activeType === 'purchase' ? 'Create Stock Request' : 'Create Stock Transfer'"
             icon="pi pi-plus" severity="warn" size="small" class="self-end lg:ml-auto"
             @click="createActiveRequest" />
         </div>
@@ -124,9 +124,9 @@ const toast = useToast()
 const authStore = useAuthStore()
 const sourceLoading = ref(true)
 const hasWarehouseBranch = ref(false)
-const hasWarehousePermission = computed(() => authStore.hasPermission('warehouse.dashboard.view') || authStore.hasPermission('warehouse.warehouses.view'))
+const hasWarehousePermission = ref(false)
 const canViewStockRequests = computed(() => authStore.hasPermission('inventory.stock-requests.view'))
-const canViewPurchase = computed(() => !hasWarehousePermission.value && (canViewStockRequests.value || authStore.hasPermission('inventory.requisites.view') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.view') || authStore.hasPermission('inventory.requisitions.manage')))
+const canViewPurchase = computed(() => !hasWarehousePermission.value && (canViewStockRequests.value || authStore.hasPermission('inventory.requisites.view') || authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.view') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage')))
 const canViewTransfer = computed(() => hasWarehouseBranch.value && (canViewStockRequests.value || authStore.hasPermission('inventory.transfers.view') || authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
 const canCreatePurchase = computed(() => !hasWarehousePermission.value && (authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage')))
 const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
@@ -285,6 +285,7 @@ onMounted(async () => {
     const payload = response?.data ?? response
     const branches = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
     hasWarehouseBranch.value = branches.some((branch: any) => String(branch.branch_type || '').toLowerCase() === 'warehouse')
+    hasWarehousePermission.value = Boolean(payload?.warehouse_enabled)
   } catch {
     hasWarehouseBranch.value = false
   }

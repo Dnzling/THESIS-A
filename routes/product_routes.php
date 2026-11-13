@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ProductCatalog\DashboardController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
 use App\Http\Controllers\Api\ProductCatalog\PromotionController;
+use App\Http\Controllers\Api\ProductCatalog\DiscountRequestController;
 use App\Http\Controllers\Api\CRM\VoucherController;
 
 // Product Catalog Routes
@@ -42,6 +43,8 @@ Route::prefix('product-catalog')->group(function () {
         ;
     Route::post('products/{productId}/3d-model', [ProductAssetController::class, 'storeForProductForm'])
         ->name('products.3d-model.store');
+    Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);
+    Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice']);
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
     Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
     Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);
@@ -94,6 +97,8 @@ Route::prefix('product-catalog')->group(function () {
     Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
 
     // Store-scoped promotions
+    Route::get('discount-requests', [DiscountRequestController::class, 'index']);
+    Route::post('discount-requests', [DiscountRequestController::class, 'store']);
     Route::get('promotions/options', [PromotionController::class, 'options']);
     Route::post('promotions/{id}/toggle', [PromotionController::class, 'toggle']);
     Route::post('promotions/{id}/duplicate', [PromotionController::class, 'duplicate']);

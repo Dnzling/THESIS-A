@@ -1,22 +1,29 @@
 <template>
   <Toast />
   <div class="min-h-screen">
+    <BranchVerificationWizard v-if="branchId" :key="`branch-${branchId}`" @submitted="loadVerificationData" />
     <!-- Conditionally render the components based on verification status -->
-    <Verification v-if="!hasSubmittedVerification" @submitted="handleVerificationSubmitted" />
-    <VerificationStatus v-else  :verification-data="verificationData" @resubmit="handleResubmit" />
+    <template v-else>
+      <Verification v-if="!hasSubmittedVerification" @submitted="handleVerificationSubmitted" />
+      <VerificationStatus v-else :verification-data="verificationData" @resubmit="handleResubmit" />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { router } from '@inertiajs/vue3'
+import { useRoute } from 'vue-router'
 import Toast from 'primevue/toast'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
 import Verification from '@/Components/store-registration/StoreRegistrationWizard.vue'
 import VerificationStatus from '@/Components/VerifyStoreStatus.vue'
+import BranchVerificationWizard from '@/Components/store-registration/BranchVerificationWizard.vue'
 
 const authStore = useAuthStore()
+const route = useRoute()
+const branchId = computed(() => Number(route.query.branch_id || new URLSearchParams(window.location.search).get('branch_id') || 0))
 
 const hasSubmittedVerification = ref(false)
 const verificationData = ref<Record<string, any> | null>(null)
@@ -32,6 +39,7 @@ onMounted(() => {
 })
 
 const loadVerificationData = async () => {
+  if (branchId.value) return
   try {
     await authStore.fetchCurrentUser()
 

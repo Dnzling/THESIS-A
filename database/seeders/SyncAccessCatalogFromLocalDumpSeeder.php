@@ -31,7 +31,10 @@ class SyncAccessCatalogFromLocalDumpSeeder extends Seeder
                 $now,
             );
 
-            $this->retirePermissions($snapshot['retired_permissions'], $now);
+            $this->retirePermissions(array_values(array_unique(array_merge(
+                $snapshot['retired_permissions'],
+                ['admin.verification.manage', 'store.ecommerce.view', 'store.ecommerce.manage'],
+            ))), $now);
             $this->retireNavigationItems($snapshot['retired_navigation_items'], $now);
             $this->syncPlanPermissions($snapshot['plan_permissions'], $permissionIds, $now);
         });
@@ -141,6 +144,9 @@ class SyncAccessCatalogFromLocalDumpSeeder extends Seeder
         DB::table('permissions')
             ->whereIn('name', $names)
             ->update(['is_active' => false, 'deleted_at' => $now, 'updated_at' => $now]);
+        DB::table('module_permissions')
+            ->whereIn('permission_key', $names)
+            ->update(['is_active' => false, 'updated_at' => $now]);
     }
 
     private function retireNavigationItems(array $names, Carbon $now): void

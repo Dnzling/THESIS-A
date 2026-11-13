@@ -632,9 +632,9 @@ class ReturnController extends Controller
 
         $validated = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
-            'return_type' => ['nullable', 'required_if:status,approved', 'in:refund,replacement'],
+            'return_type' => ['nullable', 'in:refund,replacement'],
             'charge_responsibility' => ['nullable', 'required_if:status,approved', 'in:store,customer'],
-            'refund_exception_reason' => ['nullable', 'required_if:return_type,refund', 'string', 'max:255'],
+            'refund_exception_reason' => ['nullable', 'string', 'max:255'],
             'pickup_scheduled_at' => ['required_if:status,approved', 'nullable', 'date', 'after_or_equal:today'],
             'review_notes' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -665,6 +665,41 @@ class ReturnController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'The assigned investigator must submit findings before this return can be approved or rejected.',
+                ], 422);
+            }
+
+            if ($newStatus === 'approved') {
+                $recommendation = (string) $return->investigationTicket->recommended_resolution;
+                if ($recommendation === 'reject') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'The investigator recommended rejecting this return. Reject the request instead of approving it.',
+                    ], 422);
+                }
+                if (!in_array($recommendation, ['refund', 'replacement'], true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'The completed investigation must recommend Refund or Replacement before approval.',
+                    ], 422);
+                }
+
+                // The investigator's recorded recommendation is authoritative for initial approval.
+                $validated['return_type'] = $recommendation;
+            }
+        }
+
+        if ($newStatus === 'approved') {
+            if (empty($validated['return_type'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A return resolution is required before approval.',
+                ], 422);
+            }
+            if ($validated['return_type'] === 'refund' && empty(trim((string) ($validated['refund_exception_reason'] ?? '')))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Provide the refund exception reason before approving a refund.',
+                    'errors' => ['refund_exception_reason' => ['A refund exception reason is required.']],
                 ], 422);
             }
         }

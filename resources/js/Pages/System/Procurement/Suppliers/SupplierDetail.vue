@@ -10,11 +10,13 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <Button v-if="!loading && supplier" label="Get Products" icon="pi pi-shopping-cart" severity="warn" size="small" @click="openSupplierProducts" />
         <Button v-if="!loading && supplier && activeContractsCount === 0" label="Create Contract" icon="pi pi-plus"
           severity="warn" size="small" @click="createContract" />
         <Tag :value="humanize(supplier?.contract_status || 'no_contract')"
           :severity="contractStatusSeverity(supplier?.contract_status || 'no_contract')" />
       </div>
+
     </div>
   
     <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -74,6 +76,29 @@
           </template>
         </Card>
       </div>
+
+      <Card>
+        <template #header>
+          <div class="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-900">Connected Products</h3>
+              <p class="mt-1 text-xs text-slate-500">Products this supplier currently offers to your store.</p>
+            </div>
+            <Button label="Get Products" icon="pi pi-arrow-right" iconPos="right" text size="small" @click="openSupplierProducts" />
+          </div>
+        </template>
+        <template #content>
+          <div v-if="supplier.products?.length" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div v-for="product in supplier.products.slice(0, 4)" :key="product.id" class="rounded-lg border border-slate-200 p-3">
+              <p class="truncate font-medium text-slate-900">{{ product.product_name }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ product.pivot?.supplier_sku || product.sku }}</p>
+              <p class="mt-2 text-sm font-semibold text-slate-900">PHP {{ formatCurrency(product.pivot?.supplier_price) }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ product.pivot?.available_stock ?? 0 }} available</p>
+            </div>
+          </div>
+          <div v-else class="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">No products are connected to this supplier yet.</div>
+        </template>
+      </Card>
   
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         <Card v-for="metric in performanceCards" :key="metric.label" class="border border-slate-200 shadow-sm">
@@ -476,6 +501,10 @@ const viewContract = (contract: any) => {
 const createContract = () => {
   contractsDialogVisible.value = false
   router.push({ name: 'procurement.supplier-contracts.create', query: { supplier_id: supplierId, supplier_name: supplier.value?.supplier_name || '' } })
+}
+
+const openSupplierProducts = () => {
+  router.push({ name: 'procurement.suppliers.products', params: { id: supplierId } })
 }
 
 const viewPurchaseOrder = async (purchaseOrder: any) => {
