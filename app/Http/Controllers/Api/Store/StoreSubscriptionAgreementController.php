@@ -8,6 +8,7 @@ use App\Models\Store\Store;
 use App\Models\Store\StoreSubscriptionAgreement;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -108,18 +109,27 @@ class StoreSubscriptionAgreementController extends Controller
     public function activate(Request $request)
     {
         $store = $this->ownedStore($request);
-        $planId = (int) $store->subscription_tier;
-        $subscriptionStatus = strtolower(trim((string) $store->subscription_status));
-        $plan = $planId > 0 ? SubscriptionPlan::withTrashed()->find($planId) : null;
-        abort_unless($plan && in_array($subscriptionStatus, ['trial', 'paid'], true), 409, 'Activate the selected subscription before finalizing its agreement.');
+        $subscription = DB::table('stores')
+            ->where('id', $store->id)
+            ->first(['subscription_tier', 'subscription_status']);
+        $planId = (int) ($subscription->subscription_tier ?? 0);
+        $subscriptionStatus = strtolower(trim((string) ($subscription->subscription_status ?? '')));
+        $planKey = $planId > 0
+            ? DB::table('subscription_plans')->where('id', $planId)->value('plan_key')
+            : null;
+        abort_unless(
+            $planKey && in_array($subscriptionStatus, ['trial', 'paid'], true),
+            409,
+            "Cannot finalize agreement: subscription status is '{$subscriptionStatus}' and plan ID is {$planId}."
+        );
 
         $agreement = StoreSubscriptionAgreement::query()
             ->where('store_id', $store->id)
-            ->where('plan_key', $plan->plan_key)
+            ->where('plan_key', $planKey)
             ->where('status', 'pending_activation')
             ->latest('signed_at')
             ->first();
-        abort_unless($agreement, 409, 'Sign the subscription agreement before continuing.');
+        abort_unless($agreement, 409, "No pending signed agreement matches the store's active {$planKey} plan.");
 
         $agreement->update(['status' => 'active', 'activated_at' => now()]);
         $this->renderAgreementPdf($agreement->fresh(), $store);
