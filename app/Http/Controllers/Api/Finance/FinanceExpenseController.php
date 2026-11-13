@@ -120,7 +120,7 @@ class FinanceExpenseController extends Controller
                 'requested_date' => $branchRequest->requested_date,
                 'estimated_amount' => $branchRequest->estimated_amount,
                 'actual_amount' => $branchRequest->actual_amount,
-                'receipt_url' => $receiptPath ? url("/api/store-module/expenses/finance/{$expense->id}/receipt") : null,
+                'receipt_url' => $receiptPath ? url("/api/finance/expenses/{$expense->id}/receipt") : null,
                 'receipt_mime' => $receiptPath && \Illuminate\Support\Facades\Storage::disk('local')->exists($receiptPath)
                     ? \Illuminate\Support\Facades\Storage::disk('local')->mimeType($receiptPath)
                     : null,
@@ -131,6 +131,16 @@ class FinanceExpenseController extends Controller
             'success' => true,
             'data' => $data,
         ]);
+    }
+
+    public function benefitRequest(Request $request, int $id): JsonResponse
+    {
+        $benefitRequest = \App\Models\Hr\EmployeeBenefitRequest::query()
+            ->where('store_id', (int) $request->user()->store_id)
+            ->with(['employee.user:id,fname,lname', 'deductionType:id,name', 'reviewer:id,fname,lname'])
+            ->findOrFail($id);
+
+        return response()->json(['success' => true, 'data' => $benefitRequest]);
     }
 
     public function store(Request $request): JsonResponse

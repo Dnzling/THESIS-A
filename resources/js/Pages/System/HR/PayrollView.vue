@@ -703,7 +703,7 @@ const submitForApproval = async (item: PayrollItem) => {
 const markPayrollPaid = async (item: PayrollItem) => {
   ;(item as any).paying = true
   try {
-    await hrService.api.post(`/api/payroll/${item.payroll_id}/mark-paid`, {
+    await financeService.markPayrollPaid(item.payroll_id, {
       payment_date: new Date().toISOString().slice(0, 10),
       payment_method: 'bank_transfer',
     })

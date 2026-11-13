@@ -7,6 +7,7 @@ use App\Models\CRM\EcommerceProductReview;
 use App\Models\CRM\SalesReview;
 use App\Models\Store\Branch;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ReviewController extends Controller
 {
@@ -186,7 +187,9 @@ class ReviewController extends Controller
                 'value_rating' => $ecommerceReview?->value_rating,
                 'expectations_rating' => $ecommerceReview?->expectations_rating,
                 'is_recommended' => $ecommerceReview?->is_recommended,
-                'attachment_url' => $ecommerceReview?->attachment_url,
+                'attachment_url' => $ecommerceReview?->attachment_path
+                    ? route('crm.reviews.attachment', ['review' => $review->id])
+                    : null,
                 'status' => $review->status,
                 'reply' => $review->reply,
                 'replied_at' => $review->replied_at,
@@ -194,6 +197,31 @@ class ReviewController extends Controller
                 'created_at' => $ecommerceReview?->created_at ?? $review->created_at,
             ],
         ]);
+    }
+
+    public function attachment(Request $request, SalesReview $review)
+    {
+        $this->ensureReviewAccess($request, $review);
+        abort_unless(in_array((string) $review->order_type, ['ecommerce', 'ecommerce_order'], true), 404);
+
+        $ecommerceReview = EcommerceProductReview::query()
+            ->where('store_id', (int) $review->store_id)
+            ->where('order_id', (int) $review->order_id)
+            ->where('product_id', (int) $review->product_id)
+            ->when($review->created_by, fn ($query) => $query->where('user_id', $review->created_by))
+            ->where('status', 'published')
+            ->whereNotNull('attachment_path')
+            ->latest('id')
+            ->first();
+
+        abort_unless($ecommerceReview && Storage::disk('public')->exists($ecommerceReview->attachment_path), 404);
+
+        return Storage::disk('public')->response(
+            $ecommerceReview->attachment_path,
+            null,
+            ['Cache-Control' => 'private, no-store'],
+            'inline'
+        );
     }
 
     public function reply(Request $request, SalesReview $review)

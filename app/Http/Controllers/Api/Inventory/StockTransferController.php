@@ -84,6 +84,23 @@ class StockTransferController extends Controller
         ];
     }
 
+    private function scopeTransferQuery(Request $request, $query): void
+    {
+        $context = $this->getUserContext($request);
+        abort_unless($this->hasGlobalAccess() || $context['store_id'] > 0, 404);
+
+        if ($context['store_id'] > 0) {
+            $query->where('store_id', $context['store_id']);
+        }
+
+        if ($context['branch_id'] > 0) {
+            $query->where(function ($builder) use ($context): void {
+                $builder->where('from_branch_id', $context['branch_id'])
+                    ->orWhere('to_branch_id', $context['branch_id']);
+            });
+        }
+    }
+
     private function validateReorderTransferGroup(
         array $suggestionIds,
         array $items,
@@ -234,9 +251,9 @@ class StockTransferController extends Controller
      * Show single transfer
      * GET /api/inventory/transfers/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
-        $transfer = StockTransfer::with([
+        $query = StockTransfer::query()->with([
             'fromBranch',
             'toBranch',
             'trip.vehicle',
@@ -251,7 +268,9 @@ class StockTransferController extends Controller
             'financeApprovedBy.user:id,fname,lname',
             'shippedBy.user:id,fname,lname',
             'receivedBy.user:id,fname,lname',
-        ])->findOrFail($id);
+        ])->whereKey($id);
+        $this->scopeTransferQuery($request, $query);
+        $transfer = $query->firstOrFail();
 
         return response()->json([
             'success' => true,
@@ -686,7 +705,9 @@ class StockTransferController extends Controller
      */
     public function createDelivery(Request $request, int $id, DriverPermissionEligibility $driverEligibility): JsonResponse
     {
-        $transfer = StockTransfer::with('items.product')->findOrFail($id);
+        $query = StockTransfer::query()->with('items.product')->whereKey($id);
+        $this->scopeTransferQuery($request, $query);
+        $transfer = $query->firstOrFail();
 
         if (!in_array($transfer->status, ['sender_approved', 'in_transit'], true) || $transfer->delivery_status !== 'ready_for_dispatch') {
             return response()->json([
@@ -766,7 +787,9 @@ class StockTransferController extends Controller
      */
     public function addDeliveryLog(Request $request, int $id): JsonResponse
     {
-        $transfer = StockTransfer::findOrFail($id);
+        $query = StockTransfer::query()->whereKey($id);
+        $this->scopeTransferQuery($request, $query);
+        $transfer = $query->firstOrFail();
 
         if (!in_array($transfer->status, ['in_transit', 'out_for_delivery', 'received'], true)) {
             return response()->json([

@@ -4,7 +4,7 @@ const baseUrl = '/api/finance'
 
 const financeService = {
   async getBenefitRequest(id: number | string) {
-    const response = await axiosClient.get(`/api/hr/benefit-requests/${id}`)
+    const response = await axiosClient.get(`${baseUrl}/expenses/benefit-requests/${id}`)
     return response.data
   },
   async getLiquidations(params?: any) {
@@ -177,6 +177,16 @@ const financeService = {
     return response.data
   },
 
+  async createInvoice(data: any) {
+    const response = await axiosClient.post(`${baseUrl}/invoices`, data)
+    return response.data
+  },
+
+  async updateInvoice(id: number, data: any) {
+    const response = await axiosClient.put(`${baseUrl}/invoices/${id}`, data)
+    return response.data
+  },
+
   async matchInvoice(id: number) {
     const response = await axiosClient.post(`${baseUrl}/invoices/${id}/match`)
     return response.data
@@ -327,37 +337,72 @@ const financeService = {
   },
 
   async getPayrollPeriodDetail(payPeriodId: number | string, params?: any) {
-    const response = await axiosClient.get(`/api/payroll/pay-periods/${payPeriodId}/payroll`, { params })
+    const response = await axiosClient.get(`${baseUrl}/payroll/pay-periods/${payPeriodId}/payroll`, { params })
     return response.data
   },
 
   async submitPayroll(id: number) {
-    const response = await axiosClient.post(`/api/payroll/${id}/submit`)
+    const response = await axiosClient.post(`${baseUrl}/payroll/${id}/submit`)
     return response.data
   },
 
   async completeBasicPayroll(id: number) {
-    const response = await axiosClient.post(`/api/store/simple-staff/payroll/${id}/complete`)
+    const response = await axiosClient.post(`${baseUrl}/payroll/basic/${id}/complete`)
+    return response.data
+  },
+
+  async getBasicPayrollPeriods() {
+    const response = await axiosClient.get(`${baseUrl}/payroll/basic/periods`)
+    return response.data
+  },
+
+  async getBasicPayrollPeriod(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/payroll/basic/periods/${id}`)
+    return response.data
+  },
+
+  async previewBasicPayroll(params: any) {
+    const response = await axiosClient.get(`${baseUrl}/payroll/basic/preview`, { params })
+    return response.data
+  },
+
+  async generateBasicPayroll(payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/payroll/basic/generate`, payload)
+    return response.data
+  },
+
+  async updateBasicPayrollDraft(id: number, payload: any) {
+    const response = await axiosClient.put(`${baseUrl}/payroll/basic/${id}`, payload)
+    return response.data
+  },
+
+  async completeBasicPayrollDrafts(payrollIds: Array<number | string>) {
+    const response = await axiosClient.post(`${baseUrl}/payroll/basic/bulk-complete`, { payroll_ids: payrollIds })
+    return response.data
+  },
+
+  async payBasicPayrolls(payrollIds: Array<number | string>, payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/payroll/basic/bulk-pay`, { ...payload, payroll_ids: payrollIds })
     return response.data
   },
 
   async bulkSubmitPayroll(payrollIds: Array<number | string>) {
-    const response = await axiosClient.post('/api/payroll/bulk-submit', { payroll_ids: payrollIds })
+    const response = await axiosClient.post(`${baseUrl}/payroll/bulk-submit`, { payroll_ids: payrollIds })
     return response.data
   },
 
   async bulkApprovePayroll(payrollIds: Array<number | string>) {
-    const response = await axiosClient.post('/api/payroll/bulk-approve', { payroll_ids: payrollIds })
+    const response = await axiosClient.post(`${baseUrl}/payroll/bulk-approve`, { payroll_ids: payrollIds })
     return response.data
   },
 
   async approvePayroll(id: number) {
-    const response = await axiosClient.post(`/api/payroll/${id}/approve`)
+    const response = await axiosClient.post(`${baseUrl}/payroll/${id}/approve`)
     return response.data
   },
 
   async releasePayroll(id: number, payload?: { notes?: string }) {
-    const response = await axiosClient.post(`/api/payroll/${id}/release`, payload || {})
+    const response = await axiosClient.post(`${baseUrl}/payroll/${id}/release`, payload || {})
     return response.data
   },
 
@@ -377,7 +422,7 @@ const financeService = {
       notes: payload?.notes,
     }
 
-    const response = await axiosClient.post(`/api/payroll/${id}/mark-paid`, normalizedPayload)
+    const response = await axiosClient.post(`${baseUrl}/payroll/${id}/mark-paid`, normalizedPayload)
     return response.data
   },
 
@@ -398,7 +443,7 @@ const financeService = {
       notes: payload?.notes,
     }
 
-    const response = await axiosClient.post('/api/payroll/bulk-mark-paid', normalizedPayload)
+    const response = await axiosClient.post(`${baseUrl}/payroll/bulk-mark-paid`, normalizedPayload)
     return response.data
   },
 }

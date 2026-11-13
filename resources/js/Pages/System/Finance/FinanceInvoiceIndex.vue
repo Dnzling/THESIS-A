@@ -169,7 +169,7 @@
                   </td>
                   <td class="px-3 py-3">
                     <RouterLink
-                      :to="`/procurement/invoices/${inv.id}`"
+                      :to="{ name: 'finance.invoices.detail', params: { id: inv.id } }"
                       class="text-blue-500 hover:text-blue-600 font-medium"
                     >
                       {{ inv.invoice_number }}
@@ -231,7 +231,7 @@
                 <div class="flex-1">
                   <div class="flex items-center gap-3 mb-2">
                     <RouterLink
-                      :to="`/procurement/invoices/${inv.id}`"
+                      :to="{ name: 'finance.invoices.detail', params: { id: inv.id } }"
                       class="text-blue-500 hover:text-blue-600 font-semibold"
                     >
                       {{ inv.invoice_number }}
@@ -302,7 +302,7 @@
                 <div>
                   <div class="flex items-center gap-3 mb-2">
                     <RouterLink
-                      :to="`/procurement/invoices/${inv.id}`"
+                      :to="{ name: 'finance.invoices.detail', params: { id: inv.id } }"
                       class="text-blue-500 hover:text-blue-600 font-semibold"
                     >
                       {{ inv.invoice_number }}
@@ -391,7 +391,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import procurementService from '../../../services/procurement.service'
+import financeService from '../../../services/finance.service'
 import { useAuthStore } from '../../../stores/auth'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
@@ -399,8 +399,8 @@ import Button from 'primevue/button'
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
-const canManageInvoices = computed(() => authStore.hasPermission('procurement.invoices.manage'))
-const canApproveInvoices = computed(() => authStore.hasPermission('procurement.invoices.approve'))
+const canManageInvoices = computed(() => authStore.hasPermission('finance.invoices.manage'))
+const canApproveInvoices = computed(() => authStore.hasPermission('finance.invoices.approve'))
 
 // State
 const invoices = ref<any[]>([])
@@ -571,7 +571,7 @@ function getPaymentDot(status: string): string {
 async function loadInvoices() {
   loading.value = true
   try {
-    const response = await procurementService.getInvoices(filters.value)
+    const response = await financeService.getInvoices(filters.value)
     invoices.value = response.data?.data || []
 
     // Separate by status
@@ -608,7 +608,7 @@ function calculateStats() {
 async function performMatch(invoice: any) {
   try {
     loading.value = true
-    await procurementService.performInvoiceMatch(invoice.id)
+    await financeService.matchInvoice(invoice.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -631,7 +631,7 @@ async function performMatch(invoice: any) {
 async function approveInvoice(invoice: any) {
   try {
     loading.value = true
-    await procurementService.approveInvoice(invoice.id)
+    await financeService.approveInvoice(invoice.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -653,14 +653,14 @@ async function approveInvoice(invoice: any) {
 
 function viewInvoice(invoice: any) {
   router.push({
-    name: 'procurement.invoices.detail',
+    name: 'finance.invoices.detail',
     params: { id: invoice.id },
   })
 }
 
 function editInvoice(invoice: any) {
   router.push({
-    name: 'procurement.invoices.edit',
+    name: 'finance.invoices.edit',
     params: { id: invoice.id },
   })
 }
@@ -721,7 +721,7 @@ function formatNumber(value: number): string {
 }
 
 function goToCreateInvoice() {
-  router.push({ name: 'procurement.invoices.create' })
+  router.push({ name: 'finance.invoices.create' })
 }
 
 onMounted(() => {

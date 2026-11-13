@@ -167,7 +167,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManage = authStore.hasPermission('logistics.deliveries.manage')
-const driverOnly = authStore.hasPermission('logistics.driver.trips') || authStore.hasPermission('driver.trips.view')
+const driverOnly = authStore.hasPermission('logistics.driver.trips')
 
 const trips = ref<any[]>([])
 const loading = ref(false)

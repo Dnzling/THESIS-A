@@ -3,7 +3,8 @@
     <div class="relative overflow-hidden py-14">
       <div class="mx-auto max-w-7xl px-4 text-center lg:px-8">
         <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">Simple plans for modern furniture teams.</h1>
-        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Try any plan free for one month. No payment is collected during the trial.</p>
+        <p v-if="canStartTrial" class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Try any plan free for one month. No payment is collected during the trial.</p>
+        <p v-else class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Choose the plan that fits your store. You can review billing details before checkout.</p>
 
         <div v-if="!canStartTrial" class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <span class="text-sm font-medium" :class="!isYearly ? 'text-slate-900' : 'text-orange-500'">Monthly</span>
@@ -36,8 +37,11 @@
               Billed {{ isYearly ? 'yearly' : 'monthly' }}
               <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
             </p>
-            <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-orange-500 px-5 py-3 font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600" @click="selectPlan(plan)">
-              {{ canStartTrial ? 'Start 1-Month Free Trial' : 'Choose Plan' }}
+            <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 font-semibold transition"
+              :class="isCurrentPlan(plan) ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-500 shadow-none' : 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:-translate-y-0.5 hover:bg-orange-600'"
+              :disabled="isCurrentPlan(plan)"
+              @click="selectPlan(plan)">
+              {{ isCurrentPlan(plan) ? 'Current Plan' : canStartTrial ? 'Start 1-Month Free Trial' : 'Choose Plan' }}
             </button>
             <div class="mt-6 space-y-3">
               <div v-for="feature in plan.features || []" :key="feature" class="flex items-start gap-3 text-sm text-slate-700">
@@ -113,11 +117,26 @@ const subscriptionStore = computed(() => {
 
 const canStartTrial = computed(() => {
   const store = subscriptionStore.value
-  const activeTrial = store.subscription_status === 'trial' && store.trial_ends_at && new Date(store.trial_ends_at) > new Date()
-  return Boolean(activeTrial || (!store.trial_started_at && ['free', 'pending'].includes(String(store.subscription_status || '').toLowerCase())))
+  return Boolean(!store.trial_started_at && ['free', 'pending', ''].includes(String(store.subscription_status || '').toLowerCase()))
 })
 
+const currentPlanKey = computed(() => {
+  const store = subscriptionStore.value
+  return String(store.subscription_key || store.subscriptionPlan?.plan_key || store.plan_key || '').toLowerCase()
+})
+
+const hasStartedSubscription = computed(() => {
+  const store = subscriptionStore.value
+  return Boolean(store.trial_started_at)
+    || ['trial', 'paid', 'expired', 'cancelled'].includes(String(store.subscription_status || '').toLowerCase())
+})
+
+const isCurrentPlan = (plan: any) => hasStartedSubscription.value
+  && currentPlanKey.value !== ''
+  && currentPlanKey.value === String(plan.plan_key || '').toLowerCase()
+
 const selectPlan = async (plan: any) => {
+  if (isCurrentPlan(plan)) return
   const user: any = authStore.currentUser
   const storeId = Number(storeIdFromQuery.value || user?.store_id || user?.store?.id || 0)
   if (!storeId) {

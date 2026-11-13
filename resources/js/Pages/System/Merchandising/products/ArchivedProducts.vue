@@ -78,7 +78,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import inventoryService from '../../../../services/inventory.service'
+import merchandisingService from '../../../../services/merchandising.service'
 import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
@@ -100,7 +100,7 @@ const loadArchivedProducts = async (requestedPage = page.value) => {
   loading.value = true
   page.value = requestedPage
   try {
-    const response = await inventoryService.getArchivedProducts({
+    const response = await merchandisingService.getArchivedProducts({
       page: page.value,
       per_page: perPage.value,
       search: search.value.trim() || undefined,
@@ -125,7 +125,7 @@ const onPage = (event: { page: number; rows: number }) => {
 const restoreProduct = async (product: any) => {
   restoringId.value = Number(product.id)
   try {
-    await inventoryService.restoreProduct(Number(product.id))
+    await merchandisingService.restoreProduct(Number(product.id))
     toast.add({ severity: 'success', summary: 'Product restored', detail: `${product.product_name} is back in the active catalog.`, life: 3000 })
     await loadArchivedProducts()
   } catch (error: any) {
@@ -144,7 +144,7 @@ const permanentlyDelete = async () => {
   if (!productToDelete.value) return
   deletingId.value = Number(productToDelete.value.id)
   try {
-    await inventoryService.permanentlyDeleteArchivedProduct(deletingId.value)
+    await merchandisingService.permanentlyDeleteArchivedProduct(deletingId.value)
     toast.add({ severity: 'success', summary: 'Product deleted', detail: 'The archived product was permanently deleted.', life: 3000 })
     deleteDialogVisible.value = false
     await loadArchivedProducts()

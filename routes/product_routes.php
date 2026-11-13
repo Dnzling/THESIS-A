@@ -13,9 +13,20 @@ use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
 use App\Http\Controllers\Api\ProductCatalog\PromotionController;
 use App\Http\Controllers\Api\ProductCatalog\DiscountRequestController;
 use App\Http\Controllers\Api\CRM\VoucherController;
+use App\Http\Controllers\Api\Merchandising\Model3dRequestController;
+use App\Http\Controllers\Api\Inventory\ProductController as InventoryProductController;
 
 // Product Catalog Routes
 Route::prefix('product-catalog')->group(function () {
+
+    // Merchandising reports and store 3D model requests belong to Product Catalog.
+    Route::get('reports', [DashboardController::class, 'reports']);
+    Route::get('3d-model-requests', [Model3dRequestController::class, 'index']);
+    Route::post('3d-model-requests', [Model3dRequestController::class, 'store']);
+    Route::get('3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
+    Route::get('3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download']);
+    Route::post('3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
+    Route::post('3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
 
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('dashboard/overview', [DashboardController::class, 'overview']);
@@ -34,17 +45,23 @@ Route::prefix('product-catalog')->group(function () {
     Route::post('categories/bulk/delete', [CategoryController::class, 'bulkDelete']);
 
     // Products
+    Route::get('products/archived', [InventoryProductController::class, 'archived']);
     Route::apiResource('products', ProductController::class)
         ->only(['index', 'show'])
         ;
     Route::apiResource('products', ProductController::class)
-        ->except(['index', 'show'])
-        ->middlewareFor('store', 'subscription.capacity:products')
+        ->except(['index', 'show', 'store']);
+    // Use the full merchandising creation workflow while keeping its API in Product Catalog.
+    Route::post('products', [InventoryProductController::class, 'store'])
+        ->middleware('subscription.capacity:products');
         ;
     Route::post('products/{productId}/3d-model', [ProductAssetController::class, 'storeForProductForm'])
         ->name('products.3d-model.store');
     Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);
     Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice']);
+    Route::post('products/{id}/archive', [InventoryProductController::class, 'archive'])->whereNumber('id');
+    Route::post('products/{id}/restore', [InventoryProductController::class, 'restore'])->whereNumber('id');
+    Route::delete('products/{id}/purge', [InventoryProductController::class, 'purgeArchived'])->whereNumber('id');
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
     Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
     Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);

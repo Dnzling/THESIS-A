@@ -131,7 +131,6 @@ import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
-import inventoryService from '../../../../services/inventory.service'
 import logisticsService from '../../../../services/logistics.service'
 
 const route = useRoute()
@@ -169,7 +168,7 @@ const loadPage = async () => {
   loadError.value = ''
   try {
     const [transferResponse, employeeResponse, vehicleResponse] = await Promise.all([
-      inventoryService.getTransfer(transferId.value),
+      logisticsService.getStockTransfer(transferId.value),
       logisticsService.getLogisticsEmployees(),
       logisticsService.getVehicles({ per_page: 100, status: 'active' }),
     ])
@@ -199,7 +198,7 @@ const submitAssignment = async () => {
   if (!canSubmit.value || !selectedDriver.value || !selectedVehicle.value) return
   submitting.value = true
   try {
-    await inventoryService.createTransferDelivery(transferId.value, {
+    await logisticsService.createStockTransferDelivery(transferId.value, {
       driver_user_id: Number(selectedDriver.value.id),
       vehicle_type: selectedVehicle.value.vehicle_name || selectedVehicle.value.label || 'Assigned Vehicle',
       driver_name: String(selectedDriver.value.name || selectedDriver.value.full_name || 'Assigned Driver').trim(),

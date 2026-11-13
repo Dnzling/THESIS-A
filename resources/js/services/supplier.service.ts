@@ -469,7 +469,7 @@ class SupplierService {
   }
 
   async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id?: number | null; submitted_by_supplier?: boolean }) {
-    const response = await axiosClient.post(`/api/procurement/invoices/from-grn`, data)
+    const response = await axiosClient.post(`${this.portalBaseUrl}/invoices/from-grn`, data)
     return response.data
   }
 

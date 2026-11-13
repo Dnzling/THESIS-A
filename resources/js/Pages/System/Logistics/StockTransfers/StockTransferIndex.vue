@@ -106,7 +106,7 @@ import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import Skeleton from 'primevue/skeleton'
-import inventoryService from '../../../../services/inventory.service'
+import logisticsService from '../../../../services/logistics.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -135,7 +135,7 @@ const statusOptions = [
 const loadTransfers = async () => {
   loading.value = true
   try {
-    const response = await inventoryService.getTransfers({
+    const response = await logisticsService.getStockTransfers({
       logistics_ready: true,
       page: pageState.page,
       per_page: pageState.rows,

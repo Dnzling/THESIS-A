@@ -53,7 +53,26 @@
               <div v-else class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 Suppliers are assigned separately to each product group in this split purchase order.
               </div>
-              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div v-if="showRfqReceivingBranchSelect" class="rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3">
+                <label for="rfq-receiving-branch" class="block text-xs font-medium uppercase tracking-wide text-slate-600">
+                  Receiving Branch <span class="text-red-500">*</span>
+                </label>
+                <Select
+                  id="rfq-receiving-branch"
+                  v-model="form.branch_id"
+                  :options="branches"
+                  option-label="name"
+                  option-value="id"
+                  placeholder="Select receiving branch"
+                  size="small"
+                  filter
+                  fluid
+                  class="mt-2"
+                  :disabled="branches.length === 0"
+                />
+                <small class="mt-1 block text-slate-600">No Inventory or Warehouse request branch is linked to this RFQ.</small>
+              </div>
+              <div v-else class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Destination Branch</p>
                 <p class="mt-1 font-semibold text-slate-900">{{ selectedBranchName }}</p>
               </div>
@@ -360,6 +379,7 @@
 import { reactive, ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Select from 'primevue/select'
 import procurementService from '../../../../services/procurement.service'
 import { usePoAutomation } from '../../../../composables/procurement/usePoAutomation'
 
@@ -395,6 +415,7 @@ const isEditing = ref(false)
 const loadingSuppliers = ref(false)
 const eligibleSuppliersLoading = ref(false)
 const prefilling = ref(false)
+const rfqHasConnectedReceivingBranch = ref(false)
 const suppliers = ref<any[]>([])
 const eligibleSuppliers = ref<any[]>([])
 const products = ref<any[]>([])
@@ -435,6 +456,9 @@ const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
   return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
 })
+const showRfqReceivingBranchSelect = computed(() =>
+  Boolean(route.query.rfq_id) && !isEditing.value && !rfqHasConnectedReceivingBranch.value
+)
 const listedProductIds = computed(() => Array.from(new Set(
   form.items.map((item: any) => Number(item?.product_id || 0)).filter((id: number) => id > 0)
 )))
@@ -731,7 +755,16 @@ const prefillFromRFQ = async (rfqId: number) => {
     form.purchase_requisition_id = rfq.purchase_requisition_id || form.purchase_requisition_id
 
     form.notes = `From ${rfq.rfq_number || rfqId}`
-    form.branch_id = rfq.purchase_requisition?.branch_id || rfq.branch_id || form.branch_id
+    const linkedBranchId = Number(
+      rfq.purchase_requisition?.branch_id
+      || rfq.purchase_requisition?.branch?.id
+      || rfq.branch_id
+      || rfq.stock_order_request?.branch_inventory?.branch_id
+      || rfq.stock_request?.branch_id
+      || 0
+    )
+    rfqHasConnectedReceivingBranch.value = linkedBranchId > 0
+    if (linkedBranchId > 0) form.branch_id = linkedBranchId
     const approvedFeedbacks = Array.isArray(rfq.supplier_portal_feedbacks)
       ? rfq.supplier_portal_feedbacks.filter((f: any) => f.status === 'approved')
       : []

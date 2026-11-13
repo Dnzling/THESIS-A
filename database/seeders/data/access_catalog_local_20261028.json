@@ -2481,18 +2481,18 @@
       "deleted_at": null
     },
     {
-      "name": "procurement.invoices",
-      "display_name": "Invoices",
-      "module": "procurement",
-      "section": null,
-      "route_name": "procurement.invoices",
-      "route_path": "/procurement/invoices",
-      "icon": "pi pi-receipt",
+      "name": "finance.invoices",
+      "display_name": "Supplier Invoices",
+      "module": "finance",
+      "section": "ap",
+      "route_name": "finance.invoices",
+      "route_path": "/finance/invoices",
+      "icon": "pi pi-file-edit",
       "parent_name": null,
-      "display_order": 10,
+      "display_order": 3,
       "is_active": 1,
       "meta": "{\"subtitle\": \"Manage supplier invoices and 3-way matching\"}",
-      "deleted_at": "2026-09-11 22:28:20"
+      "deleted_at": null
     },
     {
       "name": "procurement.products",
@@ -3963,8 +3963,8 @@
       "permission_name": "procurement.suppliers.view"
     },
     {
-      "navigation_name": "procurement.invoices",
-      "permission_name": "procurement.invoices.view"
+      "navigation_name": "finance.invoices",
+      "permission_name": "finance.invoices.view"
     },
     {
       "navigation_name": "procurement.analytics.reorder-suggestions",
@@ -9097,7 +9097,7 @@
     "logistics.driver.deliveries",
     "driver.deliveries.view",
     "driver.history.view",
-    "driver.trips.view"
+    "logistics.driver.trips"
   ],
   "retired_navigation_items": [
     "My Deliveries",

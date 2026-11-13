@@ -259,12 +259,8 @@ Route::prefix('inventory')->group(function () {
     // Products Management
     Route::prefix('products')->group(function () {
         Route::get('/', [ProductController::class, 'index']);
-        Route::get('/archived', [ProductController::class, 'archived']);
         Route::get('/{id}', [ProductController::class, 'show']);
         Route::post('/', [ProductController::class, 'store'])->middleware('subscription.capacity:products');
-        Route::post('/{id}/archive', [ProductController::class, 'archive'])->whereNumber('id');
-        Route::post('/{id}/restore', [ProductController::class, 'restore'])->whereNumber('id');
-        Route::delete('/{id}/purge', [ProductController::class, 'purgeArchived'])->whereNumber('id');
         Route::put('/{id}', [ProductController::class, 'update']);
         Route::delete('/{id}', [ProductController::class, 'destroy']);
         Route::get('/{id}/variations', [ProductController::class, 'getVariations']);

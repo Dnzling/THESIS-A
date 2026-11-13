@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from '@/axios'
+import financeService from '@/services/finance.service'
 import { useToast } from 'primevue/usetoast'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
@@ -111,9 +111,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const response = await axios.get(`/api/store/simple-staff/payroll/periods/${route.params.payPeriodId}`)
-    period.value = response.data?.data?.period
-    payrolls.value = response.data?.data?.payrolls || []
+    const response = await financeService.getBasicPayrollPeriod(String(route.params.payPeriodId))
+    period.value = response?.data?.period
+    payrolls.value = response?.data?.payrolls || []
   } catch (err: any) {
     error.value = err?.response?.data?.message || 'Unable to load this pay period.'
   } finally { loading.value = false }
@@ -122,7 +122,7 @@ async function load() {
 async function save(row: any) {
   savingId.value = Number(row.id)
   try {
-    await axios.put(`/api/store/simple-staff/payroll/${row.id}`, {
+    await financeService.updateBasicPayrollDraft(Number(row.id), {
       base_salary: row.base_salary, overtime_amount: row.overtime_amount,
       allowances_total: row.allowances_total, bonuses_total: row.bonuses_total,
       deductions_total: row.deductions_total, tax_amount: row.tax_amount,
@@ -137,7 +137,7 @@ async function completeAll() {
   if (!draftRows.value.length) return
   busy.value = true
   try {
-    await axios.post('/api/store/simple-staff/payroll/bulk-complete', { payroll_ids: draftRows.value.map(row => row.id) })
+    await financeService.completeBasicPayrollDrafts(draftRows.value.map(row => row.id))
     toast.add({ severity: 'success', summary: 'Payrolls completed', detail: 'All drafts in this period are finalized.', life: 3000 })
     await load()
   } catch (err: any) { toast.add({ severity: 'error', summary: 'Completion failed', detail: err?.response?.data?.message || 'Unable to complete all drafts.', life: 3500 }) }
@@ -148,8 +148,8 @@ async function payAll() {
   if (!completedRows.value.length) return
   busy.value = true
   try {
-    await axios.post('/api/store/simple-staff/payroll/bulk-pay', {
-      payroll_ids: completedRows.value.map(row => row.id), payment_date: dateString(paymentDate.value),
+    await financeService.payBasicPayrolls(completedRows.value.map(row => row.id), {
+      payment_date: dateString(paymentDate.value),
       payment_method: paymentMethod.value, reference_number: referenceNumber.value || undefined,
     })
     showPay.value = false

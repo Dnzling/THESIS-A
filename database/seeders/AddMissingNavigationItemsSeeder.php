@@ -372,6 +372,16 @@ class AddMissingNavigationItemsSeeder extends Seeder
                 'display_order' => 2,
             ],
             [
+                'name' => 'finance.invoices',
+                'display_name' => 'Supplier Invoices',
+                'module' => 'finance',
+                'section' => 'ap',
+                'route_name' => 'finance.invoices',
+                'route_path' => '/finance/invoices',
+                'icon' => 'pi pi-file-edit',
+                'display_order' => 3,
+            ],
+            [
                 'name' => 'finance.receivables',
                 'display_name' => 'Accounts Receivable',
                 'module' => 'finance',

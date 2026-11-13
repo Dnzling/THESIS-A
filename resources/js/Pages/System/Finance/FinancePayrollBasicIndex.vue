@@ -118,7 +118,6 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from '@/axios'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -293,7 +292,7 @@ const submitPayout = async () => {
       notes: payoutForm.notes || undefined,
     }
 
-    await financeService.markPayrollPaid(selectedPayroll.value.id, payload)
+    await financeService.payBasicPayrolls([selectedPayroll.value.id], payload)
     payoutDialogVisible.value = false
     await loadPayrolls()
   } finally {
@@ -304,8 +303,8 @@ const submitPayout = async () => {
 const loadPayrolls = async () => {
   loading.value = true
   try {
-    const res = await axios.get('/api/store/simple-staff/payroll/periods')
-    payrolls.value = res.data?.data || []
+    const res = await financeService.getBasicPayrollPeriods()
+    payrolls.value = res?.data || []
   } finally {
     loading.value = false
   }

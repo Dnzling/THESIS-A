@@ -1250,11 +1250,14 @@ class PaymongoController extends Controller
         }
         $newEndsAt = $baseDate->copy()->addMonths($months);
 
+        $storeSettings = is_array($store->settings) ? $store->settings : [];
+        unset($storeSettings['subscription_cancellation']);
         $store->update([
             'subscription_tier' => $targetPlan->id,
             'subscription_ends_at' => $newEndsAt->toDateString(),
             'subscription_status' => 'paid',
             'status' => $store->subscription_status === 'expired' && $store->status === 'inactive' ? 'active' : $store->status,
+            'settings' => $storeSettings,
         ]);
         app(\App\Services\Modules\ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
         app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);

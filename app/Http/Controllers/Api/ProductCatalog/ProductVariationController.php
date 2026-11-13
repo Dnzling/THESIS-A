@@ -506,24 +506,30 @@ class ProductVariationController extends BaseController
                 ->lockForUpdate()
                 ->get();
 
-            $stockRows = $inventoryRows->filter(fn (BranchInventory $row) =>
-                (int) $row->quantity_on_hand > 0
-                || (int) $row->quantity_available > 0
-                || (int) $row->quantity_reserved > 0
-                || (int) $row->quantity_damaged > 0
-                || (int) $row->quantity_incoming > 0
-            );
+            $stockColumns = collect([
+                'quantity_on_hand',
+                'quantity_available',
+                'quantity_reserved',
+                'quantity_damaged',
+                'quantity_incoming',
+            ])->filter(fn (string $column) => Schema::hasColumn('branch_inventory', $column));
+
+            $stockRows = $inventoryRows->filter(fn (BranchInventory $row) => $stockColumns
+                ->contains(fn (string $column) => (int) $row->getAttribute($column) > 0));
 
             if ($stockRows->isNotEmpty()) {
-                $branchDetails = $stockRows->map(function (BranchInventory $row) {
+                $branchDetails = $stockRows->map(function (BranchInventory $row) use ($stockColumns) {
                     $branchName = $row->branch?->name ?? "Branch {$row->branch_id}";
-                    $quantities = collect([
-                        'on hand' => (int) $row->quantity_on_hand,
-                        'available' => (int) $row->quantity_available,
-                        'reserved' => (int) $row->quantity_reserved,
-                        'damaged' => (int) $row->quantity_damaged,
-                        'incoming' => (int) $row->quantity_incoming,
-                    ])->filter(fn ($quantity) => $quantity > 0)
+                    $labels = [
+                        'quantity_on_hand' => 'on hand',
+                        'quantity_available' => 'available',
+                        'quantity_reserved' => 'reserved',
+                        'quantity_damaged' => 'damaged',
+                        'quantity_incoming' => 'incoming',
+                    ];
+                    $quantities = $stockColumns
+                        ->mapWithKeys(fn (string $column) => [$labels[$column] => (int) $row->getAttribute($column)])
+                        ->filter(fn ($quantity) => $quantity > 0)
                         ->map(fn ($quantity, $label) => "{$quantity} {$label}")
                         ->implode(', ');
 

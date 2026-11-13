@@ -161,7 +161,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
-import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRoute, useRouter } from 'vue-router'
 import SplitButton from 'primevue/splitbutton'
@@ -471,7 +470,7 @@ const confirmDelete = (product: any) => {
 const deleteProduct = async () => {
   deleting.value = true
   try {
-    await inventoryService.archiveProduct(currentProduct.value.id)
+    await merchandisingService.archiveProduct(currentProduct.value.id)
     toast.add({ severity: 'success', summary: 'Archived', detail: 'Product archived successfully', life: 3000 })
     deleteDialogVisible.value = false
     loadProducts()

@@ -273,7 +273,7 @@
               </ul>
             </div>
 
-            <div v-if="isFinanceRoute && invoice?.match_status !== 'matched'" class="mt-4">
+            <div v-if="invoice?.match_status !== 'matched'" class="mt-4">
               <button
                 @click="runMatch"
                 :disabled="matching"
@@ -511,7 +511,6 @@ import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Tag from 'primevue/tag'
-import procurementService from '../../../services/procurement.service'
 import financeService from '../../../services/finance.service'
 import paymongoService from '@/services/paymongo.service'
 
@@ -536,7 +535,6 @@ const paymongoInvoiceLoading = ref(false)
 const paymongoInvoicePolling = ref<ReturnType<typeof setInterval> | null>(null)
 const confirmPaymentDestination = ref(false)
 
-const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
 const effectivePaymentStatus = computed(() => {
   const paymongoStatus = String(paymongoInvoiceStatus.value || '').toLowerCase()
   if (['succeeded', 'paid'].includes(paymongoStatus)) {
@@ -744,9 +742,7 @@ const getMatchDescription = (status: string): string => {
 async function loadInvoice() {
   loading.value = true
   try {
-    const response = isFinanceRoute.value
-      ? await financeService.getInvoice(Number(route.params.id))
-      : await procurementService.getInvoice(Number(route.params.id))
+    const response = await financeService.getInvoice(Number(route.params.id))
     
     invoice.value = response.data?.data || response.data
     paymentAmount.value = Number(invoice.value?.net_amount || 0)
@@ -885,11 +881,7 @@ function stopInvoicePaymongoPolling() {
 async function approveInvoice() {
   approving.value = true
   try {
-    if (isFinanceRoute.value) {
-      await financeService.approveInvoice(invoice.value.id)
-    } else {
-      await procurementService.approveInvoice(invoice.value.id)
-    }
+    await financeService.approveInvoice(invoice.value.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -913,11 +905,7 @@ async function runMatch() {
   if (!invoice.value?.id) return
   matching.value = true
   try {
-    if (isFinanceRoute.value) {
-      await financeService.matchInvoice(invoice.value.id)
-    } else {
-      await procurementService.performInvoiceMatch(invoice.value.id)
-    }
+    await financeService.matchInvoice(invoice.value.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -1069,16 +1057,12 @@ function formatNumber(value: number): string {
 }
 
 function goBack() {
-  if (isFinanceRoute.value) {
-    router.push({ name: 'finance.payables' })
-    return
-  }
-  router.push({ name: 'procurement.invoices' })
+  router.push({ name: 'finance.invoices' })
 }
 
 function editInvoice() {
   router.push({
-    name: 'procurement.invoices.edit',
+    name: 'finance.invoices.edit',
     params: { id: invoice.value.id },
   })
 }

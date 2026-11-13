@@ -15,7 +15,7 @@ class LogisticsPermissionsSeeder extends Seeder
         $permissions = [
             ['name' => 'logistics.deliveries.view', 'display_name' => 'View Deliveries', 'module' => 'logistics'],
             ['name' => 'logistics.deliveries.manage', 'display_name' => 'Manage Deliveries', 'module' => 'logistics'],
-            ['name' => 'driver.trips.view', 'display_name' => 'View Assigned Trips', 'module' => 'logistics'],
+            ['name' => 'logistics.driver.trips', 'display_name' => 'View Assigned Trips', 'module' => 'logistics'],
             ['name' => 'logistics.driver.history', 'display_name' => 'View Driver Delivery History', 'module' => 'logistics'],
             ['name' => 'logistics.driver.supplier-pickups', 'display_name' => 'Process Assigned Supplier Pickups', 'module' => 'logistics'],
             ['name' => 'logistics.fleet.view', 'display_name' => 'View Fleet', 'module' => 'logistics'],

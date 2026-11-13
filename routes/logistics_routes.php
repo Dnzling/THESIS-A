@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\LalamoveDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
 use App\Http\Controllers\Api\Logistics\SupplierPickupAssignmentController;
+use App\Http\Controllers\Api\Inventory\StockTransferController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 Route::prefix('logistics')->group(function () {
@@ -34,6 +35,15 @@ Route::prefix('logistics')->group(function () {
         Route::get('/', [DeliveryFeeSettingController::class, 'show']);
         Route::put('/', [DeliveryFeeSettingController::class, 'update']);
         Route::post('/estimate', [DeliveryFeeSettingController::class, 'estimate']);
+    });
+
+    // Logistics-facing stock transfer workflow. Inventory screens keep using inventory_routes.
+    Route::prefix('stock-transfers')->group(function () {
+        Route::get('/', [StockTransferController::class, 'index'])->middleware('can:logistics.deliveries.view');
+        Route::get('/{id}', [StockTransferController::class, 'show'])->whereNumber('id')->middleware('can:logistics.deliveries.view');
+        Route::post('/{id}/create-delivery', [StockTransferController::class, 'createDelivery'])->whereNumber('id')->middleware('can:logistics.deliveries.manage');
+        Route::post('/{id}/delivery-log', [StockTransferController::class, 'addDeliveryLog'])->whereNumber('id')->middleware('can:logistics.deliveries.manage');
+        Route::post('/{id}/receive', [StockTransferController::class, 'receive'])->whereNumber('id')->middleware('can:logistics.deliveries.manage');
     });
 
     Route::prefix('delivery-orders')->group(function () {

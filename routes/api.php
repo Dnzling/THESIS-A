@@ -46,7 +46,6 @@ use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
-use App\Http\Controllers\Api\Merchandising\Model3dRequestController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceFeedbackController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
@@ -109,12 +108,6 @@ Route::prefix('locations')->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->group(function () {
-    Route::get('/3d-model-requests', [Model3dRequestController::class, 'index']);
-    Route::post('/3d-model-requests', [Model3dRequestController::class, 'store']);
-    Route::get('/3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
-    Route::get('/3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download']);
-    Route::post('/3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
-    Route::post('/3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
@@ -228,6 +221,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::prefix('store')->group(function () {
         Route::get('/position-setup', [PositionSetupController::class, 'index']);
         Route::post('/position-setup', [PositionSetupController::class, 'store']);
+        Route::get('/subscription-agreement/status', [StoreSubscriptionAgreementController::class, 'status']);
         Route::post('/subscription-agreement/sign', [StoreSubscriptionAgreementController::class, 'sign']);
         Route::post('/subscription-agreement/activate', [StoreSubscriptionAgreementController::class, 'activate']);
         Route::get('/subscription-agreement/document', [StoreSubscriptionAgreementController::class, 'document']);
@@ -239,6 +233,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
         Route::put('/settings/payments', [StoreSettingsController::class, 'updatePaymentSettings']);
+        Route::post('/subscription/cancel-at-period-end', [StoreSettingsController::class, 'cancelSubscriptionAtPeriodEnd']);
         Route::get('/settings/hr', [StoreSettingsController::class, 'showHrSettings']);
         Route::put('/settings/hr', [StoreSettingsController::class, 'updateHrSettings']);
         Route::put('/settings/attendance', [StoreSettingsController::class, 'updateAttendanceSettings']);
@@ -329,14 +324,6 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('payments', [SimpleStaffController::class, 'payments']);
         Route::post('payments', [SimpleStaffController::class, 'savePayment']);
         Route::get('employees/{employeeId}/payslips', [SimplePayrollController::class, 'employeePayslips']);
-        Route::get('payroll/periods', [SimplePayrollController::class, 'periods']);
-        Route::get('payroll/periods/{periodId}', [SimplePayrollController::class, 'periodDetail']);
-        Route::get('payroll/preview', [SimplePayrollController::class, 'preview']);
-        Route::post('payroll/generate', [SimplePayrollController::class, 'generate']);
-        Route::post('payroll/bulk-complete', [SimplePayrollController::class, 'bulkComplete']);
-        Route::post('payroll/bulk-pay', [SimplePayrollController::class, 'bulkPay']);
-        Route::put('payroll/{payrollId}', [SimplePayrollController::class, 'updateDraft']);
-        Route::post('payroll/{payrollId}/complete', [SimplePayrollController::class, 'complete']);
         Route::get('payroll/{payrollId}/payslip/print', [SimplePayrollController::class, 'printPaidPayslip']);
     });
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
@@ -501,9 +488,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::delete('{branch}', 'destroy');
     });
 
-    require __DIR__ . '/attendance_routes.php';
+    require __DIR__ . '/hr_routes.php';
     require __DIR__ . '/product_routes.php';
-    require __DIR__ . '/merchandising_routes.php';
     require __DIR__ . '/procurement_routes.php';
     require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/supplier_portal_routes.php';

@@ -480,7 +480,6 @@ const props = withDefaults(defineProps<{
   embeddedProduct?: any
   embeddedVariation?: any
   canManage3d?: boolean
-  upgradePlanName?: string
 }>(), {
   embedded: false,
   embeddedProduct: null,
@@ -515,7 +514,6 @@ const loadingProductModels = ref(false)
 const uploadingModel = ref(false)
 const products = ref([])
 const product3DModels = ref<any[]>([])
-const units = ref<any[]>([])
 const selectedProduct = ref<any>(null)
 const variantModelFile = ref<File | null>(null)
 const variantImageFile = ref<File | null>(null)
@@ -554,12 +552,7 @@ const formatMoney = (value: any) => `₱${Number(value || 0).toLocaleString('en-
 
 const fallbackUnits = ['pcs', 'set', 'piece', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
 const unitOptions = computed(() => {
-  const source = units.value.length
-    ? units.value.map((unit: any) => ({
-        label: unit.unit_symbol ? `${unit.unit_name} (${unit.unit_symbol})` : unit.unit_name,
-        value: unit.unit_code || unit.unit_symbol || unit.unit_name,
-      }))
-    : fallbackUnits.map((unit) => ({ label: unit, value: unit }))
+  const source = fallbackUnits.map((unit) => ({ label: unit, value: unit }))
   const current = form.unit_of_measurement
   if (current && !source.some((option: any) => option.value === current)) {
     source.unshift({ label: current, value: current })
@@ -643,16 +636,6 @@ const loadProducts = async () => {
     console.error('Failed to load products:', error)
   } finally {
     loadingProducts.value = false
-  }
-}
-
-const loadUnits = async () => {
-  try {
-    const response = await inventoryService.getUnits({ is_active: true })
-    units.value = Array.isArray(response?.data) ? response.data : []
-  } catch (error) {
-    console.error('Failed to load units:', error)
-    units.value = []
   }
 }
 
@@ -1061,7 +1044,6 @@ const goBack = () => {
 }
 
 onMounted(() => {
-  loadUnits()
   if (embedded.value) {
     const productId = Number(embeddedProduct.value?.id || 0)
     if (productId) {

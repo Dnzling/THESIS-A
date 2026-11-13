@@ -114,6 +114,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import axios from '@/axios'
+import financeService from '@/services/finance.service'
 import Avatar from 'primevue/avatar'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
@@ -212,10 +213,10 @@ async function previewPayroll() {
   previewRows.value = []
   errorMessage.value = ''
   try {
-    const response = await axios.get('/api/store/simple-staff/payroll/preview', {
-      params: { start_date: dateString(dateRange.value[0]), end_date: dateString(dateRange.value[1]), branch_id: branchId.value || undefined },
+    const response = await financeService.previewBasicPayroll({
+      start_date: dateString(dateRange.value[0]), end_date: dateString(dateRange.value[1]), branch_id: branchId.value || undefined,
     })
-    previewRows.value = (response.data?.data || []).map((row: any) => ({
+    previewRows.value = (response?.data || []).map((row: any) => ({
       ...row,
       unpaid_absence_days: 0,
       paid_leave_days: 0,
@@ -236,7 +237,7 @@ async function generateDrafts() {
   generating.value = true
   errorMessage.value = ''
   try {
-    await axios.post('/api/store/simple-staff/payroll/generate', {
+    await financeService.generateBasicPayroll({
       start_date: dateString(dateRange.value[0]),
       end_date: dateString(dateRange.value[1]),
       branch_id: branchId.value || undefined,

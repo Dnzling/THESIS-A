@@ -195,7 +195,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import procurementService from '../../../../services/procurement.service'
+import financeService from '../../../services/finance.service'
 
 const router = useRouter()
 const route = useRoute()
@@ -211,7 +211,7 @@ const loading = ref(false)
 async function loadInvoice() {
   loading.value = true
   try {
-    const response = await procurementService.getInvoice(Number(route.params.id))
+    const response = await financeService.getInvoice(Number(route.params.id))
     invoice.value = response.data?.data || response.data
     invoiceItems.value = invoice.value?.items || []
   } catch (error) {
@@ -256,7 +256,7 @@ async function submitForm() {
 
   saving.value = true
   try {
-    await procurementService.updateInvoice(invoice.value.id, {
+    await financeService.updateInvoice(invoice.value.id, {
       ...invoice.value,
       items: invoiceItems.value,
     })
@@ -281,7 +281,7 @@ async function submitForm() {
 
 function goBack() {
   router.push({
-    name: 'procurement.invoices.detail',
+    name: 'finance.invoices.detail',
     params: { id: invoice.value.id },
   })
 }

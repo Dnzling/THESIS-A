@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\WarehouseOperations\WarehouseOperationsController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehousePurchaseRequisitionController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehouseReorderController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehouseGoodsReceiptController;
+use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Inventory\ForecastController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,7 @@ Route::prefix('warehouse')->controller(WarehouseOperationsController::class)->gr
     Route::get('stock', 'stock');
     Route::get('stock-options', 'stockItemOptions');
     Route::get('stock/{id}', 'stockItem')->whereNumber('id');
+    Route::get('purchase-orders/{id}', [PurchaseOrderController::class, 'show'])->whereNumber('id');
     Route::put('stock/{id}', 'updateStockItem')->whereNumber('id');
     Route::get('transfer-requests', 'transferRequests');
     Route::get('transfer-requests/{id}', 'transferRequest')->whereNumber('id');

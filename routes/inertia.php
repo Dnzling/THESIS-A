@@ -341,10 +341,6 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/procurement/purchase-orders/{id}', 'System/Procurement/PurchaseOrders/PurchaseOrderDetail', 'procurement.purchase-orders.detail', 'Purchase Order Details');
     $inertia('/logistics/supplier-pickups/{id}/assign', 'System/Logistics/SupplierPickups/Assign', 'logistics.supplier-pickups.assign', 'Assign Supplier Pickup');
     $inertia('/procurement/purchase-orders/{id}/edit', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.edit', 'Edit Purchase Order');
-    // $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
-    // $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
-    // $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
-    // $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
     $inertia('/inventory/goods-receipts', 'System/Inventory/GoodsReceipts/GoodsReceiptIndex', 'inventory.goods-receipts', 'Goods Receipts');
     $inertia('/inventory/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'inventory.goods-receipts.create', 'Create Goods Receipt');
     $inertia('/inventory/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'inventory.goods-receipts.detail', 'Goods Receipt Detail');
@@ -368,7 +364,10 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     Route::redirect('/finance', '/finance/dashboard')->name('finance');
     $inertia('/finance/dashboard', 'System/Finance/FinanceDashboard', 'finance.dashboard', 'Finance Dashboard');
     $inertia('/finance/payables', 'System/Finance/FinancePayablesIndex', 'finance.payables', 'Payables');
-    $inertia('/finance/invoices/{id}', 'System/Finance/FinanceInvoiceDetail', 'finance.invoices.detail', 'Invoice Detail');
+    $inertia('/finance/invoices', 'System/Finance/FinanceInvoiceIndex', 'finance.invoices', 'Invoices');
+    $inertia('/finance/invoices/create', 'System/Finance/FinanceInvoiceCreate', 'finance.invoices.create', 'Create Invoice');
+    $inertia('/finance/invoices/{id}/edit', 'System/Finance/FinanceInvoiceEdit', 'finance.invoices.edit', 'Edit Invoice')->whereNumber('id');
+    $inertia('/finance/invoices/{id}', 'System/Finance/FinanceInvoiceDetail', 'finance.invoices.detail', 'Invoice Detail')->whereNumber('id');
     $inertia('/finance/purchase-orders', 'System/Finance/FinancePurchaseOrderIndex', 'finance.purchase-orders', 'Purchase Orders');
     $inertia('/finance/purchase-orders/{id}', 'System/Finance/FinancePurchaseOrderDetail', 'finance.purchase-orders.detail', 'Purchase Order Detail');
     $inertia('/finance/receivables', 'System/Finance/FinanceReceivablesIndex', 'finance.receivables', 'Receivables');

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Hr\EmployeeCreditCardController;
 use App\Http\Controllers\Api\Hr\HolidayController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
+
 // Shifts
 Route::apiResource('shifts', ShiftController::class);
 Route::get('shifts/{id}/stats', [ShiftController::class, 'getStats']);

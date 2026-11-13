@@ -107,7 +107,54 @@ class MerchandisingService {
         return response.data
     }
     async getReports(params: { days?: number; branch_id?: number | null; category_id?: number | null; search?: string; page?: number; per_page?: number }) {
-        const response = await axiosClient.get('/api/merchandising/reports', { params })
+        const response = await axiosClient.get(`${this.baseUrl}/reports`, { params })
+        return response.data
+    }
+
+    async get3DModelRequests(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/3d-model-requests`, { params })
+        return response.data
+    }
+
+    async create3DModelRequest(data: FormData) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-model-requests`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return response.data
+    }
+
+    async update3DModelRequest(id: number, data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-model-requests/${id}/store-action`, data)
+        return response.data
+    }
+
+    async download3DModelRequest(id: number) {
+        return axiosClient.get(`${this.baseUrl}/3d-model-requests/${id}/download`, { responseType: 'blob' })
+    }
+
+    async archiveProduct(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/archive`, undefined, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
+        return response.data
+    }
+
+    async getArchivedProducts(params?: { page?: number; per_page?: number; search?: string }) {
+        const response = await axiosClient.get(`${this.baseUrl}/products/archived`, { params })
+        return response.data
+    }
+
+    async restoreProduct(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/restore`, undefined, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
+        return response.data
+    }
+
+    async permanentlyDeleteArchivedProduct(id: number) {
+        const response = await axiosClient.delete(`${this.baseUrl}/products/${id}/purge`, {
+            headers: { 'X-Suppress-Dialog': '1' },
+        })
         return response.data
     }
 
@@ -170,8 +217,10 @@ class MerchandisingService {
         return response.data
     }
 
-    async createProduct(data: Product) {
-        const response = await axiosClient.post(`${this.baseUrl}/products`, data)
+    async createProduct(data: Product | Record<string, any>, suppressDialog = false) {
+        const response = await axiosClient.post(`${this.baseUrl}/products`, data, suppressDialog
+            ? { headers: { 'X-Suppress-Dialog': '1' } }
+            : undefined)
         return response.data
     }
 

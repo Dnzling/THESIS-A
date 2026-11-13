@@ -9,6 +9,7 @@ export const WarehouseService = {
   stock: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/stock', { params })),
   stockItem: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/stock/${id}`)),
   stockItemOptions: async () => unwrap(await axiosClient.get('/api/warehouse/stock-options')),
+  purchaseOrder: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/purchase-orders/${id}`)),
   updateStockItem: async (id: number | string, payload: any) => unwrap(await axiosClient.put(`/api/warehouse/stock/${id}`, payload)),
   transferRequests: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/transfer-requests', { params })),
   transferRequest: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/transfer-requests/${id}`)),

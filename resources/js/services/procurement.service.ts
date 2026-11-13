@@ -391,57 +391,6 @@ class ProcurementService {
     return response.data
   }
 
-  // ==================== INVOICES & 3-WAY MATCHING ====================
-  async getInvoices(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices`, { params })
-    return response.data
-  }
-
-  async getInvoice(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/${id}`)
-    return response.data
-  }
-
-  async createInvoice(data: Invoice) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices`, data)
-    return response.data
-  }
-
-  async updateInvoice(id: number, data: Partial<Invoice>) {
-    const response = await axiosClient.put(`${this.baseUrl}/invoices/${id}`, data)
-    return response.data
-  }
-
-  async performInvoiceMatch(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/match`)
-    return response.data
-  }
-
-  async approveInvoice(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/approve`)
-    return response.data
-  }
-
-  async scheduleInvoicePayment(id: number, data: { payment_date: string }) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/schedule-payment`, data)
-    return response.data
-  }
-
-  async markInvoiceAsPaid(id: number, data: { payment_method: string; payment_amount: number }) {
-    const response = await axiosClient.post(`${this.baseUrl}/invoices/${id}/mark-paid`, data)
-    return response.data
-  }
-
-  async getPendingInvoiceMatch(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/pending/match`, { params })
-    return response.data
-  }
-
-  async getInvoiceExceptions(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/invoices/exceptions`, { params })
-    return response.data
-  }
-
   // ==================== BARCODE SCANNING ====================
   async lookupBarcode(code: string) {
     const response = await axiosClient.get(`${this.baseUrl}/barcode/lookup`, { params: { code } })

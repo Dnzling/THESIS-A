@@ -111,6 +111,16 @@ class StoreSettingsController extends Controller
             ->all();
 
         $endsAt = $store?->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
+        $storeSettings = is_array($store?->settings) ? $store->settings : [];
+        $cancellation = $storeSettings['subscription_cancellation'] ?? null;
+        $subscriptionStatus = strtolower((string) ($store?->subscription_status ?? ''));
+        $subscriptionExpired = $subscriptionStatus === 'expired'
+            || ($endsAt && $endsAt->copy()->startOfDay()->lt(now()->startOfDay()));
+        $isPaidPlan = $subscriptionPlan && strtolower((string) $subscriptionPlan->plan_key) !== 'free';
+        $subscriptionActive = $isPaidPlan
+            && $subscriptionStatus === 'paid'
+            && !$subscriptionExpired
+            && $endsAt !== null;
         return Inertia::render('System/StoreAdmin/Settings', [
             'title' => 'Settings',
             'subtitle' => 'Trial & Configuration',
@@ -164,6 +174,11 @@ class StoreSettingsController extends Controller
                 'tier' => $subscriptionPlan?->plan_key,
                 'plan_label' => $subscriptionPlan?->name ?? 'No plan',
                 'ends_at' => $endsAt?->toDateString(),
+                'status' => $subscriptionStatus,
+                'is_expired' => (bool) $subscriptionExpired,
+                'is_paid_plan' => (bool) $isPaidPlan,
+                'is_active' => (bool) $subscriptionActive,
+                'cancellation' => is_array($cancellation) ? $cancellation : null,
                 'modules' => $enabledModules,
             ],
             'agreement' => $activeAgreement ? [

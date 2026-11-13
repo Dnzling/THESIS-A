@@ -816,7 +816,7 @@ const fetchEmployeeData = async () => {
 
 const loadRoles = async () => {
   try {
-    const response = await hrService.api.get('/api/store/roles/store-specific')
+    const response = await hrService.api.get('/api/hr/roles/store-specific')
     const roles = response?.data?.data || response?.data || response || []
     roleOptions.value = roles.map((role: any) => ({
       label: role.display_name || role.name || `Role ${role.id}`,
@@ -875,7 +875,7 @@ const loadRolesByDepartment = async () => {
     if (editForm.value.department_id) {
       params.department_id = editForm.value.department_id
     }
-    const response = await hrService.api.get('/api/store/roles/scoped-by-department', { params })
+    const response = await hrService.api.get('/api/hr/roles/scoped-by-department', { params })
     const roles = response?.data?.data || response?.data || response || []
     const items = Array.isArray(roles) ? roles : []
     roleOptions.value = items.map((role: any) => ({

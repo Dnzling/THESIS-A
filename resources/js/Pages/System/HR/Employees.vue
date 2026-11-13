@@ -502,7 +502,7 @@ const statuses = ref<Status[]>([
 
 const fetchRoles = async () => {
   try {
-    const response = await hrService.api.get('/api/store/roles/scoped', {
+    const response = await hrService.api.get('/api/hr/roles/scoped', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -935,7 +935,7 @@ const createRole = async () => {
 
   savingRole.value = true
   try {
-    const response = await hrService.api.post('/api/store/roles', {
+    const response = await hrService.api.post('/api/hr/roles', {
       name,
       display_name: displayName,
       code: baseName.toUpperCase(),

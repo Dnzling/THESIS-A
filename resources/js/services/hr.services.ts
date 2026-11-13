@@ -332,7 +332,7 @@ const hrService = {
   },
 
   async getRoles(params?: any) {
-    const response = await axiosClient.get('/api/store/roles', { params })
+    const response = await axiosClient.get('/api/hr/roles', { params })
     return response.data
   },
 

@@ -278,7 +278,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import procurementService from '../../../../services/procurement.service'
+import financeService from '../../../services/finance.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -325,7 +325,7 @@ const totalTax = computed(() => {
 // Methods
 async function loadPurchaseOrders() {
   try {
-    const response = await procurementService.getPurchaseOrders({
+    const response = await financeService.getPurchaseOrders({
       status: 'approved',
       per_page: 100,
     })
@@ -349,7 +349,7 @@ async function onPOSelected() {
     form.value.shipping_cost = Number(po.shipping_cost || 0)
 
     try {
-      const poResponse = await procurementService.getPurchaseOrder(form.value.purchase_order_id)
+      const poResponse = await financeService.getPurchaseOrder(form.value.purchase_order_id)
       const poDetail = poResponse?.data || poResponse
       const poItems = poDetail?.items || []
 
@@ -453,7 +453,7 @@ async function saveDraft() {
         }
       }),
     }
-    const response = await procurementService.createInvoice(payload)
+    const response = await financeService.createInvoice(payload)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -461,7 +461,7 @@ async function saveDraft() {
       life: 3000,
     })
     router.push({
-      name: 'procurement.invoices.detail',
+      name: 'finance.invoices.detail',
       params: { id: response.data?.id || response.data?.data?.id },
     })
   } catch (error) {
@@ -502,7 +502,7 @@ async function submitForm() {
 }
 
 function goBack() {
-  router.push({ name: 'procurement.invoices' })
+  router.push({ name: 'finance.invoices' })
 }
 
 onMounted(() => {

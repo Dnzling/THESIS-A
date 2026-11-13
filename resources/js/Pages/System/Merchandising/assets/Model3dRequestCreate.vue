@@ -53,7 +53,6 @@ import FileUpload from 'primevue/fileupload'
 import Skeleton from 'primevue/skeleton'
 import Message from 'primevue/message'
 import Dialog from 'primevue/dialog'
-import axiosClient from '@/axios'
 import merchandisingService from '@/services/merchandising.service'
 
 const route = useRoute()
@@ -91,7 +90,7 @@ const submit = async () => {
     payload.append('materials', form.materials)
     payload.append('notes', form.notes)
     photos.value.forEach(file => payload.append('photos[]', file))
-    await axiosClient.post('/api/3d-model-requests', payload)
+    await merchandisingService.create3DModelRequest(payload)
     router.push({ name: 'merchandising.3d-requests' })
   } catch (error: any) {
     const fieldErrors = error?.response?.data?.errors || {}

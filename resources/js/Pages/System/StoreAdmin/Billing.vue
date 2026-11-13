@@ -21,7 +21,7 @@
             </div>
             <div class="sm:pl-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div></div>
             <Button v-if="canRenew" label="Renew Plan" rounded severity="warn" size="small" @click="goToRenew" />
-            <Button v-else-if="subscription.next_plan_name" :label="`Upgrade to ${subscription.next_plan_name}`" rounded size="small" @click="goToUpgrade" />
+            <Button v-else label="Upgrade" rounded size="small" @click="goToUpgrade" />
           </div>
 
           <div class="mt-5 rounded-lg border p-4" :class="subscription.sales_paused ? 'border-red-100 bg-red-50 text-red-700' : subscription.in_grace ? 'border-orange-100 bg-orange-50 text-orange-700' : 'border-green-100 bg-green-50 text-green-700'">

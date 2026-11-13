@@ -330,7 +330,7 @@ const prefillFromPurchaseOrder = async (poId: number) => {
   try {
     const response = isInventoryFlow
       ? await axiosClient.get(`/api/inventory/purchase-orders/${poId}`)
-      : await procurementService.getPurchaseOrder(poId)
+      : await WarehouseService.purchaseOrder(poId)
     const payload = response?.data ?? response
     const po = payload?.data ?? payload ?? null
     if (!po?.id) return

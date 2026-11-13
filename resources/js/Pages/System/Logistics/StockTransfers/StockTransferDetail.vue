@@ -413,7 +413,6 @@ import MultiSelect from 'primevue/multiselect'
 import DatePicker from 'primevue/datepicker'
 import Skeleton from 'primevue/skeleton'
 import Message from 'primevue/message'
-import inventoryService from '../../../../services/inventory.service'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -490,7 +489,7 @@ const loadDetail = async () => {
   if (!transferId.value) return
   loading.value = true
   try {
-    const response = await inventoryService.getTransfer(transferId.value)
+    const response = await logisticsService.getStockTransfer(transferId.value)
     detail.value = response?.data || null
   } catch (error: any) {
     toast.add({
@@ -797,7 +796,7 @@ const saveShipmentLog = async () => {
   if (!recordLogEvent.value) return
   savingLog.value = true
   try {
-    await inventoryService.addTransferDeliveryLog(transferId.value, {
+    await logisticsService.addStockTransferDeliveryLog(transferId.value, {
       event: recordLogEvent.value as any,
       notes: recordLogNotes.value.trim() || undefined,
     })
@@ -896,7 +895,7 @@ const markAsDelivered = async () => {
       formData.append('photos[]', file)
     })
 
-    await inventoryService.receiveTransfer(transferId.value, formData)
+    await logisticsService.receiveStockTransfer(transferId.value, formData)
 
     toast.add({
       severity: 'success',

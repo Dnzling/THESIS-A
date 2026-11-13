@@ -752,7 +752,7 @@
             variation_attributes: form.variation_attributes,
             variations: variations
           }"
-        :can-manage-3d="canManage3d" :upgrade-plan-name="upgradePlanName"
+        :can-manage-3d="canManage3d"
         :embedded-variation="editingVariationId ? (variations.find(v => Number(v.id) === Number(editingVariationId)) || { id: editingVariationId }) : null"
         @saved="handleVariationSaved" @cancel="closeVariationDialog" />
     </Dialog>
@@ -793,21 +793,6 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 
 const canManage3d = computed(() => authStore.hasPermission('merchandising.3d.manage'))
-const upgradePlan = ref<any>(null)
-const upgradePlanName = computed(() => upgradePlan.value?.name || 'an eligible plan')
-
-const load3dUpgradePlan = async () => {
-  if (canManage3d.value) return
-  try {
-    const response = await axiosClient.get('/api/public/subscription-plans/first-for-permission', {
-      params: { permission: 'merchandising.3d.manage' }
-    })
-    upgradePlan.value = response.data?.data || null
-  } catch {
-    upgradePlan.value = null
-  }
-}
-
 const isEditMode = computed(() => !!route.params.id)
 const showInventoryFields = computed(() => true)
 const branchCount = ref(0)
@@ -992,7 +977,6 @@ const form = ref({
 
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
-const units = ref<any[]>([])
 const subcategoryOptions = computed(() => categories.value.filter((category: any) =>
   Number(category.parent_category_id) === Number(form.value.category_id)
 ))
@@ -1294,12 +1278,7 @@ const fallbackUnitOptions = [
 ]
 
 const unitOptions = computed(() => {
-  const options = units.value.length
-    ? units.value.map((unit: any) => ({
-        label: unit.unit_symbol ? `${unit.unit_name} (${unit.unit_symbol})` : unit.unit_name,
-        value: unit.unit_code || unit.unit_symbol || unit.unit_name,
-      }))
-    : [...fallbackUnitOptions]
+  const options = [...fallbackUnitOptions]
 
   const selectedUnit = form.value.unit_code
   if (selectedUnit && !options.some((option: any) => option.value === selectedUnit)) {
@@ -1308,30 +1287,6 @@ const unitOptions = computed(() => {
 
   return options
 })
-
-const resolveUnitId = (unitCode: string | null): number | null => {
-  if (!unitCode) return null
-
-  const matchedUnit = units.value.find((unit: any) =>
-    [unit.unit_code, unit.unit_symbol, unit.unit_name]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase() === String(unitCode).toLowerCase())
-  )
-
-  return matchedUnit?.id ? Number(matchedUnit.id) : null
-}
-
-const loadUnits = async () => {
-  try {
-    const response = await inventoryService.getUnits({ is_active: true })
-    const data = response?.data?.data || response?.data || []
-    units.value = Array.isArray(data) ? data : []
-  } catch (error) {
-    console.error('Failed to load units:', error)
-    units.value = []
-  }
-}
-
 
 const loadCategories = async () => {
   loadingCategories.value = true
@@ -2176,7 +2131,7 @@ const handleSubmit = async () => {
       }
       if (createPayload.add_initial_stock) createPayload.initial_stock = form.value.initial_stock
 
-      const response = await inventoryService.createProduct(createPayload, true)
+      const response = await merchandisingService.createProduct(createPayload, true)
       const product = response?.data?.data || response?.data || {}
       productId = Number(product.id)
       if (!productId) throw new Error(response?.message || 'The server did not return the created product ID.')
@@ -2342,8 +2297,7 @@ onMounted(async () => {
   if (route.name === 'merchandising.products.supplies.create') form.value.product_type = 'supply'
   if (route.name === 'merchandising.products.materials.create' || route.name === 'merchandising.products.raw.create') form.value.product_type = 'raw_material'
   await authStore.loadPermissions()
-  load3dUpgradePlan()
-  await Promise.all([loadCategories(), loadUnits(), loadTags(), loadInitialStockBranchCount()])
+  await Promise.all([loadCategories(), loadTags(), loadInitialStockBranchCount()])
   loadRooms()
   loadProduct()
   loadVariations()

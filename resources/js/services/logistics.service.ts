@@ -18,6 +18,33 @@ class LogisticsService {
     return response.data
   }
 
+  async getStockTransfers(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/stock-transfers`, { params })
+    return response.data
+  }
+
+  async getStockTransfer(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/stock-transfers/${id}`)
+    return response.data
+  }
+
+  async createStockTransferDelivery(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/stock-transfers/${id}/create-delivery`, payload)
+    return response.data
+  }
+
+  async addStockTransferDeliveryLog(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/stock-transfers/${id}/delivery-log`, payload)
+    return response.data
+  }
+
+  async receiveStockTransfer(id: number | string, payload: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/stock-transfers/${id}/receive`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
   async getDeliveryOrders(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/delivery-orders`, { params })
     return response.data

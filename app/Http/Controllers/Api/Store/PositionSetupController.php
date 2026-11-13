@@ -183,11 +183,18 @@ class PositionSetupController extends Controller
             ? DB::table('subscription_plans')->where('id', $planId)->value('plan_key')
             : null;
 
-        abort_unless($planKey && in_array($subscriptionStatus, ['trial', 'paid'], true)
-            && StoreSubscriptionAgreement::query()
+        $hasAgreement = StoreSubscriptionAgreement::query()
             ->where('store_id', $store->id)
-            ->where('plan_key', $planKey)
-            ->whereIn('status', ['active', 'pending_activation'])
-            ->exists(), 403, 'An active trial and signed subscription agreement are required before continuing setup.');
+            ->where(function ($query) use ($planKey) {
+                $query->where('status', 'active')
+                    ->orWhere(function ($pending) use ($planKey) {
+                        $pending->where('status', 'pending_activation')
+                            ->where('plan_key', $planKey);
+                    });
+            })
+            ->exists();
+
+        abort_unless($planKey && in_array($subscriptionStatus, ['trial', 'paid'], true) && $hasAgreement,
+            403, 'An active trial and signed subscription agreement are required before continuing setup.');
     }
 }

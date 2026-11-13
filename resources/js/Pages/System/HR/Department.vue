@@ -345,7 +345,7 @@ const fetchEmployees = async () => {
 
 const fetchRoles = async () => {
   try {
-    const response = await hrService.api.get('/api/store/roles', {
+    const response = await hrService.api.get('/api/hr/roles', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     const data = response.data.data || response.data

@@ -42,6 +42,9 @@ Route::prefix('crm')->group(function () {
     Route::prefix('reviews')->group(function () {
         Route::get('/', [ReviewController::class, 'index'])->middleware('can:crm.reviews.view');
         Route::get('/{review}', [ReviewController::class, 'show'])->middleware('can:crm.reviews.view');
+        Route::get('/{review}/attachment', [ReviewController::class, 'attachment'])
+            ->middleware('can:crm.reviews.view')
+            ->name('crm.reviews.attachment');
         Route::put('/{review}/reply', [ReviewController::class, 'reply'])->middleware('can:crm.reviews.manage');
     });
 

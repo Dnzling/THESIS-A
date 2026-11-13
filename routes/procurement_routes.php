@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
-use App\Http\Controllers\Api\Procurement\InvoiceController;
 use App\Http\Controllers\Api\Procurement\Config\ProcurementSettingsController;
 use App\Http\Controllers\Api\Procurement\Config\RoleApprovalLimitController;
 use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashboardController;
@@ -181,21 +180,6 @@ Route::prefix('procurement')->group(function () {
 
         // Pending receipt
         Route::get('/{poId}/pending-receipt', [GoodsReceiptController::class, 'pendingForPO']);
-    });
-
-    // Invoices
-    Route::prefix('invoices')->group(function () {
-        Route::get('/', [InvoiceController::class, 'index']);
-        Route::get('/pending/match', [InvoiceController::class, 'getPendingMatch']);
-        Route::get('/exceptions', [InvoiceController::class, 'getExceptions']);
-        Route::get('/{id}', [InvoiceController::class, 'show'])->whereNumber('id');
-        Route::post('/', [InvoiceController::class, 'store']);
-        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
-        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
-        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id');
-        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id');
-        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id');
-        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id');
     });
 
     // Supplier Payments

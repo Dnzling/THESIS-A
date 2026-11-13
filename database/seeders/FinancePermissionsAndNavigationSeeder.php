@@ -108,7 +108,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             }
         }
 
-        // Ensure finance cashflow and price-approval navigation entries exist.
+        // Ensure finance payroll, cashflow, refunds, liquidations, and tax navigation entries exist.
         $navItems = [
             [
                 'name' => 'finance.basic.payroll',

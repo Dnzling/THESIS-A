@@ -208,6 +208,46 @@ class StoreSettingsController extends Controller
         ]);
     }
 
+    public function cancelSubscriptionAtPeriodEnd(Request $request)
+    {
+        $role = $request->user()?->role;
+        $roleName = is_object($role) ? ($role->name ?? $role->slug ?? '') : (string) $role;
+        abort_unless(strtolower($roleName) === 'owner', 403, 'Only the store owner can cancel the subscription.');
+
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+
+        return DB::transaction(function () use ($store) {
+            $lockedStore = Store::query()->lockForUpdate()->findOrFail($store->id);
+            $endsAt = $lockedStore->subscription_ends_at;
+            $plan = $lockedStore->subscriptionPlan;
+            $isPaidPlan = $plan && strtolower((string) $plan->plan_key) !== 'free';
+            $isCurrent = strtolower((string) $lockedStore->subscription_status) === 'paid'
+                && $isPaidPlan
+                && $endsAt
+                && $endsAt->copy()->startOfDay()->greaterThanOrEqualTo(now()->startOfDay());
+
+            abort_unless($isCurrent, 422, 'Only an active paid subscription can be cancelled.');
+
+            $settings = is_array($lockedStore->settings) ? $lockedStore->settings : [];
+            $existing = $settings['subscription_cancellation'] ?? null;
+            if (!is_array($existing) || empty($existing['effective_at'])) {
+                $settings['subscription_cancellation'] = [
+                    'requested_at' => now()->toIso8601String(),
+                    'effective_at' => $endsAt?->toDateString(),
+                ];
+                $lockedStore->settings = $settings;
+                $lockedStore->save();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Your plan is scheduled to end on its current due date.',
+                'data' => ['cancellation' => $settings['subscription_cancellation']],
+            ]);
+        });
+    }
+
     public function updateProfile(Request $request)
     {
         $validated = $request->validate([

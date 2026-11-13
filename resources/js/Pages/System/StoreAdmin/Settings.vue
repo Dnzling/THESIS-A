@@ -163,6 +163,21 @@
                 </template>
             </Card>
 
+            <Card class="border border-slate-200 shadow-sm">
+                <template #title>Plan</template>
+                <template #content>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p class="font-semibold text-slate-900">{{ subscription.plan_label }}</p>
+                            <p class="mt-1 text-sm text-slate-600">
+                                {{ subscription.ends_at ? `Plan due date: ${formatSubscriptionDate(subscription.ends_at)}` : 'No plan end date is set.' }}
+                            </p>
+                        </div>
+                        <Button :label="subscription.is_expired && subscription.is_paid_plan ? 'Renew' : 'Upgrade'" icon="pi pi-arrow-up-right" size="small" severity="warn" @click="goToPlanAction" />
+                    </div>
+                </template>
+            </Card>
+
             <Dialog v-model:visible="planDialogVisible" modal header="Available Plans" :style="{ width: '36rem' }">
                 <div class="space-y-3">
                     <button v-for="plan in availablePlans" :key="plan.key" type="button"
@@ -491,21 +506,35 @@
                         Simple attendance compares clock-in with opening time
                         and clock-out with closing time.
                     </p>
-                    <div class="space-y-2">
-                        <div v-for="day in operatingDayOptions" :key="day.value" class="grid items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 sm:grid-cols-[1fr_1fr_1fr]">
-                            <label class="flex items-center gap-2 text-sm font-medium text-slate-700"><input v-model="operatingHours.schedule[day.value].enabled" type="checkbox" class="rounded border-slate-300 text-orange-500 focus:ring-orange-500" @change="ensureDefaultOperatingHours(day.value)" />{{ day.label }}</label>
-                            <label class="text-xs text-slate-500">From<DatePicker v-model="operatingTimeModels[day.value].opens_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHours.schedule[day.value].enabled" /></label>
-                            <label class="text-xs text-slate-500">Until<DatePicker v-model="operatingTimeModels[day.value].closes_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHours.schedule[day.value].enabled" /></label>
-                        </div>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-xs text-slate-500">Review your weekly schedule. Edit to change days or times.</p>
+                        <Button label="Edit hours" icon="pi pi-pencil" size="small" severity="warn" outlined class="shrink-0" @click="openOperatingHoursEditor" />
                     </div>
-                    <p class="mt-2 text-xs text-slate-500">Enabling a day defaults its hours to 8:00 AM–6:00 PM.</p>
-                    <div class="mt-4 flex justify-end">
-                        <Button label="Save Operating Hours" icon="pi pi-check" :loading="savingOperatingHours" :disabled="savingOperatingHours"
-                            @click="saveOperatingHours" />
+                    <div class="mt-3 overflow-x-auto">
+                        <div class="flex min-w-max gap-2 pb-1">
+                            <div v-for="day in operatingDayOptions" :key="day.value" class="min-w-24 rounded-lg border border-slate-200 px-3 py-2">
+                                <p class="text-xs font-semibold text-slate-700">{{ day.label.slice(0, 3) }}</p>
+                                <p class="mt-1 text-xs" :class="operatingHours.schedule[day.value].enabled ? 'text-slate-600' : 'text-slate-400'">{{ operatingHoursSummary(day.value) }}</p>
+                            </div>
+                        </div>
                     </div>
                 </template>
             </Card>
 
+            <Dialog v-model:visible="operatingHoursEditorVisible" modal header="Edit Store Operating Hours" :style="{ width: 'min(94vw, 48rem)' }">
+                <p class="mb-4 text-xs text-slate-500">Choose open days and set opening and closing times. Enabling a day defaults to 8:00 AM - 6:00 PM.</p>
+                <div class="space-y-2">
+                    <div v-for="day in operatingDayOptions" :key="day.value" class="grid items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 sm:grid-cols-[1fr_1fr_1fr]">
+                        <label class="flex items-center gap-2 text-sm font-medium text-slate-700"><input v-model="operatingHoursDraft.schedule[day.value].enabled" type="checkbox" class="rounded border-slate-300 text-orange-500 focus:ring-orange-500" @change="ensureDefaultOperatingHours(day.value, operatingHoursDraft.schedule)" />{{ day.label }}</label>
+                        <label class="text-xs text-slate-500">From<DatePicker v-model="operatingDraftTimeModels[day.value].opens_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHoursDraft.schedule[day.value].enabled" /></label>
+                        <label class="text-xs text-slate-500">Until<DatePicker v-model="operatingDraftTimeModels[day.value].closes_at.value" timeOnly hourFormat="12" size="small" fluid :disabled="!operatingHoursDraft.schedule[day.value].enabled" /></label>
+                    </div>
+                </div>
+                <template #footer>
+                    <Button label="Cancel" severity="secondary" outlined size="small" :disabled="savingOperatingHours" @click="operatingHoursEditorVisible = false" />
+                    <Button label="Save hours" icon="pi pi-check" severity="warn" size="small" :loading="savingOperatingHours" :disabled="savingOperatingHours" @click="saveOperatingHours" />
+                </template>
+            </Dialog>
             <Card class="border border-slate-200 shadow-sm" :class="setupAttention.fulfillment_windows ? 'border-amber-300 ring-1 ring-amber-100' : ''">
                 <template #title><span class="inline-flex items-center gap-2">Pickup and delivery windows <span v-if="setupAttention.fulfillment_windows" role="status" aria-label="Pickup and delivery windows need setup" title="Configure and save pickup and delivery windows" class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">!</span></span></template>
                 <template #content>
@@ -554,6 +583,24 @@
                             </div>
                         </div>
                         <Button label="Configure" icon="pi pi-map-marker" size="small" severity="warn" outlined class="shrink-0" @click="openAttendanceEditor" />
+                    </div>
+                </template>
+            </Card>
+
+            <Card v-if="subscription.is_active" class="border border-red-200 shadow-sm">
+                <template #title>Cancel Plan</template>
+                <template #content>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0">
+                            <p v-if="subscription.cancellation?.effective_at" class="text-sm text-slate-700">
+                                Cancellation is scheduled for {{ formatSubscriptionDate(subscription.cancellation.effective_at) }}. Your plan remains active until then.
+                            </p>
+                            <p v-else class="text-sm text-slate-700">
+                                Your plan is paid through {{ formatSubscriptionDate(subscription.ends_at) }}. Cancelling now keeps your access until that date and prevents renewal.
+                            </p>
+                        </div>
+                        <Button v-if="!subscription.cancellation?.effective_at" label="Cancel Plan" icon="pi pi-times" size="small" severity="danger" outlined class="shrink-0" @click="confirmCancelPlan" />
+                        <Badge v-else value="Cancellation Scheduled" severity="warn" class="shrink-0" />
                     </div>
                 </template>
             </Card>
@@ -849,14 +896,39 @@ const submitFulfillmentWindows = () => {
 const formatAgreementDate = (value?: string | null) => value
     ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
     : '—';
-const viewAgreement = () => window.open('/api/store/subscription-agreement/document', '_blank', 'noopener');
-const operatingHours = reactive({
-    schedule: Object.fromEntries(operatingDayOptions.map(({ value }) => {
+const viewAgreement = async () => {
+    const documentWindow = window.open('about:blank', '_blank');
+    if (!documentWindow) {
+        toast.add({ severity: 'warn', summary: 'Allow pop-ups', detail: 'Allow pop-ups to view the signed agreement.', life: 3500 });
+        return;
+    }
+    documentWindow.opener = null;
+
+    try {
+        const response = await axiosClient.get('/api/store/subscription-agreement/document', { responseType: 'blob' });
+        const documentUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        documentWindow.location.replace(documentUrl);
+        window.setTimeout(() => URL.revokeObjectURL(documentUrl), 60_000);
+    } catch (error: any) {
+        documentWindow.close();
+        toast.add({
+            severity: 'error',
+            summary: 'Unable to open agreement',
+            detail: error?.response?.status === 404
+                ? 'The signed agreement PDF is not available yet.'
+                : 'Refresh the page and try opening the signed agreement again.',
+            life: 4000,
+        });
+    }
+};
+const operatingHoursEditorVisible = ref(false);
+const createOperatingHoursSchedule = () => Object.fromEntries(operatingDayOptions.map(({ value }) => {
         const legacy = props.operating_hours?.schedule?.[value];
         const enabled = props.operating_hours?.days?.includes(value) || !!legacy;
         return [value, { enabled, opens_at: legacy?.opens_at || props.operating_hours?.opens_at || '08:00', closes_at: legacy?.closes_at || props.operating_hours?.closes_at || '18:00' }];
-    })) as Record<string, { enabled: boolean; opens_at: string; closes_at: string }>,
-});
+    })) as Record<string, { enabled: boolean; opens_at: string; closes_at: string }>;
+const operatingHours = reactive({ schedule: createOperatingHoursSchedule() });
+const operatingHoursDraft = reactive({ schedule: createOperatingHoursSchedule() });
 const timeAsDate = (value: string) => {
     const [hours, minutes] = value.split(":").map(Number);
     if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
@@ -871,13 +943,30 @@ const operatingTimeModels = Object.fromEntries(operatingDayOptions.map(({ value 
     opens_at: computed({ get: () => timeAsDate(operatingHours.schedule[value].opens_at), set: (time: Date | null) => { operatingHours.schedule[value].opens_at = timeAsString(time); } }),
     closes_at: computed({ get: () => timeAsDate(operatingHours.schedule[value].closes_at), set: (time: Date | null) => { operatingHours.schedule[value].closes_at = timeAsString(time); } }),
 }]));
-const ensureDefaultOperatingHours = (day: string) => {
-    if (!operatingHours.schedule[day].enabled) return;
-    operatingHours.schedule[day].opens_at = '08:00';
-    operatingHours.schedule[day].closes_at = '18:00';
+const operatingDraftTimeModels = Object.fromEntries(operatingDayOptions.map(({ value }) => [value, {
+    opens_at: computed({ get: () => timeAsDate(operatingHoursDraft.schedule[value].opens_at), set: (time: Date | null) => { operatingHoursDraft.schedule[value].opens_at = timeAsString(time); } }),
+    closes_at: computed({ get: () => timeAsDate(operatingHoursDraft.schedule[value].closes_at), set: (time: Date | null) => { operatingHoursDraft.schedule[value].closes_at = timeAsString(time); } }),
+}]));
+const operatingHoursSummary = (day: string) => {
+    const hours = operatingHours.schedule[day];
+    if (!hours.enabled) return 'Closed';
+    const opens = timeAsDate(hours.opens_at)?.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) || hours.opens_at;
+    const closes = timeAsDate(hours.closes_at)?.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) || hours.closes_at;
+    return `${opens} - ${closes}`;
+};
+const openOperatingHoursEditor = () => {
+    for (const day of operatingDayOptions) {
+        operatingHoursDraft.schedule[day.value] = { ...operatingHours.schedule[day.value] };
+    }
+    operatingHoursEditorVisible.value = true;
+};
+const ensureDefaultOperatingHours = (day: string, schedule = operatingHoursDraft.schedule) => {
+    if (!schedule[day].enabled) return;
+    schedule[day].opens_at = '08:00';
+    schedule[day].closes_at = '18:00';
 };
 const saveOperatingHours = () => {
-    const enabled = Object.entries(operatingHours.schedule).filter(([, value]) => value.enabled);
+    const enabled = Object.entries(operatingHoursDraft.schedule).filter(([, value]) => value.enabled);
     if (!enabled.length || enabled.some(([, value]) => !value.opens_at || !value.closes_at || value.closes_at <= value.opens_at)) {
         toast.add({
             severity: "warn",
@@ -900,10 +989,14 @@ const submitOperatingHours = () => {
     savingOperatingHours.value = true;
     router.put(
         "/store/settings/operating-hours",
-        { schedule: operatingHours.schedule },
+        { schedule: operatingHoursDraft.schedule },
         {
             preserveScroll: true,
             onSuccess: () => {
+                for (const day of operatingDayOptions) {
+                    operatingHours.schedule[day.value] = { ...operatingHoursDraft.schedule[day.value] };
+                }
+                operatingHoursEditorVisible.value = false;
                 notifySetupAttentionChanged();
                 toast.add({
                     severity: "success",
@@ -1095,6 +1188,11 @@ const subscription = reactive({
     tier: "free",
     plan_label: "Free",
     ends_at: "",
+    status: "",
+    is_expired: false,
+    is_paid_plan: false,
+    is_active: false,
+    cancellation: null as { requested_at?: string; effective_at?: string } | null,
     modules: [] as { key: string; name: string }[],
 });
 
@@ -1234,6 +1332,11 @@ subscription.store_id = props.store?.id ?? null;
 subscription.tier = props.subscription?.tier || "free";
 subscription.plan_label = props.subscription?.plan_label || "Free";
 subscription.ends_at = props.subscription?.ends_at || "";
+subscription.status = props.subscription?.status || "";
+subscription.is_expired = Boolean(props.subscription?.is_expired);
+subscription.is_paid_plan = Boolean(props.subscription?.is_paid_plan);
+subscription.is_active = Boolean(props.subscription?.is_active);
+subscription.cancellation = props.subscription?.cancellation || null;
 subscription.modules = Array.isArray(props.subscription?.modules)
     ? props.subscription.modules
     : [];
@@ -2194,6 +2297,48 @@ const searchAddress = async () => {
 const goToUpgrade = () => {
     const storeId = Number(subscription.store_id || store.id || 0);
     router.visit(`/subscription-plans${storeId ? `?store_id=${storeId}` : ""}`);
+};
+
+const formatSubscriptionDate = (value?: string | null) => {
+    if (!value) return "No end date";
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-PH", {
+        month: "long", day: "numeric", year: "numeric",
+    }).format(date);
+};
+
+const goToPlanAction = () => {
+    const storeId = Number(subscription.store_id || store.id || 0);
+    if (!subscription.is_expired || !subscription.is_paid_plan) {
+        router.visit(`/subscription-plans${storeId ? `?store_id=${storeId}` : ""}`);
+        return;
+    }
+
+    const planKey = String(subscription.tier || "").toLowerCase();
+    if (!storeId || !planKey) return;
+    router.visit(`/subscription-checkout?plan=${encodeURIComponent(planKey)}&cycle=monthly&store_id=${storeId}`);
+};
+
+const confirmCancelPlan = () => {
+    const dueDate = formatSubscriptionDate(subscription.ends_at);
+    confirm.require({
+        header: "Cancel this plan?",
+        message: `Your plan is paid through ${dueDate}. Are you sure you want to schedule cancellation? Your access will remain active until that date.`,
+        icon: "pi pi-exclamation-triangle",
+        acceptLabel: "Cancel Plan",
+        rejectLabel: "Keep Plan",
+        accept: async () => {
+            try {
+                const response = await axiosClient.post("/api/store/subscription/cancel-at-period-end");
+                subscription.cancellation = response.data?.data?.cancellation || {
+                    effective_at: subscription.ends_at,
+                };
+                toast.add({ severity: "success", summary: "Cancellation scheduled", detail: response.data?.message || "Your plan will end on its due date.", life: 3500 });
+            } catch (error: any) {
+                toast.add({ severity: "error", summary: "Unable to cancel plan", detail: error?.response?.data?.message || "Please try again.", life: 4000 });
+            }
+        },
+    });
 };
 
 const selectPlan = (key: string) => {

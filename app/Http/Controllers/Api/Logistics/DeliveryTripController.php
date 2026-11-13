@@ -2161,15 +2161,14 @@ class DeliveryTripController extends Controller
 
     private function isDriverOnly(Request $request): bool
     {
-        return ($request->user()->hasPermissionTo('logistics.driver.trips')
-            || $request->user()->hasPermissionTo('driver.trips.view'))
+        return $request->user()->hasPermissionTo('logistics.driver.trips')
             && !$request->user()->hasPermissionTo('logistics.deliveries.manage');
     }
 
     private function authorizeTripViewer(Request $request): void
     {
         abort_unless($request->user()->hasAnyPermission([
-            'logistics.driver.trips', 'driver.trips.view', 'logistics.deliveries.view', 'logistics.deliveries.manage',
+            'logistics.driver.trips', 'logistics.deliveries.view', 'logistics.deliveries.manage',
         ]) || $request->user()->hasRole('super_admin'), 403);
     }
 

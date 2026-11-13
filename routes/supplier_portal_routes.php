@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackContro
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierProductListingController;
 use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
+use App\Http\Controllers\Api\Procurement\InvoiceController;
 use Illuminate\Support\Facades\Route;
 
 // ============================================
@@ -20,6 +21,7 @@ Route::prefix('supplier-portal')->group(function () {
 
     // Authenticated supplier routes
     Route::middleware(['auth:sanctum', 'account.operational'])->group(function () {
+        Route::post('/invoices/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);

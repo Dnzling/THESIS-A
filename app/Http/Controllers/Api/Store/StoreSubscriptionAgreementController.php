@@ -17,6 +17,21 @@ class StoreSubscriptionAgreementController extends Controller
 {
     private const VERSION = '2026-11-12-v1';
 
+    public function status(Request $request)
+    {
+        $store = $this->ownedStore($request);
+        $agreement = StoreSubscriptionAgreement::query()
+            ->where('store_id', $store->id)
+            ->where('status', 'active')
+            ->latest('activated_at')
+            ->first(['id', 'plan_key', 'plan_name', 'billing_cycle', 'signed_at', 'activated_at']);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['has_active_agreement' => (bool) $agreement],
+        ]);
+    }
+
     public function sign(Request $request)
     {
         $store = $this->ownedStore($request);

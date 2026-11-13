@@ -93,7 +93,7 @@
               </div>
             </section>
 
-            <section class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
+            <section v-if="!hasActiveAgreement" class="rounded-3xl border border-orange-100 bg-white p-6 shadow-sm sm:p-8">
               <p class="text-sm font-semibold text-orange-600">Required before store setup</p>
               <h2 class="mt-2 text-2xl font-bold">Review and sign the service agreement</h2>
               <p class="mt-2 text-sm leading-6 text-slate-600">This agreement records your store's selected {{ selectedPlan.name }} subscription. It becomes active after the trial or payment is activated.</p>
@@ -146,7 +146,7 @@
               <div class="flex justify-between gap-4 border-t border-white/10 pt-4 text-lg font-bold text-white"><span>Due today</span><span>{{ formatMoney(isTrialCheckout ? 0 : planAmount) }}</span></div>
             </div>
 
-            <Button :label="isTrialCheckout ? 'Activate Free Trial' : 'Continue to secure payment'" class="mt-7 w-full !py-3" :loading="paymentInitializing || signing" :disabled="(!isTrialCheckout && !selectedMethod) || !agreementAccepted || !signatureDrawn || !signerName.trim()" @click="subscribe" />
+            <Button :label="isTrialCheckout ? 'Activate Free Trial' : 'Continue to secure payment'" class="mt-7 w-full !py-3" :loading="paymentInitializing || signing" :disabled="(!isTrialCheckout && !selectedMethod) || (!hasActiveAgreement && (!agreementAccepted || !signatureDrawn || !signerName.trim()))" @click="subscribe" />
             <p v-if="paymentError" class="mt-4 text-sm leading-6 text-red-300">{{ paymentError }}</p>
             <p v-if="isTrialCheckout" class="mt-5 text-xs leading-5 text-slate-400">No payment will be collected today. After the trial, choose a paid plan to continue using paid features.</p>
             <p v-else class="mt-5 text-xs leading-5 text-slate-500">Your plan is activated only after PayMongo confirms a successful payment. FurniSync does not store card or wallet credentials.</p>
@@ -176,6 +176,7 @@ const pageError = ref('')
 const paymentError = ref('')
 const paymentInitializing = ref(false)
 const agreementAccepted = ref(false)
+const hasActiveAgreement = ref(false)
 const agreementSaved = ref(false)
 const signatureDrawn = ref(false)
 const signing = ref(false)
@@ -212,6 +213,10 @@ const billingAddress = computed(() => [billingForm.address, billingForm.barangay
 const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(amount)
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const normalizeStatus = (value: unknown) => String(value || '').toLowerCase()
+const refreshAgreementStatus = async () => {
+  const response = await axiosClient.get('/api/store/subscription-agreement/status')
+  hasActiveAgreement.value = response.data?.data?.has_active_agreement === true
+}
 
 const startSignature = (event: PointerEvent) => {
   const canvas = signatureCanvas.value
@@ -270,6 +275,7 @@ const goBack = () => router.visit(`/subscription-plans${storeId.value ? `?store_
 const loadCheckout = async () => {
   try {
     await authStore.fetchCurrentUser()
+    await refreshAgreementStatus()
     if (!signerName.value) signerName.value = accountName.value
     const planKey = String(params.get('plan') || '').toLowerCase()
     if (!planKey || !storeId.value) throw new Error('Choose a subscription plan before opening checkout.')
@@ -335,7 +341,7 @@ const subscribe = async () => {
   paymentInitializing.value = true
 
   try {
-    await saveSignedAgreement()
+    if (!hasActiveAgreement.value) await saveSignedAgreement()
   } catch (error: any) {
     paymentError.value = error?.response?.data?.message || error?.message || 'Unable to save the signed agreement.'
     paymentInitializing.value = false
@@ -348,7 +354,7 @@ const subscribe = async () => {
         subscription_tier: String(selectedPlan.value.plan_key).toLowerCase(),
         setup_mode: 'trial',
       })
-      await axiosClient.post('/api/store/subscription-agreement/activate')
+      if (!hasActiveAgreement.value) await axiosClient.post('/api/store/subscription-agreement/activate')
       await authStore.fetchCurrentUser({ reloadPermissions: true })
       router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
     } catch (error: any) {
@@ -397,12 +403,19 @@ const syncSubscriptionFromIntent = async (pendingPlan: any) => {
   const intentData = latest?.data?.data ?? latest?.data ?? null
   if (!['succeeded', 'paid'].includes(normalizeStatus(intentData?.status ?? intentData?.attributes?.status))) return false
   await authStore.fetchCurrentUser({ reloadPermissions: true })
-  await axiosClient.post('/api/store/subscription-agreement/activate')
+  if (!hasActiveAgreement.value) await axiosClient.post('/api/store/subscription-agreement/activate')
   if (pendingPlan?.plan_key) localStorage.removeItem('pending_subscription_plan')
   return true
 }
 
 const processPaymentReturn = async () => {
+  try {
+    await authStore.fetchCurrentUser()
+    await refreshAgreementStatus()
+  } catch (error: any) {
+    pageError.value = error?.response?.data?.message || 'Unable to verify the store subscription agreement.'
+    return
+  }
   const pendingPlan = JSON.parse(localStorage.getItem('pending_subscription_plan') || 'null')
   const startedAt = Date.now()
   while (Date.now() - startedAt < 60000) {
