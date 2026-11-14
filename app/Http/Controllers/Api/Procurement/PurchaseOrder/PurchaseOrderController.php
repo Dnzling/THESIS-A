@@ -628,7 +628,14 @@ class PurchaseOrderController extends Controller
                         $feedbackQuery = SupplierRFQFeedback::query()
                             ->where('rfq_id', $validated['rfq_id'])
                             ->where('status', 'approved')
-                            ->whereHas('supplierPortal', fn ($query) => $query->where('supplier_id', $validated['supplier_id']))
+                            ->where(function ($query) use ($validated) {
+                                // Portal responses may be linked to a store-specific supplier record,
+                                // while offline quotations have no supplier portal relationship.
+                                $query->where('supplier_id', $validated['supplier_id'])
+                                    ->orWhereHas('supplierPortal', fn ($portalQuery) =>
+                                        $portalQuery->where('supplier_id', $validated['supplier_id'])
+                                    );
+                            })
                             ->whereHas('rfq', fn ($query) => $query->where('store_id', $storeId));
 
                         if (!empty($item['feedback_id'])) {

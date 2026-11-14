@@ -774,7 +774,7 @@ const prefillFromRFQ = async (rfqId: number) => {
       : approvedFeedbacks
 
     const supplierIds = selectedApprovedFeedbacks
-      .map((f: any) => f?.supplier_portal?.supplier_id || f?.supplier_portal?.supplier?.id)
+      .map((f: any) => f?.supplier_id || f?.supplier_portal?.supplier_id || f?.supplier_portal?.supplier?.id)
       .filter((id: any) => !!id)
 
     const uniqueSupplierIds = Array.from(new Set(supplierIds)).map((id: any) => Number(id)).filter((id: number) => id > 0)
@@ -800,7 +800,7 @@ const prefillFromRFQ = async (rfqId: number) => {
             feedback_id: feedback.id,
             product: feedback.rfq_item?.product,
             quantity: feedback.rfq_item?.quantity,
-            selected_supplier_id: feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
+            selected_supplier_id: feedback.supplier_id || feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
             approved_unit_price: feedback.quoted_price,
             available_quantity: feedback.available_quantity ?? feedback.rfq_item?.quantity,
             length_cm: feedback.length_cm,

@@ -10,9 +10,11 @@ use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\RFQ\SupplierQuotationItem;
 use App\Models\Procurement\Supplier\SupplierContract;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\Core\ActivityLog;
+use App\Models\Core\SystemNotification;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
@@ -1135,7 +1137,7 @@ class RequestForQuotationController extends Controller
                 }
             }
 
-            // TODO: Send email notifications to suppliers
+            $this->notifyInvitedSupplierAccounts($rfq);
 
             DB::commit();
 
@@ -1346,6 +1348,59 @@ class RequestForQuotationController extends Controller
             'severity' => 'info',
             'link' => "/system/procurement/rfqs/{$rfqId}",
         ]);
+    }
+
+    private function notifyInvitedSupplierAccounts(RequestForQuotation $rfq): void
+    {
+        $supplierIds = $rfq->suppliers->pluck('supplier_id')->map(fn ($id) => (int) $id)->unique()->values();
+        if ($supplierIds->isEmpty()) {
+            return;
+        }
+
+        $supplierRecords = Supplier::query()
+            ->where('store_id', (int) $rfq->store_id)
+            ->whereIn('id', $supplierIds)
+            ->get(['id', 'supplier_portal_id']);
+        $portalIds = $supplierRecords->pluck('supplier_portal_id')->filter()->map(fn ($id) => (int) $id)->unique();
+        $linkedSupplierIds = $supplierRecords->pluck('id')->map(fn ($id) => (int) $id)->unique();
+
+        $portalQuery = SupplierPortal::query()
+            ->where('status', 'approved')
+            ->whereHas('user', fn ($query) => $query->where('is_active', true));
+        $portalQuery->where(function ($query) use ($portalIds, $linkedSupplierIds): void {
+            if ($portalIds->isNotEmpty()) {
+                $query->whereIn('id', $portalIds);
+            }
+            if ($linkedSupplierIds->isNotEmpty()) {
+                $method = $portalIds->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                $query->{$method}('supplier_id', $linkedSupplierIds);
+            }
+        });
+
+        $userIds = $portalQuery->pluck('user_id')->map(fn ($id) => (int) $id)->unique()->values();
+        foreach ($userIds as $userId) {
+            $alreadyNotified = SystemNotification::query()
+                ->where('user_id', $userId)
+                ->where('entity_type', 'request_for_quotation')
+                ->where('entity_id', $rfq->id)
+                ->where('action', 'rfq_invitation')
+                ->exists();
+            if ($alreadyNotified) {
+                continue;
+            }
+
+            $this->notify($userId, [
+                'store_id' => $rfq->store_id,
+                'module' => 'supplier',
+                'entity_type' => 'request_for_quotation',
+                'entity_id' => $rfq->id,
+                'action' => 'rfq_invitation',
+                'title' => 'New Request for Quotation',
+                'message' => "{$rfq->rfq_number} is ready for your quotation.",
+                'severity' => 'info',
+                'link' => "/supplier-portal/rfqs/{$rfq->id}",
+            ]);
+        }
     }
 
     private function generateRfqNumber(): string
