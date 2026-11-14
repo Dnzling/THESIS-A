@@ -750,6 +750,7 @@ import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
 import {
   fetchMapboxRoadRoute,
+  forwardGeocodeMapbox,
   requireMapboxToken,
 } from '../../../../utils/mapbox'
 
@@ -803,6 +804,7 @@ const lalamoveQuoteClock = ref(Date.now())
 let lalamoveQuoteClockTimer: ReturnType<typeof setInterval> | null = null
 
 const mapElement = ref<HTMLElement | null>(null)
+const resolvedSupplierPoint = ref<[number, number] | null>(null)
 
 const mediaPreviewVisible = ref(false)
 const mediaPreviewUrl = ref('')
@@ -1075,11 +1077,43 @@ const destinationPoint = computed<
     )
   }
 
+  if (source.value === 'pickup' && ['pending', 'en_route_to_supplier'].includes(String(delivery.value?.status || '').toLowerCase())) {
+    const portal = order.value?.supplier_quotation?.supplier_portal
+    const supplier = order.value?.supplier || {}
+    const supplierPoint = point(portal?.latitude, portal?.longitude)
+      || point(supplier.latitude, supplier.longitude)
+      || resolvedSupplierPoint.value
+
+    return supplierPoint
+  }
+
   return point(
-    order.value?.branch?.latitude,
-    order.value?.branch?.longitude,
+    order.value?.purchase_requisition?.branch?.latitude
+      ?? order.value?.purchaseRequisition?.branch?.latitude
+      ?? order.value?.branch?.latitude,
+    order.value?.purchase_requisition?.branch?.longitude
+      ?? order.value?.purchaseRequisition?.branch?.longitude
+      ?? order.value?.branch?.longitude,
   )
 })
+
+const resolveSupplierPickupPoint = async () => {
+  if (source.value !== 'pickup' || destinationPoint.value) return
+
+  const supplier = order.value?.supplier || {}
+  const address = [
+    supplier.address,
+    supplier.barangay,
+    supplier.city,
+    supplier.province,
+    supplier.postal_code,
+    supplier.country || 'Philippines',
+  ].filter(Boolean).join(', ')
+
+  if (!address) return
+  const geocoded = await forwardGeocodeMapbox(address).catch(() => null)
+  if (geocoded) resolvedSupplierPoint.value = [geocoded.latitude, geocoded.longitude]
+}
 
 const formatStatus = (value: any) =>
   String(value || '-')
@@ -1340,6 +1374,7 @@ const loadAll = async () => {
     delivery.value = payload.delivery || null
     logs.value = payload.logs || []
     replacementCase.value = payload.replacement_case || null
+    await resolveSupplierPickupPoint()
 
   } catch (error: any) {
     toast.add({
@@ -1531,7 +1566,7 @@ const goBack = () =>
 
 onMounted(loadAll)
 
-watch(mapElement, (element) => {
+watch([mapElement, destinationPoint], ([element]) => {
   if (element) {
     void renderMap()
   } else {

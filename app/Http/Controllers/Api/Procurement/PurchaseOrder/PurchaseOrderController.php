@@ -15,10 +15,12 @@ use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Hr\Employee;
 use App\Models\Core\ActivityLog;
+use App\Models\Core\SystemNotification;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Store\Branch;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
@@ -1946,6 +1948,8 @@ class PurchaseOrderController extends Controller
             $po->id
         );
 
+        $this->notifySupplierPoSent($po);
+
         $creatorUserId = $po->createdBy?->user_id;
         if ($creatorUserId) {
             $this->notify($creatorUserId, [
@@ -1965,6 +1969,62 @@ class PurchaseOrderController extends Controller
         }
 
         return true;
+    }
+
+    private function notifySupplierPoSent(PurchaseOrder $po): void
+    {
+        $supplier = $po->supplier;
+        if (!$supplier) {
+            return;
+        }
+
+        $portalIds = collect([$supplier->supplier_portal_id])
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $supplierIds = collect([(int) $supplier->id])->filter()->unique()->values();
+
+        $portals = SupplierPortal::query()
+            ->where('status', 'approved')
+            ->whereNotNull('user_id')
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->where(function ($query) use ($portalIds, $supplierIds): void {
+                if ($portalIds->isNotEmpty()) {
+                    $query->whereIn('id', $portalIds);
+                }
+                if ($supplierIds->isNotEmpty()) {
+                    $method = $portalIds->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                    $query->{$method}('supplier_id', $supplierIds);
+                }
+            })
+            ->get(['id', 'user_id']);
+
+        $storeName = $po->store?->name;
+        foreach ($portals->pluck('user_id')->map(fn ($id) => (int) $id)->unique() as $userId) {
+            $alreadyNotified = SystemNotification::query()
+                ->where('user_id', $userId)
+                ->where('entity_type', 'purchase_order')
+                ->where('entity_id', $po->id)
+                ->where('action', 'purchase_order_sent')
+                ->exists();
+
+            if ($alreadyNotified) {
+                continue;
+            }
+
+            $this->notify($userId, [
+                'store_id' => $po->store_id,
+                'module' => 'supplier',
+                'entity_type' => 'purchase_order',
+                'entity_id' => $po->id,
+                'action' => 'purchase_order_sent',
+                'title' => 'New Purchase Order Received',
+                'message' => trim(($storeName ? "{$storeName} sent " : '') . "PO {$po->po_number} for your review."),
+                'severity' => 'info',
+                'link' => "/supplier-portal/pos/{$po->id}/view",
+            ]);
+        }
     }
 
     private function notifyRequisitionRequesterPoCreated(PurchaseOrder $po): void

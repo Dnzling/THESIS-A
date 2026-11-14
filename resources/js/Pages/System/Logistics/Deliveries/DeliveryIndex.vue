@@ -89,7 +89,7 @@
           </Column>
   
 
-          <Column header="Status" style="width: 14rem">
+          <Column header="Status" style="width: 18rem">
             <template #body="{ data }">
               <Badge v-if="data.delivery_status" :value="formatDeliveryStatus(data.delivery_status)"
                 :severity="deliverySeverity(data.delivery_status)" />

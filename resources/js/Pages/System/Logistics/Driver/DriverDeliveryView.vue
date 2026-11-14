@@ -1131,7 +1131,7 @@ const beginAdvance = async () => {
         : source.value === 'replacement'
           ? nextStatus.value === 'delivered'
       : source.value === 'pickup'
-        ? ['in_transit', 'delivered'].includes(nextStatus.value)
+        ? ['out_for_delivery', 'delivered'].includes(nextStatus.value)
         : ['in_transit', 'delivered'].includes(nextStatus.value))
 
   if (needsProof) {
