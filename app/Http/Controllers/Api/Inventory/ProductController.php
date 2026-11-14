@@ -311,7 +311,8 @@ class ProductController extends Controller
                         }
                     },
                 ])
-                ->where('store_id', $context['store_id']);
+                ->where('store_id', $context['store_id'])
+                ->whereNull('products.deleted_at');
 
             if ($request->filled('location_id')) {
                 $locationId = (int) $request->input('location_id');

@@ -15,7 +15,7 @@
         </div>
       </div>
       <div v-if="detail" class="flex flex-wrap items-center gap-2 sm:justify-end">
-        <Badge :value="transferStatusLabel" :severity="statusSeverity(detail.status)" />
+        <Badge :value="transferStatusLabel" :severity="statusSeverity(detail.delivery_status === 'ready_for_dispatch' ? 'ready_for_dispatch' : detail.status)" />
         <Button label="Print" icon="pi pi-print" severity="secondary" outlined rounded size="small" :loading="printing" :disabled="loading" @click="printTransfer" />
       </div>
     </header>
@@ -193,9 +193,11 @@ const canSendToLogistics = computed(() =>
   ['receiver_acknowledge', 'receiver_acknowledged'].includes(String(detail.value?.status || '').toLowerCase())
 )
 const canCreateReceipt = computed(() => detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received')
-const transferStatusLabel = computed(() => detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received'
-  ? 'Delivered · Awaiting Receipt'
-  : formatStatusLabel(detail.value?.status || 'draft'))
+const transferStatusLabel = computed(() => {
+  if (detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received') return 'Delivered'
+  if (detail.value?.delivery_status === 'ready_for_dispatch') return 'Ready for Dispatch'
+  return formatStatusLabel(detail.value?.status || 'draft')
+})
 const openReceipt = () => {
   receiptError.value = ''
   receiptItems.value = (detail.value?.items || []).map((item: any) => ({
@@ -229,8 +231,8 @@ const transferTimeline = computed(() => {
 
   const events = [
     { label: 'Request created', date: transfer.created_at, by: employeeName(transfer.requested_by) },
-    { label: 'Transfer approved', date: transfer.sender_approved_date, by: employeeName(transfer.sender_approved_by) },
-    { label: 'Receiving branch acknowledged', date: transfer.receiver_acknowledged_date, by: employeeName(transfer.receiver_acknowledged_by) },
+    { label: 'Inventory approved - Warehouse Review', date: transfer.sender_approved_date, by: employeeName(transfer.sender_approved_by) },
+    { label: 'Warehouse acknowledged', date: transfer.receiver_acknowledged_date, by: employeeName(transfer.receiver_acknowledged_by) },
     { label: 'Finance approved', date: transfer.finance_approved_date, by: employeeName(transfer.finance_approved_by) },
     { label: 'Sent to logistics', date: transfer.shipped_date, by: employeeName(transfer.shipped_by) },
     { label: 'Out for delivery', date: transfer.out_for_delivery_at, by: transfer.driver_name || 'Driver' },
@@ -358,7 +360,8 @@ const statusSeverity = (status: string) => {
     requested: 'warn',
     pending_approval: 'warn',
     submitted: 'info',
-    sender_approved: 'info',
+    sender_approved: 'warn',
+    ready_for_dispatch: 'info',
     receiver_acknowledge: 'warn',
     receiver_acknowledged: 'warn',
     approved: 'info',
@@ -382,12 +385,12 @@ const formatStatusLabel = (status: string) => {
     pending_approval: 'Pending Approval',
     submitted: 'Submitted',
     approved: 'Approved',
-    sender_approved: 'Approved',
+    sender_approved: 'Warehouse Review',
     shipped: 'Shipped',
     in_transit: 'In Transit',
     out_for_delivery: 'Out for Delivery',
-    receiver_acknowledge: 'Receiver Acknowledged',
-    receiver_acknowledged: 'Receiver Acknowledged',
+    receiver_acknowledge: 'Ready for Dispatch',
+    receiver_acknowledged: 'Ready for Dispatch',
     received: 'Received',
     completed: 'Completed',
     cancelled: 'Cancelled',

@@ -161,6 +161,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRoute, useRouter } from 'vue-router'
 import SplitButton from 'primevue/splitbutton'
@@ -470,14 +471,41 @@ const confirmDelete = (product: any) => {
 const deleteProduct = async () => {
   deleting.value = true
   try {
-    await merchandisingService.archiveProduct(currentProduct.value.id)
-    toast.add({ severity: 'success', summary: 'Archived', detail: 'Product archived successfully', life: 3000 })
+    const response = await merchandisingService.archiveProduct(currentProduct.value.id)
+    const payload = response?.data ?? response
+    const conditions = payload?.conditions || payload?.archive_conditions || []
+    if (conditions.length) {
+      const details = conditions.map((condition: any) => typeof condition === 'string' ? condition : condition.message || condition.label || JSON.stringify(condition)).join('\n')
+      showResponseDialog({ severity: 'warn', title: 'Archive Conditions', message: details })
+    } else {
+      toast.add({ severity: 'success', summary: 'Archived', detail: payload?.message || 'Product archived successfully', life: 3000 })
+    }
     deleteDialogVisible.value = false
     loadProducts()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to archive product', life: 3000 })
+    const response = error?.response
+    const payload = response?.data
+    if (response?.status === 422) {
+      const validationMessages = Object.values(payload?.errors || {}).flatMap((messages: any) =>
+        Array.isArray(messages) ? messages : [messages]
+      )
+      const conditions = payload?.conditions || payload?.archive_conditions || validationMessages
+      const details = conditions
+        .map((condition: any) => typeof condition === 'string' ? condition : condition?.message || condition?.label || JSON.stringify(condition))
+        .filter(Boolean)
+        .join('\n')
+
+      showResponseDialog({
+        severity: 'warn',
+        title: 'Archive Conditions',
+        message: details || payload?.message || 'This product cannot be archived yet.'
+      })
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: payload?.message || 'Failed to archive product', life: 3000 })
+    }
   } finally {
     deleting.value = false
+    deleteDialogVisible.value = false
   }
 }
 

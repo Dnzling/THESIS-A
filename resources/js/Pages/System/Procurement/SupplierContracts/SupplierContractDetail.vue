@@ -23,7 +23,6 @@
           />
           <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
           <Button v-if="!isSupplierRoute && canApproveSupplierContracts && (contract?.status === 'draft' || (contract?.status === 'pending' && contract?.submitted_by_type === 'supplier'))" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
-          <Button v-if="!isSupplierRoute && canActivateStoreContract" label="Activate Contract" icon="pi pi-check-circle" severity="success" size="small" :loading="activating" @click="activateContract" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
             :loading="activating" @click="activateContract" size="small" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
@@ -558,9 +557,6 @@ const creatorName = computed(() => {
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
-const canActivateStoreContract = computed(() => contract.value?.status === 'pending'
-  && contract.value?.submitted_by_type === 'store'
-  && (canManageSupplierContracts.value || canApproveSupplierContracts.value))
 const isSupplierRoute = computed(() => String(route.path || '').startsWith('/supplier-portal/'))
 const mySideType = computed(() => (isSupplierRoute.value ? 'supplier' : 'store_user'))
 const canRespondTerminationRequest = computed(() => {

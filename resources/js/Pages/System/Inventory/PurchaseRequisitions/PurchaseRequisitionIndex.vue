@@ -201,7 +201,7 @@ const authStore = useAuthStore()
 const props = defineProps<{ warehouseMode?: boolean }>()
 const service: any = props.warehouseMode ? WarehouseService : inventoryService
 
-const loading = ref(false)
+const loading = ref(true)
 const rows = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)

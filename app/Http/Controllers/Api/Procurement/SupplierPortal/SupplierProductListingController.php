@@ -13,6 +13,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -164,18 +165,21 @@ class SupplierProductListingController extends Controller
         $suppliers = $this->linkedSuppliers($portal);
         $storeIds = $suppliers->pluck('store_id')->unique()->values();
 
-        $categories = SupplierProductCategory::query()
+        $categoryQuery = SupplierProductCategory::query()
             ->where('is_active', true)
-            ->where(fn ($query) => $query->whereNull('supplier_id')->orWhereIn('supplier_id', $suppliers->pluck('id')))
-            ->whereNull('parent_category_id')
-            ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('category_name')])
-            ->orderBy('category_name')
+            ->where(fn ($query) => $query->whereNull('supplier_id')->orWhereIn('supplier_id', $suppliers->pluck('id')));
+        $hasHierarchy = Schema::hasColumn('supplier_product_categories', 'parent_category_id');
+        if ($hasHierarchy) {
+            $categoryQuery->whereNull('parent_category_id')
+                ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('category_name')]);
+        }
+        $categories = $categoryQuery->orderBy('category_name')
             ->get(['id', 'category_name', 'supplier_id'])
             ->map(fn ($category) => [
                 'value' => $category->category_name,
                 'label' => $category->category_name,
                 'custom' => $category->supplier_id !== null,
-                'subcategories' => $category->children->pluck('category_name')->values(),
+                'subcategories' => $hasHierarchy ? $category->children->pluck('category_name')->values() : [],
             ]);
 
         return response()->json([

@@ -8,6 +8,7 @@ use App\Models\Core\User;
 use App\Models\PaymongoIntent;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Models\Store\StoreSubscriptionAgreement;
 use App\Models\Hr\Employee;
 use App\Models\Merchandising\Model3dRequest;
 use Carbon\Carbon;
@@ -39,6 +40,17 @@ class BillingController extends Controller
             ? $store->trial_ends_at
             : ($store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null);
         $today = now()->startOfDay();
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $cancellation = $settings['subscription_cancellation'] ?? null;
+        $isPaidPlan = $plan && strtolower((string) $plan->plan_key) !== 'free';
+        $subscriptionActive = $isPaidPlan
+            && $store->subscription_status === 'paid'
+            && (!$endsAt || !$endsAt->lt($today));
+        $activeAgreement = StoreSubscriptionAgreement::query()
+            ->where('store_id', $store->id)
+            ->where('status', 'active')
+            ->latest('activated_at')
+            ->first(['id', 'plan_name', 'billing_cycle', 'signer_name', 'signed_at']);
         $enabledModuleRows = $plan
             ? DB::table('plan_modules')
             ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
@@ -119,6 +131,8 @@ class BillingController extends Controller
                 'plan_name' => $plan?->name ?? 'Free',
                 'next_plan_name' => $nextPlan?->name,
                 'status' => $store->subscription_status,
+                'is_active' => (bool) $subscriptionActive,
+                'cancellation' => is_array($cancellation) ? $cancellation : null,
                 'monthly_price' => (float) ($plan?->monthly_price ?? 0),
                 'yearly_price' => (float) ($plan?->yearly_price ?? 0),
                 'ends_at' => $endsAt?->toDateString(),
@@ -160,6 +174,12 @@ class BillingController extends Controller
                     ]] : []),
                 ],
             ],
+            'agreement' => $activeAgreement ? [
+                'plan_name' => $activeAgreement->plan_name,
+                'billing_cycle' => $activeAgreement->billing_cycle,
+                'signer_name' => $activeAgreement->signer_name,
+                'signed_at' => $activeAgreement->signed_at?->toIso8601String(),
+            ] : null,
             'billing_records' => $records,
         ]);
     }

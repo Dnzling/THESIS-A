@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\Core;
 use App\Http\Controllers\Controller;
 use App\Models\Core\StaffChatConversation;
 use App\Models\Core\StaffChatMessage;
+use App\Models\Core\SystemNotification;
 use App\Models\Core\User;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +71,57 @@ class StaffChatController extends Controller
         $file=$request->file('attachment'); $path=$file?->store('staff-chat/'.$conversation->store_id,'private');
         $message=StaffChatMessage::create(['conversation_id'=>$conversation->id,'sender_user_id'=>$request->user()->id,'message'=>trim((string)($data['message']??'')) ?: null,'attachment_path'=>$path,'attachment_name'=>$file?->getClientOriginalName(),'attachment_mime'=>$file?->getMimeType(),'attachment_size'=>$file?->getSize()]);
         $conversation->update(['last_message_at'=>$message->created_at]);
+
+        $permissionService = app(PermissionService::class);
+        $recipients = $conversation->participants()
+            ->where('users.id', '!=', $request->user()->id)
+            ->where('users.store_id', $conversation->store_id)
+            ->where('users.is_active', true)
+            ->get(['users.id', 'users.store_id', 'users.branch_id']);
+        $senderName = trim(implode(' ', array_filter([$request->user()->fname, $request->user()->lname]))) ?: 'A staff member';
+        $messagePreview = trim((string) $message->message);
+        if ($messagePreview === '') {
+            $messagePreview = $message->attachment_name ? 'Sent an attachment: ' . $message->attachment_name : 'Sent a new message.';
+        } elseif ($message->attachment_name) {
+            $messagePreview .= ' · Attachment: ' . $message->attachment_name;
+        }
+
+        foreach ($recipients as $recipient) {
+            if (!$permissionService->userHasPermission($recipient, 'admin.chats.manage', (int) $conversation->store_id)) {
+                continue;
+            }
+
+            $alreadyNotified = SystemNotification::query()
+                ->where('user_id', $recipient->id)
+                ->where('entity_type', 'staff_chat_message')
+                ->where('entity_id', $message->id)
+                ->where('action', 'received')
+                ->exists();
+            if ($alreadyNotified) {
+                continue;
+            }
+
+            SystemNotification::query()->create([
+                'store_id' => $conversation->store_id,
+                'branch_id' => $recipient->branch_id,
+                'user_id' => $recipient->id,
+                'module' => 'admin',
+                'entity_type' => 'staff_chat_message',
+                'entity_id' => $message->id,
+                'action' => 'received',
+                'title' => 'New staff chat message',
+                'message' => $senderName . ': ' . $messagePreview,
+                'data' => [
+                    'conversation_id' => (int) $conversation->id,
+                    'sender_user_id' => (int) $request->user()->id,
+                    'required_permission' => 'admin.chats.manage',
+                ],
+                'link' => '/staff-chats?conversation=' . $conversation->id,
+                'severity' => 'info',
+                'is_read' => false,
+            ]);
+        }
+
         return response()->json(['success'=>true,'data'=>$message->load('sender:id,fname,lname,avatar_path')],201);
     }
 

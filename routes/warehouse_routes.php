@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\WarehouseOperations\WarehouseGoodsReceiptController
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Inventory\ForecastController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
+use App\Http\Controllers\Api\Inventory\StockIssueController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('warehouse')->controller(WarehouseOperationsController::class)->group(function () {
@@ -39,6 +40,16 @@ Route::prefix('warehouse/purchase-requisitions')->controller(WarehousePurchaseRe
     Route::get('options', 'options');
     Route::get('{id}', 'show')->whereNumber('id');
     Route::post('/', 'store');
+});
+
+// Warehouse reuses the Inventory stock-issue UI, with Warehouse API ownership.
+Route::prefix('warehouse/issues')->controller(StockIssueController::class)->middleware('can:warehouse.stock-issues.view')->group(function () {
+    Route::get('/', 'index');
+    Route::get('/reasons', 'getReasons');
+    Route::get('/{id}', 'show')->whereNumber('id');
+    Route::post('/', 'store')->middleware('can:warehouse.stock-issues.manage');
+    Route::put('/{id}', 'update')->whereNumber('id')->middleware('can:warehouse.stock-issues.manage');
+    Route::post('/{id}/approve', 'approve')->whereNumber('id')->middleware('can:warehouse.stock-issues.approve');
 });
 
 Route::prefix('warehouse/reorder')->controller(WarehouseReorderController::class)->group(function () {

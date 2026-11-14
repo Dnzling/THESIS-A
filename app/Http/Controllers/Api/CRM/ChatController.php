@@ -21,7 +21,8 @@ class ChatController extends Controller
         $query = EcommerceChatThread::query()
             ->with([
                 'store:id,name',
-                'customer:id,fname,lname,email',
+                'store.logoBranch:id,store_id,logo_path',
+                'customer:id,fname,lname,email,avatar_path',
                 'messages' => fn($q) => $q->latest('created_at')->limit(1),
             ]);
 
@@ -57,8 +58,12 @@ class ChatController extends Controller
                 'id' => $thread->id,
                 'store_id' => $thread->store_id,
                 'store_name' => $thread->store?->name,
+                'store_logo' => $thread->store?->logoBranch?->logo_path
+                    ? asset('storage/' . ltrim($thread->store->logoBranch->logo_path, '/'))
+                    : null,
                 'customer_user_id' => $thread->customer_user_id,
                 'customer_name' => trim((string) (($thread->customer?->fname ?? '') . ' ' . ($thread->customer?->lname ?? ''))) ?: 'Customer',
+                'customer_avatar_url' => $thread->customer?->avatar_url,
                 'customer_email' => $thread->customer?->email,
                 'last_message' => $lastMessage?->message,
                 'last_message_at' => $thread->last_message_at ?? $lastMessage?->created_at,
@@ -78,7 +83,7 @@ class ChatController extends Controller
         $perPage = max(1, min((int) $request->input('per_page', 50), 200));
 
         $messages = EcommerceChatMessage::query()
-            ->with('sender:id,fname,lname,email')
+            ->with('sender:id,fname,lname,email,avatar_path')
             ->where('thread_id', $thread->id)
             ->orderByDesc('created_at')
             ->paginate($perPage);

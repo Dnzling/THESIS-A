@@ -42,6 +42,7 @@
                 <DataTable
                     :value="rows"
                     :loading="loading"
+                    :pt="{ mask: { class: '!bg-transparent' } }"
                     rowHover
                     paginator
                     lazy
@@ -53,8 +54,15 @@
                     @row-click="openRow"
                     responsiveLayout="scroll"
                 >
+                    <template #loading>
+                        <div class="absolute inset-x-0 top-12 bottom-12 z-10 space-y-3 overflow-hidden p-4">
+                            <div v-for="row in 5" :key="row" class="grid grid-cols-6 gap-4">
+                                <Skeleton v-for="cell in 6" :key="cell" height="1.5rem" />
+                            </div>
+                        </div>
+                    </template>
                     <template #empty>
-                        <div class="py-12 text-center">
+                        <div v-if="!loading" class="py-12 text-center">
                             <i
                                 :class="[
                                     mode === 'receiving'
@@ -137,8 +145,8 @@
                           <Column header="Status" style="width: 150px" class="text-xs"
                             ><template #body="{ data }">
                                 <Badge
-                                    :value="label(data.status)"
-                                    :severity="severity(data.status)"
+                                    :value="transferStatusLabel(data)"
+                                    :severity="data.delivery_status === 'ready_for_dispatch' ? 'info' : severity(data.status)"
                                 /> </template
                         ></Column>
                         <Column header="Requested By"
@@ -170,9 +178,10 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { router } from "@inertiajs/vue3";
 import WarehouseService from "@/services/warehouse.service";
+import Skeleton from "primevue/skeleton";
 const props = defineProps<{ mode: "requests" | "history" | "receiving" }>();
 const rows = ref<any[]>([]),
-    loading = ref(false),
+    loading = ref(true),
     search = ref(""),
     status = ref<string | null>(null),
     meta = reactive({ page: 1, per_page: 15, total: 0 });
@@ -201,13 +210,19 @@ const statusOptions = computed(() =>
         : [
               { label: "Draft", value: "draft" },
               { label: "Requested", value: "requested" },
-              { label: "Sender Approved", value: "sender_approved" },
+              { label: "Warehouse Review", value: "sender_approved" },
           ],
 );
 const label = (value: string) =>
     String(value || "—")
         .replaceAll("_", " ")
         .replace(/\b\w/g, (char) => char.toUpperCase());
+const transferStatusLabel = (row: any) => {
+    if (row?.delivery_status === "ready_for_dispatch") return "Ready for Dispatch";
+    if (row?.status === "sender_approved") return "Warehouse Review";
+    if (row?.status === "requested") return "Pending Approval";
+    return label(row?.status);
+};
 const date = (value: string) =>
     value
         ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(

@@ -19,8 +19,8 @@ use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailCo
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 
 Route::prefix('finance')->group(function () {
-    Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'finance']);
-    Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
+    Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'finance'])->middleware('can:finance.dashboard.view');
+    Route::get('/dashboard', [FinanceDashboardController::class, 'index'])->middleware('can:finance.dashboard.view');
     Route::get('/tax-vat', [FinanceTaxVatController::class, 'index'])->middleware('can:finance.tax-vat.view');
 
     Route::prefix('refunds')->group(function () {
@@ -43,14 +43,14 @@ Route::prefix('finance')->group(function () {
         Route::post('/{liquidation}/settle', [FinanceLiquidationController::class, 'settle'])->middleware('can:finance.liquidations.approve');
     });
 
-    Route::get('/payables', [FinancePayablesController::class, 'index']);
-    Route::get('/cashflow/account', [FinanceCashflowController::class, 'accountSummary']);
-    Route::get('/cashflow/transactions', [FinanceCashflowController::class, 'transactions']);
-    Route::get('/cashflow/transactions/export', [FinanceCashflowController::class, 'exportTransactions']);
-    Route::get('/cashflow/transactions/print', [FinanceCashflowController::class, 'printTransactions']);
-    Route::get('/cashflow/transactions/{id}', [FinanceCashflowController::class, 'transactionDetail']);
-    Route::get('/receivables', [FinanceReceivablesController::class, 'index']);
-    Route::get('/receivables/{source}/{id}', [FinanceReceivablesController::class, 'show']);
+    Route::get('/payables', [FinancePayablesController::class, 'index'])->middleware('can:finance.payables.view');
+    Route::get('/cashflow/account', [FinanceCashflowController::class, 'accountSummary'])->middleware('can:finance.cashflow.view');
+    Route::get('/cashflow/transactions', [FinanceCashflowController::class, 'transactions'])->middleware('can:finance.cashflow.view');
+    Route::get('/cashflow/transactions/export', [FinanceCashflowController::class, 'exportTransactions'])->middleware('can:finance.cashflow.view');
+    Route::get('/cashflow/transactions/print', [FinanceCashflowController::class, 'printTransactions'])->middleware('can:finance.cashflow.view');
+    Route::get('/cashflow/transactions/{id}', [FinanceCashflowController::class, 'transactionDetail'])->middleware('can:finance.cashflow.view');
+    Route::get('/receivables', [FinanceReceivablesController::class, 'index'])->middleware('can:finance.receivables.view');
+    Route::get('/receivables/{source}/{id}', [FinanceReceivablesController::class, 'show'])->middleware('can:finance.receivables.view');
     Route::get('/payroll', [FinancePayrollController::class, 'index'])->middleware('can:finance.payroll.view');
     Route::prefix('payroll')->group(function (): void {
         Route::get('/pay-periods/{id}/payroll', [FinancePayrollController::class, 'periodPayroll'])->middleware('can:finance.payroll.view');
@@ -86,20 +86,20 @@ Route::prefix('finance')->group(function () {
     Route::get('/expenses/{financeExpenseId}/receipt', [BranchExpenseController::class, 'financeReceipt'])->whereNumber('financeExpenseId')->middleware('can:finance.expenses.view');
 
     // Purchase Orders (Finance view) reusing procurement controller
-    Route::prefix('purchase-orders')->group(function () {
+    Route::prefix('purchase-orders')->middleware('can:finance.purchase-orders.view')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index']);
         Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/summary', [PurchaseOrderController::class, 'summary']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
 
-        Route::post('/', [PurchaseOrderController::class, 'store']);
-        Route::put('/{id}', [PurchaseOrderController::class, 'update']);
-        Route::delete('/{id}', [PurchaseOrderController::class, 'destroy']);
+        Route::post('/', [PurchaseOrderController::class, 'store'])->middleware('can:finance.purchase-orders.manage');
+        Route::put('/{id}', [PurchaseOrderController::class, 'update'])->middleware('can:finance.purchase-orders.manage');
+        Route::delete('/{id}', [PurchaseOrderController::class, 'destroy'])->middleware('can:finance.purchase-orders.delete');
 
-        Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve']);
-        Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject']);
-        Route::post('/{id}/send', [PurchaseOrderController::class, 'send']);
-        Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
+        Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve'])->middleware('can:finance.purchase-orders.approve');
+        Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject'])->middleware('can:finance.purchase-orders.reject');
+        Route::post('/{id}/send', [PurchaseOrderController::class, 'send'])->middleware('can:finance.purchase-orders.manage');
+        Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel'])->middleware('can:finance.purchase-orders.manage');
 
         Route::get('/{id}/print', [PurchaseOrderPrintEmailController::class, 'generatePdf']);
         Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo']);
@@ -110,19 +110,18 @@ Route::prefix('finance')->group(function () {
         Route::get('/{poId}/pending-receipt', [GoodsReceiptController::class, 'pendingForPO']);
     });
 
-    Route::get('/expenses', [FinanceExpenseController::class, 'index']);
-    Route::post('/expenses', [FinanceExpenseController::class, 'store']);
-    Route::get('/expenses/{id}', [FinanceExpenseController::class, 'show']);
-    Route::put('/expenses/{id}', [FinanceExpenseController::class, 'update']);
-    Route::post('/expenses/{id}/approve', [FinanceExpenseController::class, 'approve']);
-    Route::post('/expenses/{id}/reject', [FinanceExpenseController::class, 'reject']);
-    Route::post('/expenses/{id}/mark-paid', [FinanceExpenseController::class, 'markPaid']);
-    Route::delete('/expenses/{id}', [FinanceExpenseController::class, 'destroy']);
+    Route::get('/expenses', [FinanceExpenseController::class, 'index'])->middleware('can:finance.expenses.view');
+    Route::post('/expenses', [FinanceExpenseController::class, 'store'])->middleware('can:finance.expenses.manage');
+    Route::get('/expenses/{id}', [FinanceExpenseController::class, 'show'])->middleware('can:finance.expenses.view');
+    Route::put('/expenses/{id}', [FinanceExpenseController::class, 'update'])->middleware('can:finance.expenses.manage');
+    Route::post('/expenses/{id}/approve', [FinanceExpenseController::class, 'approve'])->middleware('can:finance.expenses.approve');
+    Route::post('/expenses/{id}/reject', [FinanceExpenseController::class, 'reject'])->middleware('can:finance.expenses.approve');
+    Route::post('/expenses/{id}/mark-paid', [FinanceExpenseController::class, 'markPaid'])->middleware('can:finance.expenses.approve');
+    Route::delete('/expenses/{id}', [FinanceExpenseController::class, 'destroy'])->middleware('can:finance.expenses.delete');
 
-    Route::get('/budgets', [FinanceBudgetController::class, 'index']);
-    
-    Route::post('/budgets', [FinanceBudgetController::class, 'store']);
-    Route::get('/budgets/{id}', [FinanceBudgetController::class, 'show']);
-    Route::put('/budgets/{id}', [FinanceBudgetController::class, 'update']);
-    Route::delete('/budgets/{id}', [FinanceBudgetController::class, 'destroy']);
+    Route::get('/budgets', [FinanceBudgetController::class, 'index'])->middleware('can:finance.budgets.view');
+    Route::post('/budgets', [FinanceBudgetController::class, 'store'])->middleware('can:finance.budgets.manage');
+    Route::get('/budgets/{id}', [FinanceBudgetController::class, 'show'])->middleware('can:finance.budgets.view');
+    Route::put('/budgets/{id}', [FinanceBudgetController::class, 'update'])->middleware('can:finance.budgets.manage');
+    Route::delete('/budgets/{id}', [FinanceBudgetController::class, 'destroy'])->middleware('can:finance.budgets.delete');
 });

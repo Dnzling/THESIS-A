@@ -4,7 +4,7 @@
       <div class="mb-6">
         <div class="flex items-center justify-between">
           <div class="flex min-w-0 items-center gap-3">
-            <Button icon="pi pi-arrow-left" text rounded aria-label="Back to stock issuance" @click="router.push({ name: 'inventory.stock-issues' })" />
+            <Button icon="pi pi-arrow-left" text rounded aria-label="Back to stock issuance" @click="router.push({ name: pageRoute('inventory.stock-issues') })" />
             <div class="min-w-0">
               <h1 class="truncate font-mono text-xl font-bold text-gray-800">{{ stockIssue?.issue_number || 'Stock Issuance' }}</h1>
               <p class="mt-1 text-sm text-gray-500">Stock issuance record</p>
@@ -21,7 +21,7 @@
               size="small"
             />
             <Button
-              v-if="stockIssue?.status === 'draft'"
+              v-if="stockIssue?.status === 'draft' && canManage"
               label="Edit"
               icon="pi pi-pencil"
               severity="secondary"
@@ -30,7 +30,7 @@
               size="small"
             />
             <Button
-              v-if="stockIssue?.status === 'draft'"
+              v-if="stockIssue?.status === 'draft' && canManage"
               label="Cancel Issue"
               icon="pi pi-times"
               severity="danger"
@@ -160,9 +160,14 @@
                     {{ slotProps.data.inventory_item?.product?.sku || 'N/A' }}
                   </template>
                 </Column>
-                <Column field="inventory_item.product.product_name" header="Product Name" style="min-width: 200px">
+                <Column field="inventory_item.product.product_name" header="Product" style="min-width: 220px">
                   <template #body="slotProps">
-                    {{ slotProps.data.inventory_item?.product?.product_name || 'N/A' }}
+                    <div>
+                      <p class="font-medium">{{ slotProps.data.inventory_item?.product?.product_name || 'N/A' }}</p>
+                      <p v-if="slotProps.data.inventory_item?.variation?.variation_name || slotProps.data.inventory_item?.variation?.name" class="text-xs text-slate-500">
+                        Variant: {{ slotProps.data.inventory_item?.variation?.variation_name || slotProps.data.inventory_item?.variation?.name }}
+                      </p>
+                    </div>
                   </template>
                 </Column>
                 <Column field="quantity" header="Quantity" style="width: 100px">
@@ -331,7 +336,7 @@
               </div>
               <div>
                 <p v-if="stockIssue.description && stockIssue.issue_type !== 'other'"><strong>Description:</strong> {{ stockIssue.description }}</p>
-                <p v-if="stockIssue.remarks"><strong>Issued To / Additional Notes:</strong> {{ stockIssue.remarks }}</p>
+                <p v-if="stockIssue.remarks"><strong>Additional Notes:</strong> {{ stockIssue.remarks }}</p>
                 <p v-if="stockIssue.approval_notes"><strong>Approval Notes:</strong> {{ stockIssue.approval_notes }}</p>
               </div>
             </div>
@@ -354,7 +359,12 @@
               <tbody>
                 <tr v-for="item in stockIssue.items" :key="item.id">
                   <td>{{ item.inventory_item?.product?.sku || 'N/A' }}</td>
-                  <td>{{ item.inventory_item?.product?.product_name || 'N/A' }}</td>
+                  <td>
+                    {{ item.inventory_item?.product?.product_name || 'N/A' }}
+                    <span v-if="item.inventory_item?.variation?.variation_name || item.inventory_item?.variation?.name">
+                      (Variant: {{ item.inventory_item?.variation?.variation_name || item.inventory_item?.variation?.name }})
+                    </span>
+                  </td>
                   <td class="text-right">{{ item.quantity }}</td>
                   <td>{{ item.inventory_item?.product?.unit_of_measurement || 'N/A' }}</td>
                   <td class="text-right">₱{{ formatNumber(item.unit_cost) }}</td>
@@ -469,7 +479,10 @@ const route = useRoute()
 const authStore = useAuthStore()
 const actionLoading = ref(false)
 const printing = ref(false)
-const canApprove = computed(() => authStore.hasPermission('inventory.stock_issues.approve'))
+const warehouseMode = typeof window !== 'undefined' && window.location.pathname.startsWith('/warehouse/stock-issues')
+const pageRoute = (name: string) => warehouseMode ? name.replace('inventory.', 'warehouse.') : name
+const canManage = computed(() => authStore.hasPermission(warehouseMode ? 'warehouse.stock-issues.manage' : 'inventory.stock_issues.manage'))
+const canApprove = computed(() => authStore.hasPermission(warehouseMode ? 'warehouse.stock-issues.approve' : 'inventory.stock_issues.approve'))
 
 const totalQuantity = computed(() => {
   if (!stockIssue.value?.items) return 0
@@ -843,7 +856,7 @@ const formatNumber = (value: string | number | null | undefined) => {
 }
 
 const editStockIssue = () => {
-  router.push({ name: 'inventory.stock-issues.edit', params: { id: stockIssue.value.id } })
+  router.push({ name: pageRoute('inventory.stock-issues.edit'), params: { id: stockIssue.value.id } })
 }
 
 const confirmCancel = () => {

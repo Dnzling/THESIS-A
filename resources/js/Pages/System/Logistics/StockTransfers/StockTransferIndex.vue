@@ -127,7 +127,7 @@ const pageState = reactive({
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
-  { label: 'Receiver Acknowledged', value: 'receiver_acknowledged' },
+  { label: 'Ready for Dispatch', value: 'sender_approved' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Received', value: 'received' },
 ]
@@ -189,7 +189,7 @@ const statusSeverity = (status?: string) => {
   const s = String(status || '').toLowerCase()
   if (s === 'received') return 'success'
   if (s === 'in_transit') return 'info'
-  if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge') return 'warning'
+  if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge' || s === 'sender_approved') return 'info'
   if (s === 'cancelled') return 'danger'
   return 'secondary'
 }
@@ -198,6 +198,8 @@ const formatStatus = (row: any) => {
   const status = String(row?.status || '').toLowerCase()
   const notes = String(row?.notes || '').toLowerCase()
   if (status === 'in_transit' && notes.includes('sent to logistics')) return 'Logistics Processing'
+  if (status === 'sender_approved' && row?.delivery_status === 'ready_for_dispatch') return 'Ready for Dispatch'
+  if (status === 'sender_approved') return 'Warehouse Review'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || '-'
 }
 

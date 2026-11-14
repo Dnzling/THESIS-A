@@ -38,6 +38,11 @@ class SupplierContractController extends Controller
         return false;
     }
 
+    private function isInventoryRequest(Request $request): bool
+    {
+        return $request->is('api/inventory/supplier-contracts*');
+    }
+
     private function contractLinkForStore(int $contractId): string
     {
         return '/procurement/supplier-contracts/' . $contractId;
@@ -224,6 +229,7 @@ class SupplierContractController extends Controller
     public function store(Request $request): JsonResponse
     {
         $isSupplierPortal = $this->isSupplierPortalRequest($request);
+        $isInventoryRequest = $this->isInventoryRequest($request) && !$isSupplierPortal;
 
         $storeId = (int) (auth()->user()?->store_id ?? 0);
         if ($storeId <= 0) {
@@ -329,8 +335,10 @@ class SupplierContractController extends Controller
         $validated['contract_number'] = $contractNumber;
         $validated['tax_rate'] = 12;
         $validated['store_id'] = $storeId;
-        // A created agreement must be reviewed and explicitly activated; never activate on create.
-        $validated['status'] = 'pending';
+        // Inventory records are manual external-supplier contracts, so the store's
+        // authenticated user confirms the terms at creation time. Procurement
+        // contracts remain pending until the supplier approves them in the portal.
+        $validated['status'] = $isInventoryRequest ? 'active' : 'pending';
         $validated['submitted_by_type'] = $isSupplierPortal ? 'supplier' : 'store';
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
@@ -342,6 +350,16 @@ class SupplierContractController extends Controller
         }
 
         $contract = SupplierContract::create($validated);
+
+        if ($isInventoryRequest) {
+            $contract->load('supplier');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Supplier contract created and activated successfully.',
+                'data' => $contract,
+            ], 201);
+        }
 
         if ($isSupplierPortal) {
             $supplierName = (string) ($supplier?->supplier_name ?? $supplier?->company_name ?? $supplier?->contact_person ?? 'A supplier');

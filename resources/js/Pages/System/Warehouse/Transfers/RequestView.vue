@@ -5,12 +5,11 @@
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Button icon="pi pi-chevron-left" size="small" rounded severity="warn" @click="router.visit('/warehouse/transfer-requests')"/>
-          <div class="mt-2 flex items-center gap-3"><h1 class="text-2xl font-semibold text-slate-900">{{ transfer.transfer_number }}</h1><Badge :value="transfer.status === 'sender_approved' ? 'Approved' : label(transfer.status)" :severity="severity(transfer.status)"/><Badge v-if="transfer.delivery_status" :value="label(transfer.delivery_status)" severity="info"/></div>
+          <div class="mt-2 flex items-center gap-3"><h1 class="text-2xl font-semibold text-slate-900">{{ transfer.transfer_number }}</h1><Badge :value="transfer.delivery_status === 'ready_for_dispatch' ? 'Ready for Dispatch' : transfer.status === 'sender_approved' ? 'Warehouse Review' : label(transfer.status)" :severity="severity(transfer.status)"/></div>
           <p class="mt-1 text-sm text-slate-500">Requested {{ dateTime(transfer.created_at) }}</p>
         </div>
-        <div v-if="canAct || canDispatch" class="flex gap-2">
+        <div v-if="canReject || canDispatch" class="flex gap-2">
           <Button v-if="canReject" label="Reject" icon="pi pi-times" severity="danger" outlined size="small" @click="rejectVisible = true"/>
-          <Button v-if="canApprove" label="Approve" icon="pi pi-check" size="small" @click="confirmApprove"/>
           <Button v-if="canDispatch" label="Ready for Dispatch" icon="pi pi-truck" severity="warn" size="small" @click="confirmDispatch"/>
         </div>
       </div>
@@ -69,17 +68,15 @@ const loading = ref(true), transfer = ref<any>(null), rejectVisible = ref(false)
 const rejectForm = reactive({ reason: '', details: '' })
 const rejectReasons = ['Insufficient stock', 'Product unavailable', 'Quantity cannot be fulfilled', 'Invalid destination', 'Transfer details require correction', 'Other']
 const id = computed(() => String(page.url).match(/transfer-requests\/(\d+)/)?.[1] || '')
-const canApprove = computed(() => auth.hasPermission('warehouse.transfers.approve'))
-const canReject = computed(() => auth.hasPermission('warehouse.transfers.reject'))
-const canAct = computed(() => ['requested', 'pending_approval'].includes(String(transfer.value?.status)) && (canApprove.value || canReject.value))
-const canDispatch = computed(() => transfer.value?.status === 'sender_approved' && !transfer.value?.delivery_status && canApprove.value)
+const canReject = computed(() => transfer.value?.status === 'sender_approved' && auth.hasPermission('warehouse.transfers.reject'))
+const canDispatch = computed(() => transfer.value?.status === 'sender_approved' && !transfer.value?.delivery_status && auth.hasPermission('warehouse.transfers.approve'))
 const label = (value: any) => String(value || '—').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
 const number = (value: any) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
 const money = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const date = (value: any) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(value)) : '—'
 const dateTime = (value: any) => value ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 const person = (employee: any) => employee?.user?.full_name || [employee?.user?.fname, employee?.user?.lname].filter(Boolean).join(' ') || '—'
-const severity = (value: string) => value === 'sender_approved' ? 'success' : value === 'rejected' ? 'danger' : 'warn'
+const severity = (value: string) => value === 'sender_approved' ? 'warn' : value === 'rejected' ? 'danger' : 'warn'
 const confirmDispatch = () => confirm.require({ header: 'Ready for Dispatch', message: 'Send this approved transfer to Logistics for driver assignment?', icon: 'pi pi-truck', rejectLabel: 'Cancel', acceptLabel: 'Send to Logistics', acceptProps: { severity: 'warn' }, accept: async () => { try { await WarehouseService.readyTransferForDispatch(id.value); toast.add({ severity: 'success', summary: 'Ready for Dispatch', detail: 'Logistics can now assign a driver.', life: 2500 }); await load() } catch (error: any) { toast.add({ severity: 'error', summary: 'Dispatch failed', detail: error.response?.data?.message || 'Unable to send transfer to logistics.', life: 3000 }) } } })
 const summary = computed(() => [{ label: 'Total Items', value: number(transfer.value.items?.length) }, { label: 'Total Quantity', value: number(transfer.value.items?.reduce((sum: number, item: any) => sum + Number(item.requested_quantity || 0), 0)) }, { label: 'Goods Value', value: money(transfer.value.goods_value) }, { label: 'Shipping Fee', value: money(transfer.value.transfer_cost) }])
 const requestFields = computed(() => [{ label: 'Requested By', value: person(transfer.value.requested_by) }, { label: 'Requested Date', value: date(transfer.value.requested_date) }, { label: 'Expected Delivery', value: date(transfer.value.expected_delivery_date) }, { label: 'Approval Policy', value: label(transfer.value.approval_policy_used) }, { label: 'Approved By', value: person(transfer.value.sender_approved_by) }, { label: 'Approved Date', value: date(transfer.value.sender_approved_date) }])

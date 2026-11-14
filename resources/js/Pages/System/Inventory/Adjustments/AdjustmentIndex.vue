@@ -58,12 +58,12 @@
           <Column field="adjustment_number" header="Reference" sortable style="min-width: 180px">
             <template #body="{ data }"><span class="font-mono font-semibold text-slate-900">{{ data.adjustment_number }}</span></template>
           </Column>
-          <Column header="Branch" style="min-width: 140px"><template #body="{ data }">{{ data.branch?.name || '—' }}</template></Column>
+          <!-- <Column header="Branch" style="min-width: 140px"><template #body="{ data }">{{ data.branch?.name || '—' }}</template></Column> -->
           <Column header="Type" style="min-width: 130px"><template #body="{ data }"><Tag :value="label(data.type)" severity="secondary" /></template></Column>
           <Column header="Reason" style="min-width: 190px"><template #body="{ data }"><span class="block max-w-xs truncate" :title="formatReason(data.reason)">{{ formatReason(data.reason) }}</span></template></Column>
           <Column header="Items" style="width: 80px"><template #body="{ data }">{{ data.items_count ?? 0 }}</template></Column>
-          <Column field="status" header="Status" sortable style="min-width: 130px"><template #body="{ data }"><Badge :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
-          <Column header="Created By" style="min-width: 150px"><template #body="{ data }"><span class="text-slate-700">{{ employeeName(data.created_by) }}</span></template></Column>
+          <Column field="status" header="Status" sortable style="min-width: 110px"><template #body="{ data }"><Badge :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
+          <Column header="Created By" style="min-width: 100px"><template #body="{ data }"><span class="text-slate-700">{{ employeeName(data.created_by) }}</span></template></Column>
           <Column header="Actions" style="width: 110px">
             <template #body="{ data }"><Button v-if="canViewAdjustments" label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" aria-label="View adjustment" @click="openDetail(data.id)" /></template>
           </Column>

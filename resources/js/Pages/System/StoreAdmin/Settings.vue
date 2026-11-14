@@ -173,7 +173,7 @@
                                 {{ subscription.ends_at ? `Plan due date: ${formatSubscriptionDate(subscription.ends_at)}` : 'No plan end date is set.' }}
                             </p>
                         </div>
-                        <Button :label="subscription.is_expired && subscription.is_paid_plan ? 'Renew' : 'Upgrade'" icon="pi pi-arrow-up-right" size="small" severity="warn" @click="goToPlanAction" />
+                        <Button :label="subscription.is_expired && subscription.is_paid_plan ? 'Renew' : 'View Plans'" icon="pi pi-arrow-up-right" size="small" severity="warn" @click="goToPlanAction" />
                     </div>
                 </template>
             </Card>
@@ -583,24 +583,6 @@
                             </div>
                         </div>
                         <Button label="Configure" icon="pi pi-map-marker" size="small" severity="warn" outlined class="shrink-0" @click="openAttendanceEditor" />
-                    </div>
-                </template>
-            </Card>
-
-            <Card v-if="subscription.is_active" class="border border-red-200 shadow-sm">
-                <template #title>Cancel Plan</template>
-                <template #content>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="min-w-0">
-                            <p v-if="subscription.cancellation?.effective_at" class="text-sm text-slate-700">
-                                Cancellation is scheduled for {{ formatSubscriptionDate(subscription.cancellation.effective_at) }}. Your plan remains active until then.
-                            </p>
-                            <p v-else class="text-sm text-slate-700">
-                                Your plan is paid through {{ formatSubscriptionDate(subscription.ends_at) }}. Cancelling now keeps your access until that date and prevents renewal.
-                            </p>
-                        </div>
-                        <Button v-if="!subscription.cancellation?.effective_at" label="Cancel Plan" icon="pi pi-times" size="small" severity="danger" outlined class="shrink-0" @click="confirmCancelPlan" />
-                        <Badge v-else value="Cancellation Scheduled" severity="warn" class="shrink-0" />
                     </div>
                 </template>
             </Card>
@@ -1335,8 +1317,6 @@ subscription.ends_at = props.subscription?.ends_at || "";
 subscription.status = props.subscription?.status || "";
 subscription.is_expired = Boolean(props.subscription?.is_expired);
 subscription.is_paid_plan = Boolean(props.subscription?.is_paid_plan);
-subscription.is_active = Boolean(props.subscription?.is_active);
-subscription.cancellation = props.subscription?.cancellation || null;
 subscription.modules = Array.isArray(props.subscription?.modules)
     ? props.subscription.modules
     : [];
@@ -2317,28 +2297,6 @@ const goToPlanAction = () => {
     const planKey = String(subscription.tier || "").toLowerCase();
     if (!storeId || !planKey) return;
     router.visit(`/subscription-checkout?plan=${encodeURIComponent(planKey)}&cycle=monthly&store_id=${storeId}`);
-};
-
-const confirmCancelPlan = () => {
-    const dueDate = formatSubscriptionDate(subscription.ends_at);
-    confirm.require({
-        header: "Cancel this plan?",
-        message: `Your plan is paid through ${dueDate}. Are you sure you want to schedule cancellation? Your access will remain active until that date.`,
-        icon: "pi pi-exclamation-triangle",
-        acceptLabel: "Cancel Plan",
-        rejectLabel: "Keep Plan",
-        accept: async () => {
-            try {
-                const response = await axiosClient.post("/api/store/subscription/cancel-at-period-end");
-                subscription.cancellation = response.data?.data?.cancellation || {
-                    effective_at: subscription.ends_at,
-                };
-                toast.add({ severity: "success", summary: "Cancellation scheduled", detail: response.data?.message || "Your plan will end on its due date.", life: 3500 });
-            } catch (error: any) {
-                toast.add({ severity: "error", summary: "Unable to cancel plan", detail: error?.response?.data?.message || "Please try again.", life: 4000 });
-            }
-        },
-    });
 };
 
 const selectPlan = (key: string) => {

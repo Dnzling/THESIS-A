@@ -346,18 +346,19 @@ class DashboardController extends Controller
     public function getWeeklyAttendance(Request $request)
     {
         $user = Auth::user();
-        $storeId = $user->store_id;
-        
-        $startDate = Carbon::now()->startOfWeek();
-        $endDate = Carbon::now()->endOfWeek();
-        
-        // Aggregate by date (use DATE() to normalize datetime values) and filter by DATE(...) to avoid datetime mismatches
+        $storeId = (int) $user->store_id;
+        $timezone = config('app.timezone', 'Asia/Manila');
+        $today = Carbon::now($timezone);
+        $startDate = $today->copy()->startOfWeek();
+        $endDate = $today->copy()->endOfWeek();
+
+        // Keep the date column index usable. Attendance dates are stored as dates,
+        // while the dashboard week is calculated in the application's timezone.
         $attendance = Attendance::whereHas('employee', fn($q) => $q->where('store_id', $storeId))
-            ->selectRaw('DATE(attendance_date) as attendance_date, status, count(*) as total')
-            ->whereBetween(DB::raw('DATE(attendance_date)'), [$startDate->toDateString(), $endDate->toDateString()])
-            ->groupBy(DB::raw('DATE(attendance_date)'), 'status')
+            ->select(['attendance_date', 'status'])
+            ->whereBetween('attendance_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get()
-            ->groupBy('attendance_date');
+            ->groupBy(fn ($record) => Carbon::parse($record->attendance_date)->toDateString());
 
         $data = [];
         for ($date = $startDate->copy(); $date <= $endDate; $date->addDay()) {
@@ -374,13 +375,16 @@ class DashboardController extends Controller
             if (isset($attendance[$dateStr])) {
                 foreach ($attendance[$dateStr] as $record) {
                     if ($record->status === 'present') {
-                        $dayData['present'] += $record->total;
+                        $dayData['present']++;
                     } elseif ($record->status === 'late') {
-                        $dayData['late'] += $record->total;
+                        $dayData['late']++;
                     } elseif ($record->status === 'absent') {
-                        $dayData['absent'] += $record->total;
+                        $dayData['absent']++;
                     } elseif ($record->status === 'on_leave') {
-                        $dayData['leave'] += $record->total;
+                        $dayData['leave']++;
+                    } elseif ($record->status === 'half_day') {
+                        // A completed half-day still counts as attended.
+                        $dayData['present']++;
                     }
                 }
             }

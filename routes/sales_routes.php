@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('sales')->group(function () {
     Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'sales'])->middleware('can:sales.dashboard.view');
     Route::get('/dashboard', [SalesPosController::class, 'dashboard'])->middleware('can:sales.dashboard.view');
-    Route::get('/orders', [SalesPosController::class, 'unifiedOrders']);
+    Route::get('/orders', [SalesPosController::class, 'unifiedOrders'])->middleware('can:sales.orders.view');
 
     Route::prefix('wholesale-quotes')->group(function () {
         Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.wholesale.view');
@@ -19,7 +19,7 @@ Route::prefix('sales')->group(function () {
         Route::post('/delivery-estimate', [WholesaleQuoteController::class, 'deliveryEstimate'])->middleware('can:sales.wholesale.manage');
         Route::post('/', [WholesaleQuoteController::class, 'store'])->middleware('can:sales.wholesale.manage');
         Route::get('/{id}', [WholesaleQuoteController::class, 'show'])->middleware('can:sales.wholesale.view');
-        Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.wholesale.view');
+        Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.wholesale.approve');
         Route::post('/{id}/convert', [WholesaleQuoteController::class, 'convert'])->middleware('can:sales.wholesale.manage');
         Route::post('/{id}/record-payment', [WholesaleQuoteController::class, 'recordPayment'])->middleware('can:sales.wholesale.manage');
         Route::post('/{id}/payment-link', [WholesaleQuoteController::class, 'createPaymentLink'])->middleware('can:sales.wholesale.manage');
@@ -39,14 +39,14 @@ Route::prefix('sales')->group(function () {
     });
 
     Route::prefix('order-deliveries')->group(function () {
-        Route::get('/drivers', [SalesOrderDeliveryController::class, 'drivers'])->middleware('can:sales.deliveries.view');
-        Route::get('/', [SalesOrderDeliveryController::class, 'index'])->middleware('can:sales.deliveries.view');
-        Route::get('/{id}', [SalesOrderDeliveryController::class, 'show'])->middleware('can:sales.deliveries.view');
-        Route::put('/{id}/status', [SalesOrderDeliveryController::class, 'updateStatus'])->middleware('can:sales.deliveries.manage');
-        Route::post('/{id}/assign-driver', [SalesOrderDeliveryController::class, 'assignDriver'])->middleware('can:sales.deliveries.manage');
-        Route::post('/{id}/proof', [SalesOrderDeliveryController::class, 'uploadProof'])->middleware('can:sales.deliveries.manage');
-        Route::get('/{id}/logs', [SalesOrderDeliveryController::class, 'logs'])->middleware('can:sales.deliveries.view');
-        Route::post('/{id}/logs', [SalesOrderDeliveryController::class, 'addLog'])->middleware('can:sales.deliveries.manage');
+        Route::get('/drivers', [SalesOrderDeliveryController::class, 'drivers'])->middleware('can:sales.orders.view');
+        Route::get('/', [SalesOrderDeliveryController::class, 'index'])->middleware('can:sales.orders.view');
+        Route::get('/{id}', [SalesOrderDeliveryController::class, 'show'])->middleware('can:sales.orders.view');
+        Route::put('/{id}/status', [SalesOrderDeliveryController::class, 'updateStatus'])->middleware('can:sales.orders.manage');
+        Route::post('/{id}/assign-driver', [SalesOrderDeliveryController::class, 'assignDriver'])->middleware('can:sales.orders.manage');
+        Route::post('/{id}/proof', [SalesOrderDeliveryController::class, 'uploadProof'])->middleware('can:sales.orders.manage');
+        Route::get('/{id}/logs', [SalesOrderDeliveryController::class, 'logs'])->middleware('can:sales.orders.view');
+        Route::post('/{id}/logs', [SalesOrderDeliveryController::class, 'addLog'])->middleware('can:sales.orders.manage');
     });
 
     Route::prefix('ecommerce-orders')->group(function () {

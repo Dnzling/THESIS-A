@@ -30,7 +30,7 @@
       <h1 class="mt-5 text-5xl font-bold tracking-tight text-slate-900 sm:text-6xl">Access Denied</h1>
       <p class="mt-4 text-base text-slate-500 sm:text-lg">You don’t have the permissions to access this page.</p>
       <div class="mt-7 flex flex-wrap justify-center gap-3">
-        <Button label="Go to Dashboard" severity="warn" @click="goToDashboard" />
+        <Button label="Go Back" severity="warn" @click="goBack" />
         <Button v-if="showLogout" label="Log Out" severity="secondary" outlined @click="handleLogout" />
       </div>
     </section>
@@ -39,37 +39,15 @@
 
 <script setup lang="ts">
 import { onBeforeMount, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
-const router = useRouter()
 const showLogout = ref(false)
 let logoutButtonTimer: number | undefined
 
-const goToDashboard = async () => {
-  const dashboard = authStore.navigation.find((item: any) => {
-    const routeName = String(item.route_name || '').toLowerCase()
-    const routePath = String(item.route_path || '').toLowerCase()
-    return item.is_active && !item.meta?.is_group && (routeName.endsWith('.dashboard') || routePath.endsWith('/dashboard'))
-  })
-
-  if (dashboard?.route_name) {
-    try {
-      await router.push({ name: dashboard.route_name })
-      return
-    } catch {
-      // Use the backend-provided dashboard path when this router has no matching named route.
-    }
-  }
-  if (dashboard?.route_path) {
-    await router.push(dashboard.route_path)
-    return
-  }
-
-  const fallback = authStore.getFirstNavigationRoute()
-  if (fallback && fallback !== '/unauthorized') await router.push(fallback)
+const goBack = () => {
+  window.history.go(-2)
 }
 
 const handleLogout = async () => {
@@ -84,7 +62,7 @@ onBeforeMount(() => {
 onMounted(() => {
   logoutButtonTimer = window.setTimeout(() => {
     showLogout.value = true
-  }, 5000)
+  }, 10000)
 })
 
 onUnmounted(() => {

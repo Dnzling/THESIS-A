@@ -3242,7 +3242,7 @@ class EcommerceController extends Controller
         ]);
 
         $messages = EcommerceChatMessage::query()
-            ->with('sender:id,fname,lname')
+            ->with('sender:id,fname,lname,avatar_path')
             ->where('thread_id', $thread->id)
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 40));

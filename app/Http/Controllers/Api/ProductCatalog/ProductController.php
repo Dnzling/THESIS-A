@@ -389,7 +389,7 @@ class ProductController extends BaseController
         }
 
         try {
-            $product = Product::byStore($this->getStoreId())
+            $product = Product::withTrashed()->byStore($this->getStoreId())
                              ->with([
                                  'category',
                                  'subcategory',
@@ -405,7 +405,15 @@ class ProductController extends BaseController
                                  'shoppingRooms:id,name'
             ])
             ->withCount(['variations', 'assets'])
-            ->findOrFail($id);
+            ->find($id);
+
+            if (!$product) {
+                throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(Product::class, [$id]);
+            }
+
+            if ($product->trashed()) {
+                return $this->errorResponse('This product is archived and is no longer available.', 410);
+            }
 
             $product->cost_price = $product->getRawOriginal('cost_price');
             $product->makeVisible(['cost_price']);
@@ -804,7 +812,15 @@ class ProductController extends BaseController
         }
 
         try {
-            $product = Product::byStore($this->getStoreId())->findOrFail($id);
+            $product = Product::withTrashed()->byStore($this->getStoreId())->find($id);
+
+            if (!$product) {
+                throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(Product::class, [$id]);
+            }
+
+            if ($product->trashed()) {
+                return $this->errorResponse('This product is already archived.', 410);
+            }
 
             DB::beginTransaction();
 

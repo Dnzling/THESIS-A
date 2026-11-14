@@ -1,332 +1,166 @@
 <template>
-  <div class="min-h-screen">
-    <div class="mx-auto max-w-6xl px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">My Profile</p>
-          <h1 class="text-2xl font-semibold text-slate-900">Employee Profile</h1>
-          <p class="text-sm text-slate-500">Update personal info, security, and requests.</p>
-        </div>
-        <div v-if="!isSimplePlan" class="flex flex-wrap gap-2">
-          <Button label="Request Leave" icon="pi pi-calendar" severity="info" outlined class="small-pill"
-            @click="showLeaveDialog = true" />
-          <Button label="Shift Swap" icon="pi pi-share-alt" severity="secondary" outlined class="small-pill"
-            @click="openShiftSwapDialog" />
-          <Button label="Overtime" icon="pi pi-clock" severity="warning" outlined class="small-pill"
-            @click="openOvertimeDialog" />
-          <Button label="My Benefits" icon="pi pi-heart" severity="secondary" outlined class="small-pill"
-            @click="router.visit('/employee-benefits')" />
-        </div>
+  <div class="min-h-screen bg-slate-50/60 py-6">
+    <div class="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+      <div>
+        <h1 class="text-2xl font-semibold text-slate-900">Employee Profile</h1>
+        <p class="mt-1 text-sm text-slate-500">Manage your personal information and review your employment details.</p>
       </div>
 
-      <div v-if="loading" class="mt-10 flex items-center justify-center">
+      <div v-if="loading" class="flex min-h-72 items-center justify-center rounded-xl border border-slate-200 bg-white">
         <ProgressSpinner />
       </div>
 
-      <template v-else>
-        <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1fr]">
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex items-center gap-4">
-                <div class="relative h-20 w-20 shrink-0">
-                  <img v-if="user?.avatar_url" :src="user.avatar_url" :alt="`${fullName} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
-                  <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-2xl font-semibold text-emerald-600">{{ initials }}</div>
-                  <label class="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload profile photo">
-                    <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadProfilePhoto" />
-                  </label>
-                </div>
-                <div>
-                  <p class="text-lg font-semibold text-slate-900">{{ fullName }}</p>
-                  <p class="text-xs text-slate-500">{{ employeeSummary }}</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <Tag v-if="employee?.status" :value="statusLabel" :severity="statusSeverity" rounded />
-                <Button label="Edit Personal Info" severity="secondary" outlined class="small-pill" @click="showEditProfileDialog = true" />
-              </div>
+      <div v-else class="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside class="space-y-4">
+          <section class="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+            <div class="relative mx-auto h-24 w-24">
+              <img v-if="user?.avatar_url" :src="user.avatar_url" :alt="`${fullName} photo`" class="h-24 w-24 rounded-full border border-slate-200 object-cover" />
+              <div v-else class="flex h-24 w-24 items-center justify-center rounded-full bg-orange-50 text-2xl font-semibold text-orange-600">{{ initials }}</div>
+              <label class="absolute bottom-0 right-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload profile photo">
+                <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadProfilePhoto" />
+              </label>
             </div>
+            <h2 class="mt-4 text-base font-semibold text-slate-900">{{ fullName }}</h2>
+            <p class="mt-1 text-xs text-slate-500">{{ employeeSummary }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ employee?.department || displayBranch }}</p>
+            <Tag v-if="employee?.status" class="mt-3" :value="statusLabel" :severity="statusSeverity" rounded />
+          </section>
 
-            <div class="mt-6 space-y-6 text-sm">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Personal</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <InfoRow label="Full Name" :value="fullName || '-'" />
-                  <InfoRow label="Birth Date" :value="displayBirthDate" />
-                  <InfoRow label="Gender" :value="displayGender" />
-                </div>
-              </div>
-
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Contact</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <InfoRow label="Phone" :value="displayPhone" />
-                  <InfoRow label="Address" :value="displayAddress" />
-                </div>
-              </div>
-
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Emergency Contact</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <InfoRow label="Name" :value="displayEmergencyName" />
-                  <InfoRow label="Relationship" :value="displayEmergencyRelationship" />
-                  <InfoRow label="Phone" :value="displayEmergencyPhone" />
-                </div>
-              </div>
-
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Employment</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <InfoRow label="Employee Number" :value="employee?.employee_number || '-'" />
-                  <InfoRow label="Department" :value="employee?.department || '-'" />
-                  <InfoRow label="Role" :value="employeeRoleLabel" />
-                  <InfoRow label="Employment Type" :value="formatStatus(employee?.employment_type || '-')" />
-                  <InfoRow label="Hire Date" :value="formatDateShort(employee?.hire_date) || '-'" />
-                  <InfoRow label="Branch" :value="displayBranch" />
-                </div>
-              </div>
-
-              <div v-if="!isSimplePlan">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Compensation</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <InfoRow label="Monthly Salary" :value="formatCurrency(employee?.salary || 0)" />
-                  <InfoRow label="Bank Account" :value="employee?.bank_account || '-'" />
-                </div>
-              </div>
-
-              <div v-if="!isSimplePlan">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Government IDs</p>
-                <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <InfoRow label="TIN" :value="employee?.tax_id || '-'" />
-                </div>
-              </div>
+          <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="space-y-3 text-xs">
+              <div class="flex items-center justify-between"><span class="text-slate-500">Upcoming shifts</span><span class="font-semibold text-slate-800">{{ shifts.length }}</span></div>
+              <div class="flex items-center justify-between"><span class="text-slate-500">Leave requests</span><span class="font-semibold text-slate-800">{{ leaveRecords.length }}</span></div>
+              <div v-if="!isSimplePlan" class="flex items-center justify-between"><span class="text-slate-500">Payslips</span><span class="font-semibold text-slate-800">{{ payslips.length }}</span></div>
             </div>
           </section>
 
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-6">
-            <div>
-              <p class="text-sm font-semibold text-slate-800">Security</p>
-              <p class="text-xs text-slate-500">Change password or email verification.</p>
-            </div>
-
-            <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-semibold text-slate-700">Password</p>
-                  <p class="text-xs text-slate-500">Keep your account secure.</p>
-                </div>
-                <Button label="Change Password" icon="pi pi-lock" severity="warning" outlined class="small-pill"
-                  @click="showPasswordDialog = true" />
-              </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-semibold text-slate-700">Email Status</p>
-                  <p class="text-xs text-slate-500">Verification required after change.</p>
-                </div>
-                <Tag :value="emailStatusLabel" :severity="emailStatusSeverity" rounded />
-              </div>
-            </div>
-
-            <div v-if="!isSimplePlan">
-              <p class="text-sm font-semibold text-slate-800">Requests</p>
-              <p class="text-xs text-slate-500">Submit leave or shift swap requests.</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <Button label="Request Leave" icon="pi pi-calendar" severity="info" class="small-pill"
-                  @click="showLeaveDialog = true" />
-                <Button label="Shift Swap" icon="pi pi-share-alt" severity="secondary" class="small-pill"
-                  @click="openShiftSwapDialog" />
-                <Button label="Overtime" icon="pi pi-clock" severity="warning" class="small-pill"
-                  @click="openOvertimeDialog" />
-              </div>
+          <section v-if="!isSimplePlan" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Quick Actions</p>
+            <div class="flex flex-col gap-2">
+              <Button label="Request Leave" icon="pi pi-calendar" severity="warn" outlined size="small" @click="showLeaveDialog = true" />
+              <Button label="Request Shift Swap" icon="pi pi-share-alt" severity="secondary" outlined size="small" @click="openShiftSwapDialog" />
+              <Button label="Request Overtime" icon="pi pi-clock" severity="secondary" outlined size="small" @click="openOvertimeDialog" />
+              <Button label="My Benefits" icon="pi pi-heart" severity="secondary" text size="small" @click="router.visit('/employee-benefits')" />
             </div>
           </section>
-        </div>
+        </aside>
 
-        <div v-if="!isSimplePlan" class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Upcoming Shifts</p>
-                <p class="text-xs text-slate-500">Next 14 days schedule.</p>
-              </div>
-              <Tag v-if="nextShiftLabel" :value="nextShiftLabel" severity="info" rounded />
-            </div>
-            <div v-if="loadingShifts" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-3">
-              <div v-for="shift in shifts" :key="shift.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="flex items-center justify-between">
-                  <div class="text-sm font-semibold text-slate-900">{{ formatDateShort(shift.schedule_date) }}</div>
-                  <Tag :value="formatStatus(shift.status)" severity="secondary" rounded />
-                </div>
-                <div class="mt-1 text-xs text-slate-500">
-                  {{ shift.shift?.name || 'Shift' }}
-                  <span v-if="shift.shift?.start_time && shift.shift?.end_time"> · {{ formatTimeRange(shift.shift?.start_time, shift.shift?.end_time) }}</span>
-                </div>
-              </div>
-              <p v-if="!shifts.length" class="text-sm text-slate-400">No upcoming shifts found.</p>
-            </div>
-          </section>
+        <main class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <Tabs v-model:value="activeProfileTab">
+            <TabList class="mb-5 flex flex-wrap border-b border-slate-200">
+              <Tab value="account">Account Settings</Tab>
+              <Tab value="employment">Employment</Tab>
+              <Tab v-if="!isSimplePlan" value="documents">Documents</Tab>
+              <Tab v-if="!isSimplePlan" value="activity">Requests &amp; Activity</Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel value="account">
+                <form class="space-y-6" @submit.prevent="saveProfile">
+                  <section>
+                    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <div><h2 class="font-semibold text-slate-900">Personal Information</h2><p class="text-xs text-slate-500">Changes here update your employee profile.</p></div>
+                    </div>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">First Name</label><InputText v-model="form.fname" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Last Name</label><InputText v-model="form.lname" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Phone Number</label><InputMask v-model="form.phone" mask="+63 999 9999 999" class="w-full small-input" placeholder="+63" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Email Address</label><div class="flex gap-2"><InputText :model-value="user?.email || ''" disabled class="w-full small-input" /><Button icon="pi pi-pencil" aria-label="Change email" v-tooltip.top="'Change email'" severity="secondary" outlined size="small" @click="showEmailDialog = true" /></div></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Province</label><Select v-model="locationSelection.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" filter placeholder="Select Province" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">City / Municipality</label><Select v-model="locationSelection.cityId" :options="cityOptions" optionLabel="label" optionValue="value" filter placeholder="Select City" class="w-full small-input" :disabled="!locationSelection.provinceId" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Barangay</label><Select v-model="locationSelection.barangayCode" :options="barangayOptions" optionLabel="label" optionValue="value" filter placeholder="Select Barangay" class="w-full small-input" :disabled="!locationSelection.cityId" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Street / House / Lot</label><InputText v-model="form.address" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Birth Date</label><DatePicker v-model="form.birthday" :maxDate="new Date()" dateFormat="yy-mm-dd" class="w-full small-input" showIcon /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Gender</label><Select v-model="form.gender" :options="[{label:'Male',value:'male'},{label:'Female',value:'female'},{label:'Other',value:'other'}]" optionLabel="label" optionValue="value" placeholder="Select gender" class="w-full small-input" /></div>
+                    </div>
+                  </section>
 
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Attendance Summary</p>
-                <p class="text-xs text-slate-500">Current month overview.</p>
-              </div>
-            </div>
-            <div v-if="loadingAttendance" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-4">
-              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <StatChip label="Present" :value="attendanceSummary.present" />
-                <StatChip label="Late" :value="attendanceSummary.late" />
-                <StatChip label="Absent" :value="attendanceSummary.absent" />
-                <StatChip label="On Leave" :value="attendanceSummary.on_leave" />
-                <StatChip label="Half Day" :value="attendanceSummary.half_day" />
-                <StatChip label="Total" :value="attendanceSummary.total" />
-              </div>
-              <div class="space-y-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Recent Records</p>
-                <div v-for="record in attendanceRecords" :key="record.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
-                  <div class="flex items-center justify-between">
-                    <span class="font-semibold text-slate-800">{{ formatDateShort(record.attendance_date) }}</span>
-                    <Tag :value="formatStatus(record.status)" severity="secondary" rounded />
+                  <section class="border-t border-slate-100 pt-5">
+                    <h2 class="font-semibold text-slate-900">Emergency Contact</h2>
+                    <div class="mt-3 grid gap-4 sm:grid-cols-3">
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Name</label><InputText v-model="form.emergency_contact_name" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Relationship</label><InputText v-model="form.emergency_contact_relationship" class="w-full small-input" /></div>
+                      <div class="space-y-1.5"><label class="text-xs font-medium text-slate-600">Phone</label><InputMask v-model="form.emergency_contact_phone" mask="+63 999 9999 999" class="w-full small-input" placeholder="+63" /></div>
+                    </div>
+                  </section>
+
+                  <div class="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" label="Save Changes" icon="pi pi-check" severity="warn" :loading="savingProfile" /></div>
+                </form>
+
+                <section class="mt-6 border-t border-slate-100 pt-5">
+                  <div class="mb-3"><h2 class="font-semibold text-slate-900">Security</h2><p class="text-xs text-slate-500">Manage your password and email verification.</p></div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"><div><p class="text-sm font-medium text-slate-800">Password</p><p class="text-xs text-slate-500">Keep your account secure.</p></div><Button label="Change" icon="pi pi-lock" severity="secondary" outlined size="small" @click="showPasswordDialog = true" /></div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"><div><p class="text-sm font-medium text-slate-800">Email Status</p><p class="text-xs text-slate-500">Verification is required after an email change.</p></div><Tag :value="emailStatusLabel" :severity="emailStatusSeverity" rounded /></div>
                   </div>
-                  <div class="mt-1 text-xs text-slate-500">
-                    {{ record.shift?.name || 'Shift' }}
-                    <span v-if="record.clock_in"> · In {{ formatTime(record.clock_in) }}</span>
-                    <span v-if="record.clock_out"> · Out {{ formatTime(record.clock_out) }}</span>
+                </section>
+              </TabPanel>
+
+              <TabPanel value="employment">
+                <section class="space-y-5">
+                  <div><h2 class="font-semibold text-slate-900">Employment Details</h2><p class="text-xs text-slate-500">Contact your manager or HR to request changes to these records.</p></div>
+                  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <InfoRow label="Employee Number" :value="employee?.employee_number || '-'" />
+                    <InfoRow label="Department" :value="employee?.department || '-'" />
+                    <InfoRow label="Role" :value="employeeRoleLabel" />
+                    <InfoRow label="Employment Type" :value="formatStatus(employee?.employment_type || '-')" />
+                    <InfoRow label="Hire Date" :value="formatDateShort(employee?.hire_date) || '-'" />
+                    <InfoRow label="Branch" :value="displayBranch" />
+                    <InfoRow v-if="!isSimplePlan" label="Monthly Salary" :value="formatCurrency(employee?.salary || 0)" />
+                    <InfoRow v-if="!isSimplePlan" label="Bank Account" :value="employee?.bank_account || '-'" />
+                    <InfoRow v-if="!isSimplePlan" label="TIN" :value="employee?.tax_id || '-'" />
                   </div>
-                </div>
-                <p v-if="!attendanceRecords.length" class="text-sm text-slate-400">No attendance records yet.</p>
-              </div>
-            </div>
-          </section>
+                </section>
+              </TabPanel>
 
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Leave Records</p>
-                <p class="text-xs text-slate-500">Recent leave requests.</p>
-              </div>
-            </div>
-            <div v-if="loadingLeaves" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-3">
-              <div v-for="leave in leaveRecords" :key="leave.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
-                <div class="flex items-center justify-between">
-                  <span class="font-semibold text-slate-800">{{ leave.leave_type_label || formatLabel(leave.leave_type) }}</span>
-                  <Tag :value="formatStatus(leave.status)" :severity="leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'warning'" rounded />
-                </div>
-                <div class="mt-1 text-xs text-slate-500">
-                  {{ leave.start_date_formatted || formatDateShort(leave.start_date) }} - {{ leave.end_date_formatted || formatDateShort(leave.end_date) }}
-                  <span v-if="leave.total_days"> · {{ leave.total_days }} day(s)</span>
-                </div>
-              </div>
-              <p v-if="!leaveRecords.length" class="text-sm text-slate-400">No leave requests found.</p>
-            </div>
-          </section>
+              <TabPanel v-if="!isSimplePlan" value="documents">
+                <section class="space-y-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="font-semibold text-slate-900">Payslips</h2><p class="text-xs text-slate-500">Paid payroll records and downloadable documents.</p></div><div v-if="paidPayslipTotal" class="text-sm font-semibold text-slate-700">Total Paid: {{ formatCurrency(paidPayslipTotal) }}</div></div>
+                  <div v-if="loadingPayslips" class="space-y-3"><Skeleton v-for="row in 3" :key="row" height="4rem" /></div>
+                  <div v-else-if="payslips.length" class="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                    <div v-for="payslip in payslips" :key="payslip.id" class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div><p class="font-medium text-slate-900">{{ payslip.pay_period?.name || payslip.pay_period_name || payslip.pay_period_label || 'Pay Period' }}</p><p class="mt-1 text-xs text-slate-500">Net Pay: {{ formatCurrency(payslip.net_salary || payslip.net_pay || 0) }}<span v-if="payslip.payment_date"> · Paid {{ formatDateShort(payslip.payment_date) }}</span></p></div>
+                      <div class="flex flex-wrap items-center gap-2"><Tag :value="formatStatus(payslip.status)" :severity="payslip.status === 'paid' ? 'success' : payslip.status === 'approved' ? 'info' : 'warn'" rounded /><Button label="View" icon="pi pi-eye" text size="small" @click="openPayslipDetails(payslip)" /><Button label="Download" icon="pi pi-download" severity="secondary" text size="small" @click="downloadPayslipPdf(payslip)" /><Button label="Print" icon="pi pi-print" severity="secondary" text size="small" @click="printPayslipPdf(payslip)" /></div>
+                    </div>
+                  </div>
+                  <div v-else class="rounded-lg border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">No payslips available yet.</div>
+                </section>
+              </TabPanel>
 
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Shift Swap Requests</p>
-                <p class="text-xs text-slate-500">Recent swap activity.</p>
-              </div>
-            </div>
-            <div v-if="loadingSwaps" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-3">
-              <div v-for="swap in swapRecords" :key="swap.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
-                <div class="flex items-center justify-between">
-                  <span class="font-semibold text-slate-800">{{ formatSwapLabel(swap) }}</span>
-                  <Tag :value="formatStatus(swap.status)" :severity="swap.status === 'approved' || swap.status === 'accepted' ? 'success' : swap.status === 'rejected' ? 'danger' : 'warning'" rounded />
+              <TabPanel v-if="!isSimplePlan" value="activity">
+                <div class="grid gap-4 xl:grid-cols-2">
+                  <section class="rounded-lg border border-slate-200 p-4">
+                    <h2 class="font-semibold text-slate-900">Upcoming Shifts</h2><p class="text-xs text-slate-500">Next 14 days.</p>
+                    <div v-if="loadingShifts" class="mt-3 space-y-2"><Skeleton v-for="row in 3" :key="row" height="3rem" /></div>
+                    <div v-else class="mt-3 space-y-2"><div v-for="shift in shifts" :key="shift.id" class="flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p class="text-sm font-medium text-slate-800">{{ formatDateShort(shift.schedule_date) }}</p><p class="text-xs text-slate-500">{{ shift.shift?.name || 'Shift' }}<span v-if="shift.shift?.start_time && shift.shift?.end_time"> · {{ formatTimeRange(shift.shift.start_time, shift.shift.end_time) }}</span></p></div><Tag :value="formatStatus(shift.status)" severity="info" rounded /></div><p v-if="!shifts.length" class="py-4 text-sm text-slate-500">No upcoming shifts found.</p></div>
+                  </section>
+                  <section class="rounded-lg border border-slate-200 p-4">
+                    <h2 class="font-semibold text-slate-900">Attendance Summary</h2><p class="text-xs text-slate-500">Current month overview.</p>
+                    <div v-if="loadingAttendance" class="mt-3 grid grid-cols-2 gap-2"><Skeleton v-for="row in 6" :key="row" height="3rem" /></div>
+                    <div v-else class="mt-3"><div class="grid grid-cols-2 gap-2 sm:grid-cols-3"><StatChip label="Present" :value="attendanceSummary.present" /><StatChip label="Late" :value="attendanceSummary.late" /><StatChip label="Absent" :value="attendanceSummary.absent" /><StatChip label="On Leave" :value="attendanceSummary.on_leave" /><StatChip label="Half Day" :value="attendanceSummary.half_day" /><StatChip label="Total" :value="attendanceSummary.total" /></div><div class="mt-4 space-y-2"><p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Recent Records</p><div v-for="record in attendanceRecords" :key="record.id" class="flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p class="text-sm font-medium text-slate-800">{{ formatDateShort(record.attendance_date) }}</p><p class="text-xs text-slate-500">{{ record.shift?.name || 'Shift' }}<span v-if="record.clock_in"> · In {{ formatTime(record.clock_in) }}</span><span v-if="record.clock_out"> · Out {{ formatTime(record.clock_out) }}</span></p></div><Tag :value="formatStatus(record.status)" severity="secondary" rounded /></div><p v-if="!attendanceRecords.length" class="text-sm text-slate-500">No attendance records yet.</p></div></div>
+                  </section>
+                  <section class="rounded-lg border border-slate-200 p-4">
+                    <h2 class="font-semibold text-slate-900">Leave Requests</h2>
+                    <div v-if="loadingLeaves" class="mt-3 space-y-2"><Skeleton v-for="row in 3" :key="row" height="3rem" /></div>
+                    <div v-else class="mt-3 space-y-2"><div v-for="leave in leaveRecords" :key="leave.id" class="flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p class="text-sm font-medium text-slate-800">{{ leave.leave_type_label || formatLabel(leave.leave_type) }}</p><p class="text-xs text-slate-500">{{ leave.start_date_formatted || formatDateShort(leave.start_date) }} - {{ leave.end_date_formatted || formatDateShort(leave.end_date) }}<span v-if="leave.total_days"> · {{ leave.total_days }} day(s)</span></p></div><Tag :value="formatStatus(leave.status)" :severity="leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'warn'" rounded /></div><p v-if="!leaveRecords.length" class="py-3 text-sm text-slate-500">No leave requests found.</p></div>
+                  </section>
+                  <section class="rounded-lg border border-slate-200 p-4">
+                    <h2 class="font-semibold text-slate-900">Shift Swap Requests</h2>
+                    <div v-if="loadingSwaps" class="mt-3 space-y-2"><Skeleton v-for="row in 3" :key="row" height="3rem" /></div>
+                    <div v-else class="mt-3 space-y-2"><div v-for="swap in swapRecords" :key="swap.id" class="flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p class="text-sm font-medium text-slate-800">{{ formatSwapLabel(swap) }}</p><p class="text-xs text-slate-500">{{ formatDateShort(swap.requestor_schedule?.schedule_date || swap.requestorSchedule?.schedule_date) }}<span v-if="swap.swap_type"> · {{ formatLabel(swap.swap_type) }}</span></p></div><Tag :value="formatStatus(swap.status)" :severity="swap.status === 'approved' || swap.status === 'accepted' ? 'success' : swap.status === 'rejected' ? 'danger' : 'warn'" rounded /></div><p v-if="!swapRecords.length" class="py-3 text-sm text-slate-500">No swap requests found.</p></div>
+                  </section>
+                  <section class="rounded-lg border border-slate-200 p-4 xl:col-span-2">
+                    <h2 class="font-semibold text-slate-900">Overtime Requests</h2>
+                    <div v-if="loadingOvertime" class="mt-3 space-y-2"><Skeleton v-for="row in 3" :key="row" height="3rem" /></div>
+                    <div v-else class="mt-3 space-y-2"><div v-for="ot in overtimeRecords" :key="ot.id" class="flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p class="text-sm font-medium text-slate-800">{{ formatDateShort(ot.ot_start) }} · {{ formatTime(ot.ot_start) }} - {{ formatTime(ot.ot_end) }}</p><p class="text-xs text-slate-500">{{ formatStatus(ot.ot_type) }}<span v-if="ot.rate_multiplier"> · x{{ ot.rate_multiplier }}</span></p></div><Tag :value="formatStatus(ot.status)" :severity="ot.status === 'approved' ? 'success' : ot.status === 'rejected' ? 'danger' : 'warn'" rounded /></div><p v-if="!overtimeRecords.length" class="py-3 text-sm text-slate-500">No overtime requests yet.</p></div>
+                  </section>
                 </div>
-                <div class="mt-1 text-xs text-slate-500">
-                  {{ formatDateShort(swap.requestor_schedule?.schedule_date || swap.requestorSchedule?.schedule_date) }}
-                  <span v-if="swap.swap_type"> · {{ formatLabel(swap.swap_type) }}</span>
-                </div>
-              </div>
-              <p v-if="!swapRecords.length" class="text-sm text-slate-400">No swap requests found.</p>
-            </div>
-          </section>
-
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Overtime Requests</p>
-                <p class="text-xs text-slate-500">Recent overtime submissions.</p>
-              </div>
-            </div>
-            <div v-if="loadingOvertime" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-3">
-              <div v-for="ot in overtimeRecords" :key="ot.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
-                <div class="flex items-center justify-between">
-                  <span class="font-semibold text-slate-800">
-                    {{ formatDateShort(ot.ot_start) }} · {{ formatTime(ot.ot_start) }} - {{ formatTime(ot.ot_end) }}
-                  </span>
-                  <Tag :value="formatStatus(ot.status)" :severity="ot.status === 'approved' ? 'success' : ot.status === 'rejected' ? 'danger' : 'warning'" rounded />
-                </div>
-                <div class="mt-1 text-xs text-slate-500">
-                  {{ formatStatus(ot.ot_type) }}
-                  <span v-if="ot.rate_multiplier"> · x{{ ot.rate_multiplier }}</span>
-                </div>
-              </div>
-              <p v-if="!overtimeRecords.length" class="text-sm text-slate-400">No overtime requests yet.</p>
-            </div>
-          </section>
-
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">Payslips</p>
-                <p class="text-xs text-slate-500">Paid payrolls only.</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <div class="text-xs text-slate-500" v-if="paidPayslipTotal">
-                  Total Paid: {{ formatCurrency(paidPayslipTotal) }}
-                </div>
-              </div>
-            </div>
-            <div v-if="loadingPayslips" class="mt-4 flex justify-center">
-              <ProgressSpinner style="width: 28px; height: 28px" strokeWidth="4" />
-            </div>
-            <div v-else class="mt-4 space-y-3">
-              <div v-for="payslip in payslips" :key="payslip.id" class="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
-                <div class="flex items-center justify-between">
-                  <span class="font-semibold text-slate-800">{{ payslip.pay_period?.name || payslip.pay_period_name || payslip.pay_period_label || 'Pay Period' }}</span>
-                  <Tag :value="formatStatus(payslip.status)" :severity="payslip.status === 'paid' ? 'success' : payslip.status === 'approved' ? 'info' : 'warning'" rounded />
-                </div>
-                <div class="mt-1 text-xs text-slate-500">
-                  Net Pay: {{ formatCurrency(payslip.net_salary || payslip.net_pay || 0) }}
-                  <span v-if="payslip.payment_date"> · Paid {{ formatDateShort(payslip.payment_date) }}</span>
-                </div>
-                <div class="mt-3 flex items-center gap-2">
-                  <Button label="View" icon="pi pi-eye" severity="info" text class="small-pill"
-                    @click="openPayslipDetails(payslip)" />
-                  <Button label="Download PDF" icon="pi pi-download" severity="secondary" text class="small-pill"
-                    @click="downloadPayslipPdf(payslip)" />
-                  <Button label="Print" icon="pi pi-print" severity="warning" text class="small-pill"
-                    @click="printPayslipPdf(payslip)" />
-                </div>
-              </div>
-              <p v-if="!payslips.length" class="text-sm text-slate-400">No payslips available yet.</p>
-            </div>
-          </section>
-        </div>
-      </template>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </main>
+      </div>
     </div>
   </div>
-
   <Dialog v-model:visible="showEmailDialog" header="Change Email" :style="{ width: '420px' }" modal>
     <div class="space-y-4">
       <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -344,93 +178,7 @@
     </template>
   </Dialog>
 
-  <Dialog v-model:visible="showEditProfileDialog" header="Edit Personal Info" :style="{ width: 'min(48rem, 94vw)' }" modal>
-    <div class="space-y-6">
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">First Name</label>
-          <InputText v-model="form.fname" class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Last Name</label>
-          <InputText v-model="form.lname" class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Birthday</label>
-          <DatePicker v-model="form.birthday" :maxDate="new Date()" dateFormat="yy-mm-dd" class="w-full small-input" showIcon />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Gender</label>
-          <div class="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            <div class="flex items-center gap-2">
-              <RadioButton v-model="form.gender" inputId="gender-male" value="male" />
-              <label for="gender-male" class="text-sm text-slate-700">Male</label>
-            </div>
-            <div class="flex items-center gap-2">
-              <RadioButton v-model="form.gender" inputId="gender-female" value="female" />
-              <label for="gender-female" class="text-sm text-slate-700">Female</label>
-            </div>
-            <div class="flex items-center gap-2">
-              <RadioButton v-model="form.gender" inputId="gender-other" value="other" />
-              <label for="gender-other" class="text-sm text-slate-700">Other</label>
-            </div>
-          </div>
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Email</label>
-          <InputText :model-value="user?.email || ''" disabled class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Phone Number</label>
-          <InputMask mask="+63 999 9999 999"  v-model="form.phone" class="w-full small-input" placeholder="+63" />
-        </div>
-      </div>
 
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Province</label>
-          <Select v-model="locationSelection.provinceId" :options="provinceOptions" optionLabel="label"
-            optionValue="value" filter placeholder="Select Province" class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">City / Municipality</label>
-          <Select v-model="locationSelection.cityId" :options="cityOptions" optionLabel="label" optionValue="value"
-            filter placeholder="Select City" class="w-full small-input"
-            :disabled="!locationSelection.provinceId" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Barangay</label>
-          <Select v-model="locationSelection.barangayCode" :options="barangayOptions" optionLabel="label"
-            optionValue="value" filter placeholder="Select Barangay" class="w-full small-input"
-            :disabled="!locationSelection.cityId" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Street / House / Lot</label>
-          <Textarea v-model="form.address" rows="2" class="w-full small-input" />
-        </div>
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-3">
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Emergency Contact Name</label>
-          <InputText v-model="form.emergency_contact_name" class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Relationship</label>
-          <InputText v-model="form.emergency_contact_relationship" class="w-full small-input" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-semibold text-slate-500">Emergency Contact Phone</label>
-          <InputMask mask="+63 999 9999 999" v-model="form.emergency_contact_phone" class="w-full small-input" placeholder="+63" />
-        </div>
-      </div>
-    </div>
-    <template #footer>
-      <Button label="Cancel" text @click="showEditProfileDialog = false" />
-      <Button label="Save Profile" icon="pi pi-check" severity="success" class="small-pill"
-        :loading="savingProfile" @click="saveProfile" />
-    </template>
-  </Dialog>
 
   <Dialog v-model:visible="showPasswordDialog" header="Change Password" :style="{ width: '420px' }" modal>
     <div class="space-y-4">
@@ -631,6 +379,12 @@ import hrService from '../../services/hr.services'
 import ecommerceService from '../../services/ecommerce.service'
 import { useAuthStore } from '../../stores/auth'
 import { startCase } from 'lodash'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import Skeleton from 'primevue/skeleton'
 
 const toast = useToast()
 const authStore = useAuthStore()
@@ -648,9 +402,9 @@ const loadingShifts = ref(false)
 const loadingSwaps = ref(false)
 const loadingPayslips = ref(false)
 const loadingOvertime = ref(false)
+const activeProfileTab = ref('account')
 
 const showEmailDialog = ref(false)
-const showEditProfileDialog = ref(false)
 const showPasswordDialog = ref(false)
 const showLeaveDialog = ref(false)
 const showShiftSwapDialog = ref(false)
@@ -979,7 +733,6 @@ const saveProfile = async () => {
     user.value = data.user || user.value
     employee.value = data.employee || employee.value
     toast.add({ severity: 'success', summary: 'Saved', detail: 'Profile updated.', life: 2500 })
-    showEditProfileDialog.value = false
   } catch (err: any) {
     toast.add({
       severity: 'error',
@@ -990,22 +743,6 @@ const saveProfile = async () => {
   } finally {
     savingProfile.value = false
   }
-}
-
-const resetProfile = () => {
-  form.fname = user.value?.fname || ''
-  form.lname = user.value?.lname || ''
-  form.birthday = parseDateInput(employee.value?.date_of_birth || user.value?.birthday)
-  form.gender = employee.value?.gender || ''
-  form.phone = employee.value?.phone || user.value?.phone_number || user.value?.phone || ''
-  form.address = employee.value?.address || ''
-  form.province = employee.value?.province || ''
-  form.city = employee.value?.city || ''
-  form.barangay = employee.value?.barangay || ''
-  form.emergency_contact_name = employee.value?.emergency_contact_name || ''
-  form.emergency_contact_relationship = employee.value?.emergency_contact_relationship || ''
-  form.emergency_contact_phone = employee.value?.emergency_contact_phone || ''
-  syncLocationSelection()
 }
 
 const submitEmailChange = async () => {

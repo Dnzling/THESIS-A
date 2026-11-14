@@ -4,267 +4,228 @@
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-issues' })" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Stock Issuance' : 'Create Stock Issuance' }}</h2>
-        <p class="text-sm text-gray-500 mt-1">Record items deliberately used or released from this branch. Use Stock Adjustment for count differences.</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Stock Issuance' : 'Create Stock Issuance' }}
+        </h2>
+        <p class="text-sm text-gray-500 mt-1">Record items deliberately used or released from this branch. Use Stock
+          Adjustment for count differences.</p>
       </div>
     </div>
 
     <Card>
       <template #content>
         <form @submit.prevent="confirmSubmit">
-          <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+          <div class="grid grid-cols-1 items-start gap-6">
             <div class="space-y-6 lg:col-span-2">
-          <!-- Header Section -->
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Reason <span class="text-red-500">*</span>
-              </label>
-              <Select
-                v-model="form.issue_type"
-                :options="transactionReasonOptions"
-                optionLabel="label" 
-                optionValue="value"
-                placeholder="Select reason"
-                :class="{ 'p-invalid': errors.issue_type }"
-                fluid
-              >
-                <template #option="slotProps">
-                  <div class="flex items-center gap-2">
-                    <i :class="getTypeIcon(slotProps.option.value)" class="text-lg"></i>
-                    <span>{{ slotProps.option.label }}</span>
+              <!-- Header Section -->
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div class="flex flex-col gap-2">
+                  <label class="text-sm font-semibold text-gray-700">
+                    Reason <span class="text-red-500">*</span>
+                  </label>
+                  <Select v-model="form.issue_type" :options="transactionReasonOptions" optionLabel="label"
+                    optionValue="value" placeholder="Select reason" :class="{ 'p-invalid': errors.issue_type }" fluid>
+                    <template #option="slotProps">
+                      <div class="flex items-center gap-2">
+                        <i :class="getTypeIcon(slotProps.option.value)" class="text-lg"></i>
+                        <span>{{ slotProps.option.label }}</span>
+                      </div>
+                    </template>
+                  </Select>
+                  <small v-if="errors.issue_type" class="text-red-500">{{ errors.issue_type[0] }}</small>
+                  <small v-else-if="validationAttempted && !form.issue_type" class="text-red-500">Please select a reason.</small>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <label class="text-sm font-semibold text-gray-700">Additional Notes</label>
+                  <Textarea v-model="form.remarks" rows="2" maxlength="1000" fluid
+                    placeholder="Optional context for this issuance" />
+                </div>
+
+                <div v-if="form.issue_type === 'other'" class="flex flex-col gap-2 md:col-span-2">
+                  <label class="text-sm font-semibold text-gray-700">Specify reason <span
+                      class="text-red-500">*</span></label>
+                  <Textarea v-model="form.description" rows="3" maxlength="1000" fluid
+                    placeholder="Describe why these items are being issued" :invalid="Boolean(errors.description)" />
+                  <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
+                </div>
+
+              </div>
+
+              <!-- Items Section -->
+              <Divider>
+                <span class="text-sm font-semibold text-gray-600">Items to Issue</span>
+              </Divider>
+
+              <!-- Add Item Form -->
+              <div class="bg-gray-50 p-4 rounded-lg space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700">Add Item to Issue</h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div class="flex flex-col gap-2 md:col-span-8">
+                    <label class="text-sm text-gray-600">Product <span class="text-red-500">*</span></label>
+                    <Select v-model="newItem.inventory_item_id" :options="availableProducts" optionLabel="displayName"
+                      optionValue="id" placeholder="Search product..." :loading="inventoryItemsLoading" filter showClear
+                      fluid>
+                      <template #option="{ option }">
+                        <div class="flex flex-col">
+                          <div class="flex items-center justify-between">
+                            <span class="font-medium">{{ option.productName }}</span>
+                          </div>
+                          <div v-if="option.variationName" class="text-xs text-slate-600 mt-1">Variant: {{ option.variationName }}</div>
+                          <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                            <span>SKU: {{ option.sku }}</span>
+                            <span>•</span>
+                            <span>Type: {{ option.productType }}</span>
+                            <span>•</span>
+                            <span>Stock: {{ option.stock }} {{ option.unit }}</span>
+                          </div>
+                        </div>
+                      </template>
+                      <template #empty>
+                        <div class="p-2 text-center text-gray-500">
+                          No products available with stock
+                        </div>
+                      </template>
+                    </Select>
                   </div>
-                </template>
-              </Select>
-              <small v-if="errors.issue_type" class="text-red-500">{{ errors.issue_type[0] }}</small>
-            </div>
 
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Issued To / Additional Notes</label>
-              <Textarea v-model="form.remarks" rows="2" maxlength="1000" fluid
-                placeholder="Recipient or additional context for this issuance" />
-            </div>
+                  <div class="flex flex-col gap-2 md:col-span-2">
+                    <label class="text-sm text-gray-600">Quantity <span class="text-red-500">*</span></label>
+                    <InputNumber v-model="newItem.quantity" :min="1" :max="selectedProductStock" showButtons
+                      buttonLayout="horizontal" fluid>
+                      <template #incrementbuttonicon>
+                        <span class="pi pi-plus" />
+                      </template>
+                      <template #decrementbuttonicon>
+                        <span class="pi pi-minus" />
+                      </template>
+                    </InputNumber>
+                  </div>
 
-            <div v-if="form.issue_type === 'other'" class="flex flex-col gap-2 md:col-span-2">
-              <label class="text-sm font-semibold text-gray-700">Specify reason <span class="text-red-500">*</span></label>
-              <Textarea v-model="form.description" rows="3" maxlength="1000" fluid
-                placeholder="Describe why these items are being issued" :invalid="Boolean(errors.description)" />
-              <small v-if="errors.description" class="text-red-500">{{ errors.description[0] }}</small>
-            </div>
+                  <div class="flex flex-col gap-2 md:col-span-2">
+                    <label class="text-sm text-gray-600">Available Stock</label>
+                    <InputText :value="selectedProductStock" disabled class="bg-gray-100" fluid />
+                  </div>
 
-          </div>
+                </div>
 
-          <!-- Items Section -->
-          <Divider>
-            <span class="text-sm font-semibold text-gray-600">Items to Issue</span>
-          </Divider>
-
-          <!-- Add Item Form -->
-          <div class="bg-gray-50 p-4 rounded-lg space-y-4">
-            <h3 class="text-sm font-semibold text-gray-700">Add Item to Issue</h3>
-
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div class="flex flex-col gap-2 md:col-span-8">
-                <label class="text-sm text-gray-600">Product <span class="text-red-500">*</span></label>
-                <Select 
-                  v-model="newItem.inventory_item_id" 
-                  :options="availableProducts" 
-                  optionLabel="displayName"
-                  optionValue="id" 
-                  placeholder="Search product..." 
-                  :loading="inventoryItemsLoading" 
-                  filter 
-                  showClear
-                  fluid
-                >
-                  <template #option="{ option }">
-                    <div class="flex flex-col">
-                      <div class="flex items-center justify-between">
-                        <span class="font-medium">{{ option.productName }}</span>
-                      </div>
-                      <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                        <span>SKU: {{ option.sku }}</span>
-                        <span>•</span>
-                        <span>Type: {{ option.productType }}</span>
-                        <span>•</span>
-                        <span>Stock: {{ option.stock }} {{ option.unit }}</span>
-                      </div>
+                <!-- Stock Info & Warning -->
+                <div v-if="selectedProduct" class="text-sm bg-white p-3 rounded border border-blue-200">
+                  <div class="flex justify-between items-center">
+                    <div>
+                          <span class="font-medium">{{ selectedProduct.productName }}</span>
+                          <span v-if="selectedProduct.variationName" class="text-xs text-slate-600 ml-2">Variant: {{ selectedProduct.variationName }}</span>
+                      <span class="text-xs text-gray-500 ml-2">SKU: {{ selectedProduct.sku }}</span>
                     </div>
-                  </template>
-                  <template #empty>
-                    <div class="p-2 text-center text-gray-500">
-                      No products available with stock
+                    <div class="flex items-center gap-3">
+                      <span class="font-medium">
+                        Unit Cost: <span class="text-blue-600">{{ formatCurrency(selectedProduct.unitCost) }}</span>
+                      </span>
+                      <span class="font-medium">
+                        Available: <span :class="getStockClass(selectedProduct.stock)">{{ selectedProduct.stock
+                        }}</span> {{
+                            selectedProduct.unit }}
+                      </span>
                     </div>
-                  </template>
-                </Select>
+                  </div>
+                  <div v-if="selectedProduct.stock < newItem.quantity" class="mt-2 text-amber-600 text-xs">
+                    <i class="pi pi-exclamation-triangle mr-1"></i>
+                    Quantity cannot exceed available stock.
+                  </div>
+                </div>
+
+                <!-- Add Button -->
+                <div class="flex justify-end">
+                  <Button icon="pi pi-plus" label="Add Item" @click="addItem" :disabled="!canAddItem" size="small" />
+                </div>
               </div>
 
-              <div class="flex flex-col gap-2 md:col-span-2">
-                <label class="text-sm text-gray-600">Quantity <span class="text-red-500">*</span></label>
-                <InputNumber 
-                  v-model="newItem.quantity" 
-                  :min="1" 
-                  :max="selectedProductStock"
-                  showButtons 
-                  buttonLayout="horizontal"
-                  fluid
-                >
-                  <template #incrementbuttonicon>
-                    <span class="pi pi-plus" />
-                  </template>
-                  <template #decrementbuttonicon>
-                    <span class="pi pi-minus" />
-                  </template>
-                </InputNumber>
-              </div>
+              <!-- Items Table -->
+              <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                <div class="flex flex-col gap-2 md:col-span-8">
+                  <DataTable :value="form.items" class="p-datatable-sm" rowHover>
+                    <template #empty>
+                      <div class="text-center py-8 text-gray-500">
+                        <i class="pi pi-inbox text-4xl mb-2"></i>
+                        <p>No items added yet. Add items using the form above.</p>
+                      </div>
+                    </template>
 
-              <div class="flex flex-col gap-2 md:col-span-2">
-                <label class="text-sm text-gray-600">Available Stock</label>
-                <InputText 
-                  :value="selectedProductStock" 
-                  disabled 
-                  class="bg-gray-100"
-                  fluid
-                />
-              </div>
+                    <Column header="Product" style="min-width: 250px">
+                      <template #body="{ data }">
+                        <div class="flex flex-col">
+                          <span class="font-medium">{{ getProductName(data.inventory_item_id) }}</span>
+                          <span v-if="getProductVariation(data.inventory_item_id)" class="text-xs text-slate-600">Variant: {{ getProductVariation(data.inventory_item_id) }}</span>
+                          <span class="text-xs text-gray-500">SKU: {{ getProductSku(data.inventory_item_id) }}</span>
+                        </div>
+                      </template>
+                    </Column>
 
+                    <Column field="quantity" header="Quantity" style="width: 100px">
+                      <template #body="{ data }">
+                        <span class="font-medium text-red-600">{{ data.quantity }}</span>
+                      </template>
+                    </Column>
+
+                    <Column header="Unit" style="width: 100px">
+                      <template #body="{ data }">
+                        {{ getProductUnit(data.inventory_item_id) }}
+                      </template>
+                    </Column>
+
+                    <Column header="Unit Cost" style="width: 120px">
+                      <template #body="{ data }">
+                        {{ formatCurrency(getItemUnitCost(data)) }}
+                      </template>
+                    </Column>
+
+                    <Column header="Total" style="width: 120px">
+                      <template #body="{ data }">
+                        <span class="font-medium text-orange-600">
+                          {{ formatCurrency(getItemTotal(data)) }}
+                        </span>
+                      </template>
+                    </Column>
+
+                    <Column header="Actions" style="width: 80px">
+                      <template #body="{ index }">
+                        <Button icon="pi pi-trash" text rounded severity="danger" size="small"
+                          @click="confirmRemoveItem(index)" v-tooltip="'Remove item'" />
+                      </template>
+                    </Column>
+                  </DataTable>
+                </div>
+                <div class="self-start rounded-xl border border-orange-200 bg-orange-50/60 p-5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto flex flex-col gap-2 md:col-span-4">
+                  <h3 class="text-sm font-semibold text-slate-800">Issue Summary</h3>
+                  <p class="mt-1 text-xs text-slate-500">Review the quantities and estimated value before submitting.
+                  </p>
+                  <dl class="mt-5 space-y-3">
+                    <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                      <dt class="text-sm text-slate-600">Unique items</dt>
+                      <dd class="font-semibold text-slate-900">{{ form.items.length }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                      <dt class="text-sm text-slate-600">Total quantity</dt>
+                      <dd class="font-semibold text-slate-900">{{ totalQuantity }}</dd>
+                    </div>
+                    <div class="pt-1">
+                      <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Estimated issue value</dt>
+                      <dd class="mt-1 text-2xl font-bold text-orange-700">{{ formatCurrency(totalValue) }}</dd>
+                    </div>
+                  </dl>
+                
+                </div>
+              </div>
+              <!-- Form Actions -->
+              <div class="pt-4 flex gap-2 justify-end border-t border-gray-200">
+                <Button label="Cancel" severity="secondary" outlined type="button" @click="cancel" />
+                <Button :label="isEditMode ? 'Update Stock Issuance' : 'Create Stock Issuance'" icon="pi pi-check"
+                  :loading="submitting" type="button" @click="confirmSubmit" :disabled="submitting"
+                  class="bg-red-600 hover:bg-red-700 border-red-600" />
+              </div>
             </div>
 
-            <!-- Stock Info & Warning -->
-            <div v-if="selectedProduct" class="text-sm bg-white p-3 rounded border border-blue-200">
-              <div class="flex justify-between items-center">
-                <div>
-                  <span class="font-medium">{{ selectedProduct.productName }}</span>
-                  <span class="text-xs text-gray-500 ml-2">SKU: {{ selectedProduct.sku }}</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <span class="font-medium">
-                    Unit Cost: <span class="text-blue-600">{{ formatCurrency(selectedProduct.unitCost) }}</span>
-                  </span>
-                  <span class="font-medium">
-                    Available: <span :class="getStockClass(selectedProduct.stock)">{{ selectedProduct.stock }}</span> {{ selectedProduct.unit }}
-                  </span>
-                </div>
-              </div>
-              <div v-if="selectedProduct.stock < newItem.quantity" class="mt-2 text-amber-600 text-xs">
-                <i class="pi pi-exclamation-triangle mr-1"></i>
-                Quantity cannot exceed available stock.
-              </div>
-            </div>
 
-            <!-- Add Button -->
-            <div class="flex justify-end">
-              <Button 
-                icon="pi pi-plus" 
-                label="Add Item" 
-                @click="addItem" 
-                :disabled="!canAddItem" 
-                size="small"
-              />
-            </div>
-          </div>
-
-          <!-- Items Table -->
-          <DataTable :value="form.items" class="p-datatable-sm" rowHover>
-            <template #empty>
-              <div class="text-center py-8 text-gray-500">
-                <i class="pi pi-inbox text-4xl mb-2"></i>
-                <p>No items added yet. Add items using the form above.</p>
-              </div>
-            </template>
-
-            <Column header="Product" style="min-width: 250px">
-              <template #body="{ data }">
-                <div class="flex flex-col">
-                  <span class="font-medium">{{ getProductName(data.inventory_item_id) }}</span>
-                  <span class="text-xs text-gray-500">SKU: {{ getProductSku(data.inventory_item_id) }}</span>
-                </div>
-              </template>
-            </Column>
-
-            <Column field="quantity" header="Quantity" style="width: 100px">
-              <template #body="{ data }">
-                <span class="font-medium text-red-600">{{ data.quantity }}</span>
-              </template>
-            </Column>
-
-            <Column header="Unit" style="width: 100px">
-              <template #body="{ data }">
-                {{ getProductUnit(data.inventory_item_id) }}
-              </template>
-            </Column>
-
-            <Column header="Unit Cost" style="width: 120px">
-              <template #body="{ data }">
-                {{ formatCurrency(getItemUnitCost(data)) }}
-              </template>
-            </Column>
-
-            <Column header="Total" style="width: 120px">
-              <template #body="{ data }">
-                <span class="font-medium text-blue-600">
-                  {{ formatCurrency(getItemTotal(data)) }}
-                </span>
-              </template>
-            </Column>
-
-            <Column header="Actions" style="width: 80px">
-              <template #body="{ index }">
-                <Button 
-                  icon="pi pi-trash" 
-                  text 
-                  rounded 
-                  severity="danger" 
-                  size="small" 
-                  @click="confirmRemoveItem(index)"
-                  v-tooltip="'Remove item'" 
-                />
-              </template>
-            </Column>
-          </DataTable>
-
-          <!-- Form Actions -->
-          <div class="pt-4 flex gap-2 justify-end border-t border-gray-200">
-            <Button 
-              label="Cancel" 
-              severity="secondary" 
-              outlined 
-              type="button"
-              @click="cancel"
-            />
-            <Button 
-              :label="isEditMode ? 'Update Stock Issuance' : 'Create Stock Issuance'"
-              icon="pi pi-check" 
-              :loading="submitting" 
-              type="button"
-              @click="confirmSubmit"
-              :disabled="!isFormValid"
-              class="bg-red-600 hover:bg-red-700 border-red-600"
-            />
-          </div>
-            </div>
-
-            <aside class="rounded-xl border border-orange-200 bg-orange-50/60 p-5 lg:sticky lg:top-4">
-              <h3 class="text-sm font-semibold text-slate-800">Issue Summary</h3>
-              <p class="mt-1 text-xs text-slate-500">Review the quantities and estimated value before submitting.</p>
-              <dl class="mt-5 space-y-3">
-                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
-                  <dt class="text-sm text-slate-600">Unique items</dt>
-                  <dd class="font-semibold text-slate-900">{{ form.items.length }}</dd>
-                </div>
-                <div class="flex items-center justify-between border-b border-orange-200 pb-3">
-                  <dt class="text-sm text-slate-600">Total quantity</dt>
-                  <dd class="font-semibold text-slate-900">{{ totalQuantity }}</dd>
-                </div>
-                <div class="pt-1">
-                  <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Estimated issue value</dt>
-                  <dd class="mt-1 text-2xl font-bold text-orange-700">{{ formatCurrency(totalValue) }}</dd>
-                </div>
-              </dl>
-              <div v-if="form.items.length" class="mt-4 rounded-lg bg-white p-3 text-xs text-slate-600">
-                Average unit cost: <span class="font-semibold text-slate-800">{{ formatCurrency(averageCost) }}</span>
-              </div>
-            </aside>
           </div>
         </form>
       </template>
@@ -311,11 +272,16 @@ const newItem = reactive({
 
 // Validation errors
 const errors = ref<any>({})
+const validationAttempted = ref(false)
 
 const transactionReasonOptions = [
-  { label: 'Used for Production', value: 'production_use' },
   { label: 'Office Consumption', value: 'office_consumption' },
-  { label: 'Store Usage / Sample or Demo', value: 'store_usage' },
+  { label: 'Store Usage', value: 'store_usage' },
+  { label: 'Display / Showroom', value: 'display_showroom' },
+  { label: 'Sample / Demonstration', value: 'sample_demo' },
+  { label: 'Maintenance / Repair', value: 'maintenance_repair' },
+  { label: 'Damaged / Scrap', value: 'damaged_scrap' },
+  { label: 'Donation / Giveaway', value: 'donation_giveaway' },
   { label: 'Other', value: 'other' },
 ]
 
@@ -346,6 +312,7 @@ const availableProducts = computed(() => {
       productId: item.product_id,
       variationId: item.variation_id,
       productName: item.product?.product_name || 'Unknown Product',
+      variationName: item.variation?.variation_name || item.variation?.name || '',
       sku: item.product?.sku || 'N/A',
       stock: item.quantity_available || 0,
       unit: item.product?.unit_of_measurement || 'unit',
@@ -370,8 +337,8 @@ const selectedProductStock = computed(() => {
 // Can add item
 const canAddItem = computed(() => {
   return newItem.inventory_item_id &&
-         newItem.quantity > 0 &&
-         newItem.quantity <= selectedProductStock.value
+    newItem.quantity > 0 &&
+    newItem.quantity <= selectedProductStock.value
 })
 
 // Form validity
@@ -428,6 +395,11 @@ const getProductSku = (inventoryItemId: number) => {
   return item?.product?.sku || ''
 }
 
+const getProductVariation = (inventoryItemId: number) => {
+  const item = inventoryItems.value.find(i => i.id === inventoryItemId)
+  return item?.variation?.variation_name || item?.variation?.name || ''
+}
+
 const getProductUnit = (inventoryItemId: number) => {
   const item = inventoryItems.value.find(i => i.id === inventoryItemId)
   return item?.product?.unit_of_measurement || 'unit'
@@ -478,7 +450,7 @@ const loadInventoryItems = async () => {
       toast.add({
         severity: 'info',
         summary: 'No Stock',
-      detail: 'No items with available stock found',
+        detail: 'No items with available stock found',
         life: 3000
       })
     }
@@ -542,6 +514,7 @@ const confirmRemoveItem = (index: number) => {
 }
 
 const confirmSubmit = () => {
+  validationAttempted.value = true
   if (!isFormValid.value) return
   confirm.require({
     header: isEditMode.value ? 'Update Stock Issuance' : 'Create Stock Issuance',
@@ -642,7 +615,7 @@ watch(() => newItem.inventory_item_id, (newVal) => {
   if (newVal && selectedProduct.value) {
     const product = selectedProduct.value
     newItem.quantity = Math.min(1, product.stock)
-    
+
     if (product.stock === 0) {
       toast.add({
         severity: 'warn',

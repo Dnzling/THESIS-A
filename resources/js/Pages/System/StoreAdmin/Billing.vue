@@ -1,5 +1,6 @@
 <template>
   <div class="space-y-6">
+    <ConfirmDialog />
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Billing</h1>
@@ -21,17 +22,17 @@
             </div>
             <div class="sm:pl-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div></div>
             <Button v-if="canRenew" label="Renew Plan" rounded severity="warn" size="small" @click="goToRenew" />
-            <Button v-else label="Upgrade" rounded size="small" @click="goToUpgrade" />
+            <Button v-else label="View Plans" icon="pi pi-arrow-up-right" rounded size="small" @click="goToUpgrade" />
           </div>
 
           <div class="mt-5 rounded-lg border p-4" :class="subscription.sales_paused ? 'border-red-100 bg-red-50 text-red-700' : subscription.in_grace ? 'border-orange-100 bg-orange-50 text-orange-700' : 'border-green-100 bg-green-50 text-green-700'">
-            <div class="font-semibold">{{ subscription.sales_paused ? 'New sales paused' : subscription.in_grace ? 'Renewal grace period' : subscription.status === 'trial' ? 'Free Trial' : 'Subscription active' }}</div>
+            <div class="font-semibold">{{ subscription.status === 'cancelled' ? 'Subscription cancelled' : subscription.sales_paused ? 'New sales paused' : subscription.in_grace ? 'Renewal grace period' : subscription.status === 'trial' ? 'Free Trial' : 'Subscription active' }}</div>
             <p class="mt-1 text-sm">
-              {{ subscription.sales_paused ? 'Subscribe to accept new ecommerce and POS orders. Existing records and orders remain available.' : subscription.in_grace ? 'Your plan has ended, but new sales remain available during the 7-day renewal grace period.' : 'Your store can continue using the modules included in this plan.' }}
+              {{ subscription.status === 'cancelled' ? 'This subscription has been cancelled. Subscribe again to restore paid plan access.' : subscription.sales_paused ? 'Subscribe to accept new ecommerce and POS orders. Existing records and orders remain available.' : subscription.in_grace ? 'Your plan has ended, but new sales remain available during the 7-day renewal grace period.' : 'Your store can continue using the modules included in this plan.' }}
             </p>
           </div>
 
-          <div class="mt-5 rounded-xl border border-orange-100 bg-orange-50/60 p-4">
+          <!-- <div class="mt-5 rounded-xl border border-orange-100 bg-orange-50/60 p-4">
             <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div class="text-sm font-semibold text-slate-950">Enabled Modules</div>
@@ -56,7 +57,7 @@
             <div v-else class="mt-4 rounded-lg border border-dashed border-orange-200 bg-white/70 p-4 text-sm text-slate-500">
               No enabled modules were found for this plan yet.
             </div>
-          </div>
+          </div> -->
 
           <div class="mt-5 rounded-xl border border-slate-200 p-4">
             <div>
@@ -123,6 +124,43 @@
         </div>
       </template>
     </Card>
+
+    <Card class="border border-slate-200 shadow-sm">
+      <template #title>Documents</template>
+      <template #content>
+        <div v-if="agreement" class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p class="font-semibold text-slate-900">{{ agreement.plan_name }} plan · {{ agreement.billing_cycle }}</p>
+            <p class="mt-1 text-sm text-slate-600">Electronically signed by {{ agreement.signer_name }} on {{ formatAgreementDate(agreement.signed_at) }}.</p>
+            <p class="mt-1 text-xs text-slate-500">Your signed subscription agreement is stored securely for your store.</p>
+          </div>
+          <Button label="View Agreement PDF" icon="pi pi-file-pdf" size="small" severity="warn" outlined class="shrink-0" @click="viewAgreement" />
+        </div>
+        <p v-else class="text-sm text-slate-600">No active signed subscription agreement is available for this store yet.</p>
+      </template>
+    </Card>
+
+    <Card v-if="subscription.is_active || subscription.cancellation" class="border border-red-200 shadow-sm">
+      <template #title>Cancel Plan</template>
+      <template #content>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p v-if="subscription.cancellation?.effective_immediately" class="text-sm text-slate-700">
+              This subscription had no end date and was cancelled immediately.
+            </p>
+            <p v-else-if="subscription.cancellation?.effective_at" class="text-sm text-slate-700">
+              Cancellation is scheduled for {{ formatDate(subscription.cancellation.effective_at) }}. Your plan remains active until then.
+            </p>
+            <p v-else class="text-sm text-slate-700">
+              Your plan is paid through {{ endsAtLabel }}. Cancelling now keeps your access until that date and prevents renewal.
+            </p>
+          </div>
+          <Button v-if="subscription.is_active && !subscription.cancellation" label="Cancel Plan" size="small" severity="danger" class="shrink-0" @click="confirmCancelPlan" />
+          <Tag v-else :value="subscription.cancellation?.effective_immediately ? 'Cancelled' : 'Cancellation Scheduled'" :severity="subscription.cancellation?.effective_immediately ? 'secondary' : 'warn'" class="shrink-0" />
+        </div>
+      </template>
+    </Card>
+
     <Dialog :visible="!!selectedRecord" modal header="Payment details" class="w-[min(92vw,520px)]" @update:visible="selectedRecord = null">
       <div v-if="selectedRecord" class="space-y-3 text-sm">
         <div class="rounded-lg bg-slate-50 p-4"><div class="text-xs uppercase tracking-wide text-slate-500">Amount</div><div class="mt-1 text-xl font-semibold text-slate-950">{{ formatMoney(selectedRecord.amount, selectedRecord.currency) }}</div></div>
@@ -143,16 +181,24 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import ProgressBar from 'primevue/progressbar'
 import Dialog from 'primevue/dialog'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import axiosClient from '@/axios'
 
 const props = defineProps<{
   store: any
   subscription: any
+  agreement: any | null
   billing_records: any[]
 }>()
 
 const store = computed(() => props.store || {})
 const subscription = computed(() => props.subscription || {})
 const billingRecords = computed(() => Array.isArray(props.billing_records) ? props.billing_records : [])
+const agreement = computed(() => props.agreement || null)
+const confirm = useConfirm()
+const toast = useToast()
 const canRenew = computed(() => subscription.value.sales_paused
   && String(subscription.value.plan_key || '').toLowerCase() !== 'free'
   && (Number(subscription.value.monthly_price || 0) > 0 || Number(subscription.value.yearly_price || 0) > 0))
@@ -197,6 +243,63 @@ const formatDate = (value?: string | null) => {
 }
 
 const endsAtLabel = computed(() => formatDate(subscription.value.ends_at))
+const formatAgreementDate = (value?: string | null) => value
+  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  : 'Not available'
+
+const viewAgreement = async () => {
+  const documentWindow = window.open('about:blank', '_blank')
+  if (!documentWindow) {
+    toast.add({ severity: 'warn', summary: 'Allow pop-ups', detail: 'Allow pop-ups to view the signed agreement.', life: 3500 })
+    return
+  }
+  documentWindow.opener = null
+
+  try {
+    const response = await axiosClient.get('/api/store/subscription-agreement/document', { responseType: 'blob' })
+    const documentUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    documentWindow.location.replace(documentUrl)
+    window.setTimeout(() => URL.revokeObjectURL(documentUrl), 60_000)
+  } catch (error: any) {
+    documentWindow.close()
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to open agreement',
+      detail: error?.response?.status === 404
+        ? 'The signed agreement PDF is not available yet.'
+        : 'Refresh the page and try opening the signed agreement again.',
+      life: 4000,
+    })
+  }
+}
+
+const confirmCancelPlan = () => {
+  confirm.require({
+    header: 'Cancel this plan?',
+    message: subscription.value.ends_at
+      ? `Your plan is paid through ${endsAtLabel.value}. Are you sure you want to schedule cancellation? Your access will remain active until that date.`
+      : 'This subscription has no end date. Cancelling it will take effect immediately. Continue?',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Cancel Plan',
+    rejectLabel: 'Keep Plan',
+    accept: async () => {
+      try {
+        const response = await axiosClient.post('/api/store/subscription/cancel-at-period-end')
+        subscription.value.cancellation = response.data?.data?.cancellation || {
+          effective_at: subscription.value.ends_at,
+        }
+        if (subscription.value.cancellation?.effective_immediately) {
+          subscription.value.is_active = false
+          subscription.value.status = 'cancelled'
+          subscription.value.sales_paused = true
+        }
+        toast.add({ severity: 'success', summary: subscription.value.cancellation?.effective_immediately ? 'Plan cancelled' : 'Cancellation scheduled', detail: response.data?.message || 'Your plan will end on its due date.', life: 3500 })
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Unable to cancel plan', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+      }
+    },
+  })
+}
 
 const statusLabel = (status: string) => {
   const normalized = String(status || 'unknown').replace(/_/g, ' ')

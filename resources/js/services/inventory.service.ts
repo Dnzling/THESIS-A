@@ -115,6 +115,12 @@ class InventoryService {
   // Use explicit API prefix so requests hit Laravel api routes and CORS paths.
   private baseUrl = '/api/inventory'
 
+  private stockIssueBaseUrl() {
+    return typeof window !== 'undefined' && window.location.pathname.startsWith('/warehouse/stock-issues')
+      ? '/api/warehouse'
+      : this.baseUrl
+  }
+
   async getDashboardStats(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/dashboard/stats`, { params })
     return response.data
@@ -637,42 +643,42 @@ class InventoryService {
 
   // ==================== STOCK ISSUES ====================
   async getStockIssues(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/issues`, { params })
+    const response = await axiosClient.get(`${this.stockIssueBaseUrl()}/issues`, { params })
     return response.data
   }
 
   async getStockIssue(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/issues/${id}`)
+    const response = await axiosClient.get(`${this.stockIssueBaseUrl()}/issues/${id}`)
     return response.data
   }
 
   async createStockIssue(data: any) {
-    const response = await axiosClient.post(`${this.baseUrl}/issues`, data)
+    const response = await axiosClient.post(`${this.stockIssueBaseUrl()}/issues`, data)
     return response.data
   }
 
   async updateStockIssue(id: number, data: any) {
-    const response = await axiosClient.put(`${this.baseUrl}/issues/${id}`, data)
+    const response = await axiosClient.put(`${this.stockIssueBaseUrl()}/issues/${id}`, data)
     return response.data
   }
 
   async deleteStockIssue(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/issues/${id}`)
+    const response = await axiosClient.delete(`${this.stockIssueBaseUrl()}/issues/${id}`)
     return response.data
   }
 
   async approveStockIssue(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/issues/${id}/approve`, { notes })
+    const response = await axiosClient.post(`${this.stockIssueBaseUrl()}/issues/${id}/approve`, { notes })
     return response.data
   }
 
   async rejectStockIssue(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/issues/${id}/reject`, { notes })
+    const response = await axiosClient.post(`${this.stockIssueBaseUrl()}/issues/${id}/reject`, { notes })
     return response.data
   }
 
   async getIssueReasons() {
-    const response = await axiosClient.get(`${this.baseUrl}/issues/reasons`)
+    const response = await axiosClient.get(`${this.stockIssueBaseUrl()}/issues/reasons`)
     return response.data
   }
 

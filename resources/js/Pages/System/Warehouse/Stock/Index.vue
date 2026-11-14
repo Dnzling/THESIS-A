@@ -62,6 +62,7 @@
                 <DataTable
                     :value="rows"
                     :loading="loading"
+                    :pt="{ mask: { class: '!bg-transparent' } }"
                     class="text-sm"
                     rowHover
                     paginator
@@ -71,8 +72,15 @@
                     @page="onPage"
                     responsiveLayout="scroll"
                 >
+                    <template #loading>
+                        <div class="absolute inset-x-0 top-12 bottom-12 z-10 space-y-3 overflow-hidden p-4">
+                            <div v-for="row in 5" :key="row" class="grid grid-cols-8 gap-4">
+                                <Skeleton v-for="cell in 8" :key="cell" height="1.5rem" />
+                            </div>
+                        </div>
+                    </template>
                     <template #empty>
-                        <div class="py-12 text-center">
+                        <div v-if="!loading" class="py-12 text-center">
                             <i class="pi pi-box text-3xl text-slate-300" />
                             <p class="mt-3 text-slate-500">
                                 No warehouse stock found.
@@ -144,9 +152,10 @@
 import { onMounted, reactive, ref } from "vue";
 import { router } from "@inertiajs/vue3";
 import WarehouseService from "@/services/warehouse.service";
+import Skeleton from "primevue/skeleton";
 const rows = ref<any[]>([]),
     warehouses = ref<any[]>([]),
-    loading = ref(false),
+    loading = ref(true),
     meta = reactive({ page: 1, per_page: 15, total: 0 });
 const filters = reactive({
     search: "",

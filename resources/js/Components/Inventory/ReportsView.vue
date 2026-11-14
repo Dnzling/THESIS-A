@@ -15,10 +15,10 @@
       <template #content>
         <Tabs v-model:value="selectedReport">
           <TabList>
-                    <Tab value="fast_movers">Fast Movers</Tab>
+            <Tab value="fast_movers">Fast Movers</Tab>
             <Tab value="slow_movers">Slow Movers</Tab>
-
             <Tab value="aging">Sales Inactivity</Tab>
+            <Tab value="stock_aging">Stock Aging</Tab>
           </TabList>
         </Tabs>
 
@@ -66,8 +66,9 @@
               </template>
             </Column>
             <template v-if="selectedReport !== 'transactions'">
-              <Column field="available" header="Available" sortable />
-              <Column v-if="selectedReport !== 'aging'" field="units_sold" :header="`Sold (${periodLabel})`" sortable />
+              <Column v-if="selectedReport !== 'stock_aging'" field="available" header="Available" sortable />
+              <Column v-if="selectedReport === 'stock_aging'" field="quantity_on_hand" header="On Hand" sortable />
+              <Column v-if="selectedReport !== 'aging' && selectedReport !== 'stock_aging'" field="units_sold" :header="`Sold (${periodLabel})`" sortable />
               <Column v-if="selectedReport === 'fast_movers'" field="days_cover" header="Days Cover" sortable>
                 <template #body="{ data }">{{ data.days_cover ?? 'No sales pace' }}</template>
               </Column>
@@ -80,6 +81,13 @@
               </Column>
               <Column v-if="selectedReport === 'aging'" field="last_sale_at" header="Last Sale">
                 <template #body="{ data }">{{ date(data.last_sale_at) }}</template>
+              </Column>
+              <Column v-if="selectedReport === 'stock_aging'" field="age_label" header="Stock Age" sortable />
+              <Column v-if="selectedReport === 'stock_aging'" field="last_stock_count_date" header="Last Count">
+                <template #body="{ data }">{{ date(data.last_stock_count_date) }}</template>
+              </Column>
+              <Column v-if="selectedReport === 'stock_aging'" field="stock_value" header="Stock Value" sortable>
+                <template #body="{ data }">{{ money(data.stock_value) }}</template>
               </Column>
             </template>
             <template v-else>
@@ -161,12 +169,12 @@ import Textarea from 'primevue/textarea'
 import Message from 'primevue/message'
 import merchandisingService from '@/services/merchandising.service'
 
-type ReportType = 'slow_movers' | 'fast_movers' | 'aging' | 'transactions'
+type ReportType = 'slow_movers' | 'fast_movers' | 'aging' | 'stock_aging' | 'transactions'
 type ReportRow = Record<string, any>
 
 const router = useRouter()
 const toast = useToast()
-const selectedReport = ref<ReportType>('slow_movers')
+const selectedReport = ref<ReportType>('fast_movers')
 const dateRange = ref<Date[]>([new Date(Date.now() - 90 * 86400000), new Date()])
 const search = ref('')
 const rows = ref<ReportRow[]>([])
@@ -201,6 +209,11 @@ const copy: Record<ReportType, { title: string; description: string; empty: stri
     description: 'Days since the last recorded sale are a sales-inactivity proxy, not the physical age of each unit. Prioritize older, unsold stock for review.',
     empty: 'No finished goods with available stock.'
   },
+  stock_aging: {
+    title: 'Inventory held over time',
+    description: 'Finished goods grouped by how long the current stock has gone since its last stock count. Use older stock groups to prioritize inspection, promotion, transfer, or disposal review.',
+    empty: 'No stock-aging records were found for this branch.'
+  },
   transactions: {
     title: 'What changed in stock',
     description: 'Recent finished-good stock movements, including sales and adjustments. Open a movement to verify its source and details.',
@@ -230,6 +243,11 @@ const metrics = computed(() => {
     { label: 'Sales', value: data.filter(row => row.transaction_type === 'sale').length.toLocaleString() },
     { label: 'Needs review', value: data.filter(row => row.severity === 'warn').length.toLocaleString() },
   ]
+  if (selectedReport.value === 'stock_aging') return [
+    { label: 'Stock records', value: data.length.toLocaleString() },
+    { label: 'Units on hand', value: data.reduce((sum, row) => sum + Number(row.quantity_on_hand || 0), 0).toLocaleString() },
+    { label: 'Older than 90 days', value: data.filter(row => row.age_bucket === 'older_than_90_days').length.toLocaleString() },
+  ]
   return [
     { label: 'Finished-good SKUs', value: data.length.toLocaleString() },
     { label: 'Units available', value: data.reduce((sum, row) => sum + Number(row.available || 0), 0).toLocaleString() },
@@ -249,12 +267,30 @@ const loadReport = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const response = await axiosClient.get('/api/inventory/reports/actionable', {
-      params: { report: selectedReport.value, date_from: apiDate(dateRange.value[0]), date_to: apiDate(dateRange.value[1]) }
-    })
+    const response = selectedReport.value === 'stock_aging'
+      ? await axiosClient.get('/api/inventory/reports/aging', { params: { product_type: 'finished_good' } })
+      : await axiosClient.get('/api/inventory/reports/actionable', {
+        params: { report: selectedReport.value, date_from: apiDate(dateRange.value[0]), date_to: apiDate(dateRange.value[1]) }
+      })
     if (request !== requestNumber) return
-    rows.value = response.data.data?.rows || []
-    limited.value = Boolean(response.data.data?.limited)
+    if (selectedReport.value === 'stock_aging') {
+      const details = response.data.data?.details || {}
+      rows.value = Object.entries(details).flatMap(([bucket, items]) => (Array.isArray(items) ? items : []).map((item: any) => ({
+        ...item,
+        age_bucket: bucket,
+        age_label: cleanBucketLabel(bucket),
+        available: Number(item.quantity_on_hand || 0),
+        stock_value: Number(item.quantity_on_hand || 0) * Number(item.cost_price || 0),
+        branch: item.branch || 'Current branch',
+        action: bucket === 'older_than_90_days' ? 'Review aged stock' : 'View stock',
+        action_key: 'view_item',
+        severity: bucket === 'older_than_90_days' ? 'warn' : 'info',
+      })))
+      limited.value = false
+    } else {
+      rows.value = response.data.data?.rows || []
+      limited.value = Boolean(response.data.data?.limited)
+    }
   } catch (error: any) {
     if (request !== requestNumber) return
     rows.value = []
@@ -265,6 +301,14 @@ const loadReport = async () => {
     if (request === requestNumber) loading.value = false
   }
 }
+
+const cleanBucketLabel = (bucket: string) => ({
+  less_than_30_days: '0-30 days',
+  between_30_60_days: '31-60 days',
+  between_60_90_days: '61-90 days',
+  older_than_90_days: '90+ days',
+  never_counted: 'Never counted',
+}[bucket] || label(bucket))
 
 const openRow = ({ data }: { data: ReportRow }) => {
   if (selectedReport.value === 'transactions') {
@@ -329,6 +373,8 @@ const submitDiscountRequest = async () => {
 const exportCsv = () => {
   const columns = selectedReport.value === 'transactions'
     ? ['branch', 'sku', 'product_name', 'variation_name', 'transaction_date', 'transaction_type', 'quantity_change', 'action']
+    : selectedReport.value === 'stock_aging'
+      ? ['branch', 'sku', 'product_name', 'product_type', 'age_label', 'quantity_on_hand', 'last_stock_count_date', 'stock_value', 'action']
     : ['branch', 'sku', 'product_name', 'variation_name', 'available', 'units_sold', 'days_cover', 'days_since_sale', 'last_sale_at', 'reorder_point', 'stock_value', 'action']
   const escape = (value: any) => `"${String(value ?? '').replaceAll('"', '""')}"`
   const csv = [columns.join(','), ...visibleRows.value.map(row => columns.map(key => escape(row[key])).join(','))].join('\r\n')

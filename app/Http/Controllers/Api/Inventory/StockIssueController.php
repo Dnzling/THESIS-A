@@ -114,7 +114,8 @@ class StockIssueController extends Controller
                 'approver',
                 'issuer',
                 'creator',
-                'items.inventoryItem.product'
+                'items.inventoryItem.product',
+                'items.inventoryItem.variation'
             ])
             ->where('store_id', $context['store_id'])
             ->findOrFail($id);
@@ -142,7 +143,7 @@ class StockIssueController extends Controller
             $context = $this->getUserContext();
 
             $validated = $request->validate([
-                'issue_type' => 'required|in:production_use,office_consumption,store_usage,other',
+                'issue_type' => 'required|in:office_consumption,store_usage,display_showroom,sample_demo,maintenance_repair,damaged_scrap,donation_giveaway,other',
                 'movement_type' => 'required|in:deduct',
                 'description' => 'required_if:issue_type,other|nullable|string|max:1000',
                 'remarks' => 'nullable|string',
@@ -218,7 +219,11 @@ class StockIssueController extends Controller
                 app(PermissionService::class)->clearUserCache($authUser);
             }
 
-            if ($authUser?->hasPermissionTo('inventory.stock_issues.approve', $context['store_id'])) {
+            $approvalPermission = $request->is('api/warehouse/issues*')
+                ? 'warehouse.stock-issues.approve'
+                : 'inventory.stock_issues.approve';
+
+            if ($authUser?->hasPermissionTo($approvalPermission, $context['store_id'])) {
                 $issue->load('items');
 
                 foreach ($issue->items as $issueItem) {
@@ -255,7 +260,7 @@ class StockIssueController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $issue->load(['items.inventoryItem.product']),
+                'data' => $issue->load(['items.inventoryItem.product', 'items.inventoryItem.variation']),
                 'message' => 'Stock issue created successfully',
             ], 201);
         } catch (\Exception $e) {
@@ -289,7 +294,7 @@ class StockIssueController extends Controller
             }
 
             $validated = $request->validate([
-                'issue_type' => 'required|in:production_use,office_consumption,store_usage,other',
+                'issue_type' => 'required|in:office_consumption,store_usage,display_showroom,sample_demo,maintenance_repair,damaged_scrap,donation_giveaway,other',
                 'movement_type' => 'required|in:deduct',
                 'description' => 'required_if:issue_type,other|nullable|string|max:1000',
                 'remarks' => 'nullable|string',
@@ -344,7 +349,7 @@ class StockIssueController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $issue->fresh()->load(['creator', 'items.inventoryItem.product']),
+                'data' => $issue->fresh()->load(['creator', 'items.inventoryItem.product', 'items.inventoryItem.variation']),
                 'message' => 'Stock issuance updated successfully',
             ]);
         } catch (\Exception $e) {

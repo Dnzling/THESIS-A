@@ -224,25 +224,31 @@ class StoreSettingsController extends Controller
             $isPaidPlan = $plan && strtolower((string) $plan->plan_key) !== 'free';
             $isCurrent = strtolower((string) $lockedStore->subscription_status) === 'paid'
                 && $isPaidPlan
-                && $endsAt
-                && $endsAt->copy()->startOfDay()->greaterThanOrEqualTo(now()->startOfDay());
+                && (!$endsAt || $endsAt->copy()->startOfDay()->greaterThanOrEqualTo(now()->startOfDay()));
 
             abort_unless($isCurrent, 422, 'Only an active paid subscription can be cancelled.');
 
             $settings = is_array($lockedStore->settings) ? $lockedStore->settings : [];
             $existing = $settings['subscription_cancellation'] ?? null;
             if (!is_array($existing) || empty($existing['effective_at'])) {
+                $effectiveAt = $endsAt?->toDateString() ?? now()->toDateString();
                 $settings['subscription_cancellation'] = [
                     'requested_at' => now()->toIso8601String(),
-                    'effective_at' => $endsAt?->toDateString(),
+                    'effective_at' => $effectiveAt,
+                    'effective_immediately' => !$endsAt,
                 ];
+                if (!$endsAt) {
+                    $lockedStore->subscription_status = 'cancelled';
+                }
                 $lockedStore->settings = $settings;
                 $lockedStore->save();
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your plan is scheduled to end on its current due date.',
+                'message' => !empty($settings['subscription_cancellation']['effective_immediately'])
+                    ? 'Your non-expiring subscription has been cancelled.'
+                    : 'Your plan is scheduled to end on its current due date.',
                 'data' => ['cancellation' => $settings['subscription_cancellation']],
             ]);
         });

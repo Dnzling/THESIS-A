@@ -20,98 +20,98 @@ use App\Http\Controllers\Api\Inventory\ProductController as InventoryProductCont
 Route::prefix('product-catalog')->group(function () {
 
     // Merchandising reports and store 3D model requests belong to Product Catalog.
-    Route::get('reports', [DashboardController::class, 'reports']);
-    Route::get('3d-model-requests', [Model3dRequestController::class, 'index']);
-    Route::post('3d-model-requests', [Model3dRequestController::class, 'store']);
-    Route::get('3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
-    Route::get('3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download']);
-    Route::post('3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
-    Route::post('3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
+    Route::get('reports', [DashboardController::class, 'reports'])->middleware('can:merchandising.reports.view');
+    Route::get('3d-model-requests', [Model3dRequestController::class, 'index'])->middleware('can:merchandising.3d.manage');
+    Route::post('3d-model-requests', [Model3dRequestController::class, 'store'])->middleware('can:merchandising.3d.manage');
+    Route::get('3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show'])->middleware('can:merchandising.3d.manage');
+    Route::get('3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download'])->middleware('can:merchandising.3d.manage');
+    Route::post('3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction'])->middleware('can:merchandising.3d.manage');
+    Route::post('3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction'])->middleware('can:merchandising.3d.manage');
 
-    Route::get('dashboard/stats', [DashboardController::class, 'stats']);
-    Route::get('dashboard/overview', [DashboardController::class, 'overview']);
-    Route::get('dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ecommerce']);
-    Route::get('dashboard/activity', [DashboardController::class, 'activityLog']);
+    Route::get('dashboard/stats', [DashboardController::class, 'stats'])->middleware('can:merchandising.dashboard.view');
+    Route::get('dashboard/overview', [DashboardController::class, 'overview'])->middleware('can:merchandising.dashboard.view');
+    Route::get('dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ecommerce'])->middleware('can:merchandising.dashboard.view');
+    Route::get('dashboard/activity', [DashboardController::class, 'activityLog'])->middleware('can:merchandising.dashboard.view');
 
     // Categories
     Route::apiResource('categories', CategoryController::class)
-        ->only(['index', 'show'])
+        ->only(['index', 'show'])->middleware('can:merchandising.categories.view')
         ;
     Route::apiResource('categories', CategoryController::class)
-        ->except(['index', 'show'])
+        ->except(['index', 'show'])->middleware('can:merchandising.categories.manage')
         ;
     Route::get('categories/tree/all', [CategoryController::class, 'tree']);
     Route::post('categories/reorder', [CategoryController::class, 'reorder']);
     Route::post('categories/bulk/delete', [CategoryController::class, 'bulkDelete']);
 
     // Products
-    Route::get('products/archived', [InventoryProductController::class, 'archived']);
+    Route::get('products/archived', [InventoryProductController::class, 'archived'])->middleware('can:merchandising.products.view');
     Route::apiResource('products', ProductController::class)
-        ->only(['index', 'show'])
+        ->only(['index', 'show'])->middleware('can:merchandising.products.view')
         ;
     Route::apiResource('products', ProductController::class)
-        ->except(['index', 'show', 'store']);
+        ->except(['index', 'show', 'store'])->middleware('can:merchandising.products.manage');
     // Use the full merchandising creation workflow while keeping its API in Product Catalog.
     Route::post('products', [InventoryProductController::class, 'store'])
-        ->middleware('subscription.capacity:products');
+        ->middleware(['subscription.capacity:products', 'can:merchandising.products.manage']);
         ;
     Route::post('products/{productId}/3d-model', [ProductAssetController::class, 'storeForProductForm'])
-        ->name('products.3d-model.store');
-    Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);
-    Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice']);
-    Route::post('products/{id}/archive', [InventoryProductController::class, 'archive'])->whereNumber('id');
-    Route::post('products/{id}/restore', [InventoryProductController::class, 'restore'])->whereNumber('id');
-    Route::delete('products/{id}/purge', [InventoryProductController::class, 'purgeArchived'])->whereNumber('id');
-    Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
-    Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
-    Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);
+        ->middleware('can:merchandising.assets.manage')->name('products.3d-model.store');
+    Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice'])->middleware('can:merchandising.products.approve');
+    Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice'])->middleware('can:merchandising.products.approve');
+    Route::post('products/{id}/archive', [InventoryProductController::class, 'archive'])->whereNumber('id')->middleware('can:merchandising.products.manage');
+    Route::post('products/{id}/restore', [InventoryProductController::class, 'restore'])->whereNumber('id')->middleware('can:merchandising.products.manage');
+    Route::delete('products/{id}/purge', [InventoryProductController::class, 'purgeArchived'])->whereNumber('id')->middleware('can:merchandising.products.delete');
+    Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData'])->middleware('can:merchandising.products.view');
+    Route::post('products/bulk/status', [ProductController::class, 'bulkStatus'])->middleware('can:merchandising.products.manage');
+    Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete'])->middleware('can:merchandising.products.delete');
 
     // Product Variations
-    Route::get('variation-requests', [ProductVariationController::class, 'requests']);
+    Route::get('variation-requests', [ProductVariationController::class, 'requests'])->middleware('can:merchandising.variations.view');
     Route::apiResource('variations', ProductVariationController::class)
-        ->only(['index', 'show'])
+        ->only(['index', 'show'])->middleware('can:merchandising.variations.view')
         ;
     Route::apiResource('variations', ProductVariationController::class)
-        ->only(['store', 'update'])
+        ->only(['store', 'update'])->middleware('can:merchandising.variations.manage')
         ;
-    Route::post('variations/{id}/archive', [ProductVariationController::class, 'archive']);
-    Route::get('products/{productId}/variations', [ProductVariationController::class, 'getByProduct']);
-    Route::post('products/{productId}/variations/initialize-standard', [ProductVariationController::class, 'initializeStandard']);
+    Route::post('variations/{id}/archive', [ProductVariationController::class, 'archive'])->middleware('can:merchandising.variations.manage');
+    Route::get('products/{productId}/variations', [ProductVariationController::class, 'getByProduct'])->middleware('can:merchandising.variations.view');
+    Route::post('products/{productId}/variations/initialize-standard', [ProductVariationController::class, 'initializeStandard'])->middleware('can:merchandising.variations.manage');
 
     // Product Assets (3D models, images, etc.)
     Route::prefix('assets')->group(function () {
-        Route::get('/', [ProductAssetController::class, 'index']);
-        Route::get('/{id}', [ProductAssetController::class, 'show']);
-        Route::post('/upload', [ProductAssetController::class, 'store']);
-        Route::put('/{id}', [ProductAssetController::class, 'update']);
-        Route::delete('/{id}', [ProductAssetController::class, 'destroy']);
-        Route::post('/reorder', [ProductAssetController::class, 'reorder']);
-        Route::get('/product/{productId}', [ProductAssetController::class, 'getByProduct']);
+        Route::get('/', [ProductAssetController::class, 'index'])->middleware('can:merchandising.assets.view');
+        Route::get('/{id}', [ProductAssetController::class, 'show'])->middleware('can:merchandising.assets.view');
+        Route::post('/upload', [ProductAssetController::class, 'store'])->middleware('can:merchandising.assets.manage');
+        Route::put('/{id}', [ProductAssetController::class, 'update'])->middleware('can:merchandising.assets.manage');
+        Route::delete('/{id}', [ProductAssetController::class, 'destroy'])->middleware(['can:merchandising.assets.delete']);
+        Route::post('/reorder', [ProductAssetController::class, 'reorder'])->middleware('can:merchandising.assets.manage');
+        Route::get('/product/{productId}', [ProductAssetController::class, 'getByProduct'])->middleware('can:merchandising.assets.view');
     });
 
     // 3D Reconstruction (photo set -> generated 3D model)
-    Route::prefix('3d-reconstructions')->group(function () {
+    Route::prefix('3d-reconstructions')->middleware('can:merchandising.assets.view')->group(function () {
         Route::get('/', [Product3DReconstructionController::class, 'index']);
-        Route::post('/', [Product3DReconstructionController::class, 'store']);
+        Route::post('/', [Product3DReconstructionController::class, 'store'])->middleware('can:merchandising.3d.manage');
         Route::get('/{id}', [Product3DReconstructionController::class, 'show']);
         Route::get('/{id}/status', [Product3DReconstructionController::class, 'status']);
-        Route::post('/{id}/cancel', [Product3DReconstructionController::class, 'cancel']);
+        Route::post('/{id}/cancel', [Product3DReconstructionController::class, 'cancel'])->middleware('can:merchandising.3d.manage');
         Route::get('/{id}/result', [Product3DReconstructionController::class, 'result']);
     });
 
     // Attributes
     Route::apiResource('attributes', AttributeController::class)
-        ->only(['index', 'show'])
+        ->only(['index', 'show'])->middleware('can:merchandising.attributes.view')
         ;
     Route::apiResource('attributes', AttributeController::class)
-        ->except(['index', 'show'])
+        ->except(['index', 'show'])->middleware('can:merchandising.attributes.manage')
         ;
-    Route::post('attributes/assign-value', [AttributeController::class, 'assignValue']);
+    Route::post('attributes/assign-value', [AttributeController::class, 'assignValue'])->middleware('can:merchandising.attributes.manage');
 
     // Tags
-    Route::apiResource('tags', TagController::class);
-    Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct']);
-    Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
+    Route::apiResource('tags', TagController::class)->middlewareFor(['index', 'show'], 'can:merchandising.tags.view')->middlewareFor(['store', 'update', 'destroy'], 'can:merchandising.tags.manage');
+    Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct'])->middleware('can:merchandising.tags.manage');
+    Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete'])->middleware('can:merchandising.tags.manage');
 
     // Store-scoped promotions
     Route::get('discount-requests', [DiscountRequestController::class, 'index']);

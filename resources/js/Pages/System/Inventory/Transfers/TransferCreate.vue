@@ -178,9 +178,8 @@
           <!-- Items Table -->
           <DataTable 
             :value="form.items" 
-            class="p-datatable-sm" 
-            stripedRows
-            showGridlines
+            class="p-datatable-sm overflow-hidden rounded-xl border border-slate-200"
+            rowHover
           >
             <template #empty>
               <div class="text-center py-8 text-gray-500">
@@ -189,17 +188,17 @@
               </div>
             </template>
 
-            <Column header="Product" style="width: 40%">
+            <Column header="Product" style="width: 48%">
               <template #body="{ data }">
                 <div class="flex flex-col">
-                  <span class="font-medium">{{ getProductName(data.inventory_item_id) }}</span>
-                  <span class="text-xs text-gray-500">SKU: {{ getProductSku(data.inventory_item_id) }}</span>
+                  <span class="font-medium text-slate-900">{{ getProductName(data.inventory_item_id) }}</span>
+                  <span class="mt-0.5 text-xs text-slate-500">SKU: {{ getProductSku(data.inventory_item_id) }}</span>
                 </div>
               </template>
             </Column>
             
-            <Column field="quantity" header="Quantity" style="width: 15%" />
-            <Column header="Unit" style="width: 15%">
+            <Column field="quantity" header="Quantity" style="width: 16%" />
+            <Column header="Unit" style="width: 16%">
               <template #body="{ data }">{{ getProductUnit(data.inventory_item_id) }}</template>
             </Column>
 

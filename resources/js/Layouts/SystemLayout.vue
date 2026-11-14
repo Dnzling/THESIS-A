@@ -1,6 +1,26 @@
 <template>
   <Head v-if="pageTitle" :title="pageTitle" />
-  <Toast group="system-notifications" position="top-right" />
+  <Toast group="system-notifications" position="top-right">
+    <template #message="{ message }">
+      <button
+        v-if="message.data?.id"
+        type="button"
+        class="flex w-full items-start gap-3 text-left"
+        @click="openNotification(message.data)"
+      >
+        <i class="pi pi-bell mt-0.5 text-orange-500" aria-hidden="true" />
+        <span class="min-w-0 flex-1">
+          <span class="block font-semibold text-slate-900">{{ message.summary }}</span>
+          <span class="mt-1 block text-sm text-slate-600">{{ message.detail }}</span>
+          <span class="mt-2 block text-xs font-medium text-orange-600">Open notification</span>
+        </span>
+      </button>
+      <div v-else>
+        <div class="font-semibold">{{ message.summary }}</div>
+        <div class="mt-1 text-sm">{{ message.detail }}</div>
+      </div>
+    </template>
+  </Toast>
   <div
     class="flex h-screen w-full ">
     <!-- Sidebar -->
@@ -148,7 +168,7 @@
                 <Button label="View all" size="small" text class="!text-orange-600" @click="openAllStaffChats" />
               </div>
               <div class="max-h-[390px] overflow-y-auto p-2">
-                <div v-if="staffChatsLoading" class="space-y-2 p-2"><Skeleton v-for="n in 3" :key="n" height="58px" class="rounded-xl" /></div>
+                <p v-if="staffChatsLoading" class="p-4 text-center text-sm text-slate-500">Loading staff chats...</p>
                 <p v-else-if="!staffChatConversations.length" class="p-7 text-center text-sm text-slate-500">No staff messages yet.</p>
                 <button v-for="chat in staffChatConversations.slice(0, 8)" :key="chat.id" class="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-orange-50" @click="openStaffChat(chat.id)">
                   <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">{{ staffInitials(chat.staff) }}</div>
@@ -928,6 +948,7 @@ const loadNotifications = async () => {
             severity: 'info',
             summary: notification.title || 'New notification',
             detail: notification.message || 'You have a new notification.',
+            data: notification,
             life: 5000,
           })
         })

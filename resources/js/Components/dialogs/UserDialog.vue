@@ -1,5 +1,5 @@
 <template>
-  <OverlayPanel ref="op" :pt="{
+  <Popover ref="op" :pt="{
     root: { class: 'shadow-lg border border-gray-200' },
     content: { class: 'p-0' }
   }">
@@ -27,7 +27,7 @@
         </button>
       </div>
     </div>
-  </OverlayPanel>
+  </Popover>
 
   <Dialog
     v-model:visible="confirmLogout"
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import OverlayPanel from "primevue/overlaypanel";
+import Popover from "primevue/popover";
 import Dialog from "primevue/dialog";
 import ProgressSpinner from "primevue/progressspinner";
 import { computed, ref } from "vue";

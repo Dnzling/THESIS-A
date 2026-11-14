@@ -181,6 +181,10 @@
                     <span class="text-gray-600">Received Date</span>
                     <span class="font-semibold">{{ formatDate(receipt.receipt_date) }}</span>
                   </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <span class="text-gray-600">Created</span>
+                    <span class="font-semibold text-right">{{ formatReceiptDateTime(receipt.receipt_date, receipt.receipt_time, receipt.created_at) }}</span>
+                  </div>
                   <Divider />
                   <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Expected Pickup</span>
@@ -754,6 +758,24 @@ function qualitySeverity(status: string): string {
 function formatDate(date: string): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatDateTime(date: string | null | undefined): string {
+  if (!date) return '-'
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toLocaleString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function formatReceiptDateTime(date: string | null | undefined, time: string | null | undefined, fallback?: string | null): string {
+  if (date && time) return formatDateTime(`${String(date).slice(0, 10)}T${String(time).slice(0, 8)}`)
+  return formatDateTime(fallback || date)
 }
 
 function attachmentUrl(path: string | null | undefined): string | null {

@@ -50,7 +50,7 @@
                 <Card
                     v-for="metric in metrics"
                     :key="metric.label"
-                    class="border border-slate-200 shadow-sm"
+                    class="border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 shadow-sm shadow-orange-100/60"
                 >
                     <template #content>
                         <div class="flex items-start justify-between gap-3">
@@ -72,7 +72,7 @@
                             <i
                                 :class="[
                                     metric.icon,
-                                    'text-xl text-orange-500'
+                                    'text-xl text-orange-600'
                                 ]"
                             ></i>
                         </div>
@@ -81,7 +81,7 @@
             </section>
 
             <section class="grid gap-4 xl:grid-cols-3">
-                <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+                <Card class="border border-orange-200 bg-gradient-to-br from-orange-50/70 via-white to-amber-50/50 shadow-sm shadow-orange-100/60 xl:col-span-2">
                     <template #title
                         ><div
                             class="flex flex-wrap items-center justify-between gap-2"
@@ -135,7 +135,7 @@
                         </p></template
                     >
                 </Card>
-                <Card class="border border-slate-200 shadow-sm">
+                <Card class="border border-orange-200 bg-gradient-to-br from-orange-50/70 via-white to-amber-50/50 shadow-sm shadow-orange-100/60">
                     <template #title
                         ><span class="text-base"
                             >Channel Performance</span
@@ -154,7 +154,7 @@
                 </Card>
             </section>
 
-            <Card class="border border-slate-200 shadow-sm">
+            <Card class="border border-orange-200 bg-gradient-to-br from-orange-50/70 via-white to-amber-50/50 shadow-sm shadow-orange-100/60">
                 <template #title
                     ><span class="text-base">Recent Orders</span></template
                 >

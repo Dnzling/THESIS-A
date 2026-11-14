@@ -89,6 +89,14 @@
               </div>
               <p class="mt-1 px-1 text-[11px] text-slate-400" :class="msg.sender_role === 'customer' ? 'text-right' : ''">{{ formatDateTime(msg.created_at) }}</p>
             </div>
+            <Avatar
+              v-if="msg.sender_role === 'customer'"
+              :image="msg.sender?.avatar_url || authStore.user?.avatar_url"
+              :label="personInitials(msg.sender ? `${msg.sender.fname || ''} ${msg.sender.lname || ''}` : customerName)"
+              shape="circle"
+              size="small"
+              class="mt-1 shrink-0 bg-orange-100 text-orange-700"
+            />
           </div>
         </div>
 
@@ -118,6 +126,7 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import ecommerceService from '@/services/ecommerce.service'
 import { confirmAlert, showAlert } from '@/utils/swal'
 import Avatar from 'primevue/avatar'
@@ -132,6 +141,7 @@ defineOptions({
 
 
 const route = useRoute()
+const authStore = useAuthStore()
 const threads = ref<any[]>([])
 const threadSearch = ref('')
 const messages = ref<any[]>([])
@@ -150,6 +160,7 @@ const editingLoading = ref(false)
 const activeStoreId = ref<number | null>(null)
 const activeStoreName = ref('')
 const activeStoreLogo = ref('')
+const customerName = computed(() => [authStore.user?.fname, authStore.user?.lname].filter(Boolean).join(' ') || 'Customer')
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 let refreshingChats = false
 const filteredThreads = computed(() => threads.value.filter((thread) => String(thread.store_name || '').toLowerCase().includes(threadSearch.value.trim().toLowerCase())))
@@ -163,6 +174,10 @@ function formatDateTime(value: string) {
 
 function storeInitials(name: string) {
   return String(name || 'Store').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+}
+
+function personInitials(name: string) {
+  return String(name || 'Customer').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'C'
 }
 
 function shortTime(value: string) {

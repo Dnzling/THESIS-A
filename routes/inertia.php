@@ -100,6 +100,14 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/warehouse/receiving/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'warehouse.receiving.create', 'Create Warehouse Goods Receipt');
     $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
     $inertia('/warehouse/returns/{id}', 'System/Warehouse/Returns/View', 'warehouse.returns.view', 'Warehouse Return Details');
+    $inertia('/warehouse/stock-issues', 'System/Inventory/StockIssues/StockIssueIndex', 'warehouse.stock-issues', 'Warehouse Stock Issues')
+        ->middleware('can:warehouse.stock-issues.view');
+    $inertia('/warehouse/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'warehouse.stock-issues.create', 'Create Warehouse Stock Issue')
+        ->middleware(['can:warehouse.stock-issues.view', 'can:warehouse.stock-issues.manage']);
+    $inertia('/warehouse/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'warehouse.stock-issues.detail', 'Warehouse Stock Issue Detail')
+        ->middleware('can:warehouse.stock-issues.view');
+    $inertia('/warehouse/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueCreate', 'warehouse.stock-issues.edit', 'Edit Warehouse Stock Issue')
+        ->middleware(['can:warehouse.stock-issues.view', 'can:warehouse.stock-issues.manage']);
     $inertia('/warehouse/returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'warehouse.replacements.detail', 'Replacement Case');
     $inertia('/warehouse/transfer-history', 'System/Warehouse/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
 
@@ -482,6 +490,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/products/raw/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.raw.create', 'Add Raw Material', 'Create a catalog product');
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
+    $inertia('/merchandising/products/{id}/variants/{variantId}', 'System/Merchandising/products/ProductVariantDetails', 'merchandising.products.variant', 'Product Variant Details', 'View detailed product variation information')->middleware('can:merchandising.variations.view');
     $inertia('/merchandising/variations', 'System/Merchandising/variations/VariationsList', 'merchandising.variations', 'Product Variations', 'Manage colors, sizes, and materials');
     $inertia('/merchandising/variations/new', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.create', 'Add Variation', 'Create a product variation');
     $inertia('/merchandising/variations/{id}/edit', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.edit', 'Edit Variation', 'Update variation details');

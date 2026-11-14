@@ -78,7 +78,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-4">
-        <Card>
+        <Card class="border border-gray-200">
           <template #title><span class="text-sm font-semibold">Stock Health</span></template>
           <template #content>
             <Chart v-if="stockHealthTotal" type="pie" :data="stockHealthChartData" :options="stockHealthChartOptions" class="mx-auto h-56 max-w-md" />
@@ -86,7 +86,7 @@
           </template>
         </Card>
 
-        <Card>
+        <Card class="border border-gray-200">
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Reorder priorities</span><p class="mt-1 text-xs font-normal text-slate-500">Lowest stock first</p></div>
@@ -106,7 +106,7 @@
       </div>
 
       <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Card :class="!canViewWarehouse ? 'xl:col-span-2' : ''">
+        <Card class="border border-gray-200" :class="!canViewWarehouse ? 'xl:col-span-2' : ''">
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Adjustments awaiting review</span><p class="mt-1 text-xs font-normal text-slate-500">Stock changes that need an approval decision</p></div>
@@ -124,7 +124,7 @@
           </template>
         </Card>
 
-        <Card v-if="canViewWarehouse">
+        <Card v-if="canViewWarehouse" class="border border-gray-200">
           <template #title>
             <div class="flex items-center justify-between gap-2">
               <div><span class="text-sm font-semibold">Transfers to follow up</span><p class="mt-1 text-xs font-normal text-slate-500">Requested or moving between branches</p></div>
@@ -144,7 +144,7 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5">
-        <Card class="lg:col-span-3">
+        <Card class="lg:col-span-3 border border-gray-200">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -234,7 +234,7 @@
           </template>
         </Card>
 
-        <Card class="lg:col-span-3">
+        <Card class="lg:col-span-3 border border-gray-200">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">

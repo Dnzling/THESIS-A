@@ -199,7 +199,7 @@
       </div>
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
-          <p class="text-xs text-slate-500">This creates a pending contract. Activate it after confirming the supplier agreed to the terms.</p>
+          <p class="text-xs text-slate-500">{{ route.query.from_inventory ? 'Manual inventory supplier contracts become active immediately after submission.' : 'Supplier portal contracts remain pending until the supplier agrees to the terms.' }}</p>
           <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Create Pending Contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
       </template>
@@ -207,7 +207,7 @@
 
     <Dialog v-model:visible="showDraftConfirmation" modal header="Save contract as pending?" :style="{ width: 'min(28rem, 94vw)' }">
       <p class="text-sm leading-6 text-slate-600">
-        This will submit the contract for review with <strong>Pending</strong> status. It will not become active until it is confirmed and activated.
+        {{ route.query.from_inventory ? 'This will create an active manual supplier contract for inventory purchasing.' : 'This will submit the contract for review with Pending status. It will become active after supplier approval.' }}
       </p>
       <template #footer>
         <div class="flex justify-end gap-2">
@@ -869,7 +869,14 @@ const createPendingContract = async (mode: 'draft' | 'review') => {
     showDraftConfirmation.value = false
     responseDestination.value = getContractDestination
     responseActionLabel.value = 'View Contracts'
-    showResponse('success', mode === 'draft' ? 'Contract saved as pending' : 'Contract submitted', 'The contract was created with Pending status. Activate it only after the supplier has agreed to the terms.')
+    const inventoryCreated = Boolean(route.query.from_inventory)
+    showResponse(
+      'success',
+      inventoryCreated ? 'Contract created and activated' : mode === 'draft' ? 'Contract saved as pending' : 'Contract submitted',
+      inventoryCreated
+        ? 'The manual supplier contract is now active and ready for inventory purchase orders.'
+        : 'The contract was created with Pending status and will become active after supplier approval.'
+    )
   } catch (error: any) {
     const serverErrors = error?.response?.data?.errors || {}
     Object.keys(serverErrors).forEach((k) => {

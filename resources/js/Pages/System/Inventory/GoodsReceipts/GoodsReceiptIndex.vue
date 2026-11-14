@@ -31,10 +31,23 @@
       </template>
       <template #content>
 
-        <DataTable :value="receipts" :loading="loading" class="p-datatable-sm" rowHover responsive-layout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage" :rowsPerPageOptions="[15, 25, 50]" @page="onPageChange">
-          <Column header="Date" style="width: 140px">
+        <div v-if="loading" class="overflow-hidden rounded-lg bg-white">
+          <div class="space-y-3 p-4">
+            <div v-for="row in 6" :key="row" class="grid grid-cols-7 items-center gap-4 border-b border-slate-100 px-2 py-2 last:border-0">
+                <Skeleton height="1rem" width="6rem" />
+                <Skeleton height="1rem" width="8rem" />
+                <Skeleton height="1rem" width="7rem" />
+                <Skeleton height="1.5rem" width="5rem" borderRadius="999px" />
+                <Skeleton height="1rem" width="3rem" />
+                <Skeleton height="1rem" width="6rem" />
+                <Skeleton height="2rem" width="7rem" borderRadius="999px" />
+            </div>
+          </div>
+        </div>
+        <DataTable v-else :value="receipts" class="p-datatable-sm" rowHover responsive-layout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage" :rowsPerPageOptions="[15, 25, 50]" @page="onPageChange">
+          <Column field="created_at" header="Date" style="width: 170px" sortable>
             <template #body="{ data }">
-              <span class="text-sm text-gray-700">{{ formatDate(data.receipt_date) }}</span>
+              <span class="text-sm text-gray-700">{{ formatDateTime(data.created_at) }}</span>
             </template>
           </Column>
           <Column field="grn_number" header="GRN" />
@@ -69,7 +82,7 @@
             </template>
           </Column>
           <template #empty>
-            <div class="text-center py-12">
+            <div v-if="!loading" class="text-center py-12">
               <i class="pi pi-inbox text-5xl text-gray-300 mb-4"></i>
               <p class="text-lg text-gray-600">No goods receipts found</p>
               <p class="text-sm text-gray-500 mt-1">Try adjusting your filters.</p>
@@ -84,14 +97,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../../../../stores/auth'
 import procurementService from '../../../../services/procurement.service'
 import WarehouseService from '../../../../services/warehouse.service'
 import InputText from 'primevue/inputtext'
 import Toast from 'primevue/toast'
+import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
 import { openReceiptPreview } from '@/utils/receiptPreview'
 const toast = useToast()
-const loading = ref(false)
+const loading = ref(true)
+const authStore = useAuthStore()
 const printingId = ref<number | null>(null)
 const isProcurement = window.location.pathname.startsWith('/procurement/')
 const isWarehouse = window.location.pathname.startsWith('/warehouse/')
@@ -103,6 +119,10 @@ const dateRange = ref<Date[] | null>(null)
 const currentPage = ref(1)
 const perPage = ref(15)
 const total = ref(0)
+const userBranchId = () => {
+  const user: any = authStore.user || {}
+  return Number(user.branch_id || user.branch?.id || user.employee?.branch_id || 0) || null
+}
 
 const statusOptions = [
   { label: 'Full', value: 'full' },
@@ -127,6 +147,7 @@ const loadReceipts = async (page = 1) => {
   loading.value = true
   try {
     const params: Record<string, any> = { page, per_page: perPage.value }
+    if (!isProcurement && !isWarehouse && userBranchId()) params.branch_id = userBranchId()
     if (searchTerm.value.trim()) params.search = searchTerm.value.trim()
     if (statusFilter.value) params.receipt_status = statusFilter.value
     if (dateRange.value?.[0]) params.start_date = formatFilterDate(dateRange.value[0])
@@ -136,6 +157,7 @@ const loadReceipts = async (page = 1) => {
       ? await WarehouseService.receiving({
           search: params.search,
           status: params.receipt_status,
+          branch_id: userBranchId(),
           page,
           per_page: perPage.value,
         })
@@ -180,6 +202,23 @@ const formatDate = (value: string | null | undefined): string => {
   const d = new Date(value)
   return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const formatReceiptDateTime = (date?: string | null, time?: string | null, fallback?: string | null) => {
+  if (date && time) return formatDateTime(`${String(date).slice(0, 10)}T${String(time).slice(0, 8)}`)
+  return formatDateTime(fallback || date)
+}
 
 const router = useRouter()
 const goToDetail = (id: number) => {
@@ -207,6 +246,7 @@ const printPdf = async (id: number) => {
 }
 
 onMounted(() => {
-  loadReceipts()
+  if (!authStore.user) authStore.fetchCurrentUser().catch(() => null).finally(() => loadReceipts())
+  else loadReceipts()
 })
 </script>

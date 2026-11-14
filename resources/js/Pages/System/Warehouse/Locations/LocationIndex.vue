@@ -84,6 +84,7 @@
           <DataTable
             :value="locations"
             :loading="loading"
+            :pt="{ mask: { class: '!bg-transparent' } }"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 25, 50]"
@@ -95,6 +96,13 @@
             class="p-datatable-sm"
             :globalFilterFields="['name', 'location_code', 'description']"
           >
+            <template #loading>
+              <div class="absolute inset-x-0 top-12 bottom-12 z-10 space-y-3 overflow-hidden p-4">
+                <div v-for="row in 5" :key="row" class="grid grid-cols-7 gap-4">
+                  <Skeleton v-for="cell in 7" :key="cell" height="1.5rem" />
+                </div>
+              </div>
+            </template>
             <Column field="name" header="Location Name" sortable style="min-width: 200px" />
             <Column field="location_code" header="Code" style="width: 120px" />
 
@@ -193,9 +201,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
+import Skeleton from 'primevue/skeleton'
 import inventoryService from '../../../../services/inventory.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const deleteLoading = ref(false)
 const deleteDialog = ref(false)
 const selectedLocation = ref<any>(null)

@@ -7,7 +7,7 @@
             <h1 class="text-xl font-bold text-gray-800">Stock Issuance</h1>
           </div>
           <div class="flex items-center gap-2">
-            <Button label="New Stock Issuance" icon="pi pi-plus" size="small" class="text-sm"
+            <Button v-if="canManage" label="New Stock Issuance" icon="pi pi-plus" size="small" class="text-sm"
               @click="createStockIssue" />
           </div>
         </div>
@@ -32,7 +32,20 @@
           </div>
 
           <!-- Data Table -->
-          <DataTable :value="stockIssues" :loading="loading" paginator :rows="filters.per_page"
+          <div v-if="loading" class="overflow-hidden rounded-lg bg-white">
+            <div class="space-y-3 p-4">
+              <div v-for="row in 6" :key="row" class="grid grid-cols-7 items-center gap-4 border-b border-slate-100 px-2 py-2 last:border-0">
+                <Skeleton height="1rem" width="6rem" />
+                <Skeleton height="1rem" width="8rem" />
+                <Skeleton height="1rem" width="7rem" />
+                <Skeleton height="1rem" width="6rem" />
+                <Skeleton height="1rem" width="5rem" />
+                <Skeleton height="1.5rem" width="4.5rem" borderRadius="999px" />
+                <Skeleton height="2rem" width="4.5rem" borderRadius="999px" />
+              </div>
+            </div>
+          </div>
+          <DataTable v-else :value="stockIssues" paginator :rows="filters.per_page"
             :rowsPerPageOptions="[15, 25, 50]" :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort"
             :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
             currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
@@ -51,11 +64,7 @@
               </template>
             </Column>
 
-            <Column v-if="showBranchColumn" field="branch" header="Branch" style="min-width: 150px">
-              <template #body="slotProps">
-                {{ slotProps.data.branch?.name || 'N/A' }}
-              </template>
-            </Column>
+          
             <Column field="creator" header="Created By" style="min-width: 150px">
               <template #body="slotProps">
                 {{ slotProps.data.creator?.full_name || 'N/A' }}
@@ -83,7 +92,7 @@
               </template>
             </Column>
             <template #empty>
-              <div class="text-center py-8">
+              <div v-if="!loading" class="text-center py-8">
                 <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
                 <p class="text-gray-500">No stock issuance records found</p>
               </div>
@@ -119,9 +128,11 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../../../../stores/auth'
+import Skeleton from 'primevue/skeleton'
 import inventoryService from '../../../../services/inventory.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const cancelLoading = ref(false)
 const cancelDialog = ref(false)
 const selectedStockIssue = ref<any>(null)
@@ -131,6 +142,7 @@ const branchCount = ref(0)
 const showBranchColumn = computed(() => branchCount.value >= 2)
 const toast = useToast()
 const router = useRouter()
+const authStore = useAuthStore()
 
 const filters = reactive({
   search: '',
@@ -250,12 +262,15 @@ const clearFilters = () => {
   loadStockIssues()
 }
 
+const warehouseMode = typeof window !== 'undefined' && window.location.pathname.startsWith('/warehouse/stock-issues')
+const canManage = computed(() => authStore.hasPermission(warehouseMode ? 'warehouse.stock-issues.manage' : 'inventory.stock_issues.manage'))
+const pageRoute = (name: string) => warehouseMode ? name.replace('inventory.', 'warehouse.') : name
 const createStockIssue = () => {
-  router.push({ name: 'inventory.stock-issues.create' })
+  router.push({ name: pageRoute('inventory.stock-issues.create') })
 }
 
 const viewStockIssue = (stockIssue: any) => {
-  router.push({ name: 'inventory.stock-issues.detail', params: { id: stockIssue.id } })
+  router.push({ name: pageRoute('inventory.stock-issues.detail'), params: { id: stockIssue.id } })
 }
 
 const onRowClick = (event: any) => {
@@ -265,7 +280,7 @@ const onRowClick = (event: any) => {
 }
 
 const editStockIssue = (stockIssue: any) => {
-  router.push({ name: 'inventory.stock-issues.edit', params: { id: stockIssue.id } })
+  router.push({ name: pageRoute('inventory.stock-issues.edit'), params: { id: stockIssue.id } })
 }
 
 const confirmCancel = (stockIssue: any) => {

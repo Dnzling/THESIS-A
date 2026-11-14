@@ -8,7 +8,7 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadDashboard" />
-        <Button label="Create purchase requisition" icon="pi pi-plus" severity="warn" size="small" @click="go('warehouse.purchase-requisitions.create')" />
+        <!-- <Button label="Create purchase requisition" icon="pi pi-plus" severity="warn" size="small" @click="go('warehouse.purchase-requisitions.create')" /> -->
       </div>
     </div>
 

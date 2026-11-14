@@ -23,8 +23,9 @@
               <div class="mb-3 flex justify-end">
                 <Select v-model="status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="All statuses" showClear size="small" class="w-44" @change="loadSuggestions" />
               </div>
-              <DataTable :value="suggestions" :loading="loading" dataKey="id" rowHover size="small">
-                <template #empty>No reorder suggestions for this warehouse.</template>
+              <DataTable :value="suggestions" :loading="loading" :pt="{ mask: { class: '!bg-transparent' } }" dataKey="id" rowHover size="small">
+                <template #loading><div class="absolute inset-x-0 top-12 bottom-12 z-10 space-y-3 overflow-hidden p-4"><div v-for="row in 5" :key="row" class="grid grid-cols-6 gap-4"><Skeleton v-for="cell in 6" :key="cell" height="1.5rem" /></div></div></template>
+                <template #empty><div v-if="!loading">No reorder suggestions for this warehouse.</div></template>
                 <Column headerStyle="width: 3rem"><template #header>
                   <Checkbox :modelValue="allPendingSelected" :binary="true" :disabled="!pendingSuggestionIds.length || !canCreatePr" @update:modelValue="togglePagePending" />
                 </template><template #body="{ data }">
@@ -48,8 +49,9 @@
               <Paginator v-if="suggestionTotal > 15" :rows="15" :totalRecords="suggestionTotal" :first="(suggestionPage - 1) * 15" @page="suggestionPage = $event.page + 1; loadSuggestions()" />
             </TabPanel>
             <TabPanel value="rules">
-              <DataTable :value="rules" :loading="loading" dataKey="id" rowHover size="small">
-                <template #empty>No warehouse reorder rules yet. Add one to define a product's threshold.</template>
+              <DataTable :value="rules" :loading="loading" :pt="{ mask: { class: '!bg-transparent' } }" dataKey="id" rowHover size="small">
+                <template #loading><div class="absolute inset-x-0 top-12 bottom-12 z-10 space-y-3 overflow-hidden p-4"><div v-for="row in 5" :key="row" class="grid grid-cols-5 gap-4"><Skeleton v-for="cell in 5" :key="cell" height="1.5rem" /></div></div></template>
+                <template #empty><div v-if="!loading">No warehouse reorder rules yet. Add one to define a product's threshold.</div></template>
                 <Column header="Product"><template #body="{ data }">{{ data.product?.product_name || '-' }}</template></Column>
                 <Column header="Basis"><template #body="{ data }">{{ basisLabel(data.basis_type) }}</template></Column>
                 <Column header="Reorder at"><template #body="{ data }">{{ formatQuantity(data.reorder_point) }}</template></Column>
@@ -139,6 +141,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Paginator from 'primevue/paginator'
+import Skeleton from 'primevue/skeleton'
 import { useRouter } from 'vue-router'
 
 const api = '/api/warehouse/reorder'
@@ -150,7 +153,7 @@ const tab = ref('suggestions')
 const status = ref(null)
 const statusOptions = [{ label: 'Pending', value: 'pending' }, { label: 'Approved', value: 'approved' }, { label: 'Rejected', value: 'rejected' }]
 const basisOptions = [{ label: 'Reorder point', value: 'reorder_point' }, { label: 'Demand and lead time', value: 'demand_lead_time' }]
-const loading = ref(false)
+const loading = ref(true)
 const saving = ref(false)
 const creatingPrs = ref(false)
 const prPreviewVisible = ref(false)

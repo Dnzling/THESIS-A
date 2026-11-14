@@ -12,6 +12,7 @@ use App\Models\Store\Branch;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
+use App\Models\Core\SystemNotification;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Config\ProcurementSettings;
@@ -209,7 +210,9 @@ class StockTransferController extends Controller
             $query->where('to_branch_id', $request->to_branch_id);
         }
 
-        if ($request->has('status')) {
+        if ($request->input('status') === 'ready_for_dispatch') {
+            $query->where('delivery_status', 'ready_for_dispatch');
+        } elseif ($request->has('status')) {
             $query->where('status', $request->status);
         }
 
@@ -503,50 +506,6 @@ class StockTransferController extends Controller
                 }
             }
 
-            $canAutoApprove = $user && $this->userHasAnyPermission(['inventory.transfers.approve'], $storeId);
-            if ($canAutoApprove && $linkedSuggestions->isNotEmpty()) {
-                $canAutoApprove = true;
-                foreach ($transfer->items as $item) {
-                    $inventory = BranchInventory::where('branch_id', $transfer->from_branch_id)
-                        ->where('product_id', $item->product_id)
-                        ->where('variation_id', $item->variation_id)
-                        ->first();
-                    $approvableQuantity = $transferKind === 'damaged_pullout'
-                        ? (int) ($inventory?->quantity_damaged ?? 0)
-                        : (int) ($inventory?->quantity_available ?? 0);
-                    if (!$inventory || $approvableQuantity < (int) $item->requested_quantity) {
-                        $canAutoApprove = false;
-                        break;
-                    }
-                }
-            }
-
-            if ($canAutoApprove) {
-                $transfer->load(['items.product']);
-
-                foreach ($transfer->items as $item) {
-                    $inventory = BranchInventory::where('branch_id', $transfer->from_branch_id)
-                        ->where('product_id', $item->product_id)
-                        ->where('variation_id', $item->variation_id)
-                        ->first();
-
-                    $approvableQuantity = $transferKind === 'damaged_pullout'
-                        ? (int) ($inventory?->quantity_damaged ?? 0)
-                        : (int) ($inventory?->quantity_available ?? 0);
-                    if (!$inventory || $approvableQuantity < $item->requested_quantity) {
-                        throw new \Exception("Insufficient stock for {$item->product->product_name}");
-                    }
-
-                    $item->update(['approved_quantity' => $item->requested_quantity]);
-                }
-
-                $transfer->update([
-                    'status' => 'sender_approved',
-                    'sender_approved_by' => EmployeeContext::currentEmployeeId(),
-                    'sender_approved_date' => now(),
-                ]);
-            }
-
             DB::commit();
 
             $this->recordLog(
@@ -559,15 +518,6 @@ class StockTransferController extends Controller
                     'to_branch_id' => $transfer->to_branch_id,
                 ]
             );
-
-            if ($transfer->status === 'sender_approved') {
-                $this->recordLog(
-                    'inventory.stock_transfer.auto_approved',
-                    "Auto-approved stock transfer {$transfer->transfer_number}",
-                    $transfer,
-                    ['status' => $transfer->status]
-                );
-            }
 
             return response()->json([
                 'success' => true,
@@ -645,6 +595,25 @@ class StockTransferController extends Controller
                 "Approved stock transfer {$transfer->transfer_number}",
                 $transfer,
                 ['status' => $transfer->status]
+            );
+
+            $this->notifyUsersByPermissions(
+                (int) $transfer->store_id,
+                ['warehouse.transfers.view'],
+                [
+                    'store_id' => $transfer->store_id,
+                    'branch_id' => $transfer->to_branch_id,
+                    'module' => 'warehouse',
+                    'entity_type' => 'stock_transfer',
+                    'entity_id' => $transfer->id,
+                    'action' => 'warehouse_review',
+                    'title' => 'Transfer Ready for Warehouse Review',
+                    'message' => "Transfer {$transfer->transfer_number} was approved and is ready for warehouse review.",
+                    'severity' => 'info',
+                    'link' => '/warehouse/transfer-requests',
+                    'data' => ['required_permission' => 'warehouse.transfers.view'],
+                ],
+                [Auth::id()]
             );
 
             return response()->json([

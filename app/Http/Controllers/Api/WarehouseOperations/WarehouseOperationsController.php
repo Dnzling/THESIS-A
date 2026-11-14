@@ -137,7 +137,8 @@ class WarehouseOperationsController extends Controller
         $query = $this->stockQuery($request)
             ->whereHas('branch', fn ($branchQuery) => $branchQuery
                 ->where('store_id', $this->storeId($request))
-                ->where('branch_type', 'warehouse'));
+                ->where('branch_type', 'warehouse'))
+            ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'));
         $warehouse = null;
         if ($request->filled('warehouse_id')) {
             $warehouse = Warehouse::where('store_id', $this->storeId($request))->findOrFail($request->integer('warehouse_id'));
@@ -334,32 +335,12 @@ class WarehouseOperationsController extends Controller
     public function approveTransferRequest(Request $request, int $id): JsonResponse
     {
         $this->authorizeTransferAction($request, 'warehouse.transfers.approve');
-        $transfer = $this->transferDetailQuery($request)->findOrFail($id);
-        abort_unless(in_array($transfer->status, ['requested', 'pending_approval'], true), 422, 'Only requested transfers can be approved.');
+        $this->transferDetailQuery($request)->findOrFail($id);
 
-        DB::transaction(function () use ($transfer): void {
-            foreach ($transfer->items as $item) {
-                $stock = BranchInventory::query()
-                    ->where('store_id', $transfer->store_id)
-                    ->where('branch_id', $transfer->from_branch_id)
-                    ->where('product_id', $item->product_id)
-                    ->where('variation_id', $item->variation_id)
-                    ->lockForUpdate()
-                    ->first();
-
-                abort_unless($stock && $stock->quantity_available >= $item->requested_quantity, 422, "Insufficient source stock for {$item->product?->product_name}.");
-                $item->update(['approved_quantity' => $item->requested_quantity]);
-            }
-
-            $transfer->update([
-                'status' => 'sender_approved',
-                'sender_approved_by' => EmployeeContext::currentEmployeeId(),
-                'sender_approved_date' => now(),
-                'rejection_reason' => null,
-            ]);
-        });
-
-        return response()->json(['success' => true, 'message' => 'Transfer request approved successfully.']);
+        return response()->json([
+            'success' => false,
+            'message' => 'Inventory Manager approval is required before a transfer can enter Warehouse Review.',
+        ], 422);
     }
 
     public function readyTransferForDispatch(Request $request, int $id): JsonResponse
@@ -378,7 +359,7 @@ class WarehouseOperationsController extends Controller
         $this->authorizeTransferAction($request, 'warehouse.transfers.reject');
         $validated = $request->validate(['rejection_reason' => ['required', 'string', 'min:3', 'max:1000']]);
         $transfer = $this->transferDetailQuery($request)->findOrFail($id);
-        abort_unless(in_array($transfer->status, ['requested', 'pending_approval'], true), 422, 'Only requested transfers can be rejected.');
+        abort_unless($transfer->status === 'sender_approved', 422, 'Only transfers in Warehouse Review can be rejected here. Pending Approval requests must be rejected by Inventory.');
 
         $transfer->update([
             'status' => 'rejected',
@@ -420,10 +401,15 @@ class WarehouseOperationsController extends Controller
     public function receiving(Request $request): JsonResponse
     {
         $storeId = $this->storeId($request);
+        $user = $request->user();
+        $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
         $query = GoodsReceipt::query()->whereHas('branch', fn ($q) => $q->where('store_id', $storeId))->with([
             'branch:id,store_id,name,branch_type', 'purchaseOrder:id,po_number,supplier_id',
             'purchaseOrder.supplier:id,supplier_name', 'receivedBy.user:id,fname,lname', 'items',
         ]);
+        if ($branchId > 0) {
+            $query->where('branch_id', $branchId);
+        }
         $query->when($request->filled('search'), fn ($q) => $q->where('grn_number', 'like', '%'.$request->search.'%'));
         $query->when($request->filled('status'), fn ($q) => $q->where('receipt_status', $request->status));
         $page = $query->latest('receipt_date')->paginate($request->integer('per_page', 15));

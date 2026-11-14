@@ -39,19 +39,19 @@
                     class="flex-1 space-y-4 overflow-y-auto bg-orange-50/30 p-5 sm:p-7"
                 >
                     <div
-                        v-if="loadingMessages"
-                        class="flex h-full items-center justify-center"
-                    >
-                        <ProgressSpinner class="h-10 w-10" />
-                    </div>
-                    <div
-                        v-else-if="!selected"
+                        v-if="!selected"
                         class="flex h-full flex-col items-center justify-center text-center text-slate-400"
                     >
                         <i
                             class="pi pi-comments mb-3 text-5xl text-orange-200"
                         ></i>
                         <p>Choose a conversation from the left.</p>
+                    </div>
+                    <div
+                        v-else-if="loadingMessages"
+                        class="flex h-full items-center justify-center text-sm text-slate-400"
+                    >
+                        Loading messages...
                     </div>
                     <div
                         v-else-if="!messages.length"
@@ -256,7 +256,6 @@ import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
-import ProgressSpinner from 'primevue/progressspinner'
 import Textarea from 'primevue/textarea'
 import chatService from '@/services/staff-chat.service'
 

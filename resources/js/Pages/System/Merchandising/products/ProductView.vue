@@ -253,6 +253,18 @@
                   </span>
                 </template>
               </Column>
+              <Column header="Actions" class="w-24 text-right">
+                <template #body="{ data }">
+                  <Button
+                    v-if="authStore.hasPermission('merchandising.variations.view')"
+                    label="View"
+                    icon="pi pi-eye"
+                    size="small"
+                    outlined
+                    @click="viewVariation(data)"
+                  />
+                </template>
+              </Column>
             </DataTable>
           </template>
         </Card>
@@ -449,6 +461,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
 import merchandisingService from '../../../../services/merchandising.service'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -509,12 +522,20 @@ const loadProduct = async () => {
     }
   } catch (error: any) {
     console.error('Failed to load product:', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load product',
-      life: 5000
-    })
+    if (error?.response?.status === 410) {
+      showResponseDialog({
+        severity: 'error',
+        title: 'Archived Product',
+        message: error.response.data?.message || 'This product is archived and is no longer available.'
+      })
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: error.response?.data?.message || 'Failed to load product',
+        life: 5000
+      })
+    }
   } finally {
     loading.value = false
   }
@@ -523,7 +544,10 @@ const loadProduct = async () => {
 const loadVariations = async () => {
   try {
     const response = await merchandisingService.getVariationsByProduct(productId.value)
-    variations.value = response.data.variations || response.data.data || []
+    const productVariations = response?.data?.variations ?? response?.data?.data ?? []
+    variations.value = Array.isArray(productVariations)
+      ? productVariations.filter((variation: any) => variation.is_active)
+      : []
   } catch (error) {
     console.error('Failed to load variations:', error)
   }
@@ -638,6 +662,13 @@ const manageVariations = () => {
   router.push({ 
     name: 'merchandising.variations', 
     query: { product_id: productId.value }
+  })
+}
+
+const viewVariation = (variation: any) => {
+  router.push({
+    name: 'merchandising.products.variant',
+    params: { id: productId.value, variantId: variation.id }
   })
 }
 

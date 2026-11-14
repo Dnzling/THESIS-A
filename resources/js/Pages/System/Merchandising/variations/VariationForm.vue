@@ -1013,7 +1013,10 @@ const handleSubmit = async () => {
       return
     }
 
-    router.push({ name: 'inventory.products.detail', params: { id: form.product_id } })
+    router.push({
+      name: isInventoryContext.value ? 'inventory.products.detail' : 'merchandising.products.view',
+      params: { id: form.product_id }
+    })
   } catch (error: any) {
     console.error('Form submission error:', error)
     

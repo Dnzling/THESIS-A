@@ -17,7 +17,7 @@
       </div>
     </div>
   
-    <Card>
+    <Card class="border border-gray-200">
       <template #content>
         <!-- Filters -->
         <div class="mb-4 flex flex-wrap items-end gap-3">
@@ -27,7 +27,7 @@
               <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full text-xs" size="small" />
             </IconField>
           </div>
-          <div v-if="showBranchColumn" class="w-full md:w-48">
+          <div v-if="isOwner && showBranchColumn" class="w-full md:w-48">
             <Select v-model="filters.branch_id" :options="branches" optionLabel="name" optionValue="id"
               placeholder="Branch" class="w-full text-xs" size="small" showClear />
           </div>
@@ -109,7 +109,7 @@
             </template>
           </Column>
 
-          <Column header="Location" style="min-width: 150px">
+          <Column v-if="isOwner" header="Location" style="min-width: 150px">
             <template #body="{ data }">
               <div class="text-xs text-gray-700">
                 <p>{{ getBranchName(data) }}</p>
@@ -174,6 +174,11 @@ const toast = useToast()
 const router = useRouter()
 const authStore = useAuthStore()
 
+const isOwner = computed(() => {
+  const user: any = authStore.user || {}
+  return [user.role, user.role_key, user.role?.name, user.role?.key]
+    .some((role) => String(role || '').trim().toLowerCase() === 'owner')
+})
 const canCreateItems = computed(() => authStore.hasPermission('products.manage'))
 const canCreateAdjustments = computed(() => authStore.hasPermission('inventory.reorder_suggestions.manage'))
 const canUpdateItems = computed(() => authStore.hasPermission('products.update') || authStore.hasPermission('inventory.products.manage'))

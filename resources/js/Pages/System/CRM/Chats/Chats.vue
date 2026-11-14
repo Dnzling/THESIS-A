@@ -25,14 +25,17 @@
               :class="selectedThreadId === thread.id ? 'border-blue-300 bg-blue-50' : 'border-gray-100 bg-white hover:bg-gray-50'"
               @click="selectThread(thread.id)"
             >
-                <div class="flex items-center justify-between gap-2">
-                <div class="flex flex-col">
-                  <p class="text-sm font-medium text-gray-900 truncate">{{ thread.customer_name }}</p>
-                  <p v-if="thread.store_name" class="text-xs text-gray-500 truncate">{{ thread.store_name }}</p>
+                <div class="flex items-center gap-3">
+                  <Avatar :image="thread.customer_avatar_url" :label="personInitials(thread.customer_name)" shape="circle" class="shrink-0 bg-orange-100 text-orange-700" />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="truncate text-sm font-medium text-gray-900">{{ thread.customer_name }}</p>
+                      <Tag v-if="thread.unread_count" severity="danger" :value="String(thread.unread_count)" />
+                    </div>
+                    <p v-if="thread.store_name" class="truncate text-xs text-gray-500">{{ thread.store_name }}</p>
+                    <p class="mt-1 truncate text-xs text-gray-500">{{ thread.last_message || 'No messages yet' }}</p>
+                  </div>
                 </div>
-                <Tag v-if="thread.unread_count" severity="danger" :value="String(thread.unread_count)" />
-              </div>
-              <p class="text-xs text-gray-500 truncate mt-1">{{ thread.last_message || 'No messages yet' }}</p>
             </button>
             <p v-if="!threads.length" class="text-sm text-gray-500">No chat threads yet.</p>
           </div>
@@ -48,9 +51,18 @@
               <div
                 v-for="message in messages"
                 :key="message.id"
-                class="max-w-[85%] rounded-lg px-3 py-2 text-sm"
-                :class="message.sender_role === 'store' ? 'ml-auto bg-blue-600 text-white' : 'bg-white text-gray-900'"
+                class="flex items-end gap-2"
+                :class="message.sender_role === 'store' ? 'justify-end' : 'justify-start'"
               >
+                <Avatar
+                  v-if="message.sender_role !== 'store'"
+                  :image="message.sender?.avatar_url || selectedThread?.customer_avatar_url"
+                  :label="personInitials(message.sender ? `${message.sender.fname || ''} ${message.sender.lname || ''}` : selectedThread?.customer_name)"
+                  shape="circle"
+                  size="small"
+                  class="shrink-0 bg-orange-100 text-orange-700"
+                />
+                <div class="max-w-[85%] rounded-lg px-3 py-2 text-sm" :class="message.sender_role === 'store' ? 'bg-blue-600 text-white' : 'bg-white text-gray-900'">
                 <template v-if="editingMessageId === message.id">
                   <Textarea v-model="editDraft" rows="2" fluid class="mb-2" />
                   <div class="flex items-center justify-end gap-2">
@@ -93,6 +105,15 @@
                   <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="unsendMessage(message)">Unsend</button>
                 </div>
                 <p class="mt-1 text-[11px]" :class="message.sender_role === 'store' ? 'text-blue-100' : 'text-gray-400'">{{ dt(message.created_at) }}</p>
+                </div>
+                <Avatar
+                  v-if="message.sender_role === 'store'"
+                  :image="selectedThread?.store_logo"
+                  :label="personInitials(selectedThread?.store_name || 'Store')"
+                  shape="circle"
+                  size="small"
+                  class="shrink-0 bg-blue-100 text-blue-700"
+                />
               </div>
               <p v-if="!messages.length" class="text-sm text-gray-500">No messages yet.</p>
             </div>
@@ -139,6 +160,7 @@ import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
+import Avatar from 'primevue/avatar'
 
 const route = useRoute()
 const toast = useToast()
@@ -164,6 +186,8 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 let refreshingChats = false
 
 const extractRows = (payload: any) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
+const selectedThread = computed(() => threads.value.find((thread: any) => Number(thread.id) === Number(selectedThreadId.value)) || null)
+const personInitials = (name: unknown) => String(name || 'User').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'
 
 const loadThreads = async () => {
   try {
