@@ -75,13 +75,31 @@ try {
 try {
     New-Item -ItemType Directory -Path $stagingRoot | Out-Null
     Copy-Item -Path $publicBuild -Destination $stagingRoot -Recurse
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        (Join-Path $stagingRoot 'build'),
-        $zipPath,
-        [System.IO.Compression.CompressionLevel]::Optimal,
+    Add-Type -AssemblyName System.IO.Compression
+    $sourceBuild = Join-Path $stagingRoot 'build'
+    $zipStream = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create)
+    $zipArchive = [System.IO.Compression.ZipArchive]::new(
+        $zipStream,
+        [System.IO.Compression.ZipArchiveMode]::Create,
         $false
     )
+    try {
+        $sourcePrefix = $sourceBuild.TrimEnd('\') + '\'
+        Get-ChildItem -LiteralPath $sourceBuild -File -Recurse | ForEach-Object {
+            $relativePath = $_.FullName.Substring($sourcePrefix.Length).Replace('\', '/')
+            $entry = $zipArchive.CreateEntry("build/$relativePath", [System.IO.Compression.CompressionLevel]::Optimal)
+            $inputStream = [System.IO.File]::OpenRead($_.FullName)
+            $entryStream = $entry.Open()
+            try {
+                $inputStream.CopyTo($entryStream)
+            } finally {
+                $entryStream.Dispose()
+                $inputStream.Dispose()
+            }
+        }
+    } finally {
+        $zipArchive.Dispose()
+    }
 
     Write-Host "Uploading frontend build to $remote`:$remoteZip ..."
     & scp -P $Port $zipPath "${remote}:$remoteZip"
@@ -93,7 +111,7 @@ APP_DIR="`$HOME/domains/furnisync.shop/public_html"
 cd "`$APP_DIR"
 test -f artisan
 test -f public/build.zip
-unzip -o public/build.zip -d public
+unzip -oq public/build.zip -d public
 rm -f public/build.zip
 git pull --ff-only origin $Branch
 php artisan migrate --force
