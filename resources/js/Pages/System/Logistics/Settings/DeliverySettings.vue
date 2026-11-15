@@ -78,6 +78,29 @@
         <Card class="rounded-2xl border border-slate-200 shadow-sm">
           <template #title>
             <div>
+              <h2 class="text-base font-semibold text-slate-900">Return pickup fees</h2>
+              <p class="mt-1 text-sm font-normal text-slate-500">Return pickups use these separate rates; existing returns keep the fee snapshot recorded when scheduled.</p>
+            </div>
+          </template>
+          <template #content>
+            <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div class="field-group">
+                <label for="return-base-fee">Return base fee</label>
+                <InputNumber id="return-base-fee" v-model="form.return_base_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+                <small>Fixed charge for each return pickup. Defaults to ₱0.</small>
+              </div>
+              <div class="field-group">
+                <label for="return-per-km-fee">Return rate per kilometer</label>
+                <InputNumber id="return-per-km-fee" v-model="form.return_per_km_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+                <small>Added per kilometer of the recorded return route. Defaults to ₱0.</small>
+              </div>
+            </div>
+          </template>
+        </Card>
+
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
+          <template #title>
+            <div>
               <h2 class="text-base font-semibold text-slate-900">Coverage and incentives</h2>
               <p class="mt-1 text-sm font-normal text-slate-500">Set the service limit and optional customer incentives.</p>
             </div>
@@ -219,6 +242,8 @@ import Textarea from 'primevue/textarea'
 interface DeliverySettingsForm {
   is_active: boolean
   base_fee: number
+  return_base_fee: number
+  return_per_km_fee: number
   per_km_fee: number
   min_delivery_fee: number
   per_kg_fee: number
@@ -243,6 +268,8 @@ const loadError = ref('')
 const form = reactive<DeliverySettingsForm>({
   is_active: true,
   base_fee: 100,
+  return_base_fee: 0,
+  return_per_km_fee: 0,
   per_km_fee: 10,
   min_delivery_fee: 80,
   per_kg_fee: 0,

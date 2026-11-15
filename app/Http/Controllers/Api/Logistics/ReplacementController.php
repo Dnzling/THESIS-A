@@ -18,6 +18,95 @@ use Illuminate\Validation\ValidationException;
 
 class ReplacementController extends Controller
 {
+    private function customerReturn(Request $request, int $id): EcommerceOrderReturn
+    {
+        return EcommerceOrderReturn::query()
+            ->where('source_type', 'ecommerce')
+            ->where('return_type', 'replacement')
+            ->whereHas('order', fn ($query) => $query->where('user_id', $request->user()->id))
+            ->with(['order.assignedBranch', 'orderItem.branchInventory.branch', 'orderItem.product', 'pickup.destinationBranch', 'replacementInventory.product', 'replacementInventory.variation'])
+            ->findOrFail($id);
+    }
+
+    public function customerExchangeShow(Request $request, int $id): JsonResponse
+    {
+        $case = $this->customerReturn($request, $id);
+        abort_unless($case->status === 'received' && in_array($case->replacement_status, ['ecommerce_exchange', 'payment_failed', 'awaiting_payment', 'reserved'], true), 404);
+        $allowHigherValue = app(ReturnResolutionPolicy::class)->forStore($case->store)['allow_higher_value_replacements'];
+        $item = $case->orderItem;
+        $branchId = (int) ($item?->branchInventory?->branch_id ?: $case->order?->assigned_branch_id ?: $case->order?->branch_id ?: 0);
+        abort_if($branchId <= 0, 422, 'The issuing branch could not be identified for this order.');
+        abort_unless(Branch::query()->where('store_id', $case->store_id)->where('status', 'active')->whereKey($branchId)->exists(), 422, 'The issuing branch is no longer active for exchanges.');
+        $quantity = max(1, (int) ($case->received_quantity ?: $case->requested_quantity ?: 1));
+        $sourceQuantity = max(1, (int) ($item?->quantity ?: 1));
+        $discountBasis = (float) ($item?->line_subtotal ?? ((float) ($item?->unit_price ?? 0) * $sourceQuantity));
+        $linePaid = (float) ($item?->line_total ?? $discountBasis);
+        $subtotal = max(0.0, (float) ($case->order?->subtotal ?? $linePaid));
+        $discountShare = $subtotal > 0 ? round(max(0.0, (float) ($case->order?->discount_amount ?? 0)) * ($discountBasis / $subtotal), 2) : 0.0;
+        $paidValue = max(0.0, round(($linePaid - min($linePaid, $discountShare)) * min($quantity, $sourceQuantity) / $sourceQuantity, 2));
+        $alternatives = BranchInventory::query()->where('store_id', $case->store_id)->where('branch_id', $branchId)
+            ->where('quantity_available', '>=', $quantity)->whereHas('product', fn ($q) => $q->where('store_id', $case->store_id)->where('is_active', true))
+            ->where(function ($q) use ($case) { $q->whereNull('variation_id')->orWhereHas('variation', fn ($v) => $v->where('store_id', $case->store_id)->where('is_active', true)->whereColumn('product_variations.product_id', 'branch_inventory.product_id')); })
+            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active', 'variation:id,product_id,variation_name,variation_sku,base_price,discounted_price,is_active'])
+            ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_on_hand', 'quantity_reserved', 'quantity_damaged'])
+            ->map(function (BranchInventory $inventory) use ($quantity, $paidValue): array {
+                $price = $this->replacementUnitPrice($inventory);
+                $total = round($price * $quantity, 2);
+                return ['inventory_id' => (int) $inventory->id, 'product_name' => $inventory->variation?->variation_name ? $inventory->product?->product_name . ' - ' . $inventory->variation->variation_name : $inventory->product?->product_name,
+                    'sku' => $inventory->variation?->variation_sku ?: $inventory->product?->sku, 'quantity_available' => (int) $inventory->quantity_available,
+                    'quantity' => $quantity, 'unit_price' => $price, 'total_price' => $total, 'remaining_value' => max(0, round($paidValue - $total, 2)), 'price_difference' => round($total - $paidValue, 2)];
+            })->filter(fn (array $option): bool => $allowHigherValue || $option['price_difference'] <= 0)->values();
+
+        return response()->json(['success' => true, 'data' => $case, 'branch' => $item?->branchInventory?->branch?->only(['id', 'name']) ?: $case->order?->assignedBranch?->only(['id', 'name']),
+            'original_paid_value' => $paidValue, 'quantity' => $quantity, 'alternatives' => $alternatives,
+            'selected_replacement' => $case->replacement_inventory_id ? ['inventory_id' => (int) $case->replacement_inventory_id,
+                'product_name' => $case->replacementInventory?->variation?->variation_name ? $case->replacementInventory->product?->product_name . ' - ' . $case->replacementInventory->variation->variation_name : $case->replacementInventory?->product?->product_name,
+                'quantity' => $quantity, 'total_price' => round((float) $case->replacement_unit_price * $quantity, 2), 'price_difference' => (float) $case->replacement_price_difference,
+                'remaining_value' => 0] : null]);
+    }
+
+    public function customerExchangeReserve(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate(['inventory_id' => ['required', 'integer', 'exists:branch_inventory,id'], 'payment_method' => ['required', 'in:gcash,paymaya,card,qrph']]);
+        $case = $this->customerReturn($request, $id);
+        $result = DB::transaction(function () use ($case, $request, $validated): array {
+            $locked = EcommerceOrderReturn::query()->whereKey($case->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'received' && in_array($locked->replacement_status, ['ecommerce_exchange', 'payment_failed'], true) && !$locked->replacement_inventory_id, 409, 'This exchange is no longer available.');
+            $locked->loadMissing(['order', 'orderItem.branchInventory']);
+            $source = $locked->orderItem;
+            $branchId = (int) ($source?->branchInventory?->branch_id ?: $locked->order?->assigned_branch_id ?: $locked->order?->branch_id ?: 0);
+            $quantity = max(1, (int) ($locked->received_quantity ?: $locked->requested_quantity ?: 1));
+            $inventory = BranchInventory::query()->where('store_id', $locked->store_id)->with(['branch', 'product', 'variation'])->lockForUpdate()->findOrFail($validated['inventory_id']);
+            if ((int) $inventory->branch_id !== $branchId || !$inventory->branch || $inventory->branch->status !== 'active' || !$inventory->product || !$inventory->product->is_active || ($inventory->variation && !$inventory->variation->is_active)) {
+                throw ValidationException::withMessages(['inventory_id' => ['Choose an active item from the branch that issued the original order.']]);
+            }
+            if ((int) $inventory->quantity_available < $quantity) throw ValidationException::withMessages(['inventory_id' => ['There is not enough stock at the issuing branch. Refresh and choose another item.']]);
+            $sourceQty = max(1, (int) ($source?->quantity ?: 1));
+            $discountBasis = (float) ($source?->line_subtotal ?? ((float) ($source?->unit_price ?? 0) * $sourceQty));
+            $linePaid = (float) ($source?->line_total ?? $discountBasis);
+            $orderSubtotal = max(0.0, (float) ($locked->order?->subtotal ?? $linePaid));
+            $discount = $orderSubtotal > 0 ? min($discountBasis, round(max(0.0, (float) ($locked->order?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)) : 0.0;
+            $paidValue = max(0.0, round(($linePaid - $discount) * min($quantity, $sourceQty) / $sourceQty, 2));
+            $unitPrice = $this->replacementUnitPrice($inventory);
+            $total = round($unitPrice * $quantity, 2);
+            $difference = round($total - $paidValue, 2);
+            if ($difference < 0) throw ValidationException::withMessages(['inventory_id' => ['Choose an exchange item worth at least ' . number_format($paidValue, 2) . '. You still need ' . number_format(abs($difference), 2) . ' more.']]);
+            if ($difference > 0 && !app(ReturnResolutionPolicy::class)->forStore($locked->store)['allow_higher_value_replacements']) {
+                throw ValidationException::withMessages(['inventory_id' => ['This store does not accept higher-value exchanges. Choose an equal-value item.']]);
+            }
+            $inventory->quantity_reserved += $quantity;
+            $inventory->save();
+            $locked->update(['replacement_inventory_id' => $inventory->id, 'replacement_branch_id' => $inventory->branch_id, 'replacement_product_id' => $inventory->product_id,
+                'replacement_variation_id' => $inventory->variation_id, 'replacement_unit_price' => $unitPrice, 'replacement_price_difference' => $difference,
+                'replacement_payment_method' => $validated['payment_method'], 'replacement_payment_status' => $difference > 0 ? 'pending' : 'paid',
+                'replacement_payment_reference' => null, 'replacement_customer_accepted_by' => $request->user()->id, 'replacement_customer_accepted_at' => now(),
+                'replacement_paid_by' => $difference > 0 ? null : $request->user()->id, 'replacement_paid_at' => $difference > 0 ? null : now(),
+                'replacement_status' => $difference > 0 ? 'awaiting_payment' : 'reserved']);
+            return ['case' => $locked->fresh(), 'store_id' => (int) $locked->store_id, 'amount' => (int) round(max(0, $difference) * 100)];
+        });
+        return response()->json(['success' => true, 'data' => $result['case'], 'store_id' => $result['store_id'], 'amount' => $result['amount'], 'payment_required' => $result['amount'] > 0]);
+    }
+
     private function scopedReturn(Request $request, int $id): EcommerceOrderReturn
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
@@ -111,13 +200,12 @@ class ReplacementController extends Controller
             ->get(['id', 'branch_id', 'quantity_available', 'quantity_reserved']);
         $quantity = max(1, (int) ($return->received_quantity ?: $return->requested_quantity ?: 1));
         $sourceQuantity = max(1, (int) ($originalItem?->quantity ?? 1));
-        $sourceLineTotal = $return->source_type === 'pos'
-            ? (float) ($originalItem?->line_total ?? ((float) ($originalItem?->unit_price ?? 0) * $sourceQuantity))
-            : (float) ($originalItem?->line_subtotal ?? ((float) ($originalItem?->unit_price ?? 0) * $sourceQuantity));
+        $discountBasis = (float) ($originalItem?->line_subtotal ?? ((float) ($originalItem?->unit_price ?? 0) * $sourceQuantity));
+        $sourceLineTotal = (float) ($originalItem?->line_total ?? $discountBasis);
         $sourceOrder = $return->sourceOrder();
         $orderSubtotal = max(0.0, (float) ($sourceOrder?->subtotal ?? $sourceLineTotal));
         $discountShare = $return->source_type === 'pos' ? 0.0 : ($orderSubtotal > 0
-            ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($sourceLineTotal / $orderSubtotal), 2)
+            ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)
             : 0.0);
         if ($return->source_type === 'pos') $discountShare = 0.0;
         $discountShare = min($sourceLineTotal, $discountShare);
@@ -166,7 +254,7 @@ class ReplacementController extends Controller
                     'total_weight_kg' => $unitWeight !== null ? round((float) $unitWeight * $quantity, 2) : null,
                 ];
             })
-            ->filter(fn (array $option): bool => $option['price_difference'] > 0)
+            ->filter(fn (array $option): bool => $option['price_difference'] >= 0)
             ->values();
         return response()->json(['success' => true, 'data' => $return, 'branches' => $branches,
             'stock' => $stock, 'original_paid_value' => round((float) $originalPaidValue, 2), 'alternatives' => $alternatives]);
@@ -186,25 +274,29 @@ class ReplacementController extends Controller
             if ($case->status !== 'received' || !in_array($case->replacement_status, ['awaiting_stock', null], true)) {
                 throw ValidationException::withMessages(['replacement' => ['Only a received replacement awaiting stock can be sent to Sales.']]);
             }
-            $case->replacement_status = 'sales_review';
+            $case->replacement_status = $case->source_type === 'ecommerce' ? 'ecommerce_exchange' : 'sales_review';
             $case->replacement_payment_status = null;
             $case->save();
         });
 
-        $this->notifyUsersByPermissions((int) $return->store_id, ['sales.orders.view'], [
+        $destinationPermission = $return->source_type === 'ecommerce' ? 'sales.ecommerce-orders.view' : 'sales.orders.view';
+        $destination = $return->source_type === 'ecommerce' ? '/sales/ecommerce-orders' : '/sales/replacements/' . (int) $return->id;
+        $this->notifyUsersByPermissions((int) $return->store_id, [$destinationPermission], [
             'store_id' => (int) $return->store_id,
             'module' => 'sales',
             'entity_type' => 'ecommerce_order_return',
             'entity_id' => (int) $return->id,
             'action' => 'replacement_sales_review_requested',
-            'title' => 'Replacement Product Selection Required',
-            'message' => ($return->return_number ?: 'Return #' . $return->id) . ' needs a higher-value replacement selected and paid.',
+            'title' => $return->source_type === 'ecommerce' ? 'Customer Exchange Order Ready' : 'Replacement Product Selection Required',
+            'message' => $return->source_type === 'ecommerce'
+                ? ($return->return_number ?: 'Return #' . $return->id) . ' is ready for the customer to choose an exchange item.'
+                : ($return->return_number ?: 'Return #' . $return->id) . ' needs an alternative replacement selected and any excess value paid.',
             'severity' => 'warn',
-            'link' => '/sales/replacements/' . (int) $return->id,
-            'data' => ['required_permission' => 'sales.orders.view', 'return_number' => $return->return_number],
+            'link' => $destination,
+            'data' => ['required_permission' => $destinationPermission, 'return_number' => $return->return_number],
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Replacement request sent to Sales Orders.']);
+        return response()->json(['success' => true, 'message' => $return->source_type === 'ecommerce' ? 'The customer can now choose an exchange item in ecommerce.' : 'Replacement request sent to Sales Orders.']);
     }
 
     public function reserveAlternative(Request $request, int $id): JsonResponse
@@ -260,20 +352,19 @@ class ReplacementController extends Controller
                 throw ValidationException::withMessages(['inventory_id' => ['The replacement item has no valid selling price.']]);
             }
             $sourceQuantity = max(1, (int) ($originalItem->quantity ?? 1));
-            $sourceLineTotal = $case->source_type === 'pos'
-                ? (float) ($originalItem->line_total ?? ((float) ($originalItem->unit_price ?? 0) * $sourceQuantity))
-                : (float) ($originalItem->line_subtotal ?? ((float) ($originalItem->unit_price ?? 0) * $sourceQuantity));
+            $discountBasis = (float) ($originalItem->line_subtotal ?? ((float) ($originalItem->unit_price ?? 0) * $sourceQuantity));
+            $sourceLineTotal = (float) ($originalItem->line_total ?? $discountBasis);
             $sourceOrder = $case->sourceOrder();
             $orderSubtotal = max(0.0, (float) ($sourceOrder?->subtotal ?? $sourceLineTotal));
             $discountShare = $case->source_type === 'pos' ? 0.0 : ($orderSubtotal > 0
-                ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($sourceLineTotal / $orderSubtotal), 2)
+                ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)
                 : 0.0);
             if ($case->source_type === 'pos') $discountShare = 0.0;
             $discountShare = min($sourceLineTotal, $discountShare);
             $originalPaidValue = max(0.0, round(($sourceLineTotal * min($quantity, $sourceQuantity) / $sourceQuantity) - ($discountShare * min($quantity, $sourceQuantity) / $sourceQuantity), 2));
             $difference = round(($unitPrice * $quantity) - (float) $originalPaidValue, 2);
-            if ($difference <= 0) {
-                throw ValidationException::withMessages(['inventory_id' => ['This item is not priced higher than the returned item. Use the standard replacement stock workflow for equal or lower-priced items.']]);
+            if ($difference < 0) {
+                throw ValidationException::withMessages(['inventory_id' => ['This item is below the returned item value. Select an item worth at least PHP ' . number_format($originalPaidValue, 2) . '.']]);
             }
 
             $inventory->quantity_reserved += $quantity;
@@ -286,14 +377,14 @@ class ReplacementController extends Controller
                 'replacement_variation_id' => $inventory->variation_id,
                 'replacement_unit_price' => $unitPrice,
                 'replacement_price_difference' => $difference,
-                'replacement_payment_status' => 'pending',
+                'replacement_payment_status' => $difference > 0 ? 'pending' : 'paid',
                 'replacement_payment_method' => $validated['payment_method'],
                 'replacement_payment_reference' => null,
                 'replacement_customer_accepted_by' => (int) $actor->id,
                 'replacement_customer_accepted_at' => now(),
-                'replacement_paid_by' => null,
-                'replacement_paid_at' => null,
-                'replacement_status' => 'awaiting_payment',
+                'replacement_paid_by' => $difference > 0 ? null : (int) $actor->id,
+                'replacement_paid_at' => $difference > 0 ? null : now(),
+                'replacement_status' => $difference > 0 ? 'awaiting_payment' : 'reserved',
             ]);
 
             return ['case' => $case->fresh(['replacementProduct', 'replacementVariation', 'replacementBranch', 'replacementInventory'])];

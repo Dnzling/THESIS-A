@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Receiving\GoodsReceipt;
-use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Services\Finance\CashflowService;
@@ -123,7 +122,7 @@ class FinanceInvoiceController extends Controller
             $storeId = auth()->user()->store_id;
 
             $invoice = Invoice::with([
-                'supplier:id,supplier_name,contact_person,email,phone,bank_name,bank_account_name,bank_account_number,bank_account_type,bank_branch',
+                'supplier:id,supplier_name,contact_person,email,phone',
                 'purchaseOrder.items.product:id,product_name,sku',
                 'goodsReceipt.items',
                 'items.product:id,product_name,sku',
@@ -316,21 +315,12 @@ class FinanceInvoiceController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
-            }
-
             $validated = $request->validate([
                 'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
             ]);
-            $supplier = $invoice->supplier_id ? Supplier::query()->find((int) $invoice->supplier_id) : null;
-
             try {
-                DB::transaction(function () use ($invoice, $validated, $supplier) {
+                DB::transaction(function () use ($invoice, $validated) {
                     $cashflow = new CashflowService();
                     $cashflow->debit(
                         (int) $invoice->store_id,
@@ -349,11 +339,6 @@ class FinanceInvoiceController extends Controller
                     $invoice->update([
                         'status' => 'paid',
                         'payment_date' => now()->toDateString(),
-                        'paid_to_bank_name' => $supplier?->bank_name,
-                        'paid_to_account_name' => $supplier?->bank_account_name,
-                        'paid_to_account_number_masked' => $this->maskAccountNumber($supplier?->bank_account_number),
-                        'paid_to_account_type' => $supplier?->bank_account_type,
-                        'paid_to_bank_branch' => $supplier?->bank_branch,
                     ]);
 
                     $financeService = new FinanceExpenseService();
@@ -463,32 +448,4 @@ class FinanceInvoiceController extends Controller
         }
     }
 
-    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
-    {
-        if ($supplierId <= 0) {
-            return false;
-        }
-
-        $supplier = Supplier::query()->find($supplierId);
-        if (!$supplier) {
-            return false;
-        }
-
-        return filled($supplier->bank_name)
-            && filled($supplier->bank_account_name)
-            && filled($supplier->bank_account_number);
-    }
-
-    private function maskAccountNumber(?string $accountNumber): ?string
-    {
-        $raw = trim((string) $accountNumber);
-        if ($raw === '') {
-            return null;
-        }
-        $len = strlen($raw);
-        if ($len <= 4) {
-            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
-        }
-        return str_repeat('*', $len - 4) . substr($raw, -4);
-    }
 }

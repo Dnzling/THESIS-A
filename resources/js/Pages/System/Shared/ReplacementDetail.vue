@@ -53,8 +53,8 @@
       <Card v-if="item.status === 'received' && ['awaiting_stock', null].includes(item.replacement_status) && !isLogistics && !isSales">
         <template #title><span class="text-base">Request a higher-value alternative</span></template>
         <template #content>
-          <p class="mb-3 text-xs text-slate-600">If the original item is unavailable, send this case to Sales Orders. Sales will select another product and collect only the excess value through PayMongo.</p>
-          <Button label="Send to Sales Orders" icon="pi pi-send" severity="warn" size="small" :loading="saving" @click="requestSalesAlternative" />
+          <p class="mb-3 text-xs text-slate-600">If the original item is unavailable, {{ item.source_type === 'ecommerce' ? 'let the customer choose an exchange item in ecommerce' : 'send this case to Sales to select an alternative' }}. Only any excess value is collected.</p>
+          <Button :label="item.source_type === 'ecommerce' ? 'Enable Ecommerce Exchange' : 'Send to Sales Orders'" icon="pi pi-send" severity="warn" size="small" :loading="saving" @click="requestSalesAlternative" />
         </template>
       </Card>
 
@@ -73,7 +73,7 @@
           </div>
           <label class="mt-3 flex items-start gap-2 text-xs text-slate-700"><input v-model="alternativeForm.customer_accepted" type="checkbox" class="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>The customer accepts this replacement and its excess value.</span></label>
           <div class="mt-3 max-w-sm"><label class="mb-1 block text-xs font-medium">PayMongo payment method</label><Select v-model="alternativeForm.payment_method" :options="paymentMethods" optionLabel="label" optionValue="value" size="small" fluid /></div>
-          <Button label="Continue to PayMongo" icon="pi pi-credit-card" severity="warn" size="small" class="mt-3" :disabled="!selectedAlternative || !alternativeForm.customer_accepted" :loading="saving" @click="startAlternativePayment" />
+          <Button :label="Number(selectedAlternative?.price_difference || 0) > 0 ? 'Continue to PayMongo' : 'Confirm equal-value exchange'" icon="pi pi-credit-card" severity="warn" size="small" class="mt-3" :disabled="!selectedAlternative || !alternativeForm.customer_accepted" :loading="saving" @click="startAlternativePayment" />
         </template>
       </Card>
 
@@ -217,7 +217,7 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 const isDriver = window.location.pathname.startsWith('/driver/')
 const isLogistics = window.location.pathname.startsWith('/logistics/') || isDriver
-const isSales = window.location.pathname.startsWith('/sales/replacements/')
+const isSales = window.location.pathname.startsWith('/sales/replacements/') || window.location.pathname.startsWith('/pos-exchange-orders/')
 const canManageTrips = authStore.hasPermission('logistics.deliveries.manage')
 const item = ref<any>(null)
 const branches = ref<any[]>([])
@@ -364,6 +364,11 @@ const startAlternativePayment = async () => {
       payment_method: alternativeForm.payment_method,
     })
     item.value = response.data?.data || item.value
+    if (Number(item.value?.replacement_price_difference || 0) === 0) {
+      toast.add({ severity: 'success', summary: 'Exchange Confirmed', detail: 'Equal-value replacement stock is reserved and ready for Logistics.', life: 3000 })
+      saving.value = false
+      return
+    }
     await openPaymongoCheckout()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Selection Failed', detail: error?.response?.data?.message || 'Unable to reserve this replacement.', life: 4000 })

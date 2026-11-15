@@ -10,7 +10,6 @@ use App\Models\Finance\FinanceCashflowTransaction;
 use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
 use App\Models\Procurement\Invoice\Invoice;
-use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
@@ -114,11 +113,6 @@ class PaymongoController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
-            }
         }
 
         $store = $resolvedStoreId > 0 ? Store::query()->find($resolvedStoreId) : null;
@@ -301,11 +295,6 @@ class PaymongoController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
-            }
             if (strtolower((string) $invoice->payment_status) === 'paid') {
                 return response()->json(['message' => 'This invoice is already paid.'], 422);
             }
@@ -318,9 +307,12 @@ class PaymongoController extends Controller
                 ->where('store_id', $resolvedStoreId)
                 ->where('return_type', 'replacement')
                 ->find((int) $data['payable_id']);
+            $customerOwnsExchange = $replacement
+                && $replacement->source_type === 'ecommerce'
+                && EcommerceOrder::query()->whereKey($replacement->order_id)->where('user_id', $request->user()?->id)->exists();
             if (!$replacement || $replacement->replacement_status !== 'awaiting_payment'
                 || !$replacement->replacement_inventory_id || (float) $replacement->replacement_price_difference <= 0
-                || $replacement->replacement_payment_status === 'paid') {
+                || $replacement->replacement_payment_status === 'paid' || (!$customerOwnsExchange && (int) $replacement->store_id !== $resolvedStoreId)) {
                 return response()->json(['message' => 'This replacement is not available for online payment.'], 422);
             }
             $data['amount'] = max(1, (int) round((float) $replacement->replacement_price_difference * 100));
@@ -331,7 +323,9 @@ class PaymongoController extends Controller
         $isSalesOrder = ($data['payable_type'] ?? '') === 'sales_order';
         $isReplacementUpgrade = ($data['payable_type'] ?? '') === 'replacement_upgrade';
         $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order', 'replacement_upgrade'], true);
-        if ($isHostedPayable && !$isEcommerceOrder && (int) ($request->user()?->store_id ?? 0) !== $resolvedStoreId
+        $customerReplacementPayment = $isReplacementUpgrade && $replacement?->source_type === 'ecommerce'
+            && EcommerceOrder::query()->whereKey($replacement->order_id)->where('user_id', $request->user()?->id)->exists();
+        if ($isHostedPayable && !$isEcommerceOrder && !$customerReplacementPayment && (int) ($request->user()?->store_id ?? 0) !== $resolvedStoreId
             && (int) ($store?->owner_id ?? 0) !== (int) ($request->user()?->id ?? 0)) {
             return response()->json(['message' => 'This payment does not belong to your store.'], 403);
         }
@@ -673,7 +667,13 @@ class PaymongoController extends Controller
         if ($validated['payable_type'] === 'replacement_upgrade') {
             $ownsReplacement = EcommerceOrderReturn::query()
                 ->whereKey((int) $validated['payable_id'])
-                ->where('store_id', (int) ($request->user()?->store_id ?? 0))
+                ->where(function ($query) use ($request): void {
+                    $query->where('store_id', (int) ($request->user()?->store_id ?? 0))
+                        ->orWhere(function ($customerQuery) use ($request): void {
+                            $customerQuery->where('source_type', 'ecommerce')
+                                ->whereHas('order', fn ($order) => $order->where('user_id', $request->user()?->id));
+                        });
+                })
                 ->exists();
             if (!$ownsReplacement) {
                 return response()->json(['message' => 'Replacement request not found.'], 404);
@@ -1476,11 +1476,6 @@ class PaymongoController extends Controller
                 'payment_amount' => $paymentAmount,
                 'payment_date' => now()->toDateString(),
                 'status' => 'paid',
-                'paid_to_bank_name' => $invoice->supplier?->bank_name,
-                'paid_to_account_name' => $invoice->supplier?->bank_account_name,
-                'paid_to_account_number_masked' => $this->maskAccountNumber($invoice->supplier?->bank_account_number),
-                'paid_to_account_type' => $invoice->supplier?->bank_account_type,
-                'paid_to_bank_branch' => $invoice->supplier?->bank_branch,
             ]);
 
             if ($invoice->purchaseOrder) {
@@ -1755,32 +1750,4 @@ class PaymongoController extends Controller
         return 0;
     }
 
-    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
-    {
-        if ($supplierId <= 0) {
-            return false;
-        }
-
-        $supplier = Supplier::query()->find($supplierId);
-        if (!$supplier) {
-            return false;
-        }
-
-        return filled($supplier->bank_name)
-            && filled($supplier->bank_account_name)
-            && filled($supplier->bank_account_number);
-    }
-
-    private function maskAccountNumber(?string $accountNumber): ?string
-    {
-        $raw = trim((string) $accountNumber);
-        if ($raw === '') {
-            return null;
-        }
-        $len = strlen($raw);
-        if ($len <= 4) {
-            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
-        }
-        return str_repeat('*', $len - 4) . substr($raw, -4);
-    }
 }

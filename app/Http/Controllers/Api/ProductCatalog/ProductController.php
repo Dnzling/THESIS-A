@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -1025,10 +1026,14 @@ class ProductController extends BaseController
     {
         $keys = ['color', 'size', 'material', 'texture', 'finish'];
         $signature = $this->variationAttributeSignature($attributes, $keys);
-        $variations = $product->variations()->get(array_merge($keys, ['variation_name', 'is_baseline']));
+        $columns = array_merge($keys, ['variation_name']);
+        if (Schema::hasColumn('product_variations', 'is_baseline')) {
+            $columns[] = 'is_baseline';
+        }
+        $variations = $product->variations()->get($columns);
 
         foreach ($variations as $variation) {
-            if ($variation->is_baseline || strcasecmp((string) $variation->variation_name, 'standard') === 0) {
+            if ((bool) ($variation->is_baseline ?? false) || strcasecmp((string) $variation->variation_name, 'standard') === 0) {
                 continue;
             }
             if ($signature === $this->variationAttributeSignature($variation->only($keys), $keys)) {

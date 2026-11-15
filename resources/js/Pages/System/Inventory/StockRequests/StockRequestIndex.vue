@@ -153,7 +153,7 @@ const purchaseStatuses = [
   { label: 'Procurement Pending', value: 'procurement_pending' },
   { label: 'Sourcing in Progress', value: 'procurement_processing' },
   { label: 'Ready for Inventory PO', value: 'inventory_po_pending' },
-  { label: 'PO Created', value: 'po_created' }, { label: 'Rejected', value: 'rejected' },
+  { label: 'PO Created', value: 'po_created' }, { label: 'Received', value: 'received' }, { label: 'Rejected', value: 'rejected' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
 const transferStatuses = [

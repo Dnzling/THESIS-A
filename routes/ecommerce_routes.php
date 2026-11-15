@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
+use App\Http\Controllers\Api\Logistics\ReplacementController;
 
 Route::prefix('ecommerce')->group(function () {
     Route::post('/stores/{storeId}/follow', [EcommerceController::class, 'followStore']);
@@ -19,6 +20,8 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
     Route::post('/shipping/estimate', [EcommerceController::class, 'estimateShippingFee']);
     Route::get('/checkout/availability', [EcommerceController::class, 'checkoutAvailability']);
+    Route::get('/exchange-orders/{returnId}', [ReplacementController::class, 'customerExchangeShow'])->whereNumber('returnId');
+    Route::post('/exchange-orders/{returnId}/checkout', [ReplacementController::class, 'customerExchangeReserve'])->whereNumber('returnId');
 
     Route::get('/favorites', [EcommerceController::class, 'favorites']);
     Route::post('/favorites/toggle', [EcommerceController::class, 'toggleFavorite']);

@@ -456,6 +456,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/sales/transactions/{type}/{id}', 'System/Sales/TransactionShow', 'sales.transactions.show', 'Transaction Details');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/pos-orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
+    $inertia('/pos-exchange-orders/{id}', 'System/Shared/ReplacementDetail', 'sales.pos.exchange-order', 'Exchange Order');
     Route::get('/sales/pos/orders/{id}', fn (int $id) => redirect("/pos-orders/{$id}"))
         ->whereNumber('id')
         ->name('sales.pos.order-detail.legacy');
@@ -615,6 +616,7 @@ $inertia('/compare', 'System/Ecommerce/EcommerceProductComparison', 'ecommerce.c
 $inertia('/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
 $inertia('/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
 $inertia('/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
+$inertia('/exchange-orders/{returnId}', 'System/Ecommerce/EcommerceExchangeOrder', 'ecommerce.exchange-order', 'Exchange Order');
 $inertia('/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
 $inertia('/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
 $inertia('/track-order', 'System/Ecommerce/OrderTracking', 'ecommerce.track-order', 'Track Order');

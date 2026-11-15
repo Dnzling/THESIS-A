@@ -1,4 +1,4 @@
-<!-- views/system/HREmployees.vue -->
+﻿<!-- views/system/HREmployees.vue -->
 <template>
   <div class="space-y-4 p-4 text-xs">
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -60,8 +60,8 @@
             <template #body="slotProps"><span class="font-medium text-slate-700">{{ slotProps.data.employee_number }}</span></template>
           </Column>
 
-          <Column field="monthly_salary" header="Salary / Rate" sortable>
-            <template #body="slotProps"><span class="text-xs">₱{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
+            <template #body="slotProps"><span class="text-xs">&#8369;{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
+            <template #body="slotProps"><span class="text-xs">&#8369;{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
           </Column>
           <Column field="pay_type" header="Pay Type" sortable>
             <template #body="slotProps"><span class="text-xs capitalize">{{ formatPayType(slotProps.data.pay_type) }}</span></template>
@@ -194,6 +194,7 @@
               <p class="text-xs text-slate-500">Set the initial weekly schedule. Disabled days are saved as off days.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              <Button type="button" label="Use Template" icon="pi pi-calendar" severity="warn" outlined size="small" :loading="loadingShiftTemplates" @click="openShiftTemplateDialog" />
               <Tag :value="`${workingDaysCount}/6 days`" severity="warn" />
               <Tag :value="`${totalWeeklyHours.toFixed(2)} hrs/week`" severity="warn" />
             </div>
@@ -206,6 +207,7 @@
                   <th class="border-b border-slate-200 px-3 py-2">Working</th>
                   <th class="border-b border-slate-200 px-3 py-2">Start</th>
                   <th class="border-b border-slate-200 px-3 py-2">End</th>
+                  <th class="border-b border-slate-200 px-3 py-2">Shift</th>
                   <th class="border-b border-slate-200 px-3 py-2">Hours</th>
                 </tr>
               </thead>
@@ -224,6 +226,9 @@
                   <td class="border-b border-slate-100 px-3 py-3">
                     <InputText :model-value="row.end_time" placeholder="04:00 PM" class="w-full" :disabled="!row.is_working" @update:model-value="(value) => onPlannerEndTimeChange(row, String(value || ''))" />
                   </td>
+                  <td class="border-b border-slate-100 px-3 py-3">
+                    <Select v-model="row.shift_id" :options="shiftOptions" optionLabel="label" optionValue="value" placeholder="Optional" showClear size="small" class="min-w-40" :disabled="!row.is_working" />
+                  </td>
                   <td class="border-b border-slate-100 px-3 py-3 text-sm text-slate-700">
                     {{ row.is_working ? `${Number(row.hours || 0).toFixed(2)} hrs` : 'Off' }}
                   </td>
@@ -239,6 +244,37 @@
       <template #footer>
         <Button label="Cancel" severity="secondary" @click="cancelDialog" />
         <Button :label="isEditMode ? 'Update' : 'Add Employee'" severity="warn" :loading="savingEmployee" :disabled="savingEmployee || (!isEditMode && !canSaveEmployee)" @click="saveEmployee" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showShiftTemplateDialog" modal header="Choose Shift Template" :style="{ width: 'min(46rem, 96vw)' }" appendTo="body">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">Review the full weekly schedule before applying it. You can adjust the days and times afterward.</p>
+        <div>
+          <label class="mb-1 block text-sm font-medium">Schedule Template</label>
+          <Select v-model="selectedShiftTemplateId" :options="shiftTemplateOptions" optionLabel="label" optionValue="value" placeholder="Select a template" class="w-full" :loading="loadingShiftTemplates" />
+        </div>
+        <div v-if="loadingShiftTemplates" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Skeleton v-for="day in 7" :key="day" height="2.75rem" />
+        </div>
+        <div v-else-if="selectedShiftTemplate" class="overflow-hidden rounded-lg border border-slate-200">
+          <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-3 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase text-slate-500">
+            <span>Day</span><span>Hours</span><span>Time</span><span>Shift</span>
+          </div>
+          <div v-for="day in selectedTemplatePreview" :key="day.day" class="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-3 border-t border-slate-100 px-3 py-2 text-sm">
+            <span class="font-medium text-slate-800">{{ formatDayLabel(day.day) }}</span>
+            <span :class="day.is_working ? 'text-slate-700' : 'text-slate-400'">{{ day.is_working ? `${day.hours.toFixed(2)} hrs` : 'Off' }}</span>
+            <span :class="day.is_working ? 'text-slate-700' : 'text-slate-400'">{{ day.time }}</span>
+            <span class="text-xs text-slate-500">{{ day.shiftName || (day.shiftId ? `Shift #${day.shiftId}` : '-') }}</span>
+          </div>
+        </div>
+        <div v-else-if="!loadingShiftTemplates" class="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+          {{ shiftTemplateOptions.length ? 'Select a template to preview its weekly schedule.' : 'No active shift templates are available.' }}
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="showShiftTemplateDialog = false" />
+        <Button label="Apply Schedule" icon="pi pi-check" severity="warn" :disabled="!selectedShiftTemplate" @click="applyShiftTemplate" />
       </template>
     </Dialog>
 
@@ -401,6 +437,11 @@ const showAddDialog = ref<boolean>(false)
 const showViewDialog = ref<boolean>(false)
 const showDepartmentDialog = ref(false)
 const showRoleDialog = ref(false)
+const showShiftTemplateDialog = ref(false)
+const loadingShiftTemplates = ref(false)
+const selectedShiftTemplateId = ref<string | number | null>(null)
+const shiftTemplates = ref<{ id: string | number; name: string; source: 'schedule' | 'shift'; pattern: any }[]>([])
+const shiftOptions = ref<{ label: string; value: number; start_time?: string; end_time?: string }[]>([])
 const isEditMode = ref(false)
 const canCreateEmployee = computed(() => authStore.hasPermission('hr.employees.create'))
 const selectedEmployee = ref<Employee | null>(null)
@@ -471,6 +512,42 @@ const weeklyPlanner = ref([
   { day: 'saturday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '04:00 PM', hours: 0 },
   { day: 'sunday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '04:00 PM', hours: 0 },
 ])
+
+const weekDayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+const selectedShiftTemplate = computed(() => shiftTemplates.value.find(template => String(template.id) === String(selectedShiftTemplateId.value)) || null)
+const shiftTemplateOptions = computed(() => shiftTemplates.value.map(template => ({ label: template.name, value: template.id })))
+const normalizeTemplatePattern = (pattern: any) => {
+  let source = pattern
+  if (typeof source === 'string') {
+    try { source = JSON.parse(source) } catch { source = {} }
+  }
+  const entries: [string, any][] = Array.isArray(source)
+    ? source.map((entry: any): [string, any] => [String(entry?.day || '').toLowerCase(), entry])
+    : Object.entries(source || {}).map(([day, value]): [string, any] => [day.toLowerCase(), value])
+  return new Map(entries.filter(([day]) => weekDayOrder.includes(day)))
+}
+const selectedTemplatePreview = computed(() => {
+  const entries = normalizeTemplatePattern(selectedShiftTemplate.value?.pattern)
+  return weekDayOrder.map(day => {
+    const entry = entries.get(day)
+    const isWorking = Boolean(entry?.is_working)
+    const shiftId = isWorking && entry?.shift_id ? Number(entry.shift_id) : null
+    const shift = shiftOptions.value.find(option => option.value === shiftId)
+    const start = entry?.start_time || shift?.start_time || ''
+    const end = entry?.end_time || shift?.end_time || ''
+    const startMinutes = parseTimeToMinutes(start)
+    const endMinutes = parseTimeToMinutes(end)
+    const duration = startMinutes !== null && endMinutes !== null && endMinutes > startMinutes ? (endMinutes - startMinutes) / 60 : 0
+    return {
+      day,
+      is_working: isWorking,
+      time: isWorking ? (start && end ? formatScheduleTime(start) + ' - ' + formatScheduleTime(end) : 'Time not set') : '-',
+      hours: duration,
+      shiftId,
+      shiftName: shift?.label || '',
+    }
+  })
+})
 
 const totalWeeklyHours = computed(() => weeklyPlanner.value.reduce((sum, row) => sum + Number(row.hours || 0), 0))
 const workingDaysCount = computed(() => weeklyPlanner.value.filter(row => row.is_working).length)
@@ -769,11 +846,13 @@ const onPlannerStartTimeChange = (row: any, value: string) => {
   }
   row.is_working = true
   capPlannerRowAtEightHours(row)
+  row.shift_id = shiftOptions.value.find(shift => shift.start_time === row.start_time && shift.end_time === row.end_time)?.value || null
 }
 
 const onPlannerEndTimeChange = (row: any, value: string) => {
   row.end_time = value
   row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
+  row.shift_id = shiftOptions.value.find(shift => shift.start_time === row.start_time && shift.end_time === row.end_time)?.value || null
 }
 
 const onPlannerWorkingToggle = (row: any, checked: boolean) => {
@@ -789,6 +868,7 @@ const onPlannerWorkingToggle = (row: any, checked: boolean) => {
     capPlannerRowAtEightHours(row)
     return
   }
+  row.shift_id = null
   row.hours = 0
 }
 
@@ -797,11 +877,94 @@ const getCheckedValue = (event: Event) => Boolean((event.target as HTMLInputElem
 const resetWeeklyPlanner = () => {
   weeklyPlanner.value = weeklyPlanner.value.map((row) => ({
     ...row,
+    shift_id: null,
     is_working: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(row.day),
     start_time: '08:00 AM',
     end_time: '04:00 PM',
     hours: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(row.day) ? 8 : 0,
   }))
+}
+
+const formatScheduleTime = (value?: string) => {
+  const minutes = parseTimeToMinutes(value)
+  return minutes === null ? String(value || '') : formatMinutesToTime12h(minutes)
+}
+
+const extractTemplateItems = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload
+  const candidates = [payload?.data, payload?.data?.data, payload?.items, payload?.results]
+  return candidates.find(Array.isArray) || []
+}
+
+const openShiftTemplateDialog = async () => {
+  showShiftTemplateDialog.value = true
+  selectedShiftTemplateId.value = null
+  if (shiftTemplates.value.length) return
+
+  loadingShiftTemplates.value = true
+  try {
+    const [scheduleResponse, shiftResponse, shiftsResponse] = await Promise.all([
+      hrService.getScheduleTemplates({ is_active: 1, per_page: 100 }),
+      hrService.getShiftManagementTemplates({ is_active: 1, per_page: 100 }),
+      hrService.getShifts({ per_page: 200 }),
+    ])
+    const shifts = extractTemplateItems(shiftsResponse)
+    const managementTemplates = extractTemplateItems(shiftResponse)
+    const scheduleTemplates = extractTemplateItems(scheduleResponse)
+    shiftOptions.value = shifts.map((shift: any) => ({
+      label: shift.name,
+      value: Number(shift.id),
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+    })).filter((shift: any) => Number.isFinite(shift.value))
+
+    const scheduled = scheduleTemplates.map((template: any) => ({
+      id: template.id,
+      name: template.name,
+      source: 'schedule' as const,
+      pattern: template.pattern || {},
+    })).filter((template: any) => template.id && template.name)
+    const shiftsAsTemplates = managementTemplates.map((shift: any) => {
+      let days: any[] = []
+      try {
+        days = Array.isArray(shift.week_days) ? shift.week_days : JSON.parse(shift.week_days || '[]')
+      } catch { days = [] }
+      const pattern: Record<string, any> = {}
+      days.forEach((day: string) => {
+        const key = String(day).toLowerCase()
+        pattern[key] = { day: key, is_working: true, shift_id: Number(shift.id), start_time: shift.start_time, end_time: shift.end_time }
+      })
+      return { id: `shift-${shift.id}`, name: shift.name, source: 'shift' as const, pattern }
+    }).filter((template: any) => template.name)
+    shiftTemplates.value = [...scheduled, ...shiftsAsTemplates]
+  } catch (error: any) {
+    notifyResponse(false, 'Templates Unavailable', error?.response?.data?.message || 'Unable to load shift templates.')
+  } finally {
+    loadingShiftTemplates.value = false
+  }
+}
+
+const applyShiftTemplate = () => {
+  const entries = normalizeTemplatePattern(selectedShiftTemplate.value?.pattern)
+  weeklyPlanner.value.forEach(row => {
+    const entry = entries.get(row.day)
+    row.is_working = Boolean(entry?.is_working)
+    if (!row.is_working) {
+      row.shift_id = null
+      row.hours = 0
+      return
+    }
+
+    const shiftId = Number(entry?.shift_id || 0) || null
+    const shift = shiftOptions.value.find(option => option.value === shiftId)
+    const start = entry?.start_time || shift?.start_time || ''
+    const end = entry?.end_time || shift?.end_time || ''
+    row.start_time = formatScheduleTime(start) || '08:00 AM'
+    row.end_time = formatScheduleTime(end) || '04:00 PM'
+    row.shift_id = shiftId
+    row.hours = calculateHours(row.start_time, row.end_time)
+  })
+  showShiftTemplateDialog.value = false
 }
 
 const notifyResponse = (success: boolean, title: string, message: string) => {
@@ -1051,7 +1214,7 @@ const saveEmployee = async () => {
         await hrService.api.put(`/api/employees/${createdEmployeeId}/weekly-schedule`, {
           schedules: weeklyPlanner.value.map((row) => ({
             day_of_week: row.day,
-            shift_id: null,
+            shift_id: row.is_working ? row.shift_id : null,
             start_time: row.is_working ? row.start_time : null,
             end_time: row.is_working ? row.end_time : null,
             is_off: !row.is_working,

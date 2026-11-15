@@ -245,6 +245,10 @@
                     <p v-if="item.return_request.replacement?.failure_reason" class="text-red-700 sm:col-span-2">Delivery issue: {{ item.return_request.replacement.failure_reason }}</p>
                   </div>
                   <p v-if="item.return_request.replacement?.status === 'awaiting_stock'" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">The replacement is waiting for stock. Sales is following up; the returned item remains quarantined and delivery will be assigned after replacement stock is reserved.</p>
+                  <div v-if="['ecommerce_exchange', 'payment_failed', 'awaiting_payment'].includes(item.return_request.replacement?.status)" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p class="text-xs leading-5 text-amber-900">{{ item.return_request.replacement?.status === 'awaiting_payment' ? 'Your selected exchange item is reserved. Continue checkout to pay the difference.' : 'The original replacement is out of stock. Choose an exchange item from the branch that issued your order. The exchange value must meet or exceed the amount you paid for the returned product.' }}</p>
+                    <Button :label="item.return_request.replacement?.status === 'awaiting_payment' ? 'Continue exchange checkout' : 'Choose exchange item'" icon="pi pi-shopping-cart" severity="warn" size="small" class="mt-3" @click="openExchangeOrder(item.return_request.id)" />
+                  </div>
                   <a v-if="item.return_request.replacement?.proof_url" :href="item.return_request.replacement.proof_url" target="_blank" rel="noopener" class="mt-3 inline-flex text-xs font-medium text-orange-800 underline">View replacement delivery proof</a>
                 </div>
 
@@ -788,6 +792,10 @@ function goCancelPage() {
 function goReturnPage(itemId: number) {
   if (!order.value?.id) return
   router.push({ name: 'ecommerce.order-return', params: { id: order.value.id, itemId } })
+}
+
+function openExchangeOrder(returnId: number) {
+  router.push({ name: 'ecommerce.exchange-order', params: { returnId } })
 }
 
 function goReviewPage(itemId: number) {

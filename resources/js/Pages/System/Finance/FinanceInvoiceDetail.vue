@@ -430,20 +430,6 @@
                 </div>
               </div>
 
-              <div class="bg-slate-50 rounded-lg p-4 space-y-2">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Payment Destination</p>
-                <div class="grid grid-cols-1 gap-1 text-sm">
-                  <div><span class="text-slate-500">Bank:</span> <span class="font-medium text-slate-900">{{ paymentDestination.bank_name }}</span></div>
-                  <div><span class="text-slate-500">Account Name:</span> <span class="font-medium text-slate-900">{{ paymentDestination.account_name }}</span></div>
-                  <div><span class="text-slate-500">Account No:</span> <span class="font-medium text-slate-900">{{ paymentDestination.account_number }}</span></div>
-                  <div><span class="text-slate-500">Type:</span> <span class="font-medium text-slate-900">{{ paymentDestination.account_type }}</span></div>
-                  <div><span class="text-slate-500">Branch:</span> <span class="font-medium text-slate-900">{{ paymentDestination.bank_branch }}</span></div>
-                </div>
-                <p v-if="!hasPaymentDestination" class="text-xs text-rose-600">
-                  Supplier has no complete bank account yet. Ask supplier to set bank details first.
-                </p>
-              </div>
-
               <div v-if="['paid', 'succeeded'].includes(String(effectivePaymentStatus).toLowerCase())" class="bg-green-50 rounded-lg p-4">
                 <p class="text-sm text-green-800">
                   Paid on <span class="font-medium">{{ formatDate(invoice?.payment_date) }}</span>
@@ -454,14 +440,8 @@
               </div>
 
               <div v-else-if="invoice?.status === 'approved'" class="bg-blue-50 rounded-lg p-4 space-y-2">
-                <div class="flex items-start gap-2">
-                  <input id="confirmDestination" v-model="confirmPaymentDestination" type="checkbox" class="mt-0.5" />
-                  <label for="confirmDestination" class="text-xs text-blue-700">
-                    I confirm this is the correct supplier bank account destination.
-                  </label>
-                </div>
                 <button
-                  :disabled="paymongoInvoiceLoading || !hasPaymentDestination || !confirmPaymentDestination"
+                  :disabled="paymongoInvoiceLoading"
                   class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
                   @click="handleInvoicePaymongoAction"
                 >
@@ -533,7 +513,6 @@ const paymongoInvoiceIntentId = ref<string | null>(null)
 const paymongoInvoiceStatus = ref('idle')
 const paymongoInvoiceLoading = ref(false)
 const paymongoInvoicePolling = ref<ReturnType<typeof setInterval> | null>(null)
-const confirmPaymentDestination = ref(false)
 
 const effectivePaymentStatus = computed(() => {
   const paymongoStatus = String(paymongoInvoiceStatus.value || '').toLowerCase()
@@ -565,23 +544,6 @@ const formatPaymentMethod = (method: string | null | undefined) => {
 const paymongoInvoiceActionLabel = computed(() => {
   if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
   return 'Pay Securely via PayMongo'
-})
-
-const paymentDestination = computed(() => {
-  const inv = invoice.value || {}
-  const sup = inv?.supplier || {}
-  return {
-    bank_name: inv?.paid_to_bank_name || sup?.bank_name || '-',
-    account_name: inv?.paid_to_account_name || sup?.bank_account_name || '-',
-    account_number: inv?.paid_to_account_number_masked || maskAccountNumber(sup?.bank_account_number),
-    account_type: inv?.paid_to_account_type || sup?.bank_account_type || '-',
-    bank_branch: inv?.paid_to_bank_branch || sup?.bank_branch || '-',
-  }
-})
-
-const hasPaymentDestination = computed(() => {
-  const p = paymentDestination.value
-  return p.bank_name !== '-' && p.account_name !== '-' && p.account_number !== '-'
 })
 
 const tabs = [
@@ -823,15 +785,7 @@ async function createInvoicePaymongoIntent() {
 }
 
 async function handleInvoicePaymongoAction() {
-  if (!hasPaymentDestination.value) {
-    toast.add({ severity: 'error', summary: 'Payment Destination', detail: 'Supplier bank account is incomplete.', life: 3000 })
-    return
-  }
-  if (!confirmPaymentDestination.value) {
-    toast.add({ severity: 'warn', summary: 'Confirmation Required', detail: 'Please confirm payment destination before continuing.', life: 3000 })
-    return
-  }
-  if (invoice.value?.payment_status === 'paid') return
+  if (invoice.value?.status !== 'approved' || invoice.value?.payment_status === 'paid') return
   await createInvoicePaymongoIntent()
 }
 
@@ -929,13 +883,6 @@ async function runMatch() {
 function formatStatus(status: string): string {
   if (!status) return '-'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
-}
-
-function maskAccountNumber(value: string): string {
-  const raw = String(value || '').trim()
-  if (!raw) return '-'
-  if (raw.length <= 4) return '*'.repeat(Math.max(0, raw.length - 1)) + raw.slice(-1)
-  return '*'.repeat(raw.length - 4) + raw.slice(-4)
 }
 
 function formatPaymentStatus(status: string): string {

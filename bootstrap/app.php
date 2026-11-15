@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => \App\Http\Middleware\EnsureModuleEnabled::class,
             'account.operational' => \App\Http\Middleware\EnsureAccountOperational::class,
             'subscription.capacity' => \App\Http\Middleware\EnsureSubscriptionCapacity::class,
+            'permission.any' => \App\Http\Middleware\RequireAnyPermission::class,
         ]);
 
     })

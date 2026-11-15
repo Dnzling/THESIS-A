@@ -111,7 +111,21 @@ class SupplierController extends Controller
             ->with([
                 'user:id,email,fname,lname',
                 'supplier',
-                'supplier.products:id,product_name,sku',
+                'supplier.products' => fn ($query) => $query->with([
+                    'category:id,category_name',
+                    'subcategory:id,category_name',
+                    'assets' => fn ($assetQuery) => $assetQuery
+                        ->whereNull('variation_id')
+                        ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
+                        ->orderByDesc('is_primary')
+                        ->orderBy('display_order'),
+                    'variations' => fn ($variationQuery) => $variationQuery
+                        ->orderBy('id')
+                        ->with(['assets' => fn ($assetQuery) => $assetQuery
+                            ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
+                            ->orderByDesc('is_primary')
+                            ->orderBy('display_order')]),
+                ]),
             ])
             ->first();
 
@@ -123,7 +137,7 @@ class SupplierController extends Controller
         }
 
         $ratingsByPortal = $this->ratingsFromOtherStores(collect([$portal]), (int) $storeId);
-        $data = $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail, $ratingsByPortal);
+        $data = $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail, $ratingsByPortal, true);
         return response()->json([
             'success' => true,
             'data' => $data,
@@ -449,7 +463,7 @@ class SupplierController extends Controller
         return $summaries;
     }
 
-    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = [], array $linkedSupplierIdsByEmail = [], array $ratingsByPortal = []): array
+    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = [], array $linkedSupplierIdsByEmail = [], array $ratingsByPortal = [], bool $includeProductDetails = false): array
     {
         $supplier = $portal->supplier;
         $user = $portal->user;
@@ -477,14 +491,83 @@ class SupplierController extends Controller
             'logo_url' => $supplier?->logo_url,
             'rating' => $ratingsByPortal[(int) $portal->id]['rating'] ?? null,
             'rating_count' => $ratingsByPortal[(int) $portal->id]['rating_count'] ?? 0,
-            'products' => $supplier?->products?->map(fn ($product) => [
-                'id' => (int) $product->id,
-                'name' => $product->product_name,
-                'sku' => $product->sku,
-            ])->unique('id')->values()->all() ?? [],
+            'products' => $supplier?->products?->map(fn ($product) => $this->mapVerifiedSupplierProduct($product, $supplier, $includeProductDetails))->unique('id')->values()->all() ?? [],
             'verified_at' => optional($portal->verified_at)->toDateTimeString(),
             'already_linked' => $emailNormalized !== '' && in_array($emailNormalized, $linkedEmails, true),
         ];
+    }
+
+    private function mapVerifiedSupplierProduct($product, Supplier $supplier, bool $includeDetails): array
+    {
+        $baseCost = round((float) ($product->pivot?->supplier_price ?? 0), 2);
+        $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
+        $taxAmount = round($baseCost * $taxRate / 100, 2);
+        $productData = [
+            'id' => (int) $product->id,
+            'name' => $product->product_name,
+            'product_name' => $product->product_name,
+            'sku' => $product->sku,
+            'supplier_sku' => $product->pivot?->supplier_sku ?: $product->sku,
+        ];
+
+        if (!$includeDetails) {
+            return $productData;
+        }
+
+        $dimensions = fn ($item) => [
+            'length_cm' => $item->length_cm,
+            'width_cm' => $item->width_cm,
+            'height_cm' => $item->height_cm,
+            'depth_cm' => $item->depth_cm,
+            'weight_kg' => $item->weight_kg,
+            'additional_measurements' => $item->additional_measurements ?: [],
+        ];
+        $images = fn ($assets, string $fallback) => $assets->map(fn ($asset) => [
+            'url' => $asset->thumbnail_url,
+            'alt_text' => $asset->alt_text ?: $fallback,
+        ])->values()->all();
+
+        return array_merge($productData, [
+            'description' => $product->description,
+            'product_type' => $product->product_type,
+            'category_name' => $product->category?->category_name,
+            'subcategory_name' => $product->subcategory?->category_name,
+            'unit_of_measurement' => $product->unit_of_measurement,
+            'is_active' => (bool) $product->is_active,
+            'availability_status' => $product->pivot?->availability_status ?: 'available',
+            'minimum_order_quantity' => (int) ($product->pivot?->minimum_order_quantity ?? 1),
+            'lead_time_days' => (int) ($product->pivot?->lead_time_days ?? 7),
+            'is_preferred_supplier' => (bool) ($product->pivot?->is_preferred_supplier ?? false),
+            'base_cost' => $baseCost,
+            'tax_rate' => round($taxRate, 2),
+            'tax_amount' => $taxAmount,
+            'cost_including_tax' => round($baseCost + $taxAmount, 2),
+            'dimensions' => $dimensions($product),
+            'variation_attributes' => $product->variation_attributes ?: [],
+            'images' => $images($product->assets ?? collect(), $product->product_name),
+            'variants' => $product->variations->map(function ($variation) use ($product, $baseCost, $taxRate, $dimensions, $images) {
+                $variantBaseCost = $variation->cost_price !== null ? round((float) $variation->cost_price, 2) : $baseCost;
+                $variantTax = round($variantBaseCost * $taxRate / 100, 2);
+                return [
+                    'id' => (int) $variation->id,
+                    'name' => $variation->variation_name,
+                    'sku' => $variation->variation_sku,
+                    'color' => $variation->color,
+                    'color_hex' => $variation->color_hex,
+                    'size' => $variation->size,
+                    'material' => $variation->material,
+                    'texture' => $variation->texture,
+                    'finish' => $variation->finish,
+                    'unit_of_measurement' => $variation->unit_of_measurement ?: $product->unit_of_measurement,
+                    'is_active' => (bool) $variation->is_active,
+                    'base_cost' => $variantBaseCost,
+                    'tax_amount' => $variantTax,
+                    'cost_including_tax' => round($variantBaseCost + $variantTax, 2),
+                    'dimensions' => $dimensions($variation),
+                    'images' => $images($variation->assets ?? collect(), $variation->variation_name ?: $product->product_name),
+                ];
+            })->values()->all(),
+        ]);
     }
 
     /**

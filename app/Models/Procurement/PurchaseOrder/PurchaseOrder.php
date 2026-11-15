@@ -332,7 +332,12 @@ class PurchaseOrder extends Model
 
     public function markOutForDelivery(): void
     {
-        $this->update(['status' => 'out_for_delivery']);
+        $this->update([
+            'status' => 'out_for_delivery',
+            'supplier_fulfillment_status' => $this->fulfillment_method === 'store_pickup'
+                ? 'dispatched'
+                : $this->supplier_fulfillment_status,
+        ]);
 
         if ($this->purchase_requisition_id) {
             PurchaseRequisition::query()
@@ -346,6 +351,9 @@ class PurchaseOrder extends Model
     {
         $this->update([
             'status' => 'delivered',
+            'supplier_fulfillment_status' => $this->fulfillment_method === 'store_pickup'
+                ? 'delivered'
+                : $this->supplier_fulfillment_status,
             'actual_delivery_date' => now()->toDateString(),
         ]);
 
@@ -366,5 +374,21 @@ class PurchaseOrder extends Model
             'status' => 'goods_received',
             'actual_delivery_date' => now()->toDateString(),
         ]);
+
+        if (!$this->purchase_requisition_id) {
+            return;
+        }
+
+        $hasOutstandingPurchaseOrder = static::query()
+            ->where('purchase_requisition_id', $this->purchase_requisition_id)
+            ->where('status', '!=', 'goods_received')
+            ->exists();
+
+        if (!$hasOutstandingPurchaseOrder) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled'])
+                ->update(['status' => 'received']);
+        }
     }
 }

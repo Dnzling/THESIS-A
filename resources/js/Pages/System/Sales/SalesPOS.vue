@@ -51,18 +51,30 @@
                   <p class="mt-1 truncate text-xs text-slate-500">SKU: {{ productSku(row) }}</p>
                   <Badge class="mt-2" :value="`${Number(row.quantity_available || 0)} in stock`" :severity="getStockSeverity(row.quantity_available)" />
                 </div>
-                <div class="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 sm:justify-end">
                   <div class="text-right">
                     <p v-if="hasDiscount(row)" class="text-xs text-slate-400 line-through">{{ money(productBasePrice(row)) }}</p>
                     <p class="font-semibold text-orange-600">{{ money(productSellingPrice(row)) }}</p>
                   <p v-if="hasDiscount(row)" class="text-[11px] font-medium text-emerald-700">{{ row.discount_percentage }}% off</p>
                   </div>
                   <Button
-                    :icon="productIsCustomizable(row) ? 'pi pi-palette' : 'pi pi-plus'"
-                    rounded
-                    :aria-label="productIsCustomizable(row) ? 'Customize and add to order' : 'Add to order'"
+                    v-if="productIsCustomizable(row)"
+                    label="Customize"
+                    icon="pi pi-palette"
+                    severity="secondary"
+                    outlined
+                    size="small"
+                    aria-label="Customize product"
                     :disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
-                    @click.stop="productIsCustomizable(row) ? openCustomizationDialog(row) : addToCart(row)"
+                    @click.stop="openCustomizationDialog(row)"
+                  />
+                  <Button
+                    label="Add"
+                    icon="pi pi-plus"
+                    size="small"
+                    aria-label="Add standard product to order"
+                    :disabled="!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)"
+                    @click.stop="addToCart(row)"
                   />
                 </div>
               </div>
@@ -549,10 +561,6 @@ const productImage = (row: any) => {
 }
 const selectProduct = (row: any) => {
   if (!canManagePos || cartQuantity(row.id) >= Number(row.quantity_available || 0)) return
-  if (productIsCustomizable(row)) {
-    openCustomizationDialog(row)
-    return
-  }
   addToCart(row)
 }
 

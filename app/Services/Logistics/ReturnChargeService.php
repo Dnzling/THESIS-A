@@ -33,14 +33,14 @@ class ReturnChargeService
                 || (count($sides) === 3 && $setting->bulky_volume_threshold_cbm !== null && array_product($sides) / 1000000 >= (float) $setting->bulky_volume_threshold_cbm);
         }
 
-        $base = $setting && $setting->is_active ? (float) $setting->base_fee : 0.0;
-        $distanceFee = $setting && $setting->is_active ? $distance * (float) $setting->per_km_fee : 0.0;
-        $weightFee = $setting && $setting->is_active ? $totalWeight * (float) $setting->per_kg_fee : 0.0;
-        $bulkyFee = $setting && $setting->is_active && $isBulky ? $quantity * (float) $setting->bulky_item_surcharge : 0.0;
+        $base = $setting && $setting->is_active ? (float) ($setting->return_base_fee ?? 0) : 0.0;
+        $distanceFee = $setting && $setting->is_active ? $distance * (float) ($setting->return_per_km_fee ?? 0) : 0.0;
+        $weightFee = 0.0;
+        $bulkyFee = 0.0;
         $raw = $base + $distanceFee + $weightFee + $bulkyFee;
-        $minimumFee = $setting && $setting->is_active ? (float) ($setting->min_delivery_fee ?? 0) : 0.0;
-        $minimumAdjustment = $setting && $setting->is_active ? max(0, $minimumFee - $raw) : 0.0;
-        $calculated = $setting && $setting->is_active ? $raw + $minimumAdjustment : 0.0;
+        $minimumFee = 0.0;
+        $minimumAdjustment = 0.0;
+        $calculated = $setting && $setting->is_active ? $raw : 0.0;
         $charged = $responsibility === 'customer' ? round($calculated, 2) : 0.0;
 
         return [
@@ -50,6 +50,8 @@ class ReturnChargeService
                 'waived' => $responsibility === 'store',
                 'calculated_fee' => round($calculated, 2),
                 'base_fee' => round($base, 2),
+                'return_base_fee' => round($base, 2),
+                'return_per_km_fee' => round((float) ($setting?->return_per_km_fee ?? 0), 2),
                 'distance_km' => round($distance, 2),
                 'distance_fee' => round($distanceFee, 2),
                 'minimum_fee' => round($minimumFee, 2),

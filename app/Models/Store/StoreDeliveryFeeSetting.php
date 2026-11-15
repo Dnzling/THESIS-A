@@ -14,6 +14,8 @@ class StoreDeliveryFeeSetting extends Model
         'store_id',
         'is_active',
         'base_fee',
+        'return_base_fee',
+        'return_per_km_fee',
         'per_km_fee',
         'min_delivery_fee',
         'per_kg_fee',
@@ -34,6 +36,8 @@ class StoreDeliveryFeeSetting extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'base_fee' => 'decimal:2',
+        'return_base_fee' => 'decimal:2',
+        'return_per_km_fee' => 'decimal:2',
         'per_km_fee' => 'decimal:2',
         'min_delivery_fee' => 'decimal:2',
         'per_kg_fee' => 'decimal:2',
