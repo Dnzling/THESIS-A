@@ -64,7 +64,8 @@ class SupplierPOFeedbackController extends Controller
 
             $query = PurchaseOrder::whereIn('supplier_id', $supplierIds)
                 ->whereIn('status', $allowedStatuses)
-                ->with(['items.product', 'supplier', 'store']);
+                ->withCount('items')
+                ->with(['supplier', 'store']);
 
             // Filter by status
             if ($request->has('status')) {

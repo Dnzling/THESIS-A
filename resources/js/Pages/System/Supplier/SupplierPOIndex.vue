@@ -229,7 +229,9 @@ const getPONumber = (row: any): string => {
 }
 
 const getItemCount = (row: any): number => {
-  return row?.purchase_order?.items?.length || 0
+  const items = row?.items ?? row?.purchase_order?.items
+  if (Array.isArray(items)) return items.length
+  return Number(row?.items_count ?? row?.item_count ?? 0)
 }
 
 const getTotalAmount = (row: any): number => {

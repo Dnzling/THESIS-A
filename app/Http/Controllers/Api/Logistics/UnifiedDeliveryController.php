@@ -67,8 +67,7 @@ class UnifiedDeliveryController extends Controller
             abort_unless($canProcessSupplierPickups || $canManageSupplierPickupQueue, 403);
         }
         $assignedDriverOnly = $request->boolean('assigned_driver_only')
-            || $isDriver
-            || ($source === 'pickup' && $canProcessSupplierPickups && !$canManageSupplierPickupQueue);
+            || ($isDriver && $source !== 'pickup');
 
         $rows = collect();
 
@@ -705,12 +704,6 @@ class UnifiedDeliveryController extends Controller
                 ->where('purchase_order_id', $purchaseOrder->id)
                 ->first();
 
-            $mustBeAssignedDriver = $request->user()->hasRole('driver')
-                || ($canProcessSupplierPickups && !$canManageSupplierPickupQueue);
-            if ($mustBeAssignedDriver && (!$pickup || (int) $pickup->driver_user_id !== (int) $request->user()->id)) {
-                return response()->json(['success' => false, 'message' => 'This pickup is not assigned to you.'], 403);
-            }
-
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -1204,9 +1197,6 @@ class UnifiedDeliveryController extends Controller
             }
 
             $pickup = $this->resolvePickupShipment($request, $orderId);
-            if ((int) $pickup->driver_user_id !== (int) $request->user()->id) {
-                return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
-            }
             $from = (string) $pickup->status;
             $allowedTransitions = [
                 'pending' => ['en_route_to_supplier', 'cancelled'],
@@ -1695,7 +1685,6 @@ class UnifiedDeliveryController extends Controller
             return response()->json(['success' => false, 'message' => 'Live location is not available for this delivery type.'], 422);
         }
 
-        $pickup = $this->resolvePickupShipment($request, $orderId);
         abort_unless(
             app(\App\Services\Core\PermissionService::class)->userHasPermission(
                 $request->user(),
@@ -1703,9 +1692,7 @@ class UnifiedDeliveryController extends Controller
             ),
             403,
         );
-        if ((int) $pickup->driver_user_id !== (int) $request->user()->id) {
-            return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
-        }
+        $pickup = $this->resolvePickupShipment($request, $orderId);
         if (!in_array(strtolower((string) $pickup->status), ['en_route_to_supplier', 'in_transit', 'out_for_delivery'], true)) {
             return response()->json(['success' => false, 'message' => 'Live tracking is only available while the pickup is in transit.'], 422);
         }
@@ -1836,6 +1823,7 @@ class UnifiedDeliveryController extends Controller
         }
 
         if ($source === 'pickup') {
+            abort_unless($this->userCanAccessSupplierPickup($request), 403);
             $pickup = $this->resolvePickupShipment($request, $orderId);
             return response()->json(['success' => true, 'data' => $pickup->logs]);
         }
@@ -1916,6 +1904,13 @@ class UnifiedDeliveryController extends Controller
         $source = strtolower($source);
 
         if ($source === 'pickup') {
+            abort_unless(
+                app(\App\Services\Core\PermissionService::class)->userHasPermission(
+                    $request->user(),
+                    'logistics.driver.supplier-pickups',
+                ),
+                403,
+            );
             $pickup = $this->resolvePickupShipment($request, $orderId);
             $log = PurchaseOrderDeliveryLog::create([
                 'shipment_id' => $pickup->id,
@@ -2338,11 +2333,16 @@ class UnifiedDeliveryController extends Controller
             ->where('purchase_order_id', $orderId)
             ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id));
 
-        if ($request->user()->hasRole('driver')) {
-            $query->where('driver_user_id', $request->user()->id);
-        }
-
         return $query->firstOrFail();
+    }
+
+    private function userCanAccessSupplierPickup(Request $request): bool
+    {
+        $permissions = app(\App\Services\Core\PermissionService::class);
+
+        return $permissions->userHasPermission($request->user(), 'logistics.driver.supplier-pickups')
+            || $permissions->userHasPermission($request->user(), 'logistics.supplier-pickups.view')
+            || $permissions->userHasPermission($request->user(), 'logistics.supplier-pickups.manage');
     }
 
     private function reverseGeocode(float $latitude, float $longitude): ?string

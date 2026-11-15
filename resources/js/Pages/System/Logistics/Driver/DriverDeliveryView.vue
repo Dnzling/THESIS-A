@@ -814,12 +814,14 @@ const isAssignedDriver = computed(() => {
   return userId > 0 && assignedDriverId > 0 && userId === assignedDriverId
 })
 const canTrackOwnLocation = computed(() => {
-  if (!isAssignedDriver.value) return false
-
   const status = currentDeliveryStatus.value
   if (source.value === 'pickup') {
-    return ['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(status)
+    return isAssignedDriver.value
+      && authStore.hasPermission('logistics.driver.supplier-pickups')
+      && ['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(status)
   }
+  if (!isAssignedDriver.value) return false
+
   if (source.value === 'return_pickup') {
     return ['picked_up', 'out_for_delivery'].includes(status)
   }
@@ -829,9 +831,9 @@ const canTrackOwnLocation = computed(() => {
   }
   return false
 })
-const canOperateDelivery = computed(() =>
-  isAssignedDriver.value
-  && (source.value !== 'pickup' || authStore.hasPermission('logistics.driver.supplier-pickups')),
+const canOperateDelivery = computed(() => source.value === 'pickup'
+  ? authStore.hasPermission('logistics.driver.supplier-pickups')
+  : isAssignedDriver.value,
 )
 const canShowDeliveryAction = computed(() =>
   canOperateDelivery.value
@@ -1599,7 +1601,7 @@ const renderTrackingMap = async () => {
 let pickupTrackingRefreshTimer: number | null = null
 
 const refreshPickupTracking = async () => {
-  if (source.value !== 'pickup' || isAssignedDriver.value || !trackingActive.value || loading.value) return
+  if (source.value !== 'pickup' || !trackingActive.value || loading.value) return
 
   try {
     const response = await logisticsService.getDeliveryOrderDetail('pickup', orderId.value)

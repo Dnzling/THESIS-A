@@ -133,6 +133,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -141,6 +142,7 @@ import inventoryService from '@/services/inventory.service'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 
 const saving = ref(false)
@@ -397,7 +399,20 @@ const submit = async (submitNow: boolean) => {
     errors.items = 'Please add at least one valid item with quantity.'
     return
   }
-  await doCreate(submitNow)
+  if (!submitNow) {
+    await doCreate(false)
+    return
+  }
+
+  confirm.require({
+    header: editId.value ? 'Save and Submit Request?' : 'Submit Supplier Stock Request?',
+    message: `Submit ${validItems.value.length} item${validItems.value.length === 1 ? '' : 's'} for approval with an estimated value of ${formatMoney(estimatedRequestAmount.value)}?`,
+    icon: 'pi pi-send',
+    rejectLabel: 'Review',
+    acceptLabel: 'Submit Request',
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: () => { void doCreate(true) },
+  })
 }
 
 onMounted(async () => {
