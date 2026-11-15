@@ -1,13 +1,13 @@
 <!-- views/system/employees/components/tabs/EmployeeLeaveTab.vue -->
 <template>
-  <div class="space-y-4">
+  <div class="space-y-4 text-xs">
     <!-- Leave Balance Cards -->
-    <div class="grid grid-cols-4 gap-4">
-      <div v-for="(balance, type) in formattedBalances" :key="type" class="border border-gray-100 rounded-lg p-3">
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div v-for="(balance, type) in formattedBalances" :key="type" class="rounded-xl border border-slate-200 bg-white p-3">
         <div class="text-xs text-gray-500 capitalize">{{ type }} Leave</div>
         <div class="flex items-end gap-1 mt-1">
-          <span class="text-xl font-semibold">{{ balance.used }}</span>
-          <span class="text-sm text-gray-400">/ {{ balance.quota }}</span>
+          <span class="text-base font-semibold text-slate-900">{{ balance.used }}</span>
+          <span class="text-xs text-gray-400">/ {{ balance.quota }}</span>
         </div>
         <div class="text-xs text-gray-500 mt-1">
           <span class="text-green-600">{{ balance.remaining }} remaining</span>
@@ -21,42 +21,42 @@
     </div>
 
     <!-- Statistics Summary -->
-    <div class="grid grid-cols-5 gap-3 bg-gray-50 p-3 rounded-lg">
+    <div class="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-3 lg:grid-cols-5">
       <div class="text-center">
         <div class="text-xs text-gray-500">Total Leaves</div>
-        <div class="text-lg font-semibold">{{ statistics.total_leaves || 0 }}</div>
+        <div class="text-base font-semibold">{{ statistics.total_leaves || 0 }}</div>
       </div>
       <div class="text-center">
         <div class="text-xs text-gray-500">Approved</div>
-        <div class="text-lg font-semibold text-green-600">{{ statistics.approved || 0 }}</div>
+        <div class="text-base font-semibold text-green-600">{{ statistics.approved || 0 }}</div>
       </div>
       <div class="text-center">
         <div class="text-xs text-gray-500">Pending</div>
-        <div class="text-lg font-semibold text-orange-600">{{ statistics.pending || 0 }}</div>
+        <div class="text-base font-semibold text-orange-600">{{ statistics.pending || 0 }}</div>
       </div>
       <div class="text-center">
         <div class="text-xs text-gray-500">Rejected</div>
-        <div class="text-lg font-semibold text-red-600">{{ statistics.rejected || 0 }}</div>
+        <div class="text-base font-semibold text-red-600">{{ statistics.rejected || 0 }}</div>
       </div>
       <div class="text-center">
         <div class="text-xs text-gray-500">Total Days</div>
-        <div class="text-lg font-semibold text-blue-600">{{ statistics.total_days || 0 }}</div>
+        <div class="text-base font-semibold text-blue-600">{{ statistics.total_days || 0 }}</div>
       </div>
     </div>
 
     <!-- Year Selector and Filters -->
-    <div class="flex justify-between items-center">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+      <div class="flex flex-wrap items-center gap-2">
         <Select 
           v-model="selectedYear" 
           :options="yearOptions" 
           placeholder="Select Year" 
           size="small"
-          style="width: 120px"
+          class="w-full sm:w-28"
           @change="fetchLeaveData"
         />
         
-        <IconField>
+        <IconField class="w-full sm:w-52">
           <InputIcon class="pi pi-search" />
           <InputText v-model="filters.search" placeholder="Search reason..." size="small" />
         </IconField>
@@ -67,6 +67,7 @@
           placeholder="Status" 
           size="small" 
           showClear
+          class="w-full sm:w-32"
           @change="applyFilters"
         />
         
@@ -76,6 +77,7 @@
           placeholder="Leave Type" 
           size="small" 
           showClear
+          class="w-full sm:w-36"
           @change="applyFilters"
         />
         
@@ -93,7 +95,7 @@
     </div>
 
     <!-- Upcoming Leaves Banner (if any) -->
-    <div v-if="upcomingLeaves.length > 0" class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+    <div v-if="upcomingLeaves.length > 0" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
       <div class="flex items-center gap-2 text-blue-700 mb-2">
         <i class="pi pi-calendar"></i>
         <span class="font-medium">Upcoming Leaves</span>
@@ -102,33 +104,34 @@
         <div 
           v-for="leave in upcomingLeaves" 
           :key="leave.id"
-          class="bg-white rounded-lg p-2 shadow-sm min-w-50"
+          class="min-w-48 rounded-lg border border-slate-100 bg-white p-2"
         >
           <div class="flex justify-between items-start">
             <Tag :value="leave.leave_type_label" :severity="getLeaveTypeSeverity(leave.leave_type)" size="small" />
             <span class="text-xs text-gray-500">in {{ leave.days_until }} days</span>
           </div>
-          <div class="text-sm font-medium mt-1">{{ leave.start_date_formatted }} - {{ leave.end_date_formatted }}</div>
+          <div class="text-xs font-medium mt-1">{{ leave.start_date_formatted }} - {{ leave.end_date_formatted }}</div>
           <div class="text-xs text-gray-600">{{ leave.total_days }} day(s)</div>
         </div>
       </div>
     </div>
 
     <!-- Employee Info Banner -->
-    <div v-if="employeeInfo.name" class="bg-gray-50 border border-gray-200 rounded-lg p-2 flex items-center gap-2">
+    <div v-if="employeeInfo.name" class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
       <i class="pi pi-user text-gray-500"></i>
-      <span class="text-sm font-medium">{{ employeeInfo.name }}</span>
+      <span class="text-xs font-medium">{{ employeeInfo.name }}</span>
       <span v-if="employeeInfo.department" class="text-xs text-gray-500">• {{ employeeInfo.department }}</span>
       <span v-if="employeeInfo.position" class="text-xs text-gray-500">• {{ employeeInfo.position }}</span>
     </div>
 
     <!-- Leave History Table -->
+    <div class="overflow-x-auto rounded-xl border border-slate-200">
     <DataTable 
       :value="filteredLeaveHistory" 
       :paginator="true" 
       :rows="10" 
       :rowsPerPageOptions="[10, 20, 50]"
-      class="p-datatable-sm"
+      class="p-datatable-sm text-xs"
       :loading="loading"
       stripedRows
       showGridlines
@@ -187,7 +190,7 @@
       <Column field="handover_to" header="Handover" style="width: 120px">
         <template #body="{ data }">
           <div v-if="data.handover_to">
-            <span class="text-sm">{{ data.handover_to.name }}</span>
+            <span class="text-xs">{{ data.handover_to.name }}</span>
             <div v-if="data.handover_notes" class="text-xs text-gray-500">
               Has notes
             </div>
@@ -221,12 +224,13 @@
         </template>
       </Column>
     </DataTable>
+    </div>
 
     <!-- No Data Message -->
     <div v-if="!loading && filteredLeaveHistory.length === 0" class="text-center py-8 text-gray-500">
       <i class="pi pi-calendar-times text-4xl mb-2 block text-gray-300"></i>
       <p>No leave requests found</p>
-      <p class="text-sm mt-1">Click "New Leave Request" to create one</p>
+      <p class="text-xs mt-1">Click "New Leave Request" to create one</p>
     </div>
 
     <!-- Loading Skeleton -->
@@ -301,7 +305,7 @@
         <!-- Reason -->
         <div class="bg-gray-50 p-3 rounded">
           <div class="text-xs text-gray-500 mb-1">Reason</div>
-          <div class="text-sm bg-white p-2 rounded border">{{ selectedLeave.reason || '—' }}</div>
+          <div class="text-xs bg-white p-2 rounded border">{{ selectedLeave.reason || '—' }}</div>
         </div>
 
         <!-- Payment Info -->
@@ -330,7 +334,7 @@
           <div v-if="selectedLeave.handover_to.position" class="text-xs text-gray-600">
             {{ selectedLeave.handover_to.position }}
           </div>
-          <div v-if="selectedLeave.handover_notes" class="mt-2 text-sm bg-white p-2 rounded border">
+          <div v-if="selectedLeave.handover_notes" class="mt-2 text-xs bg-white p-2 rounded border">
             {{ JSON.stringify(selectedLeave.handover_notes) }}
           </div>
         </div>
@@ -353,7 +357,7 @@
         <!-- Rejection Reason -->
         <div v-if="selectedLeave.rejected_reason" class="bg-red-50 p-3 rounded">
           <div class="text-xs text-red-600 mb-1">Rejection Reason</div>
-          <div class="text-sm">{{ selectedLeave.rejected_reason }}</div>
+          <div class="text-xs">{{ selectedLeave.rejected_reason }}</div>
         </div>
 
         <!-- Attachment -->
@@ -387,7 +391,7 @@
     >
       <div class="space-y-3">
         <p>Are you sure you want to cancel this leave request?</p>
-        <p class="text-sm text-gray-600">This action cannot be undone.</p>
+        <p class="text-xs text-gray-600">This action cannot be undone.</p>
       </div>
       <template #footer>
         <Button label="No, Keep" icon="pi pi-times" @click="showCancelDialog = false" text />
@@ -765,6 +769,12 @@ onMounted(() => {
 <style scoped>
 .p-datatable-sm :deep(.p-datatable-tbody > tr > td) {
   padding: 0.5rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.p-datatable-sm :deep(.p-datatable-thead > tr > th) {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 :deep(.p-tag) {

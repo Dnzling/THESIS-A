@@ -175,6 +175,8 @@ class SupplierRFQFeedbackController extends Controller
             $rfqSupplier = \App\Models\Procurement\RFQ\RFQSupplier::query()
                 ->where('rfq_id', $id)
                 ->whereIn('supplier_id', $supplierIds)
+                ->with('supplier:id,supplier_name,company_name')
+                ->orderBy('id')
                 ->firstOrFail();
 
             $rfq = RequestForQuotation::whereHas('suppliers', function ($supplierQuery) use ($supplierIds) {
@@ -195,6 +197,7 @@ class SupplierRFQFeedbackController extends Controller
             // Get supplier's existing feedback for this RFQ
             $feedback = $portal->rfqFeedbacks()
                 ->where('rfq_id', $id)
+                ->where('supplier_id', $rfqSupplier->supplier_id)
                 ->with(['negotiations'])
                 ->get();
 
@@ -229,6 +232,7 @@ class SupplierRFQFeedbackController extends Controller
                 'success' => true,
                 'data' => [
                     'rfq' => $rfqArr,
+                    'supplier' => $rfqSupplier->supplier?->only(['id', 'supplier_name', 'company_name']),
                     'supplier_feedback' => $feedback,
                 ],
             ]);

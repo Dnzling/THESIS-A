@@ -35,6 +35,10 @@
                   <div class="text-gray-500">Store</div>
                   <div class="font-medium text-gray-900">{{ rfq.store?.store_name || rfq.store?.name || rfq.store_name || rfq.store?.store_code || "—" }}</div>
                 </div>
+                <div>
+                  <div class="text-gray-500">Supplier</div>
+                  <div class="font-medium text-gray-900">{{ supplier?.company_name || supplier?.supplier_name || 'Your supplier account' }}</div>
+                </div>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3 lg:grid-cols-1">
@@ -363,6 +367,7 @@ const confirm = useConfirm()
 const loading = ref(false)
 const submitting = ref(false)
 const rfq = ref(null)
+const supplier = ref(null)
 const requestDetails = computed(() => [rfq.value?.description, rfq.value?.instructions]
   .map((value: string | null | undefined) => value?.trim())
   .filter(Boolean)
@@ -425,6 +430,7 @@ const loadRFQDetail = async () => {
     const res = await supplierService.getSupplierRFQDetail(parseInt(rfqId))
 
     rfq.value = res.data.rfq
+    supplier.value = res.data.supplier || null
     const feedback = res.data.supplier_feedback || []
 
     // Initialize quote data (exclude tax_rate; server contract tax_rate is authoritative)

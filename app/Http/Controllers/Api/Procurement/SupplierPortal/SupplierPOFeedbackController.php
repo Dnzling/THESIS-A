@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierPOFeedbackController extends Controller
@@ -152,7 +154,13 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract', 'supplierFulfillmentUpdates.creator'])
+            $poRelations = ['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract'];
+            $hasFulfillmentUpdatesTable = Schema::hasTable('supplier_po_fulfillment_updates');
+            if ($hasFulfillmentUpdatesTable) {
+                $poRelations[] = 'supplierFulfillmentUpdates.creator';
+            }
+
+            $po = PurchaseOrder::with($poRelations)
                 ->findOrFail($id);
 
             if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
@@ -218,7 +226,7 @@ class SupplierPOFeedbackController extends Controller
                 'data' => [
                     'po' => $po,
                     'supplier_feedback' => $feedback,
-                    'fulfillment_updates' => $po->supplierFulfillmentUpdates,
+                    'fulfillment_updates' => $hasFulfillmentUpdatesTable ? $po->supplierFulfillmentUpdates : collect(),
                     'shipment' => $shipment,
                     'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
@@ -229,6 +237,12 @@ class SupplierPOFeedbackController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
+            Log::error('Supplier PO detail failed.', [
+                'user_id' => Auth::id(),
+                'purchase_order_id' => $id,
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching PO: ' . $e->getMessage(),
