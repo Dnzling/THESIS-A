@@ -14,6 +14,7 @@ use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Services\Logistics\DistanceService;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -463,12 +464,12 @@ class SupplierShipmentController extends Controller
 
             $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
             $discountRate = $contract ? (float) ($contract->discount_percentage ?? 0) : 0.0;
-            $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
             $shippingCost = $po->fulfillment_method === 'supplier_delivery'
                 ? (float) ($po->shipping_cost ?? 0)
                 : 0.0;
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-            $netAmount = $invoiceAmount + $taxAmount + $shippingCost - $discountAmount;
+            $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
+            $netAmount = max(0, $invoiceAmount - $discountAmount) + $shippingCost;
 
             $invoice = Invoice::create([
                 'store_id' => $storeId,

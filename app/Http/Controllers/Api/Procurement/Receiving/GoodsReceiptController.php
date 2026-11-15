@@ -19,6 +19,7 @@ use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Core\ActivityLog;
 use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Hr\Employee;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -718,8 +719,8 @@ class GoodsReceiptController extends Controller
 
         $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
         $discountRate = (float) ($contract->discount_percentage ?? 0);
-        $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
         $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
+        $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
         $shippingCost = $po->fulfillment_method === 'supplier_delivery'
             ? (float) ($po->shipping_cost ?? 0)
             : 0.0;
@@ -736,7 +737,7 @@ class GoodsReceiptController extends Controller
             'tax_amount' => $taxAmount,
             'shipping_cost' => $shippingCost,
             'discount_amount' => $discountAmount,
-            'net_amount' => $invoiceAmount + $taxAmount + $shippingCost - $discountAmount,
+            'net_amount' => max(0, $invoiceAmount - $discountAmount) + $shippingCost,
             'currency' => $po->currency ?? 'PHP',
             'status' => 'pending_approval',
             'match_status' => 'pending',

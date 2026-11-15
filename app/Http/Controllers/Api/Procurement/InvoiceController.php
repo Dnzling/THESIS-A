@@ -11,6 +11,7 @@ use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -196,9 +197,9 @@ class InvoiceController extends Controller
                 $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
                 $discountRate = (float) ($contract->discount_percentage ?? 0);
                 $invoiceAmount = (float) $validated['invoice_amount'];
-                $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
                 $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-                $netAmount = $invoiceAmount + (float) $taxAmount + (float) $shippingCost - (float) $discountAmount;
+                $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
+                $netAmount = max(0, $invoiceAmount - $discountAmount) + (float) $shippingCost;
 
                 // Create invoice
                 $invoice = Invoice::create([
@@ -369,12 +370,12 @@ class InvoiceController extends Controller
 
             $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
             $discountRate = (float) ($contract->discount_percentage ?? 0);
-            $taxAmountTotal = round(($invoiceAmount * $taxRate) / 100, 2);
             $shippingCost = $po->fulfillment_method === 'supplier_delivery'
                 ? (float) ($po->shipping_cost ?? 0)
                 : 0.0;
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-            $netAmount = $invoiceAmount + $taxAmountTotal + $shippingCost - $discountAmount;
+            $taxAmountTotal = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
+            $netAmount = max(0, $invoiceAmount - $discountAmount) + $shippingCost;
 
             $invoice = Invoice::create([
                 'store_id' => auth()->user()->store_id,
@@ -519,7 +520,6 @@ class InvoiceController extends Controller
                 array_key_exists('discount_amount', $validated)
             ) {
                 $netAmount = ((float) ($validated['invoice_amount'] ?? $invoice->invoice_amount))
-                    + ((float) ($validated['tax_amount'] ?? $invoice->tax_amount ?? 0))
                     + ((float) ($validated['shipping_cost'] ?? $invoice->shipping_cost ?? 0))
                     - ((float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0));
                 $invoice->update(['net_amount' => $netAmount]);

@@ -41,17 +41,25 @@
       <Column field="reason" header="Reason" style="min-width: 260px">
         <template #body="{ data }">{{ data.reason || '-' }}</template>
       </Column>
+      <template #loading>
+        <div class="space-y-2 p-3">
+          <Skeleton v-for="row in 5" :key="row" height="1.75rem" />
+        </div>
+      </template>
+      <template #empty>
+        <div class="py-8 text-center text-xs text-slate-500">
+          <i class="pi pi-clock mb-2 block text-xl text-slate-300"></i>
+          <p class="font-medium text-slate-600">No overtime records yet</p>
+        </div>
+      </template>
     </DataTable>
-    </div>
-
-    <div v-if="!loading && !records.length" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs text-slate-500">
-      No overtime records yet.
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import Skeleton from 'primevue/skeleton'
 import hrService from '../../../../../services/hr.services'
 
 const props = defineProps<{

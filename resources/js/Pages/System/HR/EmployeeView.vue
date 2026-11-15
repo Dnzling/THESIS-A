@@ -4,8 +4,21 @@
     <ConfirmDialog />
     <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center items-center h-96">
-      <ProgressSpinner />
+    <div v-if="loading" class="space-y-6 animate-pulse">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3"><Skeleton shape="circle" size="2.5rem" /><div class="space-y-2"><Skeleton width="13rem" height="1.5rem" /><Skeleton width="18rem" height="0.75rem" /></div></div>
+        <div class="flex gap-2"><Skeleton width="8rem" height="2.25rem" borderRadius="0.75rem" /><Skeleton width="8rem" height="2.25rem" borderRadius="0.75rem" /></div>
+      </div>
+      <div class="grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <Skeleton height="6rem" borderRadius="0" />
+          <div class="space-y-4 p-4"><div class="flex items-center gap-3"><Skeleton shape="circle" size="5rem" /><Skeleton width="5rem" height="1.5rem" borderRadius="1rem" /></div><Skeleton width="10rem" height="1rem" /><Skeleton width="8rem" height="0.75rem" /><Skeleton width="100%" height="0.75rem" /><Skeleton width="90%" height="0.75rem" /><Skeleton width="95%" height="0.75rem" /></div>
+        </div>
+        <div class="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+          <div class="flex gap-4 border-b border-slate-100 pb-3"><Skeleton v-for="index in 5" :key="index" width="6rem" height="1.25rem" /></div>
+          <div class="space-y-4"><Skeleton width="11rem" height="1.25rem" /><Skeleton v-for="index in 6" :key="`line-${index}`" width="100%" height="1rem" /></div>
+        </div>
+      </div>
     </div>
   
     <!-- Error State -->
@@ -96,6 +109,7 @@
             <TabPanel value="info">
               <EmployeeInfoTab
                 :employee-info="employeeInfo"
+                @edit-personal="openPersonalInfoDialog"
                 @updated="fetchEmployeeData"
                 @edit-id="openGovernmentIdDialog"
                 @edit-card="openCreditCardDialog"
@@ -419,6 +433,55 @@
         </template>
       </Dialog>
 
+      <Dialog v-model:visible="showPersonalInfoDialog" header="Edit Personal Information" :style="{ width: 'min(38rem, 95vw)' }" modal>
+        <div class="space-y-4">
+          <Message v-if="personalInfoError" severity="error" :closable="false">{{ personalInfoError }}</Message>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">First Name *</label>
+              <InputText v-model="personalInfoForm.fname" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Last Name *</label>
+              <InputText v-model="personalInfoForm.lname" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Birthday</label>
+              <DatePicker v-model="personalInfoForm.birthday" dateFormat="M d, yy" showIcon fluid />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Gender</label>
+              <Select v-model="personalInfoForm.gender" :options="genderOptions" optionLabel="label" optionValue="value" placeholder="Select gender" showClear class="w-full" />
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Phone Number</label>
+              <InputMask v-model="personalInfoForm.phone" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" class="w-full" />
+              <small v-if="personalInfoForm.phone && !personalPhoneIsValid" class="text-red-600">Enter a complete Philippine mobile number.</small>
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Street Address</label>
+              <InputText v-model="personalInfoForm.address" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Barangay</label>
+              <InputText v-model="personalInfoForm.barangay" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">City</label>
+              <InputText v-model="personalInfoForm.city" class="w-full" />
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Province</label>
+              <InputText v-model="personalInfoForm.province" class="w-full" />
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" outlined @click="showPersonalInfoDialog = false" />
+          <Button label="Save Information" icon="pi pi-check" severity="warn" :loading="savingPersonalInfo" :disabled="!personalInfoForm.fname.trim() || !personalInfoForm.lname.trim() || !personalPhoneIsValid" @click="savePersonalInfo" />
+        </template>
+      </Dialog>
+
       <Dialog v-model:visible="showGovernmentIdDialog" header="Edit Government ID" :style="{ width: '720px' }" modal>
         <div class="space-y-4">
           <Message severity="info" :closable="false">
@@ -524,6 +587,7 @@ import InputMask from 'primevue/inputmask'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
+import Skeleton from 'primevue/skeleton'
 import Textarea from 'primevue/textarea'
 
 // Import tab components
@@ -621,6 +685,26 @@ const submitResignation = async () => {
   }
 }
 const savingEdit = ref(false)
+const showPersonalInfoDialog = ref(false)
+const savingPersonalInfo = ref(false)
+const personalInfoError = ref('')
+const personalInfoForm = ref({
+  fname: '',
+  lname: '',
+  birthday: null as Date | null,
+  gender: '',
+  phone: '',
+  address: '',
+  barangay: '',
+  city: '',
+  province: '',
+})
+const genderOptions = [
+  { label: 'Male', value: 'male' },
+  { label: 'Female', value: 'female' },
+  { label: 'Other', value: 'other' },
+]
+const personalPhoneIsValid = computed(() => !personalInfoForm.value.phone || /^09\d{2}-\d{3}-\d{4}$/.test(personalInfoForm.value.phone))
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
@@ -1163,6 +1247,53 @@ const getStatusSeverity = (status: string) => {
 // Navigation
 const goBack = () => {
   router.push('/hr/employees')
+}
+
+const openPersonalInfoDialog = () => {
+  const birthdayValue = employeeInfo.value?.basic_info?.birthday
+  const parsedBirthday = birthdayValue ? new Date(birthdayValue) : null
+  personalInfoError.value = ''
+  personalInfoForm.value = {
+    fname: employeeInfo.value?.basic_info?.first_name || '',
+    lname: employeeInfo.value?.basic_info?.last_name || '',
+    birthday: parsedBirthday && !Number.isNaN(parsedBirthday.getTime()) ? parsedBirthday : null,
+    gender: employeeInfo.value?.basic_info?.gender || '',
+    phone: employeeInfo.value?.contact_info?.phone || '',
+    address: employeeInfo.value?.contact_info?.street_address || '',
+    barangay: employeeInfo.value?.contact_info?.barangay || '',
+    city: employeeInfo.value?.contact_info?.city || '',
+    province: employeeInfo.value?.contact_info?.province || '',
+  }
+  showPersonalInfoDialog.value = true
+}
+
+const savePersonalInfo = async () => {
+  if (!personalPhoneIsValid.value) return
+  savingPersonalInfo.value = true
+  personalInfoError.value = ''
+  const payload: Record<string, any> = {
+    fname: personalInfoForm.value.fname.trim(),
+    lname: personalInfoForm.value.lname.trim(),
+    phone: personalInfoForm.value.phone || null,
+    address: personalInfoForm.value.address || null,
+    barangay: personalInfoForm.value.barangay || null,
+    city: personalInfoForm.value.city || null,
+    province: personalInfoForm.value.province || null,
+  }
+  if (personalInfoForm.value.gender) payload.gender = personalInfoForm.value.gender
+  if (personalInfoForm.value.birthday) payload.date_of_birth = toIsoDate(personalInfoForm.value.birthday)
+
+  try {
+    const response = await hrService.api.put(`/api/employees/${employeeId}`, payload)
+    if (response?.data?.success === false) throw new Error(response?.data?.message || 'Unable to save personal information.')
+    showPersonalInfoDialog.value = false
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Personal information updated.', life: 2800 })
+    await fetchEmployeeData()
+  } catch (error: any) {
+    personalInfoError.value = formatValidationError(error, 'Unable to save personal information.')
+  } finally {
+    savingPersonalInfo.value = false
+  }
 }
 
 const openEditDialog = async () => {

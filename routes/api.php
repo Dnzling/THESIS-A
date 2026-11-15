@@ -70,6 +70,7 @@ Route::prefix('auth')->group(function () {
 
 Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
 Route::get('/public/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'publicIndex']);
+Route::get('/public/wholesale/stores', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'publicStores']);
 Route::post('/public/order-tracking', [PublicOrderTrackingController::class, 'show'])->middleware('throttle:10,1');
 
 require __DIR__ . '/job_portal_routes.php';
@@ -251,6 +252,16 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::put('/modules', [StoreRoleController::class, 'updateModules']);
         Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
+    });
+
+    Route::prefix('ecommerce/wholesale')->controller(\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class)->group(function () {
+        Route::get('/requests', 'myRequests');
+        Route::get('/quotes', 'myQuotes');
+        Route::post('/quotes/{quoteId}/response', 'respondToQuote')->whereNumber('quoteId');
+        Route::get('/quote-requests', 'myQuoteRequests');
+        Route::get('/stores/{storeId}/products', 'storeProducts')->whereNumber('storeId');
+        Route::post('/stores/{storeId}/quote-requests', 'createQuoteRequest')->whereNumber('storeId');
+        Route::post('/stores/{storeId}/requests', 'requestAccess')->whereNumber('storeId');
     });
 
     // Branch-scoped Store module

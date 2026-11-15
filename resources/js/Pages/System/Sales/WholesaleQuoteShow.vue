@@ -38,12 +38,13 @@
                         @click="changeStatus('approved')"
                 /></template>
                 <Button
-                    v-if="canManage && quote.status === 'approved'"
+                    v-if="canManage && quote.status === 'approved' && (!quote.customer_request_id || quote.customer_response === 'accepted')"
                     label="Create Sales Order"
                     icon="pi pi-shopping-cart"
                     :loading="saving"
                     @click="convert"
                 />
+                <Tag v-if="canManage && quote.status === 'approved' && quote.customer_request_id && quote.customer_response !== 'accepted'" value="Waiting for customer acceptance" severity="warn" />
                 <Button
                     v-if="
                         canManage &&
@@ -128,6 +129,10 @@
             <Card class="border shadow-sm">
                 <template #title>Quotation status</template>
                 <template #content>
+                    <Message v-if="quote.customer_request_id" :severity="quote.customer_response === 'accepted' ? 'success' : quote.customer_response === 'declined' ? 'warn' : 'info'" :closable="false" class="mb-4">
+                        Customer response: {{ quote.customer_response ? label(quote.customer_response) : 'Waiting for customer response' }}
+                        <span v-if="quote.customer_responded_at"> · {{ dateTime(quote.customer_responded_at) }}</span>
+                    </Message>
                     <div class="overflow-x-auto pb-1">
                         <ol
                             class="flex min-w-[34rem] items-center gap-3 text-sm"

@@ -10,6 +10,7 @@ use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Store\Branch;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -236,10 +237,11 @@ class PurchaseOrderController extends Controller
         $subtotal = round($lines->sum('line_total'), 2);
         $discount = 0;
         $taxRate = $supplier->is_tax_exempt ? 0 : (float) ($supplier->default_tax_rate ?? 12);
-        $taxAmount = round(($subtotal - $discount) * $taxRate / 100, 2);
+        $taxableGross = max(0, $subtotal - $discount);
+        $taxAmount = InclusiveTaxCalculator::includedTax($taxableGross, $taxRate);
         $shipping = 0;
 
-        $order = DB::transaction(function () use ($validated, $storeId, $employee, $supplier, $lines, $subtotal, $discount, $taxRate, $taxAmount, $shipping) {
+        $order = DB::transaction(function () use ($validated, $storeId, $employee, $supplier, $lines, $subtotal, $discount, $taxRate, $taxAmount, $taxableGross, $shipping) {
             $sourceRequisition = null;
             if (!empty($validated['purchase_requisition_id'])) {
                 $sourceRequisition = PurchaseRequisition::query()
@@ -292,7 +294,7 @@ class PurchaseOrderController extends Controller
                 'discount_amount' => $discount,
                 'tax_amount' => $taxAmount,
                 'shipping_cost' => $shipping,
-                'total_amount' => round($subtotal - $discount + $taxAmount + $shipping, 2),
+                'total_amount' => round($taxableGross + $shipping, 2),
                 'rfq_required' => false,
                 'payment_status' => 'pending',
                 'payment_terms' => $validated['payment_terms'],

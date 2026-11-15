@@ -12,6 +12,10 @@
       </div>
     </div>
     <Message severity="info" :closable="false">Apply either a discount percentage or a fixed discount amount to each product line. Both values stay synchronized.</Message>
+    <Message v-if="wholesaleRequest" severity="info" :closable="false">
+      Preparing customer request <strong>{{ wholesaleRequest.request_number }}</strong>. Choose the fulfillment branch; requested products and quantities will be matched to that branch’s stock.
+    </Message>
+    <Message v-if="requestMatchWarning" severity="warn" :closable="false">{{ requestMatchWarning }}</Message>
     <div v-if="loading" class="space-y-3">
       <Skeleton height="9rem" />
       <Skeleton height="20rem" />
@@ -23,13 +27,13 @@
             <div class="grid gap-4 md:grid-cols-2">
               <div class="field">
                 <label>Customer / Business Name *</label>
-                <InputText v-model.trim="form.customer_name" fluid placeholder="Enter customer or business name"
+                <InputText v-model.trim="form.customer_name" fluid placeholder="Enter customer or business name" :disabled="Boolean(wholesaleRequest)"
                   :invalid="Boolean(customerNameError)" @blur="touched.customer_name = true" />
                 <small v-if="customerNameError" class="text-red-600">{{ customerNameError }}</small>
               </div>
               <div class="field">
                 <label>Contact Email *</label>
-                <InputText v-model.trim="form.customer_email" type="email" fluid placeholder="name@business.com"
+                <InputText v-model.trim="form.customer_email" type="email" fluid placeholder="name@business.com" :disabled="Boolean(wholesaleRequest)"
                   :invalid="Boolean(customerEmailError)" @blur="touched.customer_email = true" />
                 <small v-if="customerEmailError" class="text-red-600">{{ customerEmailError }}</small>
               </div>
@@ -148,7 +152,7 @@
             placeholder="Delivery expectations, negotiated terms, or customer requests" /></template>
       </Card>
       <div class="flex justify-end gap-2"><Button label="Cancel" severity="secondary" outlined
-          @click="router.visit('/sales/wholesale-quotes')" /><Button label="Save Draft" icon="pi pi-save"
+          @click="router.visit('/sales/wholesale-quotes')" /><Button v-if="!wholesaleRequest" label="Save Draft" icon="pi pi-save"
           :loading="saving" @click="save(false)" /><Button label="Submit Quotation" icon="pi pi-send" severity="warn" :loading="saving" @click="confirmSubmit" /></div>
     </template>
     <Dialog v-model:visible="mapVisible" modal header="Choose delivery destination" class="w-full max-w-2xl" @show="initMap" @hide="destroyMap">
@@ -208,6 +212,7 @@ const form = reactive({
   customer_name: '',
   customer_email: '',
   customer_phone: '',
+  wholesale_request_id: null as number | null,
   branch_id: null as number | null,
   valid_until: null as Date | null,
   payment_terms: 'online_payment',
@@ -223,6 +228,9 @@ const form = reactive({
   items: [newItem()]
 })
 const touched = reactive({ customer_name: false, customer_email: false, customer_phone: false })
+const wholesaleRequest = ref<any | null>(null)
+const requestMatchWarning = ref('')
+const requestItems = ref<any[]>([])
 const addressAttempted = ref(false)
 const addressSelection = reactive({ provinceId: null as string | null, cityId: null as string | null, barangayCode: null as string | null })
 const provinces = ref<any[]>([]), cities = ref<any[]>([]), barangays = ref<any[]>([])
@@ -343,7 +351,24 @@ const money = (v: any) =>
     style: 'currency',
     currency: 'PHP'
   }).format(+v || 0)
-const resetItems = () => (form.items = [newItem()])
+const resetItems = () => {
+  if (!wholesaleRequest.value) {
+    form.items = [newItem()]
+    return
+  }
+  const matched = requestItems.value.flatMap((requested) => {
+    const stock = branchProducts.value.find((candidate) =>
+      Number(candidate.product_id) === Number(requested.product_id)
+      && Number(candidate.variation_id || 0) === Number(requested.variation_id || 0)
+    )
+    return stock ? [{ ...newItem(), branch_inventory_id: stock.id, quantity: Number(requested.quantity) || 1, unit_price: Number(stock.base_price) || 0 }] : []
+  })
+  form.items = matched.length ? matched : [newItem()]
+  const missing = requestItems.value.length - matched.length
+  requestMatchWarning.value = missing > 0
+    ? `${missing} requested product/variant${missing === 1 ? '' : 's'} is not stocked at this branch. Select another branch or add a suitable available item.`
+    : ''
+}
 const roundMoney = (value: number) => Math.round(value * 100) / 100
 const grossLine = (item: any) => roundMoney((Number(item.quantity) || 0) * (Number(selected(item)?.base_price) || 0))
 const netLine = (item: any) => Math.max(0, roundMoney(grossLine(item) - (Number(item.discount_amount) || 0)))
@@ -384,6 +409,7 @@ const validateForm = () => {
   addressAttempted.value = true
   if (
     customerNameError.value || customerEmailError.value || customerPhoneError.value ||
+    (wholesaleRequest.value && Boolean(requestMatchWarning.value)) ||
     !form.branch_id ||
     !form.payment_terms ||
     (form.delivery_required && (!addressSelection.provinceId || !addressSelection.cityId || !addressSelection.barangayCode || !form.delivery_address_line || form.delivery_latitude == null || form.delivery_longitude == null || feeLoading.value)) ||
@@ -451,6 +477,23 @@ onMounted(async () => {
     const r = await salesService.getWholesaleOptions()
     products.value = r.data?.products || []
     branches.value = r.data?.branches || []
+    const requestId = Number(new URLSearchParams(window.location.search).get('request_id'))
+    if (requestId > 0) {
+      const requestResponse = await axiosClient.get(`/api/sales/wholesale-quotes/customer-quote-requests/${requestId}`)
+      const requestData = requestResponse.data?.data
+      if (requestData?.status === 'pending') {
+        wholesaleRequest.value = requestData
+        form.wholesale_request_id = Number(requestData.id)
+        form.customer_name = requestData.business_name || [requestData.fname, requestData.lname].filter(Boolean).join(' ')
+        form.customer_email = requestData.email || ''
+        form.customer_phone = requestData.phone_number || ''
+        form.notes = requestData.customer_note || ''
+        requestItems.value = typeof requestData.items === 'string' ? JSON.parse(requestData.items) : (requestData.items || [])
+        touched.customer_name = true
+        touched.customer_email = true
+        touched.customer_phone = Boolean(form.customer_phone)
+      }
+    }
   } catch (e: any) {
     toast.add({
       severity: 'error',

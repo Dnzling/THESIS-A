@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SupplierPOFulfillmentUpdate extends Model
 {
+    protected $table = 'supplier_po_fulfillment_updates';
+
     protected $fillable = ['purchase_order_id', 'supplier_portal_id', 'created_by', 'status', 'notes', 'photo_paths'];
 
     protected $casts = ['photo_paths' => 'array'];

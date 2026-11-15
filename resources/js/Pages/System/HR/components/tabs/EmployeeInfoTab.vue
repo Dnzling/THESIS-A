@@ -1,7 +1,12 @@
 <template>
   <div class="space-y-2">
     <section>
-      <Divider align="left"><span class="text-sm font-semibold text-slate-800">Personal Information</span></Divider>
+      <Divider align="left">
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-semibold text-slate-800">Personal Information</span>
+          <Button label="Edit" icon="pi pi-pencil" text severity="secondary" size="small" @click="$emit('edit-personal')" />
+        </div>
+      </Divider>
       <div class="grid gap-x-10 gap-y-4 sm:grid-cols-2">
         <div class="flex justify-between gap-4"><span class="text-sm text-slate-500">Full Name</span><span class="text-right text-sm font-medium text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</span></div>
         <div class="flex justify-between gap-4"><span class="text-sm text-slate-500">Birth Date</span><span class="text-right text-sm text-slate-700">{{ formatDate(employeeInfo.basic_info?.birthday) }}</span></div>
@@ -74,6 +79,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'updated'): void
+  (e: 'edit-personal'): void
   (e: 'edit-id'): void
   (e: 'edit-card'): void
   (e: 'verify-id', item: any): void

@@ -1,7 +1,7 @@
-﻿<template>
-  <div class="space-y-4">
+<template>
+  <div class="space-y-3 text-xs">
     <!-- Toolbar -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div class="flex items-center gap-2">
         <Button
           :label="showFilters ? 'Hide Filters' : 'Show Filters'"
@@ -12,7 +12,7 @@
           @click="showFilters = !showFilters"
         />
       </div>
-      <div class="flex gap-2 items-center">
+      <div class="flex flex-wrap items-center gap-2">
         <Button label="Generate" icon="pi pi-file-pdf" severity="info" size="small" @click="generatePayslip"
           :disabled="!selectedYear || !selectedMonth" />
         <Button label="Print Rundown" icon="pi pi-print" severity="warning" size="small" outlined
@@ -24,9 +24,9 @@
 
     <div v-if="showFilters" class="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div class="flex flex-wrap items-center gap-2">
-        <Select v-model="selectedYear" :options="yearOptions" placeholder="All Years" class="w-32" showClear />
+        <Select v-model="selectedYear" :options="yearOptions" placeholder="All Years" class="w-full sm:w-32" showClear size="small" />
         <Select v-model="selectedMonth" :options="monthOptions" optionLabel="label" optionValue="value"
-          placeholder="All Months" class="w-40" showClear />
+          placeholder="All Months" class="w-full sm:w-40" showClear size="small" />
         <Button label="Apply" icon="pi pi-check" size="small" severity="info" @click="fetchPayslipHistory(1)" />
         <Button label="Reset" icon="pi pi-refresh" size="small" severity="secondary" outlined @click="resetFilters" />
       </div>
@@ -38,7 +38,7 @@
       <Card class="rounded-xl border border-blue-100 bg-blue-50/70 shadow-sm">
         <template #content>
           <div class="p-4">
-            <div class="text-sm text-blue-700">YTD Gross Pay</div>
+            <div class="text-xs text-blue-700">YTD Gross Pay</div>
             <div class="mt-1 text-2xl font-semibold text-blue-700">
               ₱{{ formatNumber(payrollSummary?.total_gross || 0) }}
             </div>
@@ -51,7 +51,7 @@
       <Card class="rounded-xl border border-emerald-100 bg-emerald-50/70 shadow-sm">
         <template #content>
           <div class="p-4">
-            <div class="text-sm text-emerald-700">YTD Net Pay</div>
+            <div class="text-xs text-emerald-700">YTD Net Pay</div>
             <div class="mt-1 text-2xl font-semibold text-emerald-700">
               ₱{{ formatNumber(payrollSummary?.total_net || 0) }}
             </div>
@@ -64,7 +64,7 @@
       <Card class="rounded-xl border border-amber-100 bg-amber-50/70 shadow-sm">
         <template #content>
           <div class="p-4">
-            <div class="text-sm text-amber-700">Avg Monthly</div>
+            <div class="text-xs text-amber-700">Avg Monthly</div>
             <div class="mt-1 text-2xl font-semibold text-amber-700">
               ₱{{ formatNumber(payrollSummary?.average_monthly || 0) }}
             </div>
@@ -77,7 +77,7 @@
     </div> -->
 
     <!-- Pagination Info -->
-    <div v-if="pagination.total > 0" class="flex justify-between items-center text-sm text-gray-500">
+    <div v-if="pagination.total > 0" class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
       <span>Showing {{ pagination.from }} to {{ pagination.to }} of {{ pagination.total }} entries</span>
       <div class="flex gap-1">
         <Button icon="pi pi-chevron-left" text rounded size="small" :disabled="!pagination.prev_page_url" @click="changePage(pagination.current_page - 1)" />
@@ -87,7 +87,8 @@
     </div>
 
     <!-- Payslip Table -->
-    <DataTable :value="payslipHistory" :paginator="false" class="p-datatable-sm" :loading="loading"
+    <div class="overflow-x-auto rounded-xl border border-slate-200">
+    <DataTable :value="payslipHistory" :paginator="false" class="p-datatable-sm text-xs" :loading="loading"
       dataKey="id" :globalFilterFields="['pay_period?.name', 'status']">
       <Column field="pay_period?.name" header="Pay Period" sortable>
         <template #body="{ data }">
@@ -181,13 +182,19 @@
       </Column>
 
       <template #empty>
-        <div class="text-center py-8 text-gray-500">
-          <i class="pi pi-file-pdf text-4xl mb-2"></i>
-          <p>No payslip history found</p>
-          <p class="text-sm">Select a year and month to generate payslip</p>
+        <div class="py-8 text-center text-xs text-slate-500">
+          <i class="pi pi-file-pdf mb-2 block text-xl text-slate-300"></i>
+          <p class="font-medium text-slate-600">No payslip history found</p>
+          <p class="mt-1">Select a year and month to generate a payslip.</p>
+        </div>
+      </template>
+      <template #loading>
+        <div class="space-y-2 p-3">
+          <Skeleton v-for="row in 5" :key="row" height="1.75rem" />
         </div>
       </template>
     </DataTable>
+    </div>
 
     <!-- View Payslip Dialog -->
     <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '700px' }" modal
@@ -195,11 +202,11 @@
       <div v-if="selectedPayslip" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-sm text-gray-500">Employee</label>
+            <label class="text-xs text-gray-500">Employee</label>
             <div class="font-medium">{{ selectedPayslip.employee_name || employeeName }}</div>
           </div>
           <div>
-            <label class="text-sm text-gray-500">Period</label>
+            <label class="text-xs text-gray-500">Period</label>
             <div class="font-medium">{{ getPayPeriodName(selectedPayslip) }}</div>
           </div>
         </div>
@@ -214,7 +221,7 @@
               <span class="font-medium">₱{{ formatNumber(item.amount) }}</span>
             </div>
             <div v-if="getEarnings(selectedPayslip).length === 0"
-              class="text-gray-400 text-sm">
+              class="text-gray-400 text-xs">
               No earning items
             </div>
           </div>
@@ -229,7 +236,7 @@
               <span class="font-medium text-red-600">-₱{{ formatNumber(item.amount) }}</span>
             </div>
             <div v-if="getDeductions(selectedPayslip).length === 0"
-              class="text-gray-400 text-sm">
+              class="text-gray-400 text-xs">
               No deduction items
             </div>
           </div>
@@ -247,7 +254,7 @@
             <span class="text-red-600">-₱{{ formatNumber(selectedPayslip.deductions_total +
               selectedPayslip.tax_amount) }}</span>
           </div>
-          <div class="flex justify-between font-bold mt-2 text-lg">
+          <div class="flex justify-between font-bold mt-2 text-xs">
             <span>Net Pay</span>
             <span class="text-blue-600">₱{{ formatNumber(selectedPayslip.net_salary) }}</span>
           </div>
@@ -266,6 +273,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import Card from 'primevue/card'
+import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
 import hrService from '@/services/hr.services'
 
@@ -645,100 +653,8 @@ const downloadPayslip = async (payslip: Payslip | null) => {
 
 const printPayslip = async (payslip: Payslip | null) => {
   if (!payslip) return
-
-  try {
-    // Emit event to parent
-    emit('print-payslip', payslip)
-
-    // Reuse PayrollView-style print rendering (client-side HTML -> browser print).
-    const deductionRows = getDeductions(payslip).length
-      ? getDeductions(payslip)
-          .map((item) => `<tr><td>${item.name}</td><td>- ${formatNumber(Number(item.amount || 0))}</td></tr>`)
-          .join('')
-      : '<tr><td colspan="2" style="text-align:left;color:#666;">No deduction items</td></tr>'
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Payslip - ${props.employeeName || payslip.employee_name || 'Employee'}</title>
-        <style>
-          body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
-          h2 { text-align: center; margin-bottom: 4px; }
-          .subtitle { text-align: center; color: #666; margin-bottom: 16px; font-size: 11px; }
-          .section { margin-bottom: 12px; }
-          .section-title { font-weight: bold; background: #f0f0f0; padding: 4px 8px; border-left: 3px solid #333; margin-bottom: 6px; }
-          table { width: 100%; border-collapse: collapse; }
-          td { padding: 4px 8px; }
-          td:last-child { text-align: right; }
-          .total-row td { font-weight: bold; border-top: 2px solid #333; }
-          .net-row td { font-weight: bold; font-size: 14px; background: #e8f5e9; }
-          .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px; }
-          .header-grid div { padding: 2px 0; }
-          .label { color: #666; }
-          @media print { body { margin: 10px; } }
-        </style>
-      </head>
-      <body>
-        <h2>PAYSLIP</h2>
-        <div class="subtitle">${getPayPeriodName(payslip)}</div>
-
-        <div class="header-grid">
-          <div><span class="label">Employee:</span> <strong>${props.employeeName || payslip.employee_name || 'N/A'}</strong></div>
-          <div><span class="label">Employee ID:</span> ${formatEmployeeCode(payslip.employee_id)}</div>
-          <div><span class="label">Status:</span> ${(payslip.status || '').toUpperCase()}</div>
-          <div><span class="label">Payment Date:</span> ${formatDate(payslip.payment_date)}</div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">EARNINGS</div>
-          <table>
-            <tr><td>Base Salary</td><td>${formatNumber(payslip.base_salary || 0)}</td></tr>
-            <tr><td>Overtime</td><td>${formatNumber(payslip.overtime_amount || 0)}</td></tr>
-            <tr><td>Bonuses</td><td>${formatNumber(payslip.bonuses_total || 0)}</td></tr>
-            <tr><td>Allowances</td><td>${formatNumber(payslip.allowances_total || 0)}</td></tr>
-            <tr class="total-row"><td>Gross Pay</td><td>${formatNumber(calculateGrossPay(payslip))}</td></tr>
-          </table>
-        </div>
-
-        <div class="section">
-          <div class="section-title">DEDUCTIONS</div>
-          <table>
-            ${deductionRows}
-            <tr class="total-row"><td>Total Deductions</td><td>- ${formatNumber((payslip.deductions_total || 0) + (payslip.tax_amount || 0))}</td></tr>
-          </table>
-        </div>
-
-        <div class="section">
-          <table>
-            <tr class="net-row"><td>NET PAY</td><td>${formatNumber(payslip.net_salary || 0)}</td></tr>
-          </table>
-        </div>
-
-        <div style="margin-top:20px; text-align:center; font-size:10px; color:#999;">
-          Printed on: ${new Date().toLocaleString('en-PH')}
-        </div>
-      </body>
-      </html>
-    `
-
-    const win = window.open('', '_blank', 'width=700,height=900')
-    if (win) {
-      win.document.write(html)
-      win.document.close()
-      win.focus()
-      setTimeout(() => win.print(), 400)
-    }
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to print payslip',
-      life: 3000
-    })
-  }
+  emit('print-payslip', payslip)
 }
-
 const generatePayslip = () => {
   if (!selectedYear.value || !selectedMonth.value) {
     toast.add({
@@ -849,6 +765,19 @@ defineExpose({
   refresh: fetchPayslipHistory
 })
 </script>
+
+<style scoped>
+.p-datatable-sm :deep(.p-datatable-thead > tr > th),
+.p-datatable-sm :deep(.p-datatable-tbody > tr > td) {
+  padding: 0.5rem;
+  font-size: 0.75rem;
+}
+
+:deep(.p-tag) {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+</style>
 
 
 

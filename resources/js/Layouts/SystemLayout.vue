@@ -64,7 +64,16 @@
                 <AccordionContent>
                   <div class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
-                    <Link v-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
+                    <button v-if="navFeatureLockReason(item)" type="button" aria-disabled="true" tabindex="-1"
+                      class="mx-1 flex w-[calc(100%-0.5rem)] cursor-not-allowed items-center justify-between rounded-lg px-7 py-2.5 text-left text-sm font-medium text-slate-400 opacity-80"
+                      v-tooltip.top="navFeatureLockReason(item)" :aria-label="`${item.display_name}: ${navFeatureLockReason(item)}`">
+                      <span class="flex min-w-0 flex-1 items-center space-x-3">
+                        <i :class="[item.icon || 'pi pi-circle', 'w-4 text-slate-400']"></i>
+                        <span>{{ item.display_name }}</span>
+                      </span>
+                      <i class="pi pi-lock ml-2 text-xs text-slate-400" aria-hidden="true"></i>
+                    </button>
+                    <Link v-else-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
                       class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-orange-950 hover:bg-orange-200 transition-colors group"
                       :class="{ 'bg-orange-400 !text-white hover:!bg-orange-500 hover:!text-white': isActive(item.route_path) }">
                     <div class="flex items-center space-x-3 flex-1">
@@ -105,18 +114,21 @@
         </div>
         <div v-else class="space-y-3">
           <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="space-y-1 border-b border-slate-100 pb-3 last:border-0">
-            <Link
-              v-for="item in moduleGroup.items"
-              :key="item.id"
-              :href="item.route_path"
-              class="relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-orange-950 transition-colors hover:bg-orange-200 hover:text-orange-950"
-              :class="{ 'bg-orange-400 !text-white hover:!bg-orange-500 hover:!text-white': isActive(item.route_path) }"
-              v-tooltip.right="navItemTooltip(item)"
-              :aria-label="navItemTooltip(item)"
-            >
-              <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
-              <span v-if="itemNeedsSetupAttention(item)" aria-hidden="true" class="absolute -right-0.5 -top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-amber-500 text-[10px] font-bold leading-none text-white">!</span>
-            </Link>
+            <div v-for="item in moduleGroup.items" :key="item.id">
+              <button v-if="navFeatureLockReason(item)" type="button" aria-disabled="true" tabindex="-1"
+                class="relative mx-auto flex h-11 w-11 cursor-not-allowed items-center justify-center rounded-xl text-slate-400 opacity-80"
+                v-tooltip.right="navFeatureLockReason(item)" :aria-label="`${item.display_name}: ${navFeatureLockReason(item)}`">
+                <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
+                <i class="pi pi-lock absolute -right-1 -top-1 rounded-full bg-white p-0.5 text-[10px] text-slate-500" aria-hidden="true"></i>
+              </button>
+              <Link v-else :href="item.route_path"
+                class="relative mx-auto flex h-11 w-11 items-center justify-center rounded-xl text-orange-950 transition-colors hover:bg-orange-200 hover:text-orange-950"
+                :class="{ 'bg-orange-400 !text-white hover:!bg-orange-500 hover:!text-white': isActive(item.route_path) }"
+                v-tooltip.right="navItemTooltip(item)" :aria-label="navItemTooltip(item)">
+                <i :class="[item.icon || 'pi pi-circle', 'text-lg']"></i>
+                <span v-if="itemNeedsSetupAttention(item)" aria-hidden="true" class="absolute -right-0.5 -top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-amber-500 text-[10px] font-bold leading-none text-white">!</span>
+              </Link>
+            </div>
           </div>
         </div>
       </nav>
@@ -391,6 +403,7 @@ const staffChatPanel = ref()
 const staffChatConversations = ref<any[]>([])
 const staffChatsLoading = ref(false)
 const setupAttention = ref<Record<string, boolean>>({})
+const storeFeatureSettings = ref<{ allow_refunds: boolean; wholesale_enabled: boolean } | null>(null)
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 const unreadCount = ref(0)
@@ -419,6 +432,34 @@ const itemNeedsSetupAttention = (item: any) => {
 }
 const setupAttentionTooltip = (item: any) => `${item?.display_name || 'Page'} needs setup`
 const navItemTooltip = (item: any) => `${item?.display_name || ''}${itemNeedsSetupAttention(item) ? ' - action needed' : ''}`
+const navFeatureLockReason = (item: any) => {
+  const name = String(item?.name || '').toLowerCase()
+  const path = String(item?.route_path || '').toLowerCase()
+  if (!storeFeatureSettings.value) return ''
+  if ((name.includes('refund') || path.startsWith('/finance/refunds')) && !storeFeatureSettings.value.allow_refunds) {
+    return 'Refund processing is disabled in Store Settings.'
+  }
+  if ((name.includes('wholesale') || path.startsWith('/sales/wholesale')) && !storeFeatureSettings.value.wholesale_enabled) {
+    return 'Wholesale is disabled in Store Settings.'
+  }
+  return ''
+}
+const loadStoreFeatureSettings = async () => {
+  const role = String(authStore.userRole || '').toLowerCase()
+  if (!authStore.user?.store_id || role.includes('supplier') || role.includes('customer')) return
+  try {
+    const response = await axiosClient.get('/api/store/settings')
+    const policy = response.data?.data?.return_resolution
+    if (policy) {
+      storeFeatureSettings.value = {
+        allow_refunds: Boolean(policy.allow_refunds),
+        wholesale_enabled: Boolean(policy.wholesale_enabled),
+      }
+    }
+  } catch {
+    storeFeatureSettings.value = { allow_refunds: true, wholesale_enabled: false }
+  }
+}
 const staffChatUnread = computed(() => staffChatConversations.value.reduce((sum, chat) => sum + Number(chat.unread_count || 0), 0))
 const notificationPoller = ref<number | null>(null)
 let knownNotificationIds = new Set<string>()
@@ -510,12 +551,14 @@ onMounted(async () => {
   }
 
   await loadSetupAttention()
+  await loadStoreFeatureSettings()
 
   isBooting.value = false
 
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
   window.addEventListener('setup-attention-refresh', loadSetupAttention)
+  window.addEventListener('store-feature-settings-updated', loadStoreFeatureSettings)
   void loadNotifications()
   if (canManageStaffChats.value) loadStaffChats()
   if (!notificationPoller.value) {
@@ -553,6 +596,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyboardShortcut)
   document.removeEventListener('visibilitychange', refreshNavigationWhenVisible)
   window.removeEventListener('setup-attention-refresh', loadSetupAttention)
+  window.removeEventListener('store-feature-settings-updated', loadStoreFeatureSettings)
   if (notificationPoller.value) {
     clearInterval(notificationPoller.value)
     notificationPoller.value = null

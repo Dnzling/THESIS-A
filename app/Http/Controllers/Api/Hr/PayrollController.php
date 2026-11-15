@@ -2443,7 +2443,8 @@ class PayrollController extends Controller
             ], 503);
         }
 
-        $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
+        $payroll = Payroll::byUserStore()
+            ->with(['employee.user', 'payPeriod', 'items'])
             ->findOrFail($id);
 
         $printedAt = now();
@@ -2481,7 +2482,8 @@ class PayrollController extends Controller
             ], 503);
         }
 
-        $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
+        $payroll = Payroll::byUserStore()
+            ->with(['employee.user', 'payPeriod', 'items'])
             ->findOrFail($id);
 
         $printedAt = now();

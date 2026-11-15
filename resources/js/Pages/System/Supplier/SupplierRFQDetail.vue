@@ -383,6 +383,8 @@ const today = new Date()
 const getStatusSeverity = (status: string) => {
   const map: { [key: string]: string } = {
     draft: 'secondary',
+    sent: 'warn',
+    sent_to_supplier: 'warn',
     sent: 'info',
     receiving: 'warning',
     awarded: 'success',
@@ -403,6 +405,7 @@ const feedbackSeverity = (status: string) => {
 }
 
 const formatQuoteStatus = (status: string) => {
+  if (status === 'sent' || status === 'sent_to_supplier') return 'Pending'
   return String(status || 'pending').replace(/[_-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 

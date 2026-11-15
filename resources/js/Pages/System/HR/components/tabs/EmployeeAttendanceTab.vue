@@ -245,19 +245,20 @@
           </div>
         </template>
       </Column>
+
+      <template #loading>
+        <div class="space-y-2 p-3">
+          <Skeleton v-for="row in 5" :key="row" height="1.75rem" />
+        </div>
+      </template>
+      <template #empty>
+        <div class="py-8 text-center text-xs text-slate-500">
+          <i class="pi pi-calendar mb-2 block text-xl text-slate-300"></i>
+          <p class="font-medium text-slate-600">No attendance records for this period</p>
+          <p class="mt-1">Try a different date range.</p>
+        </div>
+      </template>
     </DataTable>
-    </div>
-
-    <!-- No Data Message -->
-    <div v-if="!loading && attendanceHistory.length === 0" class="text-center py-8 text-gray-500">
-      <i class="pi pi-calendar text-4xl mb-2 block text-gray-300"></i>
-      <p>No attendance records found for the selected period</p>
-      <p class="text-xs mt-1">Try adjusting your date range or check back later</p>
-    </div>
-
-    <!-- Loading Skeleton -->
-    <div v-if="loading" class="space-y-2">
-      <Skeleton v-for="i in 5" :key="i" height="3rem"></Skeleton>
     </div>
 
     <!-- Attendance Details Dialog -->
@@ -352,6 +353,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import hrService from '@/services/hr.services'
+import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../../stores/auth'
 

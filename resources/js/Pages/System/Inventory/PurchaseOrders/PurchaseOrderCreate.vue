@@ -425,7 +425,7 @@
                                     <div
                                         class="flex items-center justify-between gap-6 text-slate-600"
                                     >
-                                        <span>Items subtotal</span
+                                        <span>Items subtotal (VAT inclusive)</span
                                         ><span
                                             class="font-medium text-slate-900"
                                             >{{ money(subtotal) }}</span
@@ -434,8 +434,17 @@
                                     <div
                                         class="flex items-center justify-between gap-6 text-slate-600"
                                     >
+                                        <span>Taxable amount (VAT exclusive)</span
+                                        ><span
+                                            class="font-medium text-slate-900"
+                                            >{{ money(taxableAmount) }}</span
+                                        >
+                                    </div>
+                                    <div
+                                        class="flex items-center justify-between gap-6 text-slate-600"
+                                    >
                                         <span
-                                            >VAT
+                                            >VAT included
                                             <span class="text-xs text-slate-400"
                                                 >({{
                                                     selectedSupplier?.is_tax_exempt
@@ -445,7 +454,7 @@
                                             ></span
                                         ><span
                                             class="font-medium text-slate-900"
-                                            >{{ money(tax) }}</span
+                                            >{{ money(includedVat) }}</span
                                         >
                                     </div>
                                     <div
@@ -459,7 +468,7 @@
                                                 >Total payable</span
                                             ><span
                                                 class="text-xs text-slate-300"
-                                                >Includes VAT</span
+                                                >VAT is included in item prices</span
                                             >
                                         </div>
                                         <span class="text-xl font-bold">{{
@@ -701,8 +710,12 @@ const subtotal = computed(() =>
         0
     )
 )
-const tax = computed(() => (subtotal.value * taxRate.value) / 100)
-const total = computed(() => subtotal.value + tax.value)
+const taxableAmount = computed(() => {
+    const rate = taxRate.value
+    return rate > 0 ? subtotal.value / (1 + rate / 100) : subtotal.value
+})
+const includedVat = computed(() => Math.max(0, subtotal.value - taxableAmount.value))
+const total = computed(() => subtotal.value)
 function money(value: any) {
     return new Intl.NumberFormat('en-PH', {
         style: 'currency',

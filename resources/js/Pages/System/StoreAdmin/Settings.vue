@@ -179,7 +179,7 @@
             </Card>
 
             <Card class="border border-slate-200 shadow-sm">
-                <template #title>Cash / Refund Resolution</template>
+                <template #title>Store Policies</template>
                 <template #content>
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div class="grid flex-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
@@ -187,33 +187,27 @@
                             <div><p class="text-xs uppercase tracking-wide text-slate-400">Replacement</p><Badge class="mt-1" value="Allowed" severity="success" /></div>
                             <div><p class="text-xs uppercase tracking-wide text-slate-400">Default</p><p class="mt-1 font-semibold capitalize text-slate-900">{{ returnResolution.default_resolution }}</p></div>
                             <div><p class="text-xs uppercase tracking-wide text-slate-400">Return window</p><p class="mt-1 font-semibold text-slate-900">{{ returnResolution.return_window_days }} days</p></div>
-                            <div><p class="text-xs uppercase tracking-wide text-slate-400">Refund methods</p><p class="mt-1 font-semibold text-slate-900">{{ refundMethodSummary }}</p></div>
+                            <div><p class="text-xs uppercase tracking-wide text-slate-400">Wholesale</p><Badge class="mt-1" :value="returnResolution.wholesale_enabled ? 'Enabled' : 'Disabled'" :severity="returnResolution.wholesale_enabled ? 'success' : 'secondary'" /></div>
                         </div>
                         <Button label="Edit policy" icon="pi pi-pencil" size="small" severity="warn" outlined class="shrink-0" @click="openReturnResolutionEditor" />
                     </div>
                 </template>
             </Card>
 
-            <Dialog v-model:visible="returnResolutionEditorVisible" modal header="Edit Cash / Refund Resolution" :style="{ width: 'min(94vw, 42rem)' }">
+            <Dialog v-model:visible="returnResolutionEditorVisible" modal header="Edit Store Policies" :style="{ width: 'min(94vw, 42rem)' }">
                 <div class="space-y-5">
                     <div class="flex items-center justify-between rounded-xl border border-slate-200 p-4">
                         <div><p class="text-sm font-semibold text-slate-900">Allow refunds</p><p class="mt-1 text-xs text-slate-500">Customers can request a refund instead of a replacement.</p></div>
                         <InputSwitch v-model="returnResolutionDraft.allow_refunds" @change="handleRefundToggle" />
                     </div>
+                    <div class="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+                        <div><p class="text-sm font-semibold text-slate-900">Enable wholesale customers</p><p class="mt-1 text-xs text-slate-500">Customers must be approved by this store before they can use wholesale pricing.</p></div>
+                        <InputSwitch v-model="returnResolutionDraft.wholesale_enabled" />
+                    </div>
                     <div>
                         <label class="mb-1 block text-sm font-medium text-slate-700">Default resolution</label>
                         <Select v-model="returnResolutionDraft.default_resolution" :options="availableResolutionOptions" optionLabel="label" optionValue="value" fluid />
                         <p v-if="returnResolutionErrors.default_resolution" class="mt-1 text-xs text-red-600">{{ returnResolutionErrors.default_resolution }}</p>
-                    </div>
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-slate-700">Refund payment methods</label>
-                        <div class="grid gap-2 sm:grid-cols-3">
-                            <label v-for="method in refundMethodOptions" :key="method.value" class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm" :class="!returnResolutionDraft.allow_refunds ? 'opacity-50' : ''">
-                                <Checkbox v-model="returnResolutionDraft.refund_methods" :inputId="`refund-${method.value}`" :value="method.value" :disabled="!returnResolutionDraft.allow_refunds" />
-                                <span>{{ method.label }}</span>
-                            </label>
-                        </div>
-                        <p v-if="returnResolutionErrors.refund_methods" class="mt-1 text-xs text-red-600">{{ returnResolutionErrors.refund_methods }}</p>
                     </div>
                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Return window (days)</label><InputNumber v-model="returnResolutionDraft.return_window_days" :min="1" :max="30" showButtons fluid /><p v-if="returnResolutionErrors.return_window_days" class="mt-1 text-xs text-red-600">{{ returnResolutionErrors.return_window_days }}</p></div>
                     <label class="flex items-start gap-3 rounded-xl border border-slate-200 p-4"><Checkbox v-model="returnResolutionDraft.allow_higher_value_replacements" binary /><span><span class="block text-sm font-semibold text-slate-900">Allow higher-value replacements</span><span class="mt-1 block text-xs text-slate-500">The customer pays the price difference before dispatch.</span></span></label>
@@ -1066,33 +1060,25 @@ const selectedPaymentMethod = ref<"card" | "gcash" | "">("");
 const savingPayments = ref(false);
 const savingReturnResolution = ref(false);
 const returnResolutionEditorVisible = ref(false);
-const refundMethodOptions = [
-    { label: "GCash", value: "gcash" },
-    { label: "Maya", value: "maya" },
-    { label: "Bank transfer", value: "bank_transfer" },
-];
 const returnResolution = reactive({
     allow_refunds: Boolean(props.return_resolution?.allow_refunds ?? true),
     default_resolution: String(props.return_resolution?.default_resolution || "replacement"),
     allow_higher_value_replacements: Boolean(props.return_resolution?.allow_higher_value_replacements ?? true),
     return_window_days: Number(props.return_resolution?.return_window_days || 7),
-    refund_methods: Array.isArray(props.return_resolution?.refund_methods) ? [...props.return_resolution.refund_methods] : ["gcash", "maya"],
+    wholesale_enabled: Boolean(props.return_resolution?.wholesale_enabled ?? false),
 });
-const returnResolutionDraft = reactive({ ...returnResolution, refund_methods: [...returnResolution.refund_methods] });
-const returnResolutionErrors = reactive({ default_resolution: "", refund_methods: "", return_window_days: "" });
+const returnResolutionDraft = reactive({ ...returnResolution });
+const returnResolutionErrors = reactive({ default_resolution: "", return_window_days: "" });
 const availableResolutionOptions = computed(() => [
     { label: "Replacement", value: "replacement" },
     ...(returnResolutionDraft.allow_refunds ? [{ label: "Refund", value: "refund" }] : []),
 ]);
-const refundMethodSummary = computed(() => returnResolution.allow_refunds
-    ? refundMethodOptions.filter((method) => returnResolution.refund_methods.includes(method.value)).map((method) => method.label).join(", ") || "Not configured"
-    : "Not applicable");
 const handleRefundToggle = () => {
     if (!returnResolutionDraft.allow_refunds) returnResolutionDraft.default_resolution = "replacement";
 };
 const openReturnResolutionEditor = () => {
-    Object.assign(returnResolutionDraft, returnResolution, { refund_methods: [...returnResolution.refund_methods] });
-    Object.assign(returnResolutionErrors, { default_resolution: "", refund_methods: "", return_window_days: "" });
+    Object.assign(returnResolutionDraft, returnResolution);
+    Object.assign(returnResolutionErrors, { default_resolution: "", return_window_days: "" });
     returnResolutionEditorVisible.value = true;
 };
 const paymongoMethodOptions = [
@@ -1634,10 +1620,7 @@ const savePaymentSettings = async () => {
 };
 
 const saveReturnResolution = () => {
-    Object.assign(returnResolutionErrors, { default_resolution: "", refund_methods: "", return_window_days: "" });
-    if (returnResolutionDraft.allow_refunds && returnResolutionDraft.refund_methods.length === 0) {
-        returnResolutionErrors.refund_methods = "Select at least one refund payment method.";
-    }
+    Object.assign(returnResolutionErrors, { default_resolution: "", return_window_days: "" });
     if (returnResolutionDraft.return_window_days < 1 || returnResolutionDraft.return_window_days > 30) {
         returnResolutionErrors.return_window_days = "Return window must be between 1 and 30 days.";
     }
@@ -1647,13 +1630,13 @@ const saveReturnResolution = () => {
     router.put("/store/settings/return-resolution", { ...returnResolutionDraft }, {
         preserveScroll: true,
         onSuccess: () => {
-            Object.assign(returnResolution, returnResolutionDraft, { refund_methods: [...returnResolutionDraft.refund_methods] });
+            Object.assign(returnResolution, returnResolutionDraft);
             returnResolutionEditorVisible.value = false;
+            window.dispatchEvent(new Event("store-feature-settings-updated"));
             toast.add({ severity: "success", summary: "Policy saved", detail: "Return resolution settings were updated.", life: 2500 });
         },
         onError: (errors) => {
             returnResolutionErrors.default_resolution = String(errors.default_resolution || "");
-            returnResolutionErrors.refund_methods = String(errors.refund_methods || "");
             returnResolutionErrors.return_window_days = String(errors.return_window_days || "");
             toast.add({ severity: "error", summary: "Unable to save policy", detail: "Review the highlighted settings.", life: 3500 });
         },

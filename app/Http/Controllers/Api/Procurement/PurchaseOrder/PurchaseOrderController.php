@@ -26,6 +26,7 @@ use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Services\Procurement\PurchaseOrderShippingFeeService;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use App\Services\Logistics\DriverPermissionEligibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -129,7 +130,7 @@ class PurchaseOrderController extends Controller
             $po->update([
                 'shipping_cost' => $shippingCost,
                 'shipping_fee_breakdown' => null,
-                'total_amount' => (float) $po->subtotal + (float) $po->tax_amount - (float) $po->discount_amount + $shippingCost,
+                'total_amount' => (float) $po->subtotal - (float) $po->discount_amount + $shippingCost,
             ]);
         }
 
@@ -468,7 +469,7 @@ class PurchaseOrderController extends Controller
                     'message' => 'Cannot create purchase order: no active contract exists with the selected supplier.',
                 ], 422);
             }
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? self::VAT_RATE) : 0.0;
             $contractDiscountPercent = (float) ($contract->discount_percentage ?? 0);
             $fulfillmentMethod = $validated['fulfillment_method'] ?? 'store_pickup';
 
@@ -538,8 +539,8 @@ class PurchaseOrderController extends Controller
                     $shippingFeeBreakdown,
                 );
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
-                $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
-                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+                $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $subtotal - $discountAmount), $headerTaxRate);
+                $totalAmount = max(0, $subtotal - $discountAmount) + $shippingCost;
 
                 // Get procurement settings for approval tiers
                 $settings = ProcurementSettings::where('store_id', $storeId)->first();
@@ -833,8 +834,8 @@ class PurchaseOrderController extends Controller
                     $shippingFeeBreakdown,
                 );
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
-                $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
-                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+                $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $subtotal - $discountAmount), $headerTaxRate);
+                $totalAmount = max(0, $subtotal - $discountAmount) + $shippingCost;
 
                 // Get procurement settings for approval tiers
                 $settings = ProcurementSettings::where('store_id', $storeId)->first();
@@ -1026,7 +1027,7 @@ class PurchaseOrderController extends Controller
                 ->active()
                 ->orderBy('end_date', 'desc')
                 ->first();
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? self::VAT_RATE) : 0.0;
 
             // Update basic info
             $nextFulfillmentMethod = $validated['fulfillment_method'] ?? $po->fulfillment_method ?? 'store_pickup';
@@ -1121,8 +1122,8 @@ class PurchaseOrderController extends Controller
                 $shippingCost = $effectiveShippingCost;
                 $discountAmount = $validated['discount_amount'] ?? $po->discount_amount;
                 $taxableAmount = max(0, $subtotal - (float) $discountAmount);
-                $taxAmount = round($taxableAmount * ($headerTaxRate / 100), 2);
-                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+                $taxAmount = InclusiveTaxCalculator::includedTax($taxableAmount, $headerTaxRate);
+                $totalAmount = $taxableAmount + $shippingCost;
 
                 $po->update([
                     'subtotal' => $subtotal,
@@ -1134,11 +1135,12 @@ class PurchaseOrderController extends Controller
             if (!isset($validated['items'])) {
                 $po->refresh();
                 $discountAmount = (float) ($validated['discount_amount'] ?? $po->discount_amount ?? 0);
-                $taxAmount = round(max(0, (float) $po->subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
+                $taxableGross = max(0, (float) $po->subtotal - $discountAmount);
+                $taxAmount = InclusiveTaxCalculator::includedTax($taxableGross, $headerTaxRate);
                 $po->update([
                     'discount_amount' => $discountAmount,
                     'tax_amount' => $taxAmount,
-                    'total_amount' => (float) $po->subtotal + $taxAmount + $effectiveShippingCost - $discountAmount,
+                    'total_amount' => $taxableGross + $effectiveShippingCost,
                 ]);
             }
 
@@ -1473,7 +1475,7 @@ class PurchaseOrderController extends Controller
                 if ($pickupFulfillment) {
                     $po->update([
                         'shipping_fee_breakdown' => null,
-                        'total_amount' => (float) $po->subtotal + (float) $po->tax_amount - (float) $po->discount_amount,
+                        'total_amount' => max(0, (float) $po->subtotal - (float) $po->discount_amount),
                     ]);
                 }
                 $po->markSupplierAccepted();
@@ -1687,7 +1689,7 @@ class PurchaseOrderController extends Controller
                 ->orderBy('end_date', 'desc')
                 ->first();
 
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? self::VAT_RATE) : 0.0;
 
             $subtotal = 0;
             $poItemsPayload = [];
@@ -1727,8 +1729,8 @@ class PurchaseOrderController extends Controller
                 $shippingFeeBreakdown,
             );
             $discountAmount = 0;
-            $taxAmount = $subtotal * ($headerTaxRate / 100);
-            $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+            $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $subtotal - $discountAmount), $headerTaxRate);
+            $totalAmount = max(0, $subtotal - $discountAmount) + $shippingCost;
 
             $settings = ProcurementSettings::where('store_id', $storeId)->first();
             $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);

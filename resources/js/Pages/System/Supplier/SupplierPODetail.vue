@@ -15,6 +15,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <Button v-if="po" label="Timeline" icon="pi pi-history" severity="secondary" outlined size="small" @click="showTimelineDialog = true" />
         <Button
           v-if="existingInvoice"
           label="View Invoice"
@@ -206,10 +207,10 @@
           <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">All Fees</h3></div></template>
           <template #content>
             <div class="space-y-3 p-6 pt-0 text-sm">
-              <div class="flex justify-between"><span class="text-gray-500">Items subtotal</span><span class="font-medium">₱{{ formatMoney(po?.subtotal) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Items subtotal (VAT inclusive)</span><span class="font-medium">₱{{ formatMoney(po?.subtotal) }}</span></div>
               <div class="flex justify-between"><span class="text-gray-500">Contract discount ({{ formatDecimal(contractDiscountPercent) }}%)</span><span class="font-medium text-rose-600">− ₱{{ formatMoney(po?.discount_amount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">Taxable amount</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">VAT / Tax ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Taxable amount (VAT exclusive)</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">VAT included ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
               <div v-if="po?.fulfillment_method === 'supplier_delivery'" class="flex justify-between"><span class="text-gray-500">Supplier delivery fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
               <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">₱{{ formatMoney(po?.total_amount) }}</span></div>
             </div>
@@ -241,6 +242,20 @@
                 <div v-if="update.photos?.length" class="mt-3 flex flex-wrap gap-2"><a v-for="photo in update.photos" :key="photo" :href="photo" target="_blank" rel="noopener"><img :src="photo" alt="Supplier fulfillment proof" class="h-24 w-28 rounded-lg border border-slate-200 object-cover" /></a></div>
               </div>
             </div>
+          </template>
+        </Card>
+
+        <Card v-if="isStoreLogisticsOnTheWay" class="overflow-hidden rounded-2xl border border-blue-200 shadow-sm">
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-6 py-4">
+              <div><h3 class="font-semibold text-slate-900">Store Logistics Live Map</h3><p class="text-xs text-slate-500">Live driver location for this store pickup.</p></div>
+              <div class="flex items-center gap-2"><Tag value="On the way" severity="info" /><Button label="Order Timeline" icon="pi pi-history" size="small" severity="secondary" outlined @click="showTimelineDialog = true" /></div>
+            </div>
+          </template>
+          <template #content>
+            <div v-if="currentStoreLogisticsAddress" class="px-6 pt-4 text-sm text-slate-600"><i class="pi pi-map-marker mr-1 text-blue-600" />{{ currentStoreLogisticsAddress }}</div>
+            <div ref="storeLogisticsMapElement" class="h-[360px] w-full" />
+            <p v-if="!hasStoreLogisticsCoordinates" class="px-6 pb-4 text-xs text-amber-700">The map will show once the driver shares a location.</p>
           </template>
         </Card>
 
@@ -478,6 +493,17 @@
     </div>
 
     <ConfirmDialog />
+    <Dialog v-model:visible="showTimelineDialog" modal header="Purchase Order Timeline" :style="{ width: 'min(36rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
+      <p class="mb-4 text-sm text-slate-500">{{ po?.po_number }} order and fulfillment activity.</p>
+      <ol v-if="timelineItems.length" class="max-h-[65vh] space-y-0 overflow-y-auto pr-1">
+        <li v-for="(item, index) in timelineItems" :key="`${item.title}-${index}`" class="flex gap-3 border-l border-slate-200 py-3 pl-4 first:pt-0 last:pb-0">
+          <span class="-ml-[1.35rem] mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-orange-500 ring-4 ring-white" />
+          <div class="min-w-0"><p class="text-sm font-semibold text-slate-900">{{ item.title }}</p><p class="mt-1 text-xs text-slate-500">{{ formatDate(item.date, true) }}</p><p v-if="item.description" class="mt-1 whitespace-pre-line text-sm text-slate-600">{{ item.description }}</p></div>
+        </li>
+      </ol>
+      <p v-else class="py-5 text-sm text-slate-500">No order activity has been recorded yet.</p>
+      <template #footer><Button label="Close" size="small" severity="secondary" outlined @click="showTimelineDialog = false" /></template>
+    </Dialog>
     <Dialog v-model:visible="rejectResolutionVisible" modal header="Reject Receipt Resolution" :style="{ width: 'min(92vw, 480px)' }">
       <div class="space-y-2">
         <label class="block text-sm font-medium">Reason for rejection</label>
@@ -493,10 +519,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { fetchMapboxRoadRoute, requireMapboxToken } from '@/utils/mapbox'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
@@ -515,6 +544,18 @@ const shipment = ref<any>(null)
 const goodsReceipt = ref<any>(null)
 const existingInvoice = ref<any>(null)
 const rejectionReason = ref<string | null>(null)
+const supplierFeedback = ref<any>(null)
+const supplierLocation = ref<any>(null)
+const deliveryLogs = ref<any[]>([])
+const shipmentInfo = ref<any>(null)
+const shipmentStatus = ref('')
+const showTimelineDialog = ref(false)
+const storeLogisticsMapElement = ref<HTMLElement | null>(null)
+const storeLogisticsMap = ref<MapboxMap | null>(null)
+const storeTruckMarker = ref<MapboxMarker | null>(null)
+const storeDestinationMarker = ref<MapboxMarker | null>(null)
+let trackingRefreshTimer: number | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const contractTaxRate = ref(0)
 const contractDiscountPercent = ref(0)
 const receiptResolutions = ref<any[]>([])
@@ -535,7 +576,26 @@ const totalWithDelivery = computed(() => {
   return subtotal + deliveryCharge.value
 })
 
-const taxableAmount = computed(() => Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0)))
+const taxableAmount = computed(() => {
+  const gross = Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0))
+  return contractTaxRate.value > 0 ? gross / (1 + contractTaxRate.value / 100) : gross
+})
+const isStoreLogisticsOnTheWay = computed(() => po.value?.fulfillment_method === 'store_pickup' && ['en_route_to_supplier', 'in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value || shipmentInfo.value?.status)))
+const shouldRefreshTracking = computed(() => po.value?.fulfillment_method === 'store_pickup' && ['supplier_accepted', 'in_transit', 'out_for_delivery'].includes(String(po.value?.status)))
+const coordinate = (value: any) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null
+const hasStoreLogisticsCoordinates = computed(() => coordinate(shipmentInfo.value?.current_latitude) !== null && coordinate(shipmentInfo.value?.current_longitude) !== null || deliveryLogs.value.some(log => coordinate(log.latitude) !== null && coordinate(log.longitude) !== null))
+const currentStoreLogisticsAddress = computed(() => shipmentInfo.value?.current_address || deliveryLogs.value.find(log => log.location_address)?.location_address || '')
+const timelineItems = computed(() => {
+  const items: Array<{ title: string; description?: string; date: string | null }> = []
+  if (po.value?.created_at) items.push({ title: 'Purchase order created', date: po.value.created_at })
+  for (const approval of po.value?.approvals_received || []) {
+    if (approval.approved_at) items.push({ title: 'Purchase order approval recorded', description: [approval.approver_name, approval.notes].filter(Boolean).join(' — '), date: approval.approved_at })
+  }
+  if (supplierFeedback.value?.submitted_at) items.push({ title: supplierFeedback.value.response === 'accepted' ? 'Order approved by supplier' : 'Order rejected by supplier', description: supplierFeedback.value.rejection_reason || supplierFeedback.value.delivery_notes || '', date: supplierFeedback.value.submitted_at })
+  for (const update of fulfillmentUpdates.value) items.push({ title: `Supplier fulfillment: ${supplierFulfillmentLabel(update.status)}`, description: update.notes || '', date: update.created_at })
+  for (const log of deliveryLogs.value) items.push({ title: deliveryLogLabel(log.event_type), description: [log.notes, log.location_address, log.receiver_name ? `Receiver: ${log.receiver_name}` : ''].filter(Boolean).join('\n'), date: log.logged_at || log.created_at })
+  return items.filter(item => item.date).sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
+})
 const fulfillmentLabel = computed(() => po.value?.fulfillment_method === 'supplier_delivery' ? 'Supplier Delivery' : po.value?.fulfillment_method === 'store_pickup' ? 'Store Pickup' : 'Not selected')
 const fulfillmentDescription = computed(() => po.value?.fulfillment_method === 'supplier_delivery'
   ? 'Your supplier team is responsible for delivering this order to the store.'
@@ -583,7 +643,7 @@ const getStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'dange
     draft: 'secondary',
     pending_finance_approval: 'warn',
     approved: 'success',
-    sent_to_supplier: 'info',
+    sent_to_supplier: 'warn',
     supplier_accepted: 'success',
     in_transit: 'warn',
     delivered: 'success',
@@ -649,6 +709,7 @@ const formatDimensions = (item: any): string => {
 
 const formatStatus = (status: string): string => {
   if (!status) return '-'
+  if (status === 'sent_to_supplier') return 'Pending'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
@@ -690,8 +751,13 @@ const goToInvoice = () => {
       const payload = res.data || res
       po.value = payload?.data?.po || payload?.po || null
       fulfillmentUpdates.value = payload?.data?.fulfillment_updates || po.value?.supplier_fulfillment_updates || []
+      supplierFeedback.value = payload?.data?.supplier_feedback || null
       rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
       shipment.value = payload?.data?.shipment || null
+      shipmentInfo.value = shipment.value
+      shipmentStatus.value = String(shipment.value?.status || '')
+      deliveryLogs.value = payload?.data?.delivery_logs || shipment.value?.logs || []
+      supplierLocation.value = payload?.data?.supplier_location || null
       goodsReceipt.value = payload?.data?.goods_receipt || null
       existingInvoice.value = payload?.data?.invoice || null
       contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0)
@@ -707,11 +773,9 @@ const goToInvoice = () => {
         }
       })
 
-      if (!isDeclined.value && po.value?.id && !shipment.value) {
-        const shipmentRes = await supplierService.getPOShipment(id)
-        const shipmentPayload = shipmentRes.data.data || shipmentRes
-        shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
-      }
+      await nextTick()
+      await renderStoreLogisticsMap()
+      startTrackingRefresh()
     } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -723,6 +787,120 @@ const goToInvoice = () => {
       loading.value = false
     }
   }
+
+const refreshTracking = async () => {
+  if (!po.value?.id) return
+  try {
+    const response = await supplierService.getPODeliveryTracking(Number(po.value.id))
+    const payload = response?.data || response
+    shipmentInfo.value = payload?.data?.shipment || null
+    shipment.value = shipmentInfo.value
+    shipmentStatus.value = String(shipmentInfo.value?.status || '')
+    deliveryLogs.value = payload?.data?.delivery_logs || []
+    supplierLocation.value = payload?.data?.supplier_location || supplierLocation.value
+    await nextTick()
+    await renderStoreLogisticsMap()
+    if (!isStoreLogisticsOnTheWay.value && trackingRefreshTimer !== null) {
+      window.clearInterval(trackingRefreshTimer)
+      trackingRefreshTimer = null
+    }
+  } catch {
+    // Keep the last known location visible if a periodic refresh is temporarily unavailable.
+  }
+}
+
+const startTrackingRefresh = () => {
+  if (!shouldRefreshTracking.value) {
+    if (trackingRefreshTimer !== null) window.clearInterval(trackingRefreshTimer)
+    trackingRefreshTimer = null
+    return
+  }
+  if (trackingRefreshTimer === null) trackingRefreshTimer = window.setInterval(refreshTracking, 15000)
+}
+
+const trackingDestination = (): [number, number] | null => {
+  const location = shipmentStatus.value === 'en_route_to_supplier'
+    ? (supplierLocation.value || shipmentInfo.value?.supplier || po.value?.supplier)
+    : (shipmentInfo.value?.branch || po.value?.branch)
+  const latitude = coordinate(location?.latitude)
+  const longitude = coordinate(location?.longitude)
+  return latitude !== null && longitude !== null ? [latitude, longitude] : null
+}
+
+const renderStoreLogisticsMap = async () => {
+  const container = storeLogisticsMapElement.value
+  if (!container || !isStoreLogisticsOnTheWay.value) return
+  try {
+    if (!mapboxgl) {
+      mapboxgl = (await import('mapbox-gl')).default
+      mapboxgl.accessToken = requireMapboxToken()
+    }
+    const destination = trackingDestination()
+    const latestLogWithCoordinates = deliveryLogs.value.find(log => coordinate(log.latitude) !== null && coordinate(log.longitude) !== null)
+    const currentLatitude = coordinate(shipmentInfo.value?.current_latitude) ?? coordinate(latestLogWithCoordinates?.latitude)
+    const currentLongitude = coordinate(shipmentInfo.value?.current_longitude) ?? coordinate(latestLogWithCoordinates?.longitude)
+    const current: [number, number] | null = currentLatitude !== null && currentLongitude !== null ? [currentLatitude, currentLongitude] : null
+    if (!storeLogisticsMap.value) {
+      storeLogisticsMap.value = new mapboxgl.Map({
+        container,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: current ? [current[1], current[0]] : destination ? [destination[1], destination[0]] : [120.9842, 14.5995],
+        zoom: current || destination ? 12 : 6,
+      })
+      await new Promise<void>(resolve => storeLogisticsMap.value!.once('load', () => resolve()))
+    }
+    storeTruckMarker.value?.remove()
+    storeDestinationMarker.value?.remove()
+    if (current) {
+      const truck = document.createElement('img')
+      truck.src = '/images/truck-map-marker-orange.png'
+      truck.alt = 'Store logistics vehicle location'
+      truck.style.cssText = 'width:48px;height:48px;object-fit:contain;'
+      storeTruckMarker.value = new mapboxgl.Marker({ element: truck, anchor: 'center' })
+        .setLngLat([current[1], current[0]])
+        .setPopup(new mapboxgl.Popup({ offset: 24 }).setText('Store logistics vehicle'))
+        .addTo(storeLogisticsMap.value)
+    }
+    if (destination) {
+      storeDestinationMarker.value = new mapboxgl.Marker({ color: '#2563eb' })
+        .setLngLat([destination[1], destination[0]])
+        .setPopup(new mapboxgl.Popup({ offset: 16 }).setText(shipmentStatus.value === 'en_route_to_supplier' ? 'Supplier pickup location' : 'Store branch'))
+        .addTo(storeLogisticsMap.value)
+    }
+    if (current && destination) {
+      let routePoints: [number, number][] = [current, destination]
+      try {
+        const roadPoints = await fetchMapboxRoadRoute(current, destination)
+        if (roadPoints.length > 1) routePoints = roadPoints
+      } catch { /* The straight line still gives a useful live location view. */ }
+      const sourceData = { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: routePoints.map(([lat, lng]) => [lng, lat]) } }
+      if (storeLogisticsMap.value.getSource('supplier-po-live-route')) {
+        (storeLogisticsMap.value.getSource('supplier-po-live-route') as import('mapbox-gl').GeoJSONSource).setData(sourceData)
+      } else {
+        storeLogisticsMap.value.addSource('supplier-po-live-route', { type: 'geojson', data: sourceData })
+        storeLogisticsMap.value.addLayer({ id: 'supplier-po-live-route-line', type: 'line', source: 'supplier-po-live-route', paint: { 'line-color': '#2563eb', 'line-width': 5, 'line-opacity': 0.8 } })
+      }
+      const bounds = new mapboxgl.LngLatBounds()
+      routePoints.forEach(([lat, lng]) => bounds.extend([lng, lat]))
+      storeLogisticsMap.value.fitBounds(bounds, { padding: 40, maxZoom: 15 })
+    } else if (current) {
+      storeLogisticsMap.value.flyTo({ center: [current[1], current[0]], zoom: 14 })
+    }
+    storeLogisticsMap.value.resize()
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Map unavailable', detail: 'Live tracking could not load right now.', life: 2500 })
+  }
+}
+
+const deliveryLogLabel = (eventType?: string) => ({
+  pickup_assigned: 'Driver assigned',
+  en_route_to_supplier: 'Driver en route to supplier',
+  in_transit: 'Pickup confirmed; order in transit',
+  out_for_delivery: 'Order out for delivery',
+  delivered: 'Delivered to store',
+  cancelled: 'Pickup cancelled',
+  note: 'Driver location update',
+} as Record<string, string>)[String(eventType || '').toLowerCase().replaceAll(' ', '_')] || formatStatus(eventType || 'pickup update')
 
 const supplierFulfillmentLabel = (status: string) => ({ preparing: 'Preparing', ready_for_pickup: 'Ready for Pickup', dispatched: 'Dispatched', delivered: 'Delivered' } as Record<string, string>)[status] || status
 const selectFulfillmentPhotos = (status: string) => { pendingFulfillmentStatus.value = status; fulfillmentPhotoInput.value?.click() }
@@ -746,7 +924,14 @@ const submitFulfillmentUpdate = async (status: string, photos: File[] = []) => {
     await loadDetail()
     toast.add({ severity: 'success', summary: 'Updated', detail: 'PO fulfillment status updated.', life: 2500 })
   } catch (error: any) {
-    fulfillmentError.value = error?.response?.data?.message || 'Unable to update fulfillment status.'
+    const message = error?.response?.data?.message || 'Unable to update fulfillment status.'
+    await loadDetail()
+    if (po.value?.supplier_fulfillment_status === status) {
+      fulfillmentError.value = ''
+      toast.add({ severity: 'success', summary: 'Updated', detail: 'PO fulfillment status updated.', life: 2500 })
+    } else {
+      fulfillmentError.value = message
+    }
   } finally { fulfillmentSaving.value = false }
 }
 
@@ -820,6 +1005,13 @@ const submitResolutionDelivery = async (resolution: any) => {
 }
 
 onMounted(loadDetail)
+onBeforeUnmount(() => {
+  if (trackingRefreshTimer !== null) window.clearInterval(trackingRefreshTimer)
+  storeTruckMarker.value?.remove()
+  storeDestinationMarker.value?.remove()
+  storeLogisticsMap.value?.remove()
+  storeLogisticsMap.value = null
+})
 </script>
 
 <style scoped>

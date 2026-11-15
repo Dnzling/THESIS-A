@@ -460,6 +460,11 @@ class SupplierService {
     return response.data
   }
 
+  async getPODeliveryTracking(poId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/pos/${poId}/tracking`)
+    return response.data
+  }
+
   async getReceiptResolutions(poId: number) {
     const response = await axiosClient.get(`${this.portalBaseUrl}/pos/${poId}/receipt-resolutions`)
     return response.data

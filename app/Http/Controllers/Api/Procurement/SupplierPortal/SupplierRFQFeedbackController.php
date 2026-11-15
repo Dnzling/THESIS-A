@@ -7,6 +7,7 @@ use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -447,12 +448,8 @@ class SupplierRFQFeedbackController extends Controller
                             $discountPercent = (float) ($contract?->discount_percentage ?? 0);
                             $discountAmount = round((float) $subtotal * ($discountPercent / 100), 2);
                             $taxableAmount = max(0, (float) $subtotal - $discountAmount);
-                            $taxAmount = 0;
-                            if (!empty($contractTaxRate)) {
-                                $taxAmount = bcmul((string)$taxableAmount, bcdiv((string)$contractTaxRate, '100', 4), 2);
-                            }
-
-                            $total = bcadd((string) $taxableAmount, $taxAmount, 2);
+                            $taxAmount = InclusiveTaxCalculator::includedTax($taxableAmount, (float) $contractTaxRate);
+                            $total = $taxableAmount;
 
                             // Update columns if they exist
                             $updateData = [];

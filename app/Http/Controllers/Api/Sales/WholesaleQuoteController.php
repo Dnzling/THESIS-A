@@ -31,6 +31,7 @@ class WholesaleQuoteController extends Controller
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
+        abort_unless((bool) data_get($request->user()->store?->settings, 'wholesale.enabled', false), 403, 'Wholesale is disabled in Store Settings.');
         $rows = WholesaleQuote::query()->where('store_id', $storeId)
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = trim((string) $request->input('search'));
@@ -61,6 +62,7 @@ class WholesaleQuoteController extends Controller
     public function options(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
+        abort_unless((bool) data_get($request->user()->store?->settings, 'wholesale.enabled', false), 403, 'Wholesale is disabled in Store Settings.');
         $branches = Branch::query()
             ->where('store_id', $storeId)
             ->where('status', 'active')
@@ -83,6 +85,8 @@ class WholesaleQuoteController extends Controller
             ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_available'])
             ->map(fn ($stock) => [
                 'id' => $stock->id, 'branch_id' => $stock->branch_id,
+                'product_id' => (int) $stock->product_id,
+                'variation_id' => $stock->variation_id ? (int) $stock->variation_id : null,
                 'branch_name' => $stock->branch?->name,
                 'product_name' => $stock->product?->product_name,
                 'variant_name' => $stock->variation?->variation_name,
@@ -101,6 +105,7 @@ class WholesaleQuoteController extends Controller
     public function deliveryEstimate(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
+        abort_unless((bool) data_get($request->user()->store?->settings, 'wholesale.enabled', false), 403, 'Wholesale is disabled in Store Settings.');
         $validated = $request->validate([
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
             'subtotal' => ['required', 'numeric', 'min:0'],
@@ -114,15 +119,17 @@ class WholesaleQuoteController extends Controller
     public function store(Request $request): JsonResponse
     {
         $storeId = (int) $request->user()->store_id;
+        abort_unless((bool) data_get($request->user()->store?->settings, 'wholesale.enabled', false), 403, 'Enable wholesale in Store Settings before creating wholesale quotations.');
         $validated = $request->validate([
-            'customer_name' => ['required', 'string', 'min:2', 'max:255'],
-            'customer_email' => ['required', 'email', 'max:255'],
-            'customer_phone' => ['required', 'string', 'regex:/^09\d{2}[ -]?\d{3}[ -]?\d{4}$/'],
+            'customer_name' => ['required_without:wholesale_request_id', 'nullable', 'string', 'min:2', 'max:255'],
+            'customer_email' => ['required_without:wholesale_request_id', 'nullable', 'email', 'max:255'],
+            'customer_phone' => ['required_without:wholesale_request_id', 'nullable', 'string', 'regex:/^09\d{2}[ -]?\d{3}[ -]?\d{4}$/'],
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
             'valid_until' => ['nullable', 'date', 'after_or_equal:today'],
             'payment_terms' => ['required', Rule::in(['online_payment', 'bank_transfer'])],
             'notes' => ['nullable', 'string', 'max:2000'],
             'submit' => ['sometimes', 'boolean'],
+            'wholesale_request_id' => ['nullable', 'integer'],
             'delivery_required' => ['sometimes', 'boolean'],
             'delivery_province' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:150'],
             'delivery_city' => ['required_if:delivery_required,true', 'nullable', 'string', 'max:150'],
@@ -175,6 +182,42 @@ class WholesaleQuoteController extends Controller
             ];
         }
         $deliveryRequired = (bool) ($validated['delivery_required'] ?? false);
+        $wholesaleRequest = null;
+        if (!empty($validated['wholesale_request_id'])) {
+            $wholesaleRequest = DB::table('store_wholesale_quote_requests')
+                ->where('id', $validated['wholesale_request_id'])
+                ->where('store_id', $storeId)
+                ->where('status', 'pending')
+                ->first();
+            if (!$wholesaleRequest) {
+                return response()->json(['success' => false, 'message' => 'This customer quote request is no longer pending. Refresh the request list.'], 422);
+            }
+            $customer = DB::table('users')->where('id', $wholesaleRequest->customer_user_id)->first();
+            $access = DB::table('store_wholesale_customers')->where('store_id', $storeId)
+                ->where('user_id', $wholesaleRequest->customer_user_id)->where('status', 'approved')->first();
+            if (!$customer || !$access) {
+                return response()->json(['success' => false, 'message' => 'The customer no longer has approved wholesale access.'], 422);
+            }
+            $validated['customer_name'] = trim(($customer->fname ?? '') . ' ' . ($customer->lname ?? '')) ?: $access->business_name;
+            $validated['customer_email'] = $customer->email;
+            $validated['customer_phone'] = $validated['customer_phone'] ?: ($customer->phone_number ?? '');
+            if (!preg_match('/^09\d{2}[ -]?\d{3}[ -]?\d{4}$/', $validated['customer_phone'])) {
+                return response()->json(['success' => false, 'message' => 'Add a valid customer mobile number before submitting this quotation.'], 422);
+            }
+            if (empty($validated['submit'])) {
+                return response()->json(['success' => false, 'message' => 'A customer quote request must be submitted for review, not saved as a draft.'], 422);
+            }
+            $requestedItems = json_decode((string) $wholesaleRequest->items, true) ?: [];
+            foreach ($requestedItems as $requestedItem) {
+                $matched = collect($items)->first(fn ($quoteItem) =>
+                    (int) $quoteItem['product_id'] === (int) $requestedItem['product_id']
+                    && (int) ($quoteItem['variation_id'] ?? 0) === (int) ($requestedItem['variation_id'] ?? 0)
+                );
+                if (!$matched || (int) $matched['quantity'] !== (int) $requestedItem['quantity']) {
+                    return response()->json(['success' => false, 'message' => 'Keep every requested product, variant, and quantity in the quotation. Choose another branch if an item is unavailable.'], 422);
+                }
+            }
+        }
         $deliveryAddress = $deliveryRequired ? implode(', ', array_map('trim', [
             $validated['delivery_address_line'], $validated['delivery_barangay'],
             $validated['delivery_city'], $validated['delivery_province'],
@@ -191,6 +234,12 @@ class WholesaleQuoteController extends Controller
             'store_id' => $storeId, 'branch_id' => $validated['branch_id'],
             'customer_name' => trim($validated['customer_name']),
             'customer_email' => strtolower(trim($validated['customer_email'])),
+            'customer_user_id' => $wholesaleRequest?->customer_user_id ?? DB::table('store_wholesale_customers')
+                ->where('store_id', $storeId)
+                ->where('status', 'approved')
+                ->whereIn('user_id', function ($query) use ($validated) {
+                    $query->select('id')->from('users')->whereRaw('LOWER(email) = ?', [strtolower(trim($validated['customer_email']))]);
+                })->value('user_id'),
             'customer_phone' => preg_replace('/\s+/', ' ', trim($validated['customer_phone'])),
             'quote_number' => 'WQ-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(4))),
             'status' => $status, 'items' => $items,
@@ -209,6 +258,14 @@ class WholesaleQuoteController extends Controller
             'payment_terms' => $validated['payment_terms'] ?? null,
             'notes' => $validated['notes'] ?? null, 'created_by' => $request->user()->id,
         ]);
+        if ($wholesaleRequest && $submitted) {
+            DB::table('store_wholesale_quote_requests')->where('id', $wholesaleRequest->id)
+                ->where('status', 'pending')->update([
+                    'status' => 'quoted',
+                    'wholesale_quote_id' => $quote->id,
+                    'updated_at' => now(),
+                ]);
+        }
         return response()->json(['success' => true, 'data' => $quote], 201);
     }
 
@@ -216,6 +273,7 @@ class WholesaleQuoteController extends Controller
     {
         $quote = WholesaleQuote::query()->where('store_id', $request->user()->store_id)
             ->with(['crmLead:id,full_name,email,phone', 'creator:id,fname,lname'])->findOrFail($id);
+        $quote->setAttribute('customer_request_id', DB::table('store_wholesale_quote_requests')->where('wholesale_quote_id', $quote->id)->value('id'));
         $this->attachCustomerDisplay($quote);
         $quote->setAttribute('status', $this->normalizedStatus((string) $quote->status));
         if ($quote->sales_order_id) {
@@ -316,6 +374,11 @@ class WholesaleQuoteController extends Controller
                 ->lockForUpdate()->findOrFail($id);
             if (!in_array((string) $quote->status, ['approved', 'accepted'], true) || $quote->sales_order_id) {
                 return ['error' => 'Only an approved quotation can be converted once.'];
+            }
+            $customerRequest = DB::table('store_wholesale_quote_requests')
+                ->where('wholesale_quote_id', $quote->id)->first();
+            if ($customerRequest && $quote->customer_response !== 'accepted') {
+                return ['error' => 'The customer must accept the quotation before it can be converted to an order.'];
             }
             if ($quote->valid_until && $quote->valid_until->startOfDay()->lt(today())) {
                 return ['error' => 'This quotation has expired.'];

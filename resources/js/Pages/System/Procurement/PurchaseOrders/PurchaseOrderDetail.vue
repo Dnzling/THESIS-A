@@ -273,10 +273,10 @@
           <h3 class="font-semibold text-slate-900">Order Cost Summary</h3>
         </div>
         <div class="space-y-3 text-sm">
-          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Subtotal</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Items subtotal (VAT inclusive)</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</span></div>
           <div class="flex items-center justify-between gap-4 text-slate-600"><span>Contract Discount ({{ formatDecimal(detail?.contract_discount_percentage) }}%)</span><span class="font-medium text-slate-900">- {{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span></div>
-          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Taxable Amount</span><span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, parseFloat(detail?.subtotal || 0) - parseFloat(detail?.discount_amount || 0))) }}</span></div>
-          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Tax ({{ formatDecimal(detail?.contract_tax_rate) }}%)</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Taxable amount (VAT exclusive)</span><span class="font-medium text-slate-900">{{ formatCurrency(taxExclusiveAmount(Math.max(0, parseFloat(detail?.subtotal || 0) - parseFloat(detail?.discount_amount || 0)), Number(detail?.contract_tax_rate || 0))) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>VAT included ({{ formatDecimal(detail?.contract_tax_rate) }}%)</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}</span></div>
           <div v-if="detail?.fulfillment_method === 'supplier_delivery'" class="space-y-1">
             <div class="flex items-center justify-between gap-4 text-slate-600"><span>Supplier Delivery Fee</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}</span></div>
             <div v-if="detail.shipping_fee_breakdown?.distance_km !== undefined" class="space-y-1 pl-2 text-xs text-slate-500">
@@ -767,6 +767,7 @@ const formatStatus = (status: string) => {
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 const supplierFulfillmentLabel = (status: string) => ({ preparing: 'Preparing', ready_for_pickup: 'Ready for Pickup', dispatched: 'Dispatched', delivered: 'Delivered' } as Record<string, string>)[status] || formatStatus(status)
+const taxExclusiveAmount = (grossAmount: number, rate: number) => rate > 0 ? grossAmount / (1 + rate / 100) : grossAmount
 
 const getPersonName = (person: any): string => {
   const source = person?.user || person

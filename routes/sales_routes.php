@@ -17,6 +17,10 @@ Route::prefix('sales')->group(function () {
     Route::post('/replacements/{id}/alternative', [ReplacementController::class, 'reserveAlternative'])->middleware('can:sales.orders.manage');
 
     Route::prefix('wholesale-quotes')->group(function () {
+        Route::get('/customer-access', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'storeRequests'])->middleware('can:sales.wholesale.view');
+        Route::put('/customer-access/{id}', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'reviewRequest'])->middleware('can:sales.wholesale.approve')->whereNumber('id');
+        Route::get('/customer-quote-requests', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'storeQuoteRequests'])->middleware('can:sales.wholesale.view');
+        Route::get('/customer-quote-requests/{id}', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'showStoreQuoteRequest'])->middleware('can:sales.wholesale.view')->whereNumber('id');
         Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.wholesale.view');
         Route::get('/options', [WholesaleQuoteController::class, 'options'])->middleware('can:sales.wholesale.view');
         Route::post('/delivery-estimate', [WholesaleQuoteController::class, 'deliveryEstimate'])->middleware('can:sales.wholesale.manage');

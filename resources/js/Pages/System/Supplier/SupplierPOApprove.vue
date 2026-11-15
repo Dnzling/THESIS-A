@@ -41,11 +41,11 @@
           <Card class="rounded-2xl border border-slate-200 shadow-sm">
             <template #title>Contract Fee Summary</template>
             <template #content><div class="space-y-3 text-sm">
-              <FeeRow label="Items subtotal" :value="money(po.subtotal)" />
+              <FeeRow label="Items subtotal (VAT inclusive)" :value="money(po.subtotal)" />
               <FeeRow :label="`Contract discount (${decimal(contractDiscountPercent)}%)`" :value="`− ${money(po.discount_amount)}`" value-class="text-rose-600" />
-              <FeeRow label="Taxable amount" :value="money(taxableAmount)" /><FeeRow :label="`VAT / Tax (${decimal(contractTaxRate)}%)`" :value="money(po.tax_amount)" />
+              <FeeRow label="Taxable amount (VAT exclusive)" :value="money(taxableAmount)" /><FeeRow :label="`VAT included (${decimal(contractTaxRate)}%)`" :value="money(includedVat)" />
               <FeeRow v-if="po.fulfillment_method === 'supplier_delivery'" label="Supplier delivery fee" :value="money(po.shipping_cost)" />
-              <div class="flex justify-between border-t border-slate-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-700">{{ money(po.total_amount) }}</span></div>
+              <div class="flex justify-between border-t border-slate-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-700">{{ money(payableTotal) }}</span></div>
               <p class="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">Rates are taken from your active supplier contract and locked into this PO.</p>
             </div></template>
           </Card>
@@ -56,13 +56,23 @@
               <div class="rounded-xl border border-orange-200 bg-orange-50 p-4"><p class="font-semibold text-slate-900">{{ fulfillmentLabel }}</p><p class="mt-1 text-xs leading-5 text-slate-600">This fulfillment method was selected by the store. Accepting confirms you can fulfill the PO as requested.</p></div>
             </template>
           </Card>
-          <div v-if="!isReadOnly" class="grid grid-cols-2 gap-3"><Button label="Reject" severity="danger" outlined @click="rejectionDialog = true" /><Button label="Approve PO" icon="pi pi-check" :loading="submitting" @click="approvePO" /></div>
+          <div v-if="!isReadOnly" class="grid grid-cols-2 gap-3"><Button label="Reject" severity="danger" outlined @click="rejectionDialog = true" /><Button label="Approve" icon="pi pi-check" :loading="submitting" @click="approveDialog = true" /></div>
         </div>
       </div>
     </template>
 
     <Dialog v-model:visible="rejectionDialog" modal header="Reject Purchase Order" :style="{ width: '32rem', maxWidth: '95vw' }">
-      <div class="space-y-4"><Textarea v-model="rejectionReason" rows="4" class="w-full" placeholder="Reason for rejection" /><div class="flex justify-end gap-2"><Button label="Cancel" text @click="rejectionDialog = false" /><Button label="Confirm Rejection" severity="danger" :loading="submitting" @click="rejectPO" /></div></div>
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">Select the main reason this order cannot be accepted.</p>
+        <Select v-model="selectedRejectionReason" :options="rejectionReasons" optionLabel="label" optionValue="value" placeholder="Select a reason" class="w-full" />
+        <Textarea v-model="rejectionDetails" rows="3" class="w-full" :placeholder="selectedRejectionReason === 'other' ? 'Please explain the reason' : 'Additional details (optional)'" />
+        <small v-if="rejectionError" class="text-red-600">{{ rejectionError }}</small>
+      </div>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="rejectionDialog = false" /><Button label="Confirm Rejection" severity="warn" :loading="submitting" @click="rejectPO" /></template>
+    </Dialog>
+    <Dialog v-model:visible="approveDialog" modal header="Approve this order?" :style="{ width: '28rem', maxWidth: '95vw' }">
+      <p class="text-sm leading-6 text-slate-600">You’re confirming that {{ po?.po_number }} can be fulfilled using the store’s selected {{ fulfillmentLabel.toLowerCase() }} arrangement.</p>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="approveDialog = false" /><Button label="Approve" icon="pi pi-check" severity="warn" :loading="submitting" @click="approvePO" /></template>
     </Dialog>
   </div>
 </template>
@@ -71,19 +81,50 @@
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import Badge from 'primevue/badge'; import Button from 'primevue/button'; import Card from 'primevue/card'; import Dialog from 'primevue/dialog'; import Skeleton from 'primevue/skeleton'; import Textarea from 'primevue/textarea'
+import Badge from 'primevue/badge'; import Button from 'primevue/button'; import Card from 'primevue/card'; import Dialog from 'primevue/dialog'; import Select from 'primevue/select'; import Skeleton from 'primevue/skeleton'; import Textarea from 'primevue/textarea'
 import supplierService from '../../../services/supplier.service'
 
 const Info = defineComponent({ props: { label: String, value: [String, Number] }, setup: p => () => h('div', [h('p', { class: 'text-xs text-slate-500' }, p.label), h('p', { class: 'mt-1 font-medium text-slate-900' }, String(p.value ?? '—'))]) })
 const FeeRow = defineComponent({ props: { label: String, value: String, valueClass: String }, setup: p => () => h('div', { class: 'flex justify-between gap-3' }, [h('span', { class: 'text-slate-500' }, p.label), h('span', { class: ['font-medium text-slate-900', p.valueClass] }, p.value)]) })
 const route = useRoute(); const router = useRouter(); const toast = useToast()
-const po = ref<any>(null); const contractTaxRate = ref(0); const contractDiscountPercent = ref(0); const submitting = ref(false); const rejectionDialog = ref(false); const rejectionReason = ref(''); const loading = ref(false)
+const po = ref<any>(null); const contractTaxRate = ref(0); const contractDiscountPercent = ref(0); const submitting = ref(false); const rejectionDialog = ref(false); const approveDialog = ref(false); const selectedRejectionReason = ref(''); const rejectionDetails = ref(''); const rejectionError = ref(''); const loading = ref(false)
+const rejectionReasons = [
+  { label: 'Requested item is unavailable or discontinued', value: 'Requested item is unavailable or discontinued' },
+  { label: 'Unable to fulfill the requested quantity', value: 'Unable to fulfill the requested quantity' },
+  { label: 'Quoted price or contract terms are incorrect', value: 'Quoted price or contract terms are incorrect' },
+  { label: 'Unable to meet the requested schedule', value: 'Unable to meet the requested schedule' },
+  { label: 'Order details need correction', value: 'Order details need correction' },
+  { label: 'Other', value: 'other' },
+]
 const isReadOnly = computed(() => po.value?.status !== 'sent_to_supplier')
-const taxableAmount = computed(() => Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0)))
+const taxableAmount = computed(() => {
+  const gross = Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0))
+  return contractTaxRate.value > 0 ? gross / (1 + contractTaxRate.value / 100) : gross
+})
+const includedVat = computed(() => {
+  const gross = Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0))
+  return Math.max(0, gross - taxableAmount.value)
+})
+const payableTotal = computed(() => {
+  const itemsTotal = Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0))
+  const shipping = po.value?.fulfillment_method === 'supplier_delivery' ? Number(po.value?.shipping_cost || 0) : 0
+  return itemsTotal + shipping
+})
 const loadPO = async () => { loading.value = true; try { const res = await supplierService.getSupplierPODetail(Number(route.params.id)); const payload = res.data || res; po.value = payload?.data?.po || payload?.po || null; contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0); contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0) } finally { loading.value = false } }
 const fulfillmentLabel = computed(() => po.value?.fulfillment_method === 'supplier_delivery' ? 'Supplier Delivery' : po.value?.fulfillment_method === 'store_pickup' ? 'Store Pickup' : 'Not selected')
-const approvePO = async () => { if (!po.value) return; submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'accepted' }); toast.add({ severity: 'success', summary: 'PO Accepted', detail: 'The PO is now being prepared.', life: 2500 }); router.push(`/supplier-portal/pos/${po.value.id}/view`) } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to approve PO', life: 3000 }) } finally { submitting.value = false } }
-const rejectPO = async () => { if (!po.value || !rejectionReason.value.trim()) return; submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'rejected', rejection_reason: rejectionReason.value.trim() }); toast.add({ severity: 'success', summary: 'PO Rejected', detail: 'The business has been notified.', life: 2500 }); router.push('/supplier-portal/pos') } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to reject PO', life: 3000 }) } finally { submitting.value = false } }
-const money = (v: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0)); const decimal = (v: any, d = 2) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: d }); const whole = (v: any) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 }); const uom = (i: any) => i.product?.unit_of_measurement || 'unit'; const dimensions = (i: any) => i.length_cm && i.width_cm && i.height_cm ? `${decimal(i.length_cm)} × ${decimal(i.width_cm)} × ${decimal(i.height_cm)} cm` : '—'; const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'; const formatStatus = (s: string) => s?.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') || '—'; const statusSeverity = (s: string) => s === 'supplier_accepted' ? 'success' : s === 'declined_supplier' ? 'danger' : 'info'
+const approvePO = async () => { if (!po.value) return; submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'accepted' }); approveDialog.value = false; toast.add({ severity: 'success', summary: 'Order Approved', detail: 'The order is now being prepared.', life: 2500 }); router.push(`/supplier-portal/pos/${po.value.id}/view`) } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to approve order', life: 3000 }) } finally { submitting.value = false } }
+const rejectPO = async () => {
+  const selected = selectedRejectionReason.value
+  const detail = rejectionDetails.value.trim()
+  rejectionError.value = ''
+  if (!po.value || !selected) { rejectionError.value = 'Select a reason for rejection.'; return }
+  if (selected === 'other' && !detail) { rejectionError.value = 'Explain the reason for rejection.'; return }
+  const reason = selected === 'other' ? detail : `${selected}${detail ? ` — ${detail}` : ''}`
+  submitting.value = true
+  try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'rejected', rejection_reason: reason }); toast.add({ severity: 'success', summary: 'Order Rejected', detail: 'The business has been notified.', life: 2500 }); router.push('/supplier-portal/pos') }
+  catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to reject order', life: 3000 }) }
+  finally { submitting.value = false }
+}
+const money = (v: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0)); const decimal = (v: any, d = 2) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: d }); const whole = (v: any) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 }); const uom = (i: any) => i.product?.unit_of_measurement || 'unit'; const dimensions = (i: any) => i.length_cm && i.width_cm && i.height_cm ? `${decimal(i.length_cm)} × ${decimal(i.width_cm)} × ${decimal(i.height_cm)} cm` : '—'; const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'; const formatStatus = (s: string) => s === 'sent_to_supplier' ? 'Pending' : s?.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') || '—'; const statusSeverity = (s: string) => s === 'supplier_accepted' ? 'success' : s === 'declined_supplier' ? 'danger' : s === 'sent_to_supplier' ? 'warn' : 'info'
 onMounted(loadPO)
 </script>

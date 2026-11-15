@@ -260,7 +260,7 @@
 
               <div class="space-y-3 text-sm">
                 <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Items subtotal</span>
+                  <span>Items subtotal (VAT inclusive)</span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.subtotal) }}</span>
                 </div>
                 <div v-if="Number(form.discount_amount) > 0" class="flex items-center justify-between gap-6 text-red-500">
@@ -268,11 +268,11 @@
                   <span class="font-semibold">− {{ formatCurrency(form.discount_amount) }}</span>
                 </div>
                 <div class="flex items-center justify-between gap-6 border-t border-slate-100 pt-3 text-slate-600">
-                  <span>Taxable amount</span>
-                  <span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, totals.subtotal - form.discount_amount)) }}</span>
+                  <span>Taxable amount (VAT exclusive)</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(taxExclusiveAmount(Math.max(0, totals.subtotal - form.discount_amount), supplierTaxRate)) }}</span>
                 </div>
                 <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>VAT <span class="text-xs text-slate-400">({{ selectedContract?.is_tax_exempt ? 'Exempt' : '12%' }})</span></span>
+                  <span>VAT included <span class="text-xs text-slate-400">({{ selectedContract?.is_tax_exempt ? 'Exempt' : `${supplierTaxRate}%` }})</span></span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.tax_amount) }}</span>
                 </div>
 
@@ -465,9 +465,10 @@ const fulfillmentOptions = [
 ]
 let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 
-const supplierTaxRate = computed(() =>
-  selectedContract.value?.is_tax_exempt ? 0 : 12
-)
+const supplierTaxRate = computed(() => selectedContract.value?.is_tax_exempt
+  ? 0
+  : Number(selectedContract.value?.tax_rate ?? 12))
+const taxExclusiveAmount = (grossAmount: number, rate: number) => rate > 0 ? grossAmount / (1 + rate / 100) : grossAmount
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
 const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
@@ -1295,11 +1296,11 @@ const updateTotals = () => {
   const discount = subtotal * (Number(contractDiscountPercent.value || 0) / 100)
   const taxableAmount = Math.max(0, subtotal - discount)
   const taxRate = Number(supplierTaxRate.value || 0) / 100
-  const taxAmount = taxableAmount * taxRate
+  const taxAmount = taxableAmount - taxExclusiveAmount(taxableAmount, taxRate * 100)
   form.discount_amount = discount
   totals.subtotal = subtotal
   totals.tax_amount = taxAmount
-  totals.total_amount = subtotal + taxAmount - discount + (isEditingStorePickup.value ? 0 : shippingFee.value)
+  totals.total_amount = taxableAmount + (isEditingStorePickup.value ? 0 : shippingFee.value)
   scheduleShippingEstimate(subtotal)
 }
 
@@ -1319,7 +1320,7 @@ const scheduleShippingEstimate = (subtotal: number) => {
     try {
       const response = await procurementService.estimatePurchaseOrderShipping({ supplier_id: form.supplier_id, branch_id: form.branch_id, fulfillment_method: form.fulfillment_method, subtotal, items: form.items.map(item => ({ product_id: item.product_id, variation_id: item.variation_id || item.variation?.id || null, weight_kg: item.weight_kg ?? item.variation?.weight_kg ?? null, quantity_ordered: item.quantity_ordered })) })
       shippingEstimate.value = response?.data || null
-      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount + shippingFee.value
+      totals.total_amount = Math.max(0, totals.subtotal - form.discount_amount) + shippingFee.value
     } catch (error: any) {
       shippingEstimate.value = null
       if (error?.response?.status === 404) shippingEstimateRouteUnavailable.value = true
@@ -1328,7 +1329,7 @@ const scheduleShippingEstimate = (subtotal: number) => {
         : error?.response?.data?.errors?.shipping_fee?.[0]
         || error?.response?.data?.message
         || 'Shipping fee could not be calculated. Check the supplier and branch locations.'
-      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount
+      totals.total_amount = Math.max(0, totals.subtotal - form.discount_amount)
     } finally { shippingEstimateLoading.value = false }
   }, 500)
 }

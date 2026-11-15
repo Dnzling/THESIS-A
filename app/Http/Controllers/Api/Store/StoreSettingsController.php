@@ -137,6 +137,7 @@ class StoreSettingsController extends Controller
                     'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
                 ],
                 'payments' => $this->resolvePaymentSettings($store),
+                'return_resolution' => app(\App\Services\Store\ReturnResolutionPolicy::class)->forStore($store),
                 'branches' => $store?->branches()
                     ->orderByDesc('is_main_branch')
                     ->orderBy('name')

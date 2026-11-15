@@ -128,6 +128,8 @@ const statusOptions = [
 const getStatusSeverity = (status: string) => {
   const map: { [key: string]: string } = {
     draft: 'secondary',
+    sent: 'warn',
+    sent_to_supplier: 'warn',
     pending: 'warn',
     receiving: 'info',
     partially_approved: 'warn',
@@ -221,6 +223,7 @@ const formatApiDate = (value: any) => {
 
 const formatStatus = (status: string) => {
   if (!status) return '-'
+  if (status === 'sent' || status === 'sent_to_supplier') return 'Pending'
   return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 

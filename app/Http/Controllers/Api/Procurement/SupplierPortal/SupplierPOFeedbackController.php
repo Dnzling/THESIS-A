@@ -7,6 +7,7 @@ use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierPOFulfillmentUpdate;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
@@ -198,6 +199,14 @@ class SupplierPOFeedbackController extends Controller
                 ->where('purchase_order_id', $id)
                 ->first();
 
+            $deliveryLogs = $shipment
+                ? PurchaseOrderDeliveryLog::with(['creator:id,fname,lname', 'attachments'])
+                    ->where('shipment_id', $shipment->id)
+                    ->orderByDesc('logged_at')
+                    ->orderByDesc('id')
+                    ->get()
+                : collect();
+
             $goodsReceipt = \App\Models\Procurement\Receiving\GoodsReceipt::with(['items.product'])
                 ->where('purchase_order_id', $id)
                 ->latest('id')
@@ -228,6 +237,12 @@ class SupplierPOFeedbackController extends Controller
                     'supplier_feedback' => $feedback,
                     'fulfillment_updates' => $hasFulfillmentUpdatesTable ? $po->supplierFulfillmentUpdates : collect(),
                     'shipment' => $shipment,
+                    'delivery_logs' => $deliveryLogs,
+                    'supplier_location' => [
+                        'latitude' => $portal->latitude ?? $po->supplier?->latitude,
+                        'longitude' => $portal->longitude ?? $po->supplier?->longitude,
+                        'address' => $portal->address ?? $po->supplier?->address,
+                    ],
                     'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
                     'rejection_reason' => $rejectionReason,
@@ -248,6 +263,43 @@ class SupplierPOFeedbackController extends Controller
                 'message' => 'Error fetching PO: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Return only tracking data for a PO visible to the authenticated supplier.
+     */
+    public function getPODeliveryTracking($id): JsonResponse
+    {
+        $portal = SupplierPortal::where('user_id', Auth::id())->firstOrFail();
+        abort_unless($portal->isVerified(), 409, 'Your supplier account is not verified yet.');
+
+        $po = PurchaseOrder::with(['supplier:id,supplier_name,address,latitude,longitude', 'branch:id,name,address,city,latitude,longitude'])
+            ->whereIn('supplier_id', $portal->linkedSupplierIds())
+            ->findOrFail($id);
+
+        $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with(['branch', 'supplier'])
+            ->where('purchase_order_id', $po->id)
+            ->first();
+        $logs = $shipment
+            ? PurchaseOrderDeliveryLog::with(['creator:id,fname,lname', 'attachments'])
+                ->where('shipment_id', $shipment->id)
+                ->orderByDesc('logged_at')
+                ->orderByDesc('id')
+                ->get()
+            : collect();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipment' => $shipment,
+                'delivery_logs' => $logs,
+                'supplier_location' => [
+                    'latitude' => $portal->latitude ?? $po->supplier?->latitude,
+                    'longitude' => $portal->longitude ?? $po->supplier?->longitude,
+                    'address' => $portal->address ?? $po->supplier?->address,
+                ],
+            ],
+        ]);
     }
 
     /**
@@ -413,9 +465,17 @@ class SupplierPOFeedbackController extends Controller
             'photos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
-        $current = $po->supplier_fulfillment_status ?: 'preparing';
+        $current = strtolower(trim((string) ($po->supplier_fulfillment_status ?: 'preparing')));
+        $current = str_replace([' ', '-'], '_', $current);
         $next = $validated['status'];
         if ($po->fulfillment_method === 'store_pickup') {
+            if ($current === 'ready_for_pickup' && $next === 'ready_for_pickup') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Purchase order is already ready for pickup.',
+                    'data' => ['purchase_order' => $po],
+                ]);
+            }
             abort_unless($current === 'preparing' && $next === 'ready_for_pickup', 422, 'Store pickup can only move from Preparing to Ready for Pickup.');
         } else {
             $valid = ($current === 'preparing' && $next === 'dispatched')

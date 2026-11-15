@@ -43,8 +43,11 @@
               </div>
 
               <div class="rounded-3xl border border-slate-200 bg-white p-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Role Summary</p>
-                <p class="mt-3 text-sm leading-7 text-slate-600 whitespace-pre-wrap">{{ posting?.description || 'No description provided.' }}</p>
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Position Summary</p>
+                  <Button v-if="summaryExceedsLimit" label="View All" text severity="warn" size="small" @click="showSummaryDialog = true" />
+                </div>
+                <p class="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">{{ summaryPreview || 'No description provided.' }}</p>
               </div>
 
             </div>
@@ -101,6 +104,13 @@
           </template>
         </Card>
       </div>
+
+      <Dialog v-model:visible="showSummaryDialog" header="Position Summary" modal :style="{ width: 'min(48rem, 95vw)' }">
+        <p class="max-h-[70vh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">{{ fullSummary }}</p>
+        <template #footer>
+          <Button label="Close" severity="secondary" outlined @click="showSummaryDialog = false" />
+        </template>
+      </Dialog>
     </div>
   </div>
 </template>
@@ -118,6 +128,17 @@ const loading = ref(false)
 const applicants = computed(() => posting.value?.applications || [])
 const previewApplicants = computed(() => applicants.value)
 const stages = computed(() => posting.value?.screening_stages || posting.value?.screeningStages || [])
+const SUMMARY_WORD_LIMIT = 250
+const fullSummary = computed(() => String(posting.value?.description || ''))
+const summaryWordMatches = computed(() => [...fullSummary.value.matchAll(/\S+/g)])
+const summaryExceedsLimit = computed(() => summaryWordMatches.value.length > SUMMARY_WORD_LIMIT)
+const summaryPreview = computed(() => {
+  if (!summaryExceedsLimit.value) return fullSummary.value
+  const lastVisibleWord = summaryWordMatches.value[SUMMARY_WORD_LIMIT - 1]
+  const lastVisibleWordEnd = (lastVisibleWord.index || 0) + lastVisibleWord[0].length
+  return `${fullSummary.value.slice(0, lastVisibleWordEnd).trimEnd()}...`
+})
+const showSummaryDialog = ref(false)
 
 const loadPosting = async () => {
   loading.value = true

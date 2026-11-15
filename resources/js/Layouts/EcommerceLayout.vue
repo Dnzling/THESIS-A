@@ -37,6 +37,7 @@
           <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
           <Button label="Track Order" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.track-order' })" />
           <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
+          <Button label="Wholesale" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.wholesale' })" />
         </nav>
   
         <div class="hidden items-center gap-2 md:flex">
@@ -138,6 +139,7 @@
         <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
         <Button label="Track Order" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.track-order' })" />
         <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
+        <Button label="Wholesale" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.wholesale' })" />
       </div>
       </div>
 

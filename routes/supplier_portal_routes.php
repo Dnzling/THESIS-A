@@ -65,6 +65,7 @@ Route::prefix('supplier-portal')->group(function () {
         // PO Feedback
         Route::get('/pos', [SupplierPOFeedbackController::class, 'getPOs']);
         Route::get('/pos/{id}', [SupplierPOFeedbackController::class, 'getPODetail']);
+        Route::get('/pos/{id}/tracking', [SupplierPOFeedbackController::class, 'getPODeliveryTracking'])->whereNumber('id');
         Route::post('/po-feedbacks', [SupplierPOFeedbackController::class, 'submitFeedback']);
         Route::post('/pos/{id}/fulfillment', [SupplierPOFeedbackController::class, 'updateFulfillment'])->whereNumber('id');
         Route::post('/po-feedbacks/{id}/confirm-receipt', [SupplierPOFeedbackController::class, 'confirmReceipt']);

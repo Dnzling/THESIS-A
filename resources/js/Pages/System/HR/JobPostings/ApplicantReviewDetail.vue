@@ -319,7 +319,7 @@ const rejectApplicant = async () => {
 const goBack = () => {
   const postingId = application.value?.job_posting_id
   if (postingId) {
-    router.push({ name: 'hr.job-postings.applicants', params: { postingId } })
+    router.push({ name: 'hr.recuitment.applicants', params: { postingId } })
     return
   }
   router.push({ name: 'hr.job-postings' })

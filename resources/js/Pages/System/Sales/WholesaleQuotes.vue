@@ -1,5 +1,6 @@
 <template>
   <div class="min-h-screen p-4">
+    <ConfirmDialog />
     <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 class="text-lg font-bold text-slate-900">Wholesale Quotations</h1>
@@ -8,7 +9,50 @@
       <Button v-if="canManage" label="Create Quotation" icon="pi pi-plus" size="small" @click="router.visit('/sales/wholesale-quotes/create')" />
     </div>
 
-    <Card class="border border-slate-200 shadow-sm"><template #content>
+    <Card v-if="canView" class="mb-4 border border-slate-200 shadow-sm">
+      <template #title>Wholesale Customer Access</template>
+      <template #subtitle>Approve business customers before their account is linked to store wholesale quotes.</template>
+      <template #content>
+        <DataTable :value="accessRequests" :loading="accessLoading" dataKey="id" rowHover class="text-xs" responsiveLayout="scroll">
+          <template #empty><div class="py-5 text-center text-sm text-slate-500">No wholesale access requests.</div></template>
+          <Column header="Customer" style="min-width: 190px"><template #body="{ data }">
+            <p class="font-semibold text-slate-800">{{ [data.fname, data.lname].filter(Boolean).join(' ') || data.email }}</p>
+            <p class="text-slate-500">{{ data.email }}</p>
+          </template></Column>
+          <Column field="business_name" header="Business name" style="min-width: 170px" />
+          <Column field="request_note" header="Note" style="min-width: 180px"><template #body="{ data }">{{ data.request_note || '—' }}</template></Column>
+          <Column field="status" header="Status"><template #body="{ data }"><Tag :value="label(data.status)" :severity="severity(data.status)" /></template></Column>
+          <Column header="Actions" style="min-width: 160px"><template #body="{ data }">
+            <div v-if="data.status === 'pending'" class="flex gap-2">
+              <Button label="Approve" size="small" severity="warn" @click="confirmAccess(data, 'approved')" />
+              <Button label="Reject" size="small" severity="secondary" outlined @click="confirmAccess(data, 'rejected')" />
+            </div>
+            <span v-else class="text-slate-400">Reviewed</span>
+          </template></Column>
+        </DataTable>
+      </template>
+    </Card>
+
+    <Card v-if="canReviewAccess" class="mb-4 border border-slate-200 shadow-sm">
+      <template #title>Customer Product Quote Requests</template>
+      <template #subtitle>Customers choose products and quantities; your team sets the branch, availability, price, and fulfillment in the quotation.</template>
+      <template #content>
+        <DataTable :value="quoteRequests" :loading="quoteRequestLoading" dataKey="id" rowHover class="text-xs" responsiveLayout="scroll">
+          <template #empty><div class="py-5 text-center text-sm text-slate-500">No customer product requests.</div></template>
+          <Column field="request_number" header="Request" style="min-width: 170px"><template #body="{ data }"><span class="font-semibold">{{ data.request_number }}</span><p class="mt-1 text-[11px] text-slate-500">{{ dateTime(data.created_at) }}</p></template></Column>
+          <Column header="Customer / Business" style="min-width: 190px"><template #body="{ data }"><p class="font-medium">{{ data.business_name || [data.fname, data.lname].filter(Boolean).join(' ') || data.email }}</p><p class="text-slate-500">{{ data.email }}</p></template></Column>
+          <Column header="Requested items" style="min-width: 230px"><template #body="{ data }"><div v-for="item in parseItems(data.items)" :key="`${item.product_id}:${item.variation_id || 'standard'}`" class="py-0.5"><span class="font-medium">{{ item.quantity }} × {{ item.product_name }}</span><span v-if="item.variant_name" class="text-slate-500"> · {{ item.variant_name }}</span></div><p v-if="data.customer_note" class="mt-1 text-slate-500">Note: {{ data.customer_note }}</p></template></Column>
+          <Column field="status" header="Status"><template #body="{ data }"><Tag :value="label(data.status)" :severity="data.status === 'quoted' ? 'success' : data.status === 'cancelled' ? 'secondary' : 'warn'" /></template></Column>
+          <Column header="Action" style="min-width: 150px"><template #body="{ data }"><Button v-if="data.status === 'pending' && canManage" label="Prepare quotation" icon="pi pi-file-edit" severity="warn" size="small" @click="prepareQuote(data)" /><Button v-else-if="data.wholesale_quote_id" label="View quotation" icon="pi pi-eye" outlined size="small" @click="view(data.wholesale_quote_id)" /></template></Column>
+        </DataTable>
+      </template>
+    </Card>
+
+    <Message v-if="featureLoaded && !wholesaleEnabled" severity="warn" :closable="false" class="mb-4">
+      Wholesale is disabled in Store Settings. Enable it there to create and manage wholesale quotations.
+    </Message>
+
+    <Card v-if="!featureLoaded || wholesaleEnabled" class="border border-slate-200 shadow-sm"><template #content>
         <div class="mb-4 grid items-end gap-3 md:grid-cols-5">
           <IconField class="md:col-span-2">
             <InputIcon class="pi pi-search" />
@@ -63,7 +107,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
+import axiosClient from '@/axios'
 import salesService from '@/services/sales.service'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
@@ -75,11 +121,22 @@ import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import ConfirmDialog from 'primevue/confirmdialog'
+import Message from 'primevue/message'
 const toast = useToast(),
-  auth = useAuthStore()
+  auth = useAuthStore(),
+  confirm = useConfirm()
 const canManage = computed(() => auth.hasPermission('sales.wholesale.manage'))
+const canView = computed(() => auth.hasPermission('sales.wholesale.view') || canManage.value)
+const canReviewAccess = computed(() => auth.hasPermission('sales.wholesale.approve'))
 const loading = ref(false),
   rows = ref<any[]>([])
+const accessLoading = ref(false)
+const accessRequests = ref<any[]>([])
+const quoteRequestLoading = ref(false)
+const quoteRequests = ref<any[]>([])
+const wholesaleEnabled = ref(false)
+const featureLoaded = ref(false)
 const filters = reactive({
   search: '',
   status: null as string | null,
@@ -97,6 +154,7 @@ const hasFilters = computed(
   () => !!(filters.search || filters.status || filters.date)
 )
 const load = async () => {
+  if (featureLoaded.value && !wholesaleEnabled.value) return
   loading.value = true
   try {
     const r = await salesService.getWholesaleQuotes({
@@ -115,6 +173,63 @@ const load = async () => {
   } finally {
     loading.value = false
   }
+}
+const loadFeatureAndAccess = async () => {
+  try {
+    const response = await axiosClient.get('/api/store/settings')
+    wholesaleEnabled.value = Boolean(response.data?.data?.return_resolution?.wholesale_enabled)
+  } catch {
+    wholesaleEnabled.value = false
+  } finally {
+    featureLoaded.value = true
+  }
+  if (wholesaleEnabled.value && canReviewAccess.value) await loadAccessRequests()
+  if (wholesaleEnabled.value && canView.value) await loadQuoteRequests()
+  if (wholesaleEnabled.value) await load()
+}
+const loadQuoteRequests = async () => {
+  quoteRequestLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/sales/wholesale-quotes/customer-quote-requests')
+    quoteRequests.value = response.data?.data || []
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load product requests', detail: error.response?.data?.message || 'Please try again.', life: 3000 })
+  } finally {
+    quoteRequestLoading.value = false
+  }
+}
+const parseItems = (value: any) => {
+  try { return typeof value === 'string' ? JSON.parse(value) : (value || []) } catch { return [] }
+}
+const prepareQuote = (request: any) => router.visit(`/sales/wholesale-quotes/create?request_id=${encodeURIComponent(request.id)}`)
+const loadAccessRequests = async () => {
+  accessLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/sales/wholesale-quotes/customer-access')
+    accessRequests.value = response.data?.data || []
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to load access requests', detail: error.response?.data?.message || 'Please try again.', life: 3000 })
+  } finally {
+    accessLoading.value = false
+  }
+}
+const confirmAccess = (access: any, status: 'approved' | 'rejected') => {
+  const customerName = [access.fname, access.lname].filter(Boolean).join(' ') || access.email
+  confirm.require({
+    header: `${status === 'approved' ? 'Approve' : 'Reject'} wholesale access?`,
+    message: `${status === 'approved' ? 'This customer will be eligible for this store’s wholesale quotations.' : 'This customer will not be linked to this store’s wholesale quotations.'} Customer: ${customerName}.`,
+    rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+    acceptProps: { label: status === 'approved' ? 'Approve' : 'Reject', severity: 'warn' },
+    accept: async () => {
+      try {
+        await axiosClient.put(`/api/sales/wholesale-quotes/customer-access/${access.id}`, { status })
+        toast.add({ severity: 'success', summary: 'Access updated', detail: `${customerName} was ${status}.`, life: 2500 })
+        await loadAccessRequests()
+      } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Unable to update access', detail: error.response?.data?.message || 'Please try again.', life: 3000 })
+      }
+    },
+  })
 }
 const searchLater = () => {
   clearTimeout(timer)
@@ -158,5 +273,5 @@ const dateTime = (v: any) =>
       timeStyle: 'short'
     }).format(new Date(v))
     : '—'
-onMounted(load)
+onMounted(loadFeatureAndAccess)
 </script>

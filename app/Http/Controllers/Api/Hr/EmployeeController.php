@@ -1501,7 +1501,16 @@ class EmployeeController extends Controller
     {
         return [
             'phone' => $employee->phone,
-            'address' => trim($employee->address . ', ' . $employee->city . ', ' . $employee->province),
+            'address' => implode(', ', array_filter([
+                $employee->address,
+                $employee->barangay,
+                $employee->city,
+                $employee->province,
+            ], static fn ($value) => is_string($value) && trim($value) !== '')),
+            'street_address' => $employee->address,
+            'barangay' => $employee->barangay,
+            'city' => $employee->city,
+            'province' => $employee->province,
             'emergency_contact' => [
                 'name' => $employee->emergency_contact_name,
                 'phone' => $employee->emergency_contact_phone,

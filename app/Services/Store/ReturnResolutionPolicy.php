@@ -6,16 +6,13 @@ use App\Models\Store\Store;
 
 class ReturnResolutionPolicy
 {
-    public const REFUND_METHODS = ['gcash', 'maya', 'bank_transfer'];
+    private const REFUND_METHODS = ['gcash', 'maya', 'bank_transfer'];
 
     public function forStore(?Store $store): array
     {
         $settings = is_array($store?->settings) ? $store->settings : [];
         $saved = is_array($settings['return_resolution'] ?? null) ? $settings['return_resolution'] : [];
-        $methods = array_values(array_intersect(
-            self::REFUND_METHODS,
-            array_map('strval', is_array($saved['refund_methods'] ?? null) ? $saved['refund_methods'] : ['gcash', 'maya'])
-        ));
+        $wholesale = is_array($settings['wholesale'] ?? null) ? $settings['wholesale'] : [];
 
         return [
             'allow_refunds' => (bool) ($saved['allow_refunds'] ?? true),
@@ -24,15 +21,17 @@ class ReturnResolutionPolicy
                 ? 'refund'
                 : 'replacement',
             'allow_higher_value_replacements' => (bool) ($saved['allow_higher_value_replacements'] ?? true),
-            'refund_methods' => $methods ?: ['gcash', 'maya'],
             'return_window_days' => min(30, max(1, (int) ($saved['return_window_days'] ?? 7))),
+            // These are system-supported payout methods, not store-configurable payment destinations.
+            'refund_methods' => self::REFUND_METHODS,
+            'wholesale_enabled' => (bool) ($wholesale['enabled'] ?? false),
         ];
     }
 
-    public function refundAllowed(Store $store, string $method): bool
+    public function refundAllowed(Store $store, ?string $method = null): bool
     {
         $policy = $this->forStore($store);
 
-        return $policy['allow_refunds'] && in_array($method, $policy['refund_methods'], true);
+        return $policy['allow_refunds'];
     }
 }

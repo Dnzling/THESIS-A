@@ -311,13 +311,9 @@ class StoreSettingsController extends Controller
             'default_resolution' => ['required', Rule::in(['refund', 'replacement'])],
             'allow_higher_value_replacements' => ['required', 'boolean'],
             'return_window_days' => ['required', 'integer', 'min:1', 'max:30'],
-            'refund_methods' => ['required_if:allow_refunds,true', 'array', 'max:3'],
-            'refund_methods.*' => ['string', Rule::in(\App\Services\Store\ReturnResolutionPolicy::REFUND_METHODS)],
+            'wholesale_enabled' => ['required', 'boolean'],
         ]);
 
-        if ($validated['allow_refunds'] && empty($validated['refund_methods'])) {
-            return back()->withErrors(['refund_methods' => 'Select at least one refund payment method.']);
-        }
         if (!$validated['allow_refunds'] && $validated['default_resolution'] === 'refund') {
             return back()->withErrors(['default_resolution' => 'Replacement must be the default when refunds are disabled.']);
         }
@@ -328,9 +324,9 @@ class StoreSettingsController extends Controller
             'default_resolution' => $validated['default_resolution'],
             'allow_higher_value_replacements' => (bool) $validated['allow_higher_value_replacements'],
             'return_window_days' => (int) $validated['return_window_days'],
-            'refund_methods' => $validated['allow_refunds']
-                ? array_values(array_unique($validated['refund_methods'] ?? []))
-                : [],
+        ];
+        $settings['wholesale'] = [
+            'enabled' => (bool) $validated['wholesale_enabled'],
         ];
         $store->settings = $settings;
         $store->save();

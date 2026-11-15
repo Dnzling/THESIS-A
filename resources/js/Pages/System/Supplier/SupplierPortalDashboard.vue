@@ -245,6 +245,7 @@ function formatMoney(value: number | string | null) {
 }
 
 function formatStatus(status: string | null | undefined) {
+  if (status === 'sent' || status === 'sent_to_supplier') return 'Pending'
   return String(status || 'Unknown').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
 }
 
@@ -252,7 +253,7 @@ function statusValueSeverity(status: string | null | undefined) {
   const value = String(status || '').toLowerCase()
   if (['approved', 'accepted', 'active', 'completed'].includes(value)) return 'success'
   if (['rejected', 'declined', 'failed'].includes(value)) return 'danger'
-  if (['pending', 'submitted', 'awaiting_response'].includes(value)) return 'warn'
+  if (['pending', 'sent', 'sent_to_supplier', 'submitted', 'awaiting_response'].includes(value)) return 'warn'
   return 'secondary'
 }
 

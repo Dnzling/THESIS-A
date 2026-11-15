@@ -45,9 +45,9 @@
             </tbody>
         </table>
         <table class="summary">
-            <tr><td>Subtotal</td><td class="num">₱{{ number_format((float) $document->subtotal, 2) }}</td></tr>
+            <tr><td>Subtotal (VAT inclusive)</td><td class="num">₱{{ number_format((float) $document->subtotal, 2) }}</td></tr>
             <tr><td>Discount</td><td class="num">- ₱{{ number_format((float) $document->discount_amount, 2) }}</td></tr>
-            <tr><td>Tax</td><td class="num">₱{{ number_format((float) $document->tax_amount, 2) }}</td></tr>
+            <tr><td>VAT included</td><td class="num">₱{{ number_format((float) $document->tax_amount, 2) }}</td></tr>
             <tr><td>Shipping</td><td class="num">₱{{ number_format((float) $document->shipping_cost, 2) }}</td></tr>
             <tr><td>Total Amount</td><td class="num">₱{{ number_format((float) $document->total_amount, 2) }}</td></tr>
         </table>
