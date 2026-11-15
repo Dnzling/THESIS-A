@@ -115,6 +115,16 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    // Keep the legacy/general 3D model request API available for the super-admin UI.
+    // Store-facing merchandising requests also remain under /product-catalog.
+    Route::prefix('3d-model-requests')->middleware('can:merchandising.3d.manage')->controller(\App\Http\Controllers\Api\Merchandising\Model3dRequestController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::post('/', 'store');
+        Route::get('/{modelRequest}', 'show');
+        Route::get('/{modelRequest}/download', 'download');
+        Route::post('/{modelRequest}/store-action', 'storeAction');
+        Route::post('/{modelRequest}/admin-action', 'adminAction');
+    });
     // Add admin supplier verification endpoints
     Route::get('/admin/suppliers/pending', [SupplierVerificationController::class, 'index']);
     Route::post('/admin/suppliers/{id}/approve', [SupplierVerificationController::class, 'approve']);

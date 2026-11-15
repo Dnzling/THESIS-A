@@ -129,7 +129,7 @@ class PurchaseOrderController extends Controller
 
     public function show(Request $request, int $id)
     {
-        $storeId = $this->authorizeStore($request, 'view');
+        $storeId = $this->authorizeReceivingAccess($request);
         $order = PurchaseOrder::query()
             ->with(['supplier', 'branch', 'createdBy.user', 'items.product', 'items.variation', 'goodsReceipts:id,purchase_order_id,grn_number,receipt_date,receipt_status'])
             ->where('store_id', $storeId)
@@ -365,6 +365,17 @@ class PurchaseOrderController extends Controller
         $user = $request->user();
         $hasPermission = $user?->hasPermissionTo("inventory.purchase_orders.{$action}", $storeId)
             || ($action === 'view' && $user?->hasPermissionTo('inventory.purchase_orders.manage', $storeId));
+        abort_unless($storeId > 0 && $hasPermission, 403);
+        return $storeId;
+    }
+
+    private function authorizeReceivingAccess(Request $request): int
+    {
+        $user = $request->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $hasPermission = $user?->hasPermissionTo('inventory.receiving.view', $storeId)
+            || $user?->hasPermissionTo('inventory.receiving.manage', $storeId);
+
         abort_unless($storeId > 0 && $hasPermission, 403);
         return $storeId;
     }
