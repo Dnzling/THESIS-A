@@ -73,11 +73,14 @@ export interface JobPosting {
   company_logo_url?: string | null
   id?: number
   store_id?: number
+  branch_id?: number | null
+  branch?: { id: number; name: string } | null
   role_id?: number | null
   title: string
   description: string
   department: string
   employment_type?: 'full_time' | 'part_time' | 'contract' | 'intern'
+  minimum_age?: number
   salary_min: number
   salary_max: number
   requirements?: string[] | string | null
@@ -154,6 +157,9 @@ export interface HireApplicantPayload {
   position: string
   phone?: string
   address?: string
+  province?: string
+  city?: string
+  barangay?: string
   pay_type?: 'monthly' | 'hourly' | 'hybrid'
 }
 

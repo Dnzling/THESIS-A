@@ -171,7 +171,7 @@ class CrmService {
     return res.data
   }
 
-  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected'; return_type?: 'refund' | 'replacement'; charge_responsibility?: 'store' | 'customer'; refund_exception_reason?: string; pickup_scheduled_at?: string; review_notes?: string }) {
+  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected'; return_type?: 'refund' | 'replacement'; charge_responsibility?: 'store' | 'customer'; refund_exception_reason?: string; pickup_scheduled_at?: string; review_notes?: string; reject_reason?: string }) {
     const res = await axiosClient.put(`/api/crm/returns/${id}/status`, payload)
     return res.data
   }

@@ -75,9 +75,7 @@
         <template #content>
           <div class="space-y-3">
             <div class="flex items-start justify-between gap-4">
-              <div class="flex items-start gap-3">
-                <img v-if="posting.company_logo_url" :src="posting.company_logo_url" :alt="`${posting.store?.name || 'Company'} logo`" class="h-12 w-12 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1" />
-                <div v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="pi pi-building text-lg" /></div>
+              <div class="flex min-w-0 items-start gap-3">
                 <div class="space-y-2">
                 <div class="flex flex-wrap items-center gap-2">
                   <h3 class="text-xl font-semibold text-surface-900">{{ posting.title }}</h3>

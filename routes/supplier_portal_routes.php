@@ -25,6 +25,8 @@ Route::prefix('supplier-portal')->group(function () {
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
+        Route::put('/shipping-rates', [SupplierPortalController::class, 'updateShippingRates']);
+        Route::post('/company-logo', [SupplierPortalController::class, 'updateCompanyLogo']);
         Route::put('/payment-account', [SupplierPortalController::class, 'updatePaymentAccount']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
         Route::get('/products', [SupplierProductListingController::class, 'index']);
@@ -64,6 +66,7 @@ Route::prefix('supplier-portal')->group(function () {
         Route::get('/pos', [SupplierPOFeedbackController::class, 'getPOs']);
         Route::get('/pos/{id}', [SupplierPOFeedbackController::class, 'getPODetail']);
         Route::post('/po-feedbacks', [SupplierPOFeedbackController::class, 'submitFeedback']);
+        Route::post('/pos/{id}/fulfillment', [SupplierPOFeedbackController::class, 'updateFulfillment'])->whereNumber('id');
         Route::post('/po-feedbacks/{id}/confirm-receipt', [SupplierPOFeedbackController::class, 'confirmReceipt']);
         Route::get('/po-feedbacks', [SupplierPOFeedbackController::class, 'getMyFeedbacks']);
         Route::get('/pos/{id}/receipt-resolutions', [GoodsReceiptResolutionController::class, 'supplierForPurchaseOrder']);

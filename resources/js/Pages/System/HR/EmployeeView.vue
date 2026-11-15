@@ -358,6 +358,9 @@
           </div>
 
           <div v-else-if="activeEditStep === 1">
+            <div class="mb-4 flex justify-end">
+              <Button label="Choose shift template" icon="pi pi-calendar-plus" severity="secondary" outlined size="small" @click="openScheduleTemplateDialog" />
+            </div>
             <div class="mb-4 grid gap-4 lg:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
@@ -441,6 +444,18 @@
           <Button v-if="activeEditStep > 0" label="Back" severity="secondary" text @click="activeEditStep -= 1" />
           <Button v-if="activeEditStep === 0" label="Next" @click="activeEditStep = 1" />
           <Button v-else label="Save Changes" :loading="savingEdit" @click="submitEditEmployee" />
+        </template>
+      </Dialog>
+
+      <Dialog v-model:visible="showScheduleTemplateDialog" header="Choose a Shift Template" :style="{ width: 'min(36rem, 95vw)' }" modal>
+        <div class="space-y-3">
+          <p class="text-sm text-slate-600">Select a saved schedule or shift template to fill this employee's weekly schedule. You can still edit each day afterward.</p>
+          <Select v-model="selectedScheduleTemplateId" :options="scheduleTemplateOptions" optionLabel="label" optionValue="value" placeholder="Select a template" filter showClear class="w-full" :loading="loadingScheduleTemplates" :disabled="!scheduleTemplateOptions.length" />
+          <p v-if="!scheduleTemplateOptions.length && !loadingScheduleTemplates" class="text-sm text-amber-700">No active templates are available. You can continue entering the schedule manually.</p>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" outlined @click="showScheduleTemplateDialog = false" />
+          <Button label="Apply Template" icon="pi pi-check" severity="warn" :disabled="!selectedScheduleTemplateId" @click="applyScheduleTemplate" />
         </template>
       </Dialog>
 
@@ -649,6 +664,10 @@ const savingEdit = ref(false)
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
+const showScheduleTemplateDialog = ref(false)
+const loadingScheduleTemplates = ref(false)
+const selectedScheduleTemplateId = ref<number | string | null>(null)
+const scheduleTemplateOptions = ref<Array<{ label: string; value: number | string; pattern: any }>>([])
 const payrollScheduleDefaults = ref({ workStart: '08:00', workEnd: '17:00', lunchBreak: 60, paidHours: 8 })
 const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
@@ -916,6 +935,83 @@ const loadShifts = async () => {
   } catch (err) {
     console.error('Failed to load shifts', err)
   }
+}
+
+const extractTemplateRows = (payload: any): any[] => {
+  let current = payload
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (Array.isArray(current)) return current
+    if (Array.isArray(current?.data)) return current.data
+    current = current?.data ?? current?.payload ?? current?.result
+  }
+  return []
+}
+
+const loadScheduleTemplates = async () => {
+  loadingScheduleTemplates.value = true
+  try {
+    const [savedSchedules, savedShifts] = await Promise.all([
+      hrService.getScheduleTemplates({ is_active: 1, per_page: 100 }),
+      hrService.getShiftManagementTemplates({ is_active: 1, per_page: 100 }),
+    ])
+    const scheduleOptions = extractTemplateRows(savedSchedules)
+      .filter((template: any) => template?.id && template?.name)
+      .map((template: any) => ({
+        label: `${template.name} - Schedule`,
+        value: template.id,
+        pattern: template.pattern || [],
+      }))
+    const shiftOptions = extractTemplateRows(savedShifts)
+      .filter((shift: any) => shift?.id && shift?.name)
+      .map((shift: any) => {
+        let days = shift.week_days || []
+        if (typeof days === 'string') {
+          try { days = JSON.parse(days) } catch { days = [] }
+        }
+        const pattern = (Array.isArray(days) ? days : []).map((day: string) => ({
+          day: String(day).toLowerCase(),
+          is_working: true,
+          shift_id: Number(shift.id),
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+        }))
+        return { label: `${shift.name} - Shift`, value: `shift-${shift.id}`, pattern }
+      })
+    scheduleTemplateOptions.value = [...scheduleOptions, ...shiftOptions]
+  } catch (error) {
+    console.error('Failed to load schedule templates', error)
+  } finally {
+    loadingScheduleTemplates.value = false
+  }
+}
+
+const openScheduleTemplateDialog = async () => {
+  selectedScheduleTemplateId.value = null
+  showScheduleTemplateDialog.value = true
+  await loadScheduleTemplates()
+}
+
+const applyScheduleTemplate = () => {
+  const template = scheduleTemplateOptions.value.find((option) => String(option.value) === String(selectedScheduleTemplateId.value))
+  if (!template) return
+  let patternEntries: any[] = []
+  if (Array.isArray(template.pattern)) {
+    patternEntries = template.pattern
+  } else if (template.pattern && typeof template.pattern === 'object') {
+    patternEntries = Object.entries(template.pattern).map(([day, entry]: [string, any]) => ({ day, ...entry }))
+  }
+  const byDay = new Map(patternEntries.map((entry: any) => [String(entry.day || '').toLowerCase(), entry]))
+  weeklyScheduleForm.value.forEach((row, index) => {
+    const entry: any = byDay.get(row.day_of_week)
+    row.is_off = !Boolean(entry?.is_working)
+    row.shift_id = row.is_off ? null : (Number(entry?.shift_id) || null)
+    row.start_time = row.is_off ? '' : formatShiftTime(entry?.start_time || '')
+    row.end_time = row.is_off ? '' : formatShiftTime(entry?.end_time || '')
+    row.hours = row.is_off ? 0 : calculateHours(row.start_time, row.end_time)
+    row.effective_from = toIsoDate(addDays(editWeekStart.value || mondayOfWeek(new Date()), index))
+    row.notes = `Applied template: ${template.label.split(' - ')[0]}`
+  })
+  showScheduleTemplateDialog.value = false
 }
 
 // Helper functions

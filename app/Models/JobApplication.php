@@ -63,6 +63,11 @@ class JobApplication extends Model
         return $this->hasMany(ApplicationDocument::class, 'application_id');
     }
 
+    public function onboardingPrerequisite(): HasOne
+    {
+        return $this->hasOne(JobOnboardingPrerequisite::class, 'application_id');
+    }
+
     public function interviews(): HasMany
     {
         return $this->hasMany(Interview::class, 'application_id')->orderBy('interview_date', 'desc');

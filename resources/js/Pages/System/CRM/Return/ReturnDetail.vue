@@ -39,7 +39,7 @@
           </div>
         </template>
         <template #content>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div class="rounded-xl border border-slate-200 p-4">
               <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Order</p>
               <p class="mt-1 font-semibold text-slate-900">{{ returnRequest.order?.order_number || `Order
@@ -53,6 +53,10 @@
               <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Quantity</p>
               <p class="mt-1 font-semibold text-slate-900">{{ Number(returnRequest.requested_quantity ||
                 1).toLocaleString() }} item(s)</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer preference</p>
+              <p class="mt-1 font-semibold text-slate-900">{{ returnRequest.requested_resolution ? prettyStatus(returnRequest.requested_resolution) : 'Not specified' }}</p>
             </div>
             <div class="rounded-xl border border-slate-200 p-4">
               <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Approved resolution</p>
@@ -467,6 +471,7 @@
               class="text-red-500">*</span></label>
           <Select v-model="investigationFindingsForm.recommended_resolution" :options="investigationResolutionOptions"
             optionLabel="label" optionValue="value" placeholder="Select a recommendation" class="w-full" />
+          <p v-if="!returnResolutionPolicy.allow_refunds" class="mt-1 text-xs text-slate-500">Refunds are disabled by the store policy, so Replacement is the only approval resolution.</p>
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Findings <span
@@ -537,11 +542,11 @@
           <small class="text-slate-500">Choose today or a future date agreed with the customer. Logistics can adjust it later if needed.</small>
         </div>
         <div v-if="pendingStatus === 'rejected'" class="space-y-2">
-          <label class="block text-sm text-gray-600">Reject Reason</label>
+          <label class="block text-sm text-gray-600">Reject Reason <span class="text-red-500">*</span></label>
           <Select v-model="pendingRejectReason" :options="rejectReasonOptions" optionLabel="label" optionValue="value"
-            placeholder="Select a reason" fluid showClear />
+            placeholder="Select a reason" fluid />
         </div>
-        <Textarea v-model="pendingReviewNotes" rows="5" class="w-full" placeholder="Type notes..." autoResize />
+        <div><label class="mb-1 block text-sm text-gray-600">{{ pendingStatus === 'rejected' && pendingRejectReason === 'Other' ? 'Rejection details *' : 'Additional notes' }}</label><Textarea v-model="pendingReviewNotes" rows="5" class="w-full" placeholder="Add supporting notes..." autoResize /></div>
       </div>
       <template #footer>
         <Button label="Cancel" outlined size="small" @click="closeNotesDialog" />
@@ -645,13 +650,13 @@ const investigationAttachment = ref<File | null>(null)
 const investigationAttachmentPreview = ref('')
 const investigationFindingsForm = reactive({
   findings: '',
-  recommended_resolution: null as 'refund' | 'replacement' | 'reject' | null,
+  recommended_resolution: null as 'refund' | 'replacement' | null,
 })
-const investigationResolutionOptions = [
-  { label: 'Refund', value: 'refund' },
+const returnResolutionPolicy = computed(() => returnRequest.value?.return_resolution_policy || { allow_refunds: true })
+const investigationResolutionOptions = computed(() => [
+  ...(returnResolutionPolicy.value.allow_refunds ? [{ label: 'Refund', value: 'refund' }] : []),
   { label: 'Replacement', value: 'replacement' },
-  { label: 'Reject Return', value: 'reject' },
-]
+])
 
 const clearInvestigationAttachment = () => {
   if (investigationAttachmentPreview.value) URL.revokeObjectURL(investigationAttachmentPreview.value)
@@ -750,7 +755,11 @@ const createInvestigationTicket = async () => {
 const openInvestigationFindings = () => {
   clearInvestigationAttachment()
   investigationFindingsForm.findings = investigationTicket.value?.findings || ''
-  investigationFindingsForm.recommended_resolution = investigationTicket.value?.recommended_resolution || null
+  const savedResolution = String(investigationTicket.value?.recommended_resolution || '')
+  investigationFindingsForm.recommended_resolution = savedResolution === 'replacement'
+    || (savedResolution === 'refund' && returnResolutionPolicy.value.allow_refunds)
+    ? savedResolution as 'refund' | 'replacement'
+    : null
   investigationFindingsVisible.value = true
 }
 
@@ -827,8 +836,9 @@ const canApprove = computed(() => {
   if (!authStore.hasPermission('crm.returns.manage')) return false
   const status = String(returnRequest.value?.status || '')
   if (status === 'pending_verification') {
-    return String(investigationTicket.value?.status || '') === 'completed'
-      && ['refund', 'replacement'].includes(String(investigationTicket.value?.recommended_resolution || ''))
+    const recommendation = String(investigationTicket.value?.recommended_resolution || '')
+    const allowed = recommendation === 'replacement' || (recommendation === 'refund' && returnResolutionPolicy.value.allow_refunds)
+    return String(investigationTicket.value?.status || '') === 'completed' && allowed
   }
   if (status !== 'approved' || returnRequest.value?.inspected_at) return false
   return !['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
@@ -914,10 +924,10 @@ const effectiveReturnType = computed<'refund' | 'replacement' | null>(() => {
   }
   return pendingReturnType.value
 })
-const returnTypeOptions = [
+const returnTypeOptions = computed(() => [
   { label: 'Replacement (recommended)', value: 'replacement' },
-  { label: 'Refund (exception only)', value: 'refund' },
-]
+  ...(returnResolutionPolicy.value.allow_refunds ? [{ label: 'Refund (exception only)', value: 'refund' }] : []),
+])
 const pendingChargeResponsibility = ref<'store' | 'customer'>('store')
 const pendingRefundExceptionReason = ref<string | null>(null)
 const chargeResponsibilityOptions = [
@@ -948,7 +958,7 @@ const notesContinueDisabled = computed(() => {
   if (pendingStatus.value !== 'rejected') return false
   const hasReason = !!String(pendingRejectReason.value || '').trim().length
   const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
-  return !hasReason && !hasNotes
+  return !hasReason || (pendingRejectReason.value === 'Other' && !hasNotes)
 })
 
 const openNotesThenConfirm = (nextStatus: 'rejected') => {
@@ -961,8 +971,8 @@ const openNotesThenConfirm = (nextStatus: 'rejected') => {
 const openApproval = () => {
   pendingStatus.value = 'approved'
   const recommendation = String(investigationTicket.value?.recommended_resolution || '')
-  pendingReturnType.value = returnRequest.value?.return_type
-    || (recommendation === 'refund' ? 'refund' : 'replacement')
+  const configuredType = returnRequest.value?.return_type || (recommendation === 'refund' ? 'refund' : 'replacement')
+  pendingReturnType.value = configuredType === 'refund' && !returnResolutionPolicy.value.allow_refunds ? 'replacement' : configuredType
   pendingChargeResponsibility.value = returnRequest.value?.charge_responsibility || 'store'
   pendingRefundExceptionReason.value = returnRequest.value?.refund_exception_reason || null
   pendingReviewNotes.value = returnRequest.value?.review_notes || ''
@@ -987,8 +997,8 @@ const confirmUpdate = (nextStatus: 'approved' | 'rejected') => {
   if (nextStatus === 'rejected') {
     const hasReason = !!String(pendingRejectReason.value || '').trim().length
     const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
-    if (!hasReason && !hasNotes) {
-      toast.add({ severity: 'warn', summary: 'Required', detail: 'Please select a reject reason or add notes.', life: 2500 })
+    if (!hasReason || (pendingRejectReason.value === 'Other' && !hasNotes)) {
+      toast.add({ severity: 'warn', summary: 'Rejection reason required', detail: pendingRejectReason.value === 'Other' ? 'Add rejection details for Other.' : 'Select a predefined rejection reason.', life: 2500 })
       return
     }
   }
@@ -1022,16 +1032,14 @@ const updateStatus = async (nextStatus: 'approved' | 'rejected') => {
   if (!id.value) return
   statusUpdating.value = true
   try {
-    const rejectReason = String(pendingRejectReason.value || '').trim()
-    const rejectNotes = String(pendingReviewNotes.value || '').trim()
-    const combinedRejectNotes = rejectReason && rejectNotes ? `${rejectReason}\n\n${rejectNotes}` : (rejectReason || rejectNotes)
     const res = await crmService.updateReturnStatus(id.value, {
       status: nextStatus,
       return_type: nextStatus === 'approved' && !isInitialInvestigationDecision.value ? pendingReturnType.value || undefined : undefined,
       charge_responsibility: nextStatus === 'approved' ? pendingChargeResponsibility.value : undefined,
       refund_exception_reason: nextStatus === 'approved' && effectiveReturnType.value === 'refund' ? pendingRefundExceptionReason.value || undefined : undefined,
       pickup_scheduled_at: nextStatus === 'approved' && pendingPickupDate.value ? dateForApi(pendingPickupDate.value) : undefined,
-      review_notes: nextStatus === 'rejected' ? combinedRejectNotes : (pendingReviewNotes.value || undefined),
+      reject_reason: nextStatus === 'rejected' ? pendingRejectReason.value || undefined : undefined,
+      review_notes: pendingReviewNotes.value || undefined,
     })
     returnRequest.value = res?.data || returnRequest.value
     toast.add({

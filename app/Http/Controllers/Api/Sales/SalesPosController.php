@@ -83,6 +83,8 @@ class SalesPosController extends Controller
         $user = $request->user();
         $storeId = (int) ($user?->store_id ?? 0);
         $canView = $user?->hasAnyPermission([
+            'sales.orders.view',
+            'sales.orders.manage',
             'sales.pos.view',
             'sales.pos.manage',
             'sales.ecommerce-orders.view',
@@ -170,6 +172,45 @@ class SalesPosController extends Controller
                 'delivery' => $order->delivery,
                 'route_name' => 'sales.ecommerce-orders.detail',
             ]));
+        }
+
+        if ($channel === '' || $channel === 'replacement') {
+            $replacementQuery = EcommerceOrderReturn::query()
+                ->where('store_id', $storeId)
+                ->where('return_type', 'replacement')
+                ->whereIn('replacement_status', ['sales_review', 'awaiting_payment', 'payment_failed', 'reserved'])
+                ->with(['order:id,shipping_name,shipping_phone', 'salesOrder:id,customer_name,customer_phone', 'replacementBranch:id,name']);
+            $replacementQuery->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search) {
+                $nested->where('return_number', 'like', "%{$search}%")
+                    ->orWhere('return_contact_name', 'like', "%{$search}%")
+                    ->orWhere('return_contact_phone', 'like', "%{$search}%");
+            }));
+            $replacementQuery->when($status !== '', fn ($query) => $query->where('replacement_status', $status));
+
+            $orders = $orders->concat($replacementQuery->get()->map(function (EcommerceOrderReturn $return): array {
+                $sourceOrder = $return->source_type === 'pos' ? $return->salesOrder : $return->order;
+
+                return [
+                    'key' => 'replacement-' . $return->id,
+                    'id' => (int) $return->id,
+                    'order_number' => $return->return_number ?: ('RET-' . $return->id),
+                    'customer_name' => $return->return_contact_name ?: ($sourceOrder?->customer_name ?? $sourceOrder?->shipping_name),
+                    'customer_contact' => $return->return_contact_phone ?: ($sourceOrder?->customer_phone ?? $sourceOrder?->shipping_phone),
+                    'payment_method' => $return->replacement_payment_method,
+                    'payment_status' => $return->replacement_payment_status,
+                    'status' => $return->replacement_status,
+                    'total_amount' => (float) ($return->replacement_price_difference ?? 0),
+                    'created_at' => $return->updated_at ?: $return->created_at,
+                    'channel' => 'Replacement',
+                    'order_type' => 'replacement',
+                    'branch_id' => $return->replacement_branch_id,
+                    'branch_name' => $return->replacementBranch?->name,
+                    'items_count' => max(1, (int) ($return->received_quantity ?: $return->requested_quantity)),
+                    'delivery_required' => true,
+                    'delivery' => null,
+                    'route_name' => 'sales.replacements.detail',
+                ];
+            }));
         }
 
         return response()->json([

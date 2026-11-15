@@ -302,6 +302,51 @@ class SupplierPortalController extends Controller
         ]);
     }
 
+    public function updateShippingRates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'delivery_fee_per_km' => ['required', 'numeric', 'min:0', 'max:1000000'],
+            'delivery_fee_per_kg' => ['required', 'numeric', 'min:0', 'max:1000000'],
+        ]);
+
+        $portal = SupplierPortal::where('user_id', (int) $request->user()->id)->firstOrFail();
+        $portal->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier delivery rates updated.',
+            'data' => $portal->fresh(),
+        ]);
+    }
+
+    /** Update the supplier account's company logo for all linked stores. */
+    public function updateCompanyLogo(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ]);
+
+        $portal = SupplierPortal::with('supplier')->where('user_id', (int) $request->user()->id)->firstOrFail();
+        $supplier = $portal->supplier;
+        if (!$supplier) {
+            return response()->json(['success' => false, 'message' => 'No supplier account is linked to this portal.'], 422);
+        }
+
+        $newPath = $request->file('logo')->store("supplier-portals/{$portal->id}/company-logo", 'public');
+        $oldPath = $supplier->logo_path;
+        $supplier->update(['logo_path' => $newPath]);
+
+        if ($oldPath && $oldPath !== $newPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Company logo updated.',
+            'data' => ['supplier' => $supplier->fresh()],
+        ]);
+    }
+
     /**
      * Update supplier payment account (bank details)
      * PUT /api/supplier-portal/payment-account

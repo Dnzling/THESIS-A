@@ -3,6 +3,7 @@ import axiosClient from '../axios'
 export interface Supplier {
   id?: number
   supplier_name: string
+  is_external?: boolean
   company_name?: string
   contact_person?: string
   email?: string
@@ -117,6 +118,18 @@ export interface PurchaseOrder {
   branch_id: number
   order_date: string
   expected_delivery_date: string
+  fulfillment_method?: 'store_pickup' | 'supplier_delivery'
+  supplier_fulfillment_status?: 'preparing' | 'ready_for_pickup' | 'dispatched' | 'delivered' | null
+  shipping_cost?: number | string
+  shipping_fee_breakdown?: {
+    distance_km?: number
+    total_weight_kg?: number
+    rate_per_km?: number
+    rate_per_kg?: number
+    distance_fee?: number
+    weight_fee?: number
+    manual_fee?: number
+  } | null
   payment_terms?: string
   notes?: string
   status?: 'draft'
@@ -319,8 +332,10 @@ class ProcurementService {
     return response.data
   }
 
-  async createSupplier(data: Supplier) {
-    const response = await axiosClient.post(`${this.baseUrl}/suppliers`, data)
+  async createSupplier(data: Supplier | FormData | { supplier_portal_id: number }) {
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers`, data, {
+      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
+    })
     return response.data
   }
 

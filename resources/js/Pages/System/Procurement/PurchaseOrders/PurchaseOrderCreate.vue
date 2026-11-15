@@ -53,6 +53,11 @@
               <div v-else class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 Suppliers are assigned separately to each product group in this split purchase order.
               </div>
+              <div>
+                <label class="mb-1.5 block text-xs font-semibold text-slate-600">Fulfillment <span class="text-red-500">*</span></label>
+                <Select v-model="form.fulfillment_method" :options="fulfillmentOptions" option-label="label" option-value="value" size="small" fluid @change="updateTotals" />
+                <small class="mt-1 block text-slate-500">The supplier will confirm this method when accepting the PO.</small>
+              </div>
               <div v-if="showRfqReceivingBranchSelect" class="rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3">
                 <label for="rfq-receiving-branch" class="block text-xs font-medium uppercase tracking-wide text-slate-600">
                   Receiving Branch <span class="text-red-500">*</span>
@@ -271,21 +276,22 @@
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.tax_amount) }}</span>
                 </div>
 
-                <div v-if="shippingEstimate?.breakdown" class="rounded-lg bg-slate-50 px-3 py-2.5">
+                <div v-if="form.fulfillment_method === 'supplier_delivery' && !selectedSupplier?.supplier_portal_id" class="space-y-1">
+                  <label class="block text-xs font-semibold text-slate-600">Supplier delivery fee</label>
+                  <InputNumber v-model="manualShippingFee" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" size="small" fluid @update:modelValue="updateTotals" />
+                </div>
+                <div v-else-if="form.fulfillment_method === 'supplier_delivery' && shippingEstimate?.breakdown" class="rounded-lg bg-slate-50 px-3 py-2.5">
                   <div class="flex items-center justify-between gap-6 text-slate-600">
-                    <span>Shipping</span>
+                    <span>Supplier delivery fee</span>
                     <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
                   </div>
                   <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
-                    <span>Base {{ formatCurrency(shippingEstimate.breakdown.base_fee) }}</span>
-                    <span>Distance {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }}</span>
-                    <span>Weight {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span>
-                    <span v-if="shippingEstimate.breakdown.bulky_item_surcharge">Bulky {{ formatCurrency(shippingEstimate.breakdown.bulky_item_surcharge) }}</span>
-                    <span v-if="shippingEstimate.breakdown.remote_area_surcharge">Remote area {{ formatCurrency(shippingEstimate.breakdown.remote_area_surcharge) }}</span>
+                    <span>{{ shippingEstimate.breakdown.distance_km }} km x {{ formatCurrency(shippingEstimate.breakdown.rate_per_km) }}/km = {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }}</span>
+                    <span>{{ shippingEstimate.breakdown.total_weight_kg }} kg x {{ formatCurrency(shippingEstimate.breakdown.rate_per_kg) }}/kg = {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span>
                   </div>
                 </div>
-                <div v-else class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Shipping</span>
+                <div v-else-if="form.fulfillment_method === 'supplier_delivery'" class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Supplier delivery fee</span>
                   <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
                 </div>
 
@@ -296,7 +302,7 @@
               <div class="flex items-center justify-between gap-6 rounded-xl bg-slate-900 px-4 py-3 text-white">
                 <div>
                   <span class="block font-semibold">Total payable</span>
-                  <span class="text-xs text-slate-300">Includes VAT and shipping</span>
+                  <span class="text-xs text-slate-300">Includes VAT and supplier delivery fee</span>
                 </div>
                 <span class="text-xl font-bold">{{ formatCurrency(totals.total_amount) }}</span>
               </div>
@@ -402,6 +408,7 @@ const {
     supplier_id: null as number | null,
     branch_id: null as number | null,
     purchase_requisition_id: null as number | null,
+    fulfillment_method: 'store_pickup' as string,
     order_date: new Date(),
   discount_amount: 0,
   notes: '',
@@ -442,10 +449,20 @@ const totals = reactive({
   total_amount: 0
 })
 const shippingEstimate = ref<any>(null)
+const manualShippingFee = ref(0)
 const shippingEstimateLoading = ref(false)
 const shippingEstimateError = ref('')
 const shippingEstimateRouteUnavailable = ref(false)
-const shippingFee = computed(() => Number(shippingEstimate.value?.shipping_fee || 0))
+const shippingFee = computed(() => form.fulfillment_method === 'store_pickup'
+  ? 0
+  : selectedSupplier.value?.supplier_portal_id
+    ? Number(shippingEstimate.value?.shipping_fee || 0)
+    : Number(manualShippingFee.value || 0))
+const isEditingStorePickup = computed(() => form.fulfillment_method === 'store_pickup')
+const fulfillmentOptions = [
+  { label: 'Store Pickup', value: 'store_pickup' },
+  { label: 'Supplier Delivery', value: 'supplier_delivery' },
+]
 let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 
 const supplierTaxRate = computed(() =>
@@ -872,6 +889,8 @@ const loadPOForEdit = async (poId: number) => {
     // Pre-fill form with existing PO data
     form.supplier_id = po.supplier_id
     form.branch_id = po.branch_id
+    form.fulfillment_method = po.fulfillment_method || null
+    manualShippingFee.value = Number(po.shipping_cost || 0)
     form.order_date = new Date(po.order_date)
     form.discount_amount = po.discount_amount ?? form.discount_amount
     form.discount_amount = po.discount_amount
@@ -891,7 +910,8 @@ const loadPOForEdit = async (poId: number) => {
         product_name: item.product?.product_name || item.product_name || '',
         unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         quantity_ordered: item.quantity_ordered,
-        unit_cost: item.unit_cost
+        unit_cost: item.unit_cost,
+        weight_kg: item.weight_kg ?? null
       }))
       form.items.forEach((_, index) => calculateItemTotal(index))
     }
@@ -1279,7 +1299,7 @@ const updateTotals = () => {
   form.discount_amount = discount
   totals.subtotal = subtotal
   totals.tax_amount = taxAmount
-  totals.total_amount = subtotal + taxAmount - discount + shippingFee.value
+  totals.total_amount = subtotal + taxAmount - discount + (isEditingStorePickup.value ? 0 : shippingFee.value)
   scheduleShippingEstimate(subtotal)
 }
 
@@ -1288,7 +1308,7 @@ const scheduleShippingEstimate = (subtotal: number) => {
   if (prefilling.value) return
   if (shippingEstimateRouteUnavailable.value) return
   const hasCompleteItems = form.items.length > 0 && form.items.every((item) => Number(item.product_id) > 0 && Number(item.quantity_ordered) > 0)
-  if (!form.supplier_id || !form.branch_id || !hasCompleteItems) {
+  if (form.fulfillment_method !== 'supplier_delivery' || !selectedSupplier.value?.supplier_portal_id || !form.supplier_id || !form.branch_id || !hasCompleteItems) {
     shippingEstimate.value = null
     shippingEstimateError.value = ''
     return
@@ -1297,7 +1317,7 @@ const scheduleShippingEstimate = (subtotal: number) => {
     shippingEstimateLoading.value = true
     shippingEstimateError.value = ''
     try {
-      const response = await procurementService.estimatePurchaseOrderShipping({ supplier_id: form.supplier_id, branch_id: form.branch_id, subtotal, items: form.items.map(item => ({ product_id: item.product_id, quantity_ordered: item.quantity_ordered })) })
+      const response = await procurementService.estimatePurchaseOrderShipping({ supplier_id: form.supplier_id, branch_id: form.branch_id, fulfillment_method: form.fulfillment_method, subtotal, items: form.items.map(item => ({ product_id: item.product_id, variation_id: item.variation_id || item.variation?.id || null, weight_kg: item.weight_kg ?? item.variation?.weight_kg ?? null, quantity_ordered: item.quantity_ordered })) })
       shippingEstimate.value = response?.data || null
       totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount + shippingFee.value
     } catch (error: any) {
@@ -1415,6 +1435,7 @@ const submitForm = async (confirmedSplitMode = false) => {
         supplier_id: form.supplier_id,
         rfq_id: Number(route.query.rfq_id || 0) || null,
         branch_id: form.branch_id,
+        fulfillment_method: form.fulfillment_method,
         purchase_requisition_id: form.purchase_requisition_id,
         order_date: orderDate,
         discount_amount: form.discount_amount,
@@ -1427,7 +1448,8 @@ const submitForm = async (confirmedSplitMode = false) => {
           feedback_id: item.feedback_id || null,
           rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,
-          unit_cost: item.unit_cost
+          unit_cost: item.unit_cost,
+          weight_kg: item.weight_kg ?? item.variation?.weight_kg ?? null
         })),
         status: saveDraft.value ? 'draft' : 'pending_finance_approval'
       }

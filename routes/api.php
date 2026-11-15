@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceFeedbackController;
+use App\Http\Controllers\Api\PublicOrderTrackingController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 
@@ -69,6 +70,7 @@ Route::prefix('auth')->group(function () {
 
 Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
 Route::get('/public/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'publicIndex']);
+Route::post('/public/order-tracking', [PublicOrderTrackingController::class, 'show'])->middleware('throttle:10,1');
 
 require __DIR__ . '/job_portal_routes.php';
 

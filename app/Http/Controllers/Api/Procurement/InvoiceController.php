@@ -370,7 +370,9 @@ class InvoiceController extends Controller
             $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
             $discountRate = (float) ($contract->discount_percentage ?? 0);
             $taxAmountTotal = round(($invoiceAmount * $taxRate) / 100, 2);
-            $shippingCost = (float) ($po->shipping_cost ?? 0);
+            $shippingCost = $po->fulfillment_method === 'supplier_delivery'
+                ? (float) ($po->shipping_cost ?? 0)
+                : 0.0;
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
             $netAmount = $invoiceAmount + $taxAmountTotal + $shippingCost - $discountAmount;
 

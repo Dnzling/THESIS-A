@@ -36,6 +36,11 @@ ecommerceClient.interceptors.response.use(
 )
 
 const ecommerceService = {
+  async trackOrder(trackingNumber: string) {
+    return ecommerceClient.post('/api/public/order-tracking', { tracking_number: trackingNumber }, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
+  },
   getCustomerProfile() {
     return ecommerceClient.get('/api/profile')
   },
@@ -266,12 +271,20 @@ const ecommerceService = {
     reason: string
     details?: string
     requested_quantity: number
+    requested_resolution: 'refund' | 'replacement'
+    preferred_refund_method?: 'gcash' | 'maya' | 'bank_transfer'
+    refund_account_name?: string
+    refund_account_number?: string
     evidence_images: File[]
   }) {
     const formData = new FormData()
     formData.append('reason', payload.reason)
     if (payload.details) formData.append('details', payload.details)
     formData.append('requested_quantity', String(payload.requested_quantity))
+    formData.append('requested_resolution', payload.requested_resolution)
+    if (payload.preferred_refund_method) formData.append('preferred_refund_method', payload.preferred_refund_method)
+    if (payload.refund_account_name) formData.append('refund_account_name', payload.refund_account_name)
+    if (payload.refund_account_number) formData.append('refund_account_number', payload.refund_account_number)
     payload.evidence_images.forEach((file) => formData.append('evidence_images[]', file))
 
     return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, formData, {

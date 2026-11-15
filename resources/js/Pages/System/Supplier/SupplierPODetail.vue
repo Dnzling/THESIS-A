@@ -25,7 +25,7 @@
         />
         <Tag 
           v-if="po" 
-          :value="formatStatus(po.status)" 
+          :value="po.supplier_fulfillment_status ? supplierFulfillmentLabel(po.supplier_fulfillment_status) : formatStatus(po.status)"
           :severity="getStatusSeverity(po.status)"
           class="rounded-full px-3 py-1 text-xs font-medium"
         />
@@ -210,7 +210,7 @@
               <div class="flex justify-between"><span class="text-gray-500">Contract discount ({{ formatDecimal(contractDiscountPercent) }}%)</span><span class="font-medium text-rose-600">− ₱{{ formatMoney(po?.discount_amount) }}</span></div>
               <div class="flex justify-between"><span class="text-gray-500">Taxable amount</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
               <div class="flex justify-between"><span class="text-gray-500">VAT / Tax ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">Shipping fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
+              <div v-if="po?.fulfillment_method === 'supplier_delivery'" class="flex justify-between"><span class="text-gray-500">Supplier delivery fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
               <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">₱{{ formatMoney(po?.total_amount) }}</span></div>
             </div>
           </template>
@@ -219,6 +219,29 @@
         <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">Fulfillment</h3></div></template>
           <template #content><div class="p-6 pt-0"><Tag :value="fulfillmentLabel" :severity="po?.fulfillment_method === 'supplier_delivery' ? 'info' : 'success'" /><p class="mt-3 text-sm text-gray-600">{{ fulfillmentDescription }}</p></div></template>
+        </Card>
+
+        <Card v-if="po?.supplier_fulfillment_status" class="rounded-2xl border border-orange-200 shadow-sm">
+          <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">Fulfillment Updates</h3></div></template>
+          <template #content>
+            <div class="space-y-4 p-6 pt-0">
+              <Tag :value="supplierFulfillmentLabel(po.supplier_fulfillment_status)" severity="info" />
+              <div v-if="canUpdateSupplierFulfillment" class="flex flex-wrap gap-2">
+                <Button v-if="po.fulfillment_method === 'store_pickup' && po.supplier_fulfillment_status === 'preparing'" label="Ready for Pickup" icon="pi pi-check" severity="warn" :loading="fulfillmentSaving" @click="submitFulfillmentUpdate('ready_for_pickup')" />
+                <template v-if="po.fulfillment_method === 'supplier_delivery' && po.supplier_fulfillment_status === 'preparing'">
+                  <Button label="Dispatch (Attach Photo)" icon="pi pi-camera" severity="warn" :loading="fulfillmentSaving" @click="selectFulfillmentPhotos('dispatched')" />
+                </template>
+                <Button v-if="po.fulfillment_method === 'supplier_delivery' && po.supplier_fulfillment_status === 'dispatched'" label="Mark Delivered (Attach Photos)" icon="pi pi-images" severity="warn" :loading="fulfillmentSaving" @click="selectFulfillmentPhotos('delivered')" />
+                <input ref="fulfillmentPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" multiple class="hidden" @change="onFulfillmentPhotosSelected" />
+              </div>
+              <p v-if="fulfillmentError" class="text-sm text-red-600">{{ fulfillmentError }}</p>
+              <div v-for="update in fulfillmentUpdates" :key="update.id" class="rounded-xl border border-slate-200 p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2"><span class="font-medium text-slate-800">{{ supplierFulfillmentLabel(update.status) }}</span><span class="text-xs text-slate-500">{{ formatDate(update.created_at, true) }}</span></div>
+                <p v-if="update.notes" class="mt-1 text-sm text-slate-600">{{ update.notes }}</p>
+                <div v-if="update.photos?.length" class="mt-3 flex flex-wrap gap-2"><a v-for="photo in update.photos" :key="photo" :href="photo" target="_blank" rel="noopener"><img :src="photo" alt="Supplier fulfillment proof" class="h-24 w-28 rounded-lg border border-slate-200 object-cover" /></a></div>
+              </div>
+            </div>
+          </template>
         </Card>
 
         <!-- Delivery Information Card -->
@@ -483,6 +506,11 @@ const confirm = useConfirm()
 
 const loading = ref(false)
 const po = ref<any>(null)
+const fulfillmentUpdates = ref<any[]>([])
+const fulfillmentPhotoInput = ref<HTMLInputElement | null>(null)
+const pendingFulfillmentStatus = ref('')
+const fulfillmentSaving = ref(false)
+const fulfillmentError = ref('')
 const shipment = ref<any>(null)
 const goodsReceipt = ref<any>(null)
 const existingInvoice = ref<any>(null)
@@ -514,6 +542,7 @@ const fulfillmentDescription = computed(() => po.value?.fulfillment_method === '
   : po.value?.fulfillment_method === 'store_pickup'
     ? 'The store will assign a driver and vehicle to collect this order.'
     : 'The fulfillment method has not been selected yet.')
+const canUpdateSupplierFulfillment = computed(() => po.value?.status === 'supplier_accepted' || po.value?.status === 'in_transit')
 const assignedDriverName = computed(() => {
   const user = shipment.value?.driver_employee?.user || shipment.value?.driver_user
   return [user?.fname, user?.lname].filter(Boolean).join(' ') || shipment.value?.driver_name || '-'
@@ -660,6 +689,7 @@ const goToInvoice = () => {
       const res = await supplierService.getSupplierPODetail(id)
       const payload = res.data || res
       po.value = payload?.data?.po || payload?.po || null
+      fulfillmentUpdates.value = payload?.data?.fulfillment_updates || po.value?.supplier_fulfillment_updates || []
       rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
       shipment.value = payload?.data?.shipment || null
       goodsReceipt.value = payload?.data?.goods_receipt || null
@@ -693,6 +723,32 @@ const goToInvoice = () => {
       loading.value = false
     }
   }
+
+const supplierFulfillmentLabel = (status: string) => ({ preparing: 'Preparing', ready_for_pickup: 'Ready for Pickup', dispatched: 'Dispatched', delivered: 'Delivered' } as Record<string, string>)[status] || status
+const selectFulfillmentPhotos = (status: string) => { pendingFulfillmentStatus.value = status; fulfillmentPhotoInput.value?.click() }
+const onFulfillmentPhotosSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const photos = Array.from(input.files || [])
+  if (!photos.length) return
+  await submitFulfillmentUpdate(pendingFulfillmentStatus.value, photos)
+  input.value = ''
+}
+const submitFulfillmentUpdate = async (status: string, photos: File[] = []) => {
+  if (!po.value || fulfillmentSaving.value) return
+  fulfillmentSaving.value = true
+  fulfillmentError.value = ''
+  try {
+    const payload = new FormData()
+    payload.append('status', status)
+    photos.forEach(photo => payload.append('photos[]', photo))
+    const response = await supplierService.updatePOFulfillment(Number(po.value.id), payload)
+    po.value = response?.data?.purchase_order || po.value
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Updated', detail: 'PO fulfillment status updated.', life: 2500 })
+  } catch (error: any) {
+    fulfillmentError.value = error?.response?.data?.message || 'Unable to update fulfillment status.'
+  } finally { fulfillmentSaving.value = false }
+}
 
 const resolutionSeverity = (status: string) => status === 'resolved' ? 'success' : status === 'rejected' ? 'danger' : status === 'delivery_submitted' ? 'info' : 'warn'
 const resolutionProductName = (resolution: any, productId: number) => resolution.original_receipt?.items?.find((item: any) => Number(item.product_id) === Number(productId))?.product?.product_name || `Product #${productId}`

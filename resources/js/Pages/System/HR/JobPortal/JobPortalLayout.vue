@@ -13,7 +13,7 @@
         </button>
   
         <div class="flex flex-wrap items-center gap-2">
-          <Button label="Back to Home" icon="pi pi-arrow-left" severity="secondary" text @click="goToHome" />
+          <Button label="Home" icon="pi pi-home" rounded @click="goToHome" />
 
           <Tag v-if="hiredApplication" severity="success"
             :value="`Currently hired: ${hiredApplication.jobPosting?.title || 'Employee'}`" />

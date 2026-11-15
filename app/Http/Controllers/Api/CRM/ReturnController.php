@@ -16,14 +16,25 @@ use App\Models\Sales\SalesOrderItem;
 use App\Services\Logistics\ReturnChargeService;
 use App\Services\Payment\EcommerceRefundRoutingService;
 use App\Services\Finance\ReturnRefundAmountService;
+use App\Services\Store\ReturnResolutionPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ReturnController extends Controller
 {
+    private const REJECT_REASONS = [
+        'Not eligible / outside return policy',
+        'Insufficient evidence',
+        'Item already used / damaged by customer',
+        'Return window expired',
+        'Other',
+    ];
+
     public function investigationAssignees(Request $request): JsonResponse
     {
         $storeId = (int) (auth()->user()?->store_id ?? 0);
@@ -215,9 +226,13 @@ class ReturnController extends Controller
             return response()->json(['success' => false, 'message' => 'Only an assigned investigator can complete this ticket.'], 403);
         }
 
+        $return->loadMissing('store');
+        $policy = app(ReturnResolutionPolicy::class)->forStore($return->store);
+        $allowedResolutions = $policy['allow_refunds'] ? ['refund', 'replacement'] : ['replacement'];
+
         $validated = $request->validate([
             'findings' => ['required', 'string', 'max:5000'],
-            'recommended_resolution' => ['required', 'in:refund,replacement,reject'],
+            'recommended_resolution' => ['required', Rule::in($allowedResolutions)],
             'attachment' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
@@ -613,6 +628,11 @@ class ReturnController extends Controller
         ]);
 
         $this->normalizePosReturnForDisplay($return);
+        $return->loadMissing('store');
+        $return->setAttribute(
+            'return_resolution_policy',
+            app(ReturnResolutionPolicy::class)->forStore($return->store)
+        );
 
         return response()->json([
             'success' => true,
@@ -637,7 +657,21 @@ class ReturnController extends Controller
             'refund_exception_reason' => ['nullable', 'string', 'max:255'],
             'pickup_scheduled_at' => ['required_if:status,approved', 'nullable', 'date', 'after_or_equal:today'],
             'review_notes' => ['nullable', 'string', 'max:2000'],
+            'reject_reason' => ['nullable', 'required_if:status,rejected', Rule::in(self::REJECT_REASONS)],
         ]);
+
+        if ($validated['status'] === 'rejected') {
+            $rejectReason = (string) $validated['reject_reason'];
+            $additionalNotes = trim((string) ($validated['review_notes'] ?? ''));
+            if ($rejectReason === 'Other' && $additionalNotes === '') {
+                throw ValidationException::withMessages([
+                    'review_notes' => ['Add details when the rejection reason is Other.'],
+                ]);
+            }
+            $validated['review_notes'] = $additionalNotes !== ''
+                ? $rejectReason . "\n\n" . $additionalNotes
+                : $rejectReason;
+        }
 
         $newStatus = $validated['status'];
         $currentStatus = (string) $return->status;
@@ -694,6 +728,17 @@ class ReturnController extends Controller
                     'success' => false,
                     'message' => 'A return resolution is required before approval.',
                 ], 422);
+            }
+            if ($validated['return_type'] === 'refund') {
+                $return->loadMissing('store');
+                $policy = app(ReturnResolutionPolicy::class)->forStore($return->store);
+                if (!$policy['allow_refunds']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Refunds are disabled by this store’s return resolution policy. Select Replacement instead.',
+                        'errors' => ['return_type' => ['Refund is not an allowed resolution for this store.']],
+                    ], 422);
+                }
             }
             if ($validated['return_type'] === 'refund' && empty(trim((string) ($validated['refund_exception_reason'] ?? '')))) {
                 return response()->json([
@@ -819,7 +864,7 @@ class ReturnController extends Controller
                     $refundRouting = app(EcommerceRefundRoutingService::class);
                     $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
                         ? $refundRouting->originalMethod($sourceOrder)
-                        : null;
+                        : $return->preferred_refund_method;
                     FinanceRefund::query()->updateOrCreate(
                         ['store_id' => (int) $return->store_id, 'order_type' => 'ecommerce_return', 'order_id' => (int) $return->id],
                         [
@@ -831,6 +876,8 @@ class ReturnController extends Controller
                             'status' => 'pending_inspection',
                             'requested_by' => auth()->id(),
                             'refund_method' => $refundMethod,
+                            'refund_account_name' => $return->refund_account_name,
+                            'refund_account_number' => $return->refund_account_number,
                             'notes' => $refundMethod
                                 ? 'Approved by CRM. Refund to the original payment method after inspection.'
                                 : 'Approved by CRM. Awaiting return delivery, inspection, and customer payout details.',
@@ -1189,7 +1236,7 @@ class ReturnController extends Controller
                 $refundRouting = app(EcommerceRefundRoutingService::class);
                 $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
                     ? $refundRouting->originalMethod($sourceOrder)
-                    : null;
+                    : $return->preferred_refund_method;
                 $amountCalculation = app(ReturnRefundAmountService::class)->calculate($return, $receivedQty);
                 $amount = $amountCalculation['amount'];
                 $refund = FinanceRefund::query()->updateOrCreate(
@@ -1207,6 +1254,8 @@ class ReturnController extends Controller
                         'status' => 'pending',
                         'requested_by' => (int) ($user?->id ?? 0) ?: null,
                         'refund_method' => $refundMethod,
+                        'refund_account_name' => $return->refund_account_name,
+                        'refund_account_number' => $return->refund_account_number,
                         'notes' => trim(($refundMethod
                             ? 'Inventory inspection complete. Ready for refund to the original payment method.'
                             : 'Inventory inspection complete. Awaiting customer payout details for Finance.')

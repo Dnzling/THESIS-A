@@ -42,6 +42,28 @@
           </div>
 
           <div class="space-y-2">
+            <label class="text-sm font-semibold text-slate-700">Preferred resolution <span class="text-red-500">*</span></label>
+            <Select v-model="form.requested_resolution" :options="resolutionOptions" optionLabel="label" optionValue="value" fluid placeholder="Select refund or replacement" />
+            <small v-if="!returnPolicy.allow_refunds" class="text-xs text-slate-500">This store currently offers replacement only.</small>
+          </div>
+
+          <div v-if="form.requested_resolution === 'refund'" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-700">Refund payment method <span class="text-red-500">*</span></label>
+              <Select v-model="form.preferred_refund_method" :options="refundMethodOptions" optionLabel="label" optionValue="value" fluid placeholder="Select payment method" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-700">Account name <span class="text-red-500">*</span></label>
+              <InputText v-model="form.refund_account_name" fluid maxlength="255" placeholder="Name registered on the account" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-700">{{ form.preferred_refund_method === 'bank_transfer' ? 'Bank account number' : 'Mobile number' }} <span class="text-red-500">*</span></label>
+              <InputText v-model="form.refund_account_number" fluid maxlength="100" :placeholder="form.preferred_refund_method === 'bank_transfer' ? 'Enter bank account number' : '09XXXXXXXXX'" />
+              <small v-if="form.preferred_refund_method !== 'bank_transfer'" class="text-xs text-slate-500">Use an 11-digit Philippine mobile number starting with 09.</small>
+            </div>
+          </div>
+
+          <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Upload photos <span class="text-red-500">*</span></label>
             <input ref="evidenceInput" type="file" accept="image/jpeg,image/png,image/webp" multiple class="hidden" @change="onEvidenceChange" />
             <div class="flex flex-wrap items-center gap-2">
@@ -119,6 +141,7 @@ import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -135,7 +158,32 @@ const form = reactive({
   requested_quantity: 1,
   reason: '',
   details: '',
+  requested_resolution: 'replacement' as 'refund' | 'replacement',
+  preferred_refund_method: '',
+  refund_account_name: '',
+  refund_account_number: '',
   evidence_images: [] as File[],
+})
+
+const returnPolicy = computed(() => order.value?.return_resolution_policy || {
+  allow_refunds: true,
+  default_resolution: 'replacement',
+  refund_methods: ['gcash', 'maya'],
+  return_window_days: 7,
+})
+const resolutionOptions = computed(() => [
+  { label: 'Replacement', value: 'replacement' },
+  ...(returnPolicy.value.allow_refunds ? [{ label: 'Refund', value: 'refund' }] : []),
+])
+const refundMethodLabels: Record<string, string> = { gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank transfer' }
+const refundMethodOptions = computed(() => (returnPolicy.value.refund_methods || []).map((value: string) => ({ label: refundMethodLabels[value] || value, value })))
+const refundDetailsValid = computed(() => {
+  if (form.requested_resolution !== 'refund') return true
+  const methodAllowed = refundMethodOptions.value.some((method: any) => method.value === form.preferred_refund_method)
+  const nameValid = form.refund_account_name.trim().length >= 2
+  const number = form.refund_account_number.trim()
+  const numberValid = form.preferred_refund_method === 'bank_transfer' ? number.length >= 5 : /^09\d{9}$/.test(number)
+  return methodAllowed && nameValid && numberValid
 })
 
 const evidenceInput = ref<HTMLInputElement | null>(null)
@@ -164,6 +212,8 @@ const isFormValid = computed(() => {
     && String(form.reason || '').trim()
     && quantity >= 1
     && quantity <= maxQty
+    && resolutionOptions.value.some((option) => option.value === form.requested_resolution)
+    && refundDetailsValid.value
     && form.evidence_images.length >= 1
   )
 })
@@ -223,6 +273,8 @@ async function loadOrder() {
       return
     }
     form.requested_quantity = Math.max(1, Math.min(Number(selectedItem.value.quantity || 1), form.requested_quantity))
+    form.requested_resolution = returnPolicy.value.default_resolution === 'refund' && returnPolicy.value.allow_refunds ? 'refund' : 'replacement'
+    form.preferred_refund_method = refundMethodOptions.value[0]?.value || ''
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order item.' })
     goBack()
@@ -251,6 +303,10 @@ async function submitReturn() {
       reason: String(form.reason).trim(),
       details: form.details.trim() || undefined,
       requested_quantity: qty,
+      requested_resolution: form.requested_resolution,
+      preferred_refund_method: form.requested_resolution === 'refund' ? form.preferred_refund_method as 'gcash' | 'maya' | 'bank_transfer' : undefined,
+      refund_account_name: form.requested_resolution === 'refund' ? form.refund_account_name.trim() : undefined,
+      refund_account_number: form.requested_resolution === 'refund' ? form.refund_account_number.trim() : undefined,
       evidence_images: form.evidence_images,
     })
     await showAlert({ severity: 'success', summary: 'Successful', detail: 'Return request sent for store verification.' })

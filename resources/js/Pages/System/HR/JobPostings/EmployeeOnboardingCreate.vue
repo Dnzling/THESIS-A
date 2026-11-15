@@ -1,14 +1,10 @@
 <template>
   <div class="min-h-full">
-    <div class="mx-auto max-w-7xl px-6 py-8">
-      <div class="flex flex-wrap items-center gap-3">
-        <Button label="Back to Decision" icon="pi pi-arrow-left" severity="secondary" text @click="router.push({ name: 'hr.job-applications.decision', params: { applicationId: route.params.applicationId } })" />
-      </div>
+    <div class="mx-auto max-w-7xl px-6">
 
       <div class="mt-5 rounded-[2rem] border border-blue-100 bg-white/95 p-6 shadow-sm">
         <div class="space-y-2">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Employee Onboarding</p>
-          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Complete employee onboarding</h1>
+          <h1 class="text-3xl font-bold tracking-tight text-slate-900">Complete employee onboarding</h1>
           <p class="text-sm leading-6 text-slate-500">Confirm the employee details, set compensation and schedule, then create the employee after final review.</p>
         </div>
 
@@ -44,10 +40,14 @@
                   </div>
                   <div class="space-y-2">
                     <label class="text-sm font-medium text-slate-700">Phone</label>
-                    <InputText v-model="employeeForm.phone" class="w-full" />
+                    <InputMask v-model="employeeForm.phone" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" class="w-full" />
+                  </div>
+                  <div class="space-y-2 md:col-span-2">
+                    <label class="text-sm font-medium text-slate-700">Address</label>
+                    <Textarea v-model="employeeForm.address" class="w-full" rows="2" autoResize />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm font-medium text-slate-700">Province (PSGC)</label>
+                    <label class="text-sm font-medium text-slate-700">Province</label>
                     <Select v-model="employeeForm.province_code" :options="provinceOptions" optionLabel="name" optionValue="psgc_id" placeholder="Select province" class="w-full" @change="onProvinceChange" />
                   </div>
                   <div class="space-y-2">
@@ -113,6 +113,19 @@
                 <span>Shift Planner</span>
               </template>
               <template #content>
+                <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="flex flex-wrap items-end gap-3">
+                    <div class="min-w-[16rem] flex-1 space-y-1">
+                      <label class="text-sm font-medium text-slate-700">Shift template</label>
+                      <Select v-model="selectedTemplateId" :options="templateOptions" optionLabel="label" optionValue="value" placeholder="Choose a saved shift template" filter showClear class="w-full" :loading="templatesLoading" :disabled="!shiftTemplates.length" />
+                    </div>
+                    <Button type="button" label="Apply template" icon="pi pi-check" severity="warn" size="small" :disabled="!selectedTemplate" @click="applySelectedTemplate" />
+                    <Button type="button" label="Create Shift" icon="pi pi-plus" severity="secondary" outlined size="small" @click="openShiftCreate" />
+                    <Button type="button" icon="pi pi-refresh" severity="secondary" text rounded aria-label="Refresh shift templates" v-tooltip.top="'Refresh shift templates'" :loading="templatesLoading" @click="refreshShiftOptions" />
+                  </div>
+                  <p class="mt-2 text-xs text-slate-500">Applying a template fills the weekly table. You can change the working days and times afterward; unmatched times are saved as custom shifts.</p>
+                  <p v-if="!shiftTemplates.length && !templatesLoading" class="mt-2 text-xs text-amber-700">No saved shift templates are available. Create a shift or enter a custom schedule below.</p>
+                </div>
                 <div class="mb-4 grid gap-4 lg:grid-cols-2">
                   <div class="space-y-2">
                     <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
@@ -149,21 +162,23 @@
                           </label>
                         </td>
                         <td class="border-b border-slate-100 px-3 py-3">
-                          <InputText
-                            :model-value="row.start_time"
-                            type="time"
+                          <DatePicker
+                            :model-value="timeValueForPicker(row.start_time)"
+                            timeOnly
+                            hourFormat="12"
                             class="w-full"
                             :disabled="!row.is_working"
-                            @update:model-value="(value) => onPlannerStartTimeChange(row, String(value || ''))"
+                            @update:model-value="(value) => onPlannerStartTimeChange(row, timeValueFromPicker(value))"
                           />
                         </td>
                         <td class="border-b border-slate-100 px-3 py-3">
-                          <InputText
-                            :model-value="row.end_time"
-                            type="time"
+                          <DatePicker
+                            :model-value="timeValueForPicker(row.end_time)"
+                            timeOnly
+                            hourFormat="12"
                             class="w-full"
                             :disabled="!row.is_working"
-                            @update:model-value="(value) => onPlannerEndTimeChange(row, String(value || ''))"
+                            @update:model-value="(value) => onPlannerEndTimeChange(row, timeValueFromPicker(value))"
                           />
                         </td>
                         <td class="border-b border-slate-100 px-3 py-3 text-sm text-slate-700">
@@ -191,6 +206,66 @@
             </Card>
           </section>
 
+          <section v-else-if="activeStep === 2">
+            <Card class="border border-slate-200 shadow-none">
+              <template #title>Onboarding Documents</template>
+              <template #content>
+                <p v-if="!requiredHiringDocuments.length && !requiresSignedContract" class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No onboarding documents are required for this posting.</p>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div v-for="(label, index) in requiredHiringDocuments" :key="label" class="space-y-2 rounded-xl border border-slate-200 p-4 text-sm">
+                    <p class="font-medium text-slate-800">{{ label }} <span class="text-red-500">*</span></p>
+                    <FileUpload
+                      :key="`hiring-document-${index}-${uploadGeneration}`"
+                      mode="advanced"
+                      :multiple="false"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      :maxFileSize="5242880"
+                      :fileLimit="1"
+                      :customUpload="true"
+                      :showUploadButton="false"
+                      chooseLabel="Choose file"
+                      chooseIcon="pi pi-upload"
+                      @select="(event) => selectHiringDocument(index, event)"
+                      @remove="() => clearHiringDocument(index)"
+                      @clear="clearHiringDocument(index)"
+                    />
+                    <p v-if="hiringFiles[index]" class="text-xs text-blue-700">Selected: {{ hiringFiles[index].name }}</p>
+                    <p v-else-if="savedPrerequisites?.documents?.[label]" class="text-xs text-green-700">Saved: {{ savedPrerequisites.documents[label].name }}</p>
+                    <Button v-if="savedPrerequisites?.documents?.[label]" type="button" label="Download saved file" size="small" text @click="downloadPrerequisite(String(index), savedPrerequisites.documents[label].name)" />
+                  </div>
+                  <div v-if="requiresSignedContract" class="space-y-3 rounded-xl border border-slate-200 p-4 text-sm">
+                    <div>
+                      <p class="font-medium text-slate-800">Signed employment contract <span class="text-red-500">*</span></p>
+                      <p class="mt-1 text-xs text-slate-500">Generate the contract PDF, have both parties sign it, then upload the signed copy.</p>
+                    </div>
+                    <Button type="button" label="Generate employment contract PDF" icon="pi pi-file-pdf" severity="warn" outlined size="small" :loading="generatingContract" :disabled="generatingContract || !contractTermsReady" @click="generateEmploymentContract" />
+                    <FileUpload
+                      :key="`signed-contract-${uploadGeneration}`"
+                      mode="advanced"
+                      :multiple="false"
+                      accept="application/pdf,.pdf"
+                      :maxFileSize="10485760"
+                      :fileLimit="1"
+                      :customUpload="true"
+                      :showUploadButton="false"
+                      chooseLabel="Choose signed PDF"
+                      chooseIcon="pi pi-upload"
+                      @select="selectContract"
+                      @remove="clearContractFile"
+                      @clear="clearContractFile"
+                    />
+                    <p v-if="contractFile" class="text-xs text-blue-700">Selected: {{ contractFile.name }}</p>
+                    <p v-else-if="savedPrerequisites?.contract_path" class="text-xs text-green-700">Signed contract saved.</p>
+                    <Button v-if="savedPrerequisites?.contract_path" type="button" label="Download saved contract" size="small" text @click="downloadPrerequisite('contract', 'employment-contract.pdf')" />
+                    <label class="flex items-start gap-2"><Checkbox v-model="contractSigned" binary /><span>Confirm the uploaded contract is signed by the employee and store representative.</span></label>
+                  </div>
+                </div>
+                <Button label="Save onboarding documents" severity="warn" size="small" class="mt-4" :loading="savingPrerequisites" @click="savePrerequisites" />
+                <Message v-if="!prerequisitesComplete" severity="warn" :closable="false" class="mt-3">Upload and save every required document and the signed contract before continuing.</Message>
+              </template>
+            </Card>
+          </section>
+
           <section v-else class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <Card class="border border-blue-100 shadow-none">
               <template #title>Preview and Confirmation</template>
@@ -200,6 +275,8 @@
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee Setup</p>
                     <div class="mt-3 grid gap-3 md:grid-cols-2">
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Name:</strong> {{ employeeForm.first_name }} {{ employeeForm.last_name }}</div>
+                      <div class="rounded-2xl bg-slate-50 p-4"><strong>Phone:</strong> {{ employeeForm.phone || 'Not set' }}</div>
+                      <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2"><strong>Address:</strong> {{ employeeAddressPreview }}</div>
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Salary:</strong> {{ formatCurrency(employeeForm.salary) }}</div>
                       <div class="rounded-2xl bg-slate-50 p-4"><strong>Hire Date:</strong> {{ formatDateOnly(employeeForm.hire_date) }}</div>
                       <div v-if="employeeForm.employment_type === 'contract'" class="rounded-2xl bg-slate-50 p-4"><strong>Contract End Date:</strong> {{ formatDateOnly(employeeForm.contract_end_date) }}</div>
@@ -217,7 +294,7 @@
                         <div class="space-y-2">
                           <div v-for="day in weeklyPlanner" :key="`preview-${day.day}`" class="flex items-center justify-between text-sm text-slate-700">
                             <span>{{ formatDayLabel(day.day) }}</span>
-                            <span>{{ day.is_working ? `${day.start_time || '--:--'} - ${day.end_time || '--:--'}` : 'Off' }}</span>
+                            <span>{{ day.is_working ? `${formatTime12h(day.start_time)} - ${formatTime12h(day.end_time)}` : 'Off' }}</span>
                           </div>
                         </div>
                       </div>
@@ -241,7 +318,7 @@
                   <Message severity="info" :closable="false">
                     Review everything carefully. This final action commits the hire and onboarding setup.
                   </Message>
-                  <Button label="Create Employee and Assign Template" icon="pi pi-check-circle" severity="info" fluid :loading="submitting" :disabled="submitting || hasBlockingError" @click="submitOnboarding" />
+                  <Button label="Complete Hire" icon="pi pi-check-circle" rounded fluid :loading="submitting" :disabled="submitting || hasBlockingError || !prerequisitesComplete" @click="submitOnboarding" />
                 </div>
               </template>
             </Card>
@@ -250,7 +327,7 @@
 
         <div v-if="!loading" class="mt-8 flex items-center justify-between gap-3">
           <Button label="Previous" severity="secondary" outlined :disabled="activeStep === 0 || submitting" @click="activeStep -= 1" />
-          <Button v-if="activeStep < 2" :label="activeStep === 1 ? 'Preview' : 'Next'" severity="info" @click="goNextStep" />
+          <Button v-if="activeStep < 3" :label="activeStep === 2 ? 'Review' : 'Next'" rounded :disabled="activeStep === 2 && !prerequisitesComplete" @click="goNextStep" />
         </div>
       </div>
     </div>
@@ -260,6 +337,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import hrService from '@/services/hr.services'
+import FileUpload from 'primevue/fileupload'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 
@@ -290,6 +368,103 @@ const activeStep = ref(0)
 const errorMessage = ref('')
 const errorBannerRef = ref<HTMLElement | null>(null)
 const application = ref<any | null>(null)
+const savedPrerequisites = ref<any>(null)
+const hiringFiles = ref<Record<number, File>>({})
+const uploadGeneration = ref(0)
+const contractFile = ref<File | null>(null)
+const contractFileSaved = ref(false)
+const contractSigned = ref(false)
+const savingPrerequisites = ref(false)
+const generatingContract = ref(false)
+const requiredHiringDocuments = computed<string[]>(() => application.value?.jobPosting?.hiring_documents || [])
+const requiresSignedContract = computed(() => application.value?.jobPosting?.requires_signed_contract !== false)
+const prerequisitesComplete = computed(() => Boolean(
+  requiredHiringDocuments.value.every((label) => savedPrerequisites.value?.documents?.[label]?.path)
+  && (!requiresSignedContract.value || (
+    savedPrerequisites.value?.contract_path
+    && savedPrerequisites.value?.contract_signed_at
+    && contractSigned.value
+    && !contractFile.value
+  )),
+))
+const selectHiringDocument = (index: number, event: any) => { const file = event.files?.[0]; if (file) hiringFiles.value[index] = file }
+const clearHiringDocument = (index: number) => { delete hiringFiles.value[index] }
+const selectContract = (event: any) => {
+  contractFile.value = event.files?.[0] || null
+  if (contractFile.value) {
+    contractSigned.value = false
+  }
+}
+const clearContractFile = () => {
+  contractFile.value = null
+  contractSigned.value = Boolean(savedPrerequisites.value?.contract_signed_at)
+}
+const contractTermsReady = computed(() => Boolean(employeeForm.branch_id && employeeForm.department_id && employeeForm.role_id && employeeForm.hire_date && employeeForm.salary > 0 && (employeeForm.employment_type !== 'contract' || employeeForm.contract_end_date) && weeklyPlanner.length === 7))
+const downloadPrerequisite = async (kind: string, name: string) => {
+  const response = await hrService.api.get(`/api/job-applications/${route.params.applicationId}/onboarding-requirements/${kind}`, { responseType: 'blob' })
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+const generateEmploymentContract = async () => {
+  generatingContract.value = true
+  try {
+    const weeklySchedule = weeklyPlanner.map((row) => ({
+      day_of_week: row.day,
+      is_off: !row.is_working,
+      start_time: row.is_working ? formatMinutesToTime(parseTimeToMinutes(row.start_time) || 0) : null,
+      end_time: row.is_working ? formatMinutesToTime(parseTimeToMinutes(row.end_time) || 0) : null,
+    }))
+    const response = await hrService.api.post(`/api/job-applications/${route.params.applicationId}/employment-contract/pdf`, {
+      branch_id: employeeForm.branch_id,
+      department_id: employeeForm.department_id,
+      role_id: employeeForm.role_id,
+      hire_date: toIsoDate(employeeForm.hire_date),
+      contract_end_date: employeeForm.employment_type === 'contract' && employeeForm.contract_end_date ? toIsoDate(employeeForm.contract_end_date) : null,
+      employment_type: employeeForm.employment_type,
+      pay_type: employeeForm.pay_type,
+      salary: Number(employeeForm.salary),
+      position: employeeForm.position,
+      phone: employeeForm.phone,
+      address: employeeForm.address,
+      province: provinceOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.province_code))?.name || application.value?.province,
+      city: cityOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.city_code))?.name || application.value?.city,
+      barangay: barangayOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.barangay_code))?.name || application.value?.barangay,
+      weekly_schedule: weeklySchedule,
+    }, { responseType: 'blob' })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `employment-contract-${application.value?.first_name || 'employee'}-${application.value?.last_name || ''}.pdf`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast.add({ severity: 'success', summary: 'Contract PDF generated', detail: 'Review, print, and upload the signed contract.', life: 3500 })
+  } catch (error: any) {
+    await setError(error?.response?.data?.message || 'Unable to generate the employment contract PDF.')
+  } finally {
+    generatingContract.value = false
+  }
+}
+const savePrerequisites = async () => {
+  savingPrerequisites.value = true
+  try {
+    const payload = new FormData()
+    Object.entries(hiringFiles.value).forEach(([index, file]) => payload.append(`documents[${index}]`, file))
+    if (contractFile.value) payload.append('contract', contractFile.value)
+    payload.append('contract_signed', contractSigned.value ? '1' : '0')
+    const response = await hrService.api.post(`/api/job-applications/${route.params.applicationId}/onboarding-requirements`, payload)
+    savedPrerequisites.value = response.data?.data
+    contractSigned.value = Boolean(savedPrerequisites.value?.contract_signed_at)
+    contractFile.value = null
+    hiringFiles.value = {}
+    uploadGeneration.value += 1
+    toast.add({ severity: 'success', summary: 'Onboarding documents saved', life: 2500 })
+  } catch (error: any) { await setError(error?.response?.data?.message || 'Unable to save prerequisites.') }
+  finally { savingPrerequisites.value = false }
+}
 const createdEmployeeId = ref<number | null>(null)
 const shiftTemplates = ref<ShiftTemplateOption[]>([])
 const shiftOptions = ref<{ label: string; value: number; start_time: string; end_time: string }[]>([])
@@ -300,6 +475,7 @@ const payrollScheduleDefaults = reactive({ workStart: '08:00', workEnd: '17:00',
 const stepItems = [
   { label: 'Employee setup' },
   { label: 'Schedule' },
+  { label: 'Onboarding documents' },
   { label: 'Review and activate' },
 ]
 
@@ -334,6 +510,7 @@ const employeeForm = reactive({
   last_name: '',
   email: '',
   phone: '',
+  address: '',
   province_code: '',
   city_code: '',
   barangay_code: '',
@@ -347,6 +524,13 @@ const employeeForm = reactive({
   salary: 0,
   position: '',
 })
+
+const employeeAddressPreview = computed(() => [
+  employeeForm.address,
+  barangayOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.barangay_code))?.name,
+  cityOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.city_code))?.name,
+  provinceOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.province_code))?.name,
+].filter(Boolean).join(', ') || 'Not set')
 
 const shiftForm = reactive({
   week_start: new Date(),
@@ -438,6 +622,37 @@ const formatTemplateSummary = (template: any) => {
   return dayLabels.slice(0, 3).join(', ') + (dayLabels.length > 3 ? ` +${dayLabels.length - 3} more` : '')
 }
 
+const applySelectedTemplate = () => {
+  const template = selectedTemplate.value
+  if (!template) return
+
+  const entriesByDay = new Map(templatePatternEntries(template).map((entry) => [entry.day.toLowerCase(), entry]))
+  weeklyPlanner.forEach((row) => {
+    const entry = entriesByDay.get(row.day)
+    row.is_working = Boolean(entry?.is_working)
+    if (!row.is_working) {
+      row.shift_id = null
+      row.hours = 0
+      return
+    }
+
+    const startMinutes = parseTimeToMinutes(entry?.start_time) ?? parseTimeToMinutes(payrollScheduleDefaults.workStart) ?? 8 * 60
+    const configuredStart = parseTimeToMinutes(payrollScheduleDefaults.workStart) ?? startMinutes
+    const configuredEnd = parseTimeToMinutes(payrollScheduleDefaults.workEnd) ?? configuredStart + 9 * 60
+    const duration = Math.max(1, configuredEnd - configuredStart)
+    const endMinutes = parseTimeToMinutes(entry?.end_time) ?? startMinutes + duration
+    row.start_time = formatMinutesToTime(startMinutes)
+    row.end_time = formatMinutesToTime(endMinutes)
+    row.shift_id = Number(entry?.shift_id || 0) || detectMatchingShift(row.start_time, row.end_time)?.value || null
+    row.hours = calculateHours(row.start_time, row.end_time)
+  })
+}
+
+const openShiftCreate = () => {
+  const createShiftUrl = router.resolve({ name: 'hr.shifts.create' }).href
+  window.open(createShiftUrl, '_blank', 'noopener')
+}
+
 const dayLabelMap: Record<string, string> = {
   monday: 'Monday',
   tuesday: 'Tuesday',
@@ -473,6 +688,19 @@ const formatTime12h = (value?: string) => {
   const period = hours24 >= 12 ? 'PM' : 'AM'
   const hours12 = ((hours24 + 11) % 12) + 1
   return `${String(hours12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+const timeValueForPicker = (value?: string) => {
+  const minutes = parseTimeToMinutes(value)
+  if (minutes === null) return null
+  const date = new Date()
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
+  return date
+}
+
+const timeValueFromPicker = (value: Date | null) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ''
+  return formatMinutesToTime(value.getHours() * 60 + value.getMinutes())
 }
 
 const parseTimeToMinutes = (value?: string) => {
@@ -635,33 +863,43 @@ const normalizeTemplate = (template: any): ShiftTemplateOption | null => {
 const loadShiftTemplates = async () => {
   templatesLoading.value = true
   try {
-    const scheduleTemplatesPayload = await hrService.getScheduleTemplates({ is_active: 1, per_page: 100 })
-    let resolvedTemplates = extractTemplatesFromPayload(scheduleTemplatesPayload)
+    const [scheduleTemplatesPayload, shiftTemplatesPayload] = await Promise.all([
+      hrService.getScheduleTemplates({ is_active: 1, per_page: 100 }),
+      hrService.getShiftManagementTemplates({ is_active: 1, per_page: 100 }),
+    ])
+    const scheduleTemplates = extractTemplatesFromPayload(scheduleTemplatesPayload)
       .map(normalizeTemplate)
       .filter(Boolean) as ShiftTemplateOption[]
-
-    if (!resolvedTemplates.length) {
-      const shiftTemplatesPayload = await hrService.getShiftManagementTemplates({ is_active: 1, per_page: 100 })
-      const fallbackItems = extractTemplatesFromPayload(shiftTemplatesPayload)
-      resolvedTemplates = fallbackItems.map((shift: any) => ({
-        id: `shift-${shift.id}`,
-        name: shift.name,
-        source: 'shift',
-        pattern: mapShiftToPattern(shift),
-        valid_from: shift.created_at || null,
-        valid_to: null,
-      }))
-    }
-
-    shiftTemplates.value = resolvedTemplates
-    if (!selectedTemplateId.value && resolvedTemplates.length) {
-      selectedTemplateId.value = resolvedTemplates[0].id
-    }
+    const shiftTemplatesFromShifts = extractTemplatesFromPayload(shiftTemplatesPayload).map((shift: any) => ({
+      id: `shift-${shift.id}`,
+      name: shift.name,
+      source: 'shift' as const,
+      pattern: mapShiftToPattern(shift),
+      valid_from: shift.created_at || null,
+      valid_to: null,
+    }))
+    shiftTemplates.value = [...scheduleTemplates, ...shiftTemplatesFromShifts]
   } catch (error: any) {
     const message = error?.response?.data?.message || 'Unable to load shift templates.'
     await setError(message)
   } finally {
     templatesLoading.value = false
+  }
+}
+
+const refreshShiftOptions = async () => {
+  await loadShiftTemplates()
+  try {
+    const response = await hrService.getShifts({ per_page: 200 })
+    const shifts = response?.data?.data || response?.data || []
+    shiftOptions.value = shifts.map((shift: any) => ({
+      label: shift.name,
+      value: Number(shift.id),
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+    }))
+  } catch (error: any) {
+    await setError(error?.response?.data?.message || 'Unable to refresh available shifts.')
   }
 }
 
@@ -744,10 +982,7 @@ const validateWeeklyPlanner = async (): Promise<boolean> => {
       return false
     }
 
-    if (row.is_working && !detectMatchingShift(row.start_time, row.end_time)) {
-      await setError(`No saved shift matches ${formatDayLabel(row.day)}. Create a matching shift in HR settings before continuing.`)
-      return false
-    }
+    // Saved shifts are linked when their hours match. Otherwise this row is saved as a custom schedule.
   }
 
   if (totalWeeklyHours.value > maxWeeklyHours.value) {
@@ -774,7 +1009,7 @@ const loadPage = async () => {
       hrService.getBranches(),
       hrService.getDepartments(),
       hrService.getRoles(),
-      hrService.api.get('/api/address/provinces'),
+      hrService.api.get('/api/locations/provinces'),
       hrService.getHrSettings(),
       hrService.getShifts({ per_page: 200 }),
     ])
@@ -797,6 +1032,9 @@ const loadPage = async () => {
     }))
 
     application.value = applicationResponse?.data || applicationResponse
+    const prerequisitesResponse = await hrService.api.get(`/api/job-applications/${route.params.applicationId}/onboarding-requirements`)
+    savedPrerequisites.value = prerequisitesResponse.data?.data
+    contractSigned.value = Boolean(savedPrerequisites.value?.contract_signed_at)
 
     if (!application.value?.jobPosting && application.value?.job_posting_id) {
       const jobPostingResponse = await hrService.getJobPosting(application.value.job_posting_id)
@@ -809,7 +1047,7 @@ const loadPage = async () => {
     branchOptions.value = branches.data || branches || []
     departmentOptions.value = departments.data?.data || departments.data || departments || []
     roleOptions.value = roles.data || roles || []
-    const provinceItems = provinces.data || []
+    const provinceItems = provinces.data?.data || provinces.data || []
     provinceOptions.value = provinceItems.map((item: any) => ({
       psgc_id: item.province_id,
       name: item.name,
@@ -842,6 +1080,7 @@ const loadPage = async () => {
     employeeForm.last_name = application.value?.last_name || ''
     employeeForm.email = application.value?.email || ''
     employeeForm.phone = application.value?.phone || ''
+    employeeForm.address = application.value?.address || ''
     employeeForm.position = application.value?.jobPosting?.title || ''
     employeeForm.salary = Number(application.value?.jobPosting?.salary_min || 0)
 
@@ -876,7 +1115,10 @@ const loadPage = async () => {
       }
     }
 
-    if (branchOptions.value.length === 1 && !employeeForm.branch_id) {
+    const postingBranchId = Number(application.value?.jobPosting?.branch_id || application.value?.jobPosting?.branch?.id || 0)
+    if (postingBranchId && branchOptions.value.some((branch: any) => Number(branch.id) === postingBranchId)) {
+      employeeForm.branch_id = postingBranchId
+    } else if (branchOptions.value.length === 1 && !employeeForm.branch_id) {
       employeeForm.branch_id = Number(branchOptions.value[0].id)
     }
 
@@ -895,8 +1137,8 @@ const onProvinceChange = async () => {
   barangayOptions.value = []
   if (!employeeForm.province_code) return
   try {
-    const response = await hrService.api.get(`/api/address/cities/${employeeForm.province_code}`)
-    const cityItems = response.data || []
+    const response = await hrService.api.get('/api/locations/cities', { params: { province_id: employeeForm.province_code } })
+    const cityItems = response.data?.data || response.data || []
     cityOptions.value = cityItems.map((item: any) => ({
       psgc_id: item.city_id,
       name: item.name,
@@ -911,8 +1153,8 @@ const onCityChange = async () => {
   barangayOptions.value = []
   if (!employeeForm.city_code) return
   try {
-    const response = await hrService.api.get(`/api/address/barangays/${employeeForm.city_code}`)
-    const barangayItems = response.data || []
+    const response = await hrService.api.get('/api/locations/barangays', { params: { city_id: employeeForm.city_code } })
+    const barangayItems = response.data?.data || response.data || []
     barangayOptions.value = (barangayItems || []).map((item: any) => ({ psgc_id: item.code, name: item.name }))
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Load failed', detail: 'Unable to load barangays for selected city.', life: 2500 })
@@ -949,6 +1191,22 @@ const goNextStep = async () => {
     if (!weeklyValid) {
       return
     }
+    activeStep.value += 1
+    return
+  }
+
+  if (activeStep.value === 2 && !prerequisitesComplete.value) {
+    const missingDocuments = requiredHiringDocuments.value.filter((label) => !savedPrerequisites.value?.documents?.[label]?.path)
+    if (missingDocuments.length) {
+      void setError(`Save the required onboarding documents: ${missingDocuments.join(', ')}.`)
+      return
+    }
+    if (requiresSignedContract.value && (!savedPrerequisites.value?.contract_path || !savedPrerequisites.value?.contract_signed_at)) {
+      void setError('Upload and confirm the signed employment contract before continuing.')
+      return
+    }
+    void setError('Save all required onboarding documents before continuing.')
+    return
   }
 
   activeStep.value += 1
@@ -978,6 +1236,10 @@ const submitOnboarding = async () => {
       salary: Number(employeeForm.salary),
       position: employeeForm.position,
       phone: employeeForm.phone || undefined,
+      address: employeeForm.address || undefined,
+      province: provinceOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.province_code))?.name || application.value?.province || undefined,
+      city: cityOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.city_code))?.name || application.value?.city || undefined,
+      barangay: barangayOptions.value.find((item: any) => String(item.psgc_id) === String(employeeForm.barangay_code))?.name || application.value?.barangay || undefined,
     })
 
     const employee = hireResponse?.data?.employee
@@ -986,6 +1248,19 @@ const submitOnboarding = async () => {
     if (!employee?.id) {
       throw new Error('Employee record was not created.')
     }
+
+    const weeklySchedulePayload = weeklyPlanner.map((row) => {
+      const matchedShift = row.is_working ? detectMatchingShift(row.start_time, row.end_time) : null
+      return {
+        day_of_week: row.day,
+        shift_id: row.is_working ? Number(row.shift_id || matchedShift?.value || 0) || null : null,
+        start_time: row.is_working ? formatMinutesToTime(parseTimeToMinutes(row.start_time) || 0) : null,
+        end_time: row.is_working ? formatMinutesToTime(parseTimeToMinutes(row.end_time) || 0) : null,
+        is_off: !row.is_working,
+        effective_from: toIsoDate(shiftForm.week_start),
+      }
+    })
+    await hrService.api.put(`/api/employees/${employee.id}/weekly-schedule`, { schedules: weeklySchedulePayload })
 
     const startDateStr = toIsoDate(shiftForm.week_start)
     if (!startDateStr) {
@@ -1009,18 +1284,22 @@ const submitOnboarding = async () => {
       if (!row.is_working) continue
       const matchedShift = detectMatchingShift(row.start_time, row.end_time)
       const resolvedShiftId = Number(row.shift_id || matchedShift?.value || 0)
-      if (!resolvedShiftId) {
-        throw new Error(`No matching shift found for ${formatDayLabel(row.day)}. Please adjust the time range.`)
-      }
       const scheduleDate = new Date(startDate)
       scheduleDate.setDate(startDate.getDate() + dayOffsets[row.day])
-      await hrService.api.post('/api/shift-schedules', {
+      const schedulePayload: Record<string, any> = {
         employee_id: employee.id,
-        shift_id: resolvedShiftId,
         schedule_date: toIsoDate(scheduleDate),
         status: 'scheduled',
         notes: `Onboarding schedule: ${formatDayLabel(row.day)} ${formatTime12h(row.start_time)} - ${formatTime12h(row.end_time)}`,
-      })
+      }
+      if (resolvedShiftId) {
+        schedulePayload.shift_id = resolvedShiftId
+      } else {
+        schedulePayload.start_time = formatMinutesToTime(parseTimeToMinutes(row.start_time) || 0)
+        schedulePayload.end_time = formatMinutesToTime(parseTimeToMinutes(row.end_time) || 0)
+        schedulePayload.custom_name = `Custom ${formatDayLabel(row.day)} schedule`
+      }
+      await hrService.api.post('/api/shift-schedules', schedulePayload)
     }
 
     toast.add({

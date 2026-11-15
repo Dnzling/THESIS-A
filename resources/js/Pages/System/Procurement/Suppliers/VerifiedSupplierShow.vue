@@ -27,15 +27,28 @@
     <template v-else-if="detail">
       <Card>
         <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p class="text-slate-500">Supplier Name</p>
-              <p class="font-semibold text-slate-900">{{ detail.supplier_name || '-' }}</p>
+          <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+            <div class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+              <img v-if="detail.logo_url" :src="detail.logo_url" :alt="`${detail.company_name || detail.supplier_name} logo`" class="h-full w-full object-contain" />
+              <i v-else class="pi pi-building text-3xl text-slate-400" />
             </div>
-            <div>
-              <p class="text-slate-500">Company Name</p>
-              <p class="font-semibold text-slate-900">{{ detail.company_name || '-' }}</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h3 class="text-lg font-semibold text-slate-900">{{ detail.company_name || detail.supplier_name || 'Supplier' }}</h3>
+                <Tag value="Verified" severity="success" />
+              </div>
+              <p v-if="detail.company_name && detail.supplier_name" class="mt-1 text-sm text-slate-500">{{ detail.supplier_name }}</p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <div v-if="detail.rating !== null" class="flex items-center gap-1.5">
+                  <Rating :modelValue="Number(detail.rating)" :cancel="false" :readonly="true" />
+                  <span class="text-sm font-medium text-slate-700">{{ Number(detail.rating).toFixed(1) }}/5</span>
+                  <span class="text-xs text-slate-500">({{ detail.rating_count }} ratings from other stores)</span>
+                </div>
+                <span v-else class="text-sm text-slate-500">No ratings from other stores yet</span>
+              </div>
             </div>
+          </div>
+          <div class="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 text-sm md:grid-cols-2">
             <div>
               <p class="text-slate-500">Contact Person</p>
               <p class="font-semibold text-slate-900">{{ detail.contact_person || '-' }}</p>
@@ -66,24 +79,22 @@
 
       <Card>
         <template #header>
-          <div class="px-4 pt-4 font-semibold text-slate-800">Verification Documents</div>
+          <div class="flex items-center justify-between px-4 pt-4">
+            <span class="font-semibold text-slate-800">Supplier Products</span>
+            <Tag :value="`${detail.products?.length || 0} listed`" severity="secondary" />
+          </div>
         </template>
         <template #content>
-          <DataTable :value="detail.verification_documents || []" dataKey="id" size="small" stripedRows>
+          <DataTable :value="detail.products || []" dataKey="id" size="small" stripedRows>
             <template #empty>
-              <div class="py-4 text-center text-slate-500 text-sm">No verification documents found.</div>
+              <div class="py-5 text-center text-sm text-slate-500">This supplier has not listed products yet.</div>
             </template>
-            <Column field="document_type" header="Document" />
-            <Column field="status" header="Status" />
-            <Column field="rejection_reason" header="Review Notes">
-              <template #body="{ data }">{{ data.rejection_reason || '-' }}</template>
-            </Column>
-            <Column field="reviewed_at" header="Reviewed At">
-              <template #body="{ data }">{{ formatDate(data.reviewed_at) }}</template>
-            </Column>
+            <Column field="name" header="Product" />
+            <Column field="sku" header="SKU"><template #body="{ data }">{{ data.sku || '-' }}</template></Column>
           </DataTable>
         </template>
       </Card>
+
     </template>
   </div>
 </template>
@@ -94,6 +105,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Rating from 'primevue/rating'
+import Tag from 'primevue/tag'
 import procurementService from '../../../../services/procurement.service'
 
 const route = useRoute()

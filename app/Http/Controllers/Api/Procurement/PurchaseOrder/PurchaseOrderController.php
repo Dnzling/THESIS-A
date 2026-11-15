@@ -43,8 +43,12 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'supplier_id' => 'required|integer', 'branch_id' => 'required|integer', 'subtotal' => 'required|numeric|min:0',
-            'items' => 'required|array|min:1', 'items.*.product_id' => 'required|integer', 'items.*.quantity_ordered' => 'required|numeric|min:1',
+            'fulfillment_method' => 'required|in:store_pickup,supplier_delivery',
+            'items' => 'required|array|min:1', 'items.*.product_id' => 'required|integer', 'items.*.variation_id' => 'nullable|integer', 'items.*.weight_kg' => 'nullable|numeric|min:0', 'items.*.quantity_ordered' => 'required|numeric|min:1',
         ]);
+        if ($validated['fulfillment_method'] === 'store_pickup') {
+            return response()->json(['success' => true, 'data' => ['shipping_fee' => 0, 'breakdown' => []]]);
+        }
         $storeId = (int) auth()->user()->store_id;
         $supplier = Supplier::where('store_id', $storeId)->findOrFail($validated['supplier_id']);
         $branch = Branch::where('store_id', $storeId)->findOrFail($validated['branch_id']);
@@ -72,7 +76,9 @@ class PurchaseOrderController extends Controller
             ->findOrFail($validated['vehicle_id']);
         $costPerKm = 0;
         $distanceKm = 0;
-        $shippingCost = round((float) ($po->shipping_cost ?? 0), 2);
+        $shippingCost = $po->fulfillment_method === 'supplier_delivery'
+            ? round((float) ($po->shipping_cost ?? 0), 2)
+            : 0.0;
         $driver = Employee::with('user')->where('store_id', $storeId)
             ->where('status', 'active')->whereHas('user', fn ($query) => $query->where('is_active', true))
             ->findOrFail($validated['driver_id']);
@@ -119,7 +125,13 @@ class PurchaseOrderController extends Controller
             ]
         );
 
-        $po->update(['shipping_cost' => $shippingCost]);
+        if ((float) ($po->shipping_cost ?? 0) !== $shippingCost) {
+            $po->update([
+                'shipping_cost' => $shippingCost,
+                'shipping_fee_breakdown' => null,
+                'total_amount' => (float) $po->subtotal + (float) $po->tax_amount - (float) $po->discount_amount + $shippingCost,
+            ]);
+        }
 
         PurchaseOrderDeliveryLog::create([
             'shipment_id' => $shipment->id,
@@ -307,6 +319,7 @@ class PurchaseOrderController extends Controller
             'shipment.vehicle',
             'supplierResponse.supplier',
             'supplierResponse.recordedBy:id,fname,lname',
+            'supplierFulfillmentUpdates.creator',
         ])->where('store_id', auth()->user()->store_id)
             ->findOrFail($id);
 
@@ -339,7 +352,7 @@ class PurchaseOrderController extends Controller
      *   "terms_conditions": "..."
      * }
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, PurchaseOrderShippingFeeService $shippingFeeService): JsonResponse
     {
         $hasStockRequests = $request->filled('stock_order_request_ids');
         $isSplitFromRequisition = !$hasStockRequests
@@ -355,12 +368,15 @@ class PurchaseOrderController extends Controller
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
             'shipping_cost' => 'nullable|numeric|min:0',
+            'fulfillment_method' => 'sometimes|in:store_pickup,supplier_delivery',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
             'status' => 'nullable|in:draft,pending_finance_approval',
         ] : ($isSplitFromRequisition ? [
             'purchase_requisition_id' => 'required|exists:purchase_requisitions,id',
             'order_date' => 'nullable|date',
+            'fulfillment_method' => 'sometimes|in:store_pickup,supplier_delivery',
+            'shipping_cost' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
@@ -374,6 +390,7 @@ class PurchaseOrderController extends Controller
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
             'shipping_cost' => 'nullable|numeric|min:0',
+            'fulfillment_method' => 'sometimes|in:store_pickup,supplier_delivery',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
             'status' => 'nullable|in:draft,pending_finance_approval',
@@ -385,6 +402,7 @@ class PurchaseOrderController extends Controller
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
             'items.*.quantity_ordered' => 'required|integer|min:1',
             'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.weight_kg' => 'nullable|numeric|min:0',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]));
 
@@ -419,7 +437,7 @@ class PurchaseOrderController extends Controller
             }
 
             if ($isSplitFromRequisition) {
-                $createdOrders = $this->createSplitPurchaseOrdersFromRequisition($validated, (int) $storeId);
+                $createdOrders = $this->createSplitPurchaseOrdersFromRequisition($validated, (int) $storeId, $shippingFeeService);
                 DB::commit();
 
                 return response()->json([
@@ -452,6 +470,7 @@ class PurchaseOrderController extends Controller
             }
             $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
             $contractDiscountPercent = (float) ($contract->discount_percentage ?? 0);
+            $fulfillmentMethod = $validated['fulfillment_method'] ?? 'store_pickup';
 
             if ($hasStockRequests) {
                 // Fetch all stock order requests
@@ -507,7 +526,17 @@ class PurchaseOrderController extends Controller
                     ];
                 }
 
-                $shippingCost = (float) ($validated['shipping_cost'] ?? 0);
+                $shippingFeeBreakdown = null;
+                $shippingCost = $this->resolvePoShippingCost(
+                    (int) $storeId,
+                    (int) $validated['supplier_id'],
+                    (int) $branchId,
+                    $fulfillmentMethod,
+                    $items,
+                    (float) ($validated['shipping_cost'] ?? 0),
+                    $shippingFeeService,
+                    $shippingFeeBreakdown,
+                );
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
                 $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
                 $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
@@ -531,6 +560,8 @@ class PurchaseOrderController extends Controller
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
                     'shipping_cost' => $shippingCost,
+                    'shipping_fee_breakdown' => $shippingFeeBreakdown,
+                    'fulfillment_method' => $fulfillmentMethod,
                     'discount_amount' => $discountAmount,
                     'supplier_contract_id' => $contract->id,
                     'contract_discount_percentage' => $contractDiscountPercent,
@@ -772,7 +803,7 @@ class PurchaseOrderController extends Controller
                         'length_cm' => $approvedFeedback?->length_cm,
                         'width_cm' => $approvedFeedback?->width_cm,
                         'height_cm' => $approvedFeedback?->height_cm,
-                        'weight_kg' => $approvedFeedback?->weight_kg,
+                        'weight_kg' => $approvedFeedback?->weight_kg ?? $item['weight_kg'] ?? null,
                         'quoted_variant_snapshot' => $approvedFeedback?->has_variant ? [
                             'proposal_id' => $approvedFeedback->id,
                             'name' => $approvedFeedback->variant_name,
@@ -790,7 +821,17 @@ class PurchaseOrderController extends Controller
                     ];
                 }
 
-                $shippingCost = (float) ($validated['shipping_cost'] ?? 0);
+                $shippingFeeBreakdown = null;
+                $shippingCost = $this->resolvePoShippingCost(
+                    (int) $storeId,
+                    (int) $validated['supplier_id'],
+                    (int) $validated['branch_id'],
+                    $fulfillmentMethod,
+                    $items,
+                    (float) ($validated['shipping_cost'] ?? 0),
+                    $shippingFeeService,
+                    $shippingFeeBreakdown,
+                );
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
                 $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
                 $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
@@ -813,6 +854,8 @@ class PurchaseOrderController extends Controller
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
                     'shipping_cost' => $shippingCost,
+                    'shipping_fee_breakdown' => $shippingFeeBreakdown,
+                    'fulfillment_method' => $fulfillmentMethod,
                     'discount_amount' => $discountAmount,
                     'supplier_contract_id' => $contract->id,
                     'contract_discount_percentage' => $contractDiscountPercent,
@@ -942,7 +985,7 @@ class PurchaseOrderController extends Controller
      * PUT /api/procurement/ purchase_orders/{id}
      * Only allows draft POs to be edited
      */
-    public function update(Request $request, int $id): JsonResponse
+    public function update(Request $request, int $id, PurchaseOrderShippingFeeService $shippingFeeService): JsonResponse
     {
         $storeId = (int) auth()->user()->store_id;
         $po = PurchaseOrder::where('store_id', $storeId)->findOrFail($id);
@@ -962,6 +1005,7 @@ class PurchaseOrderController extends Controller
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'sometimes|nullable|numeric|min:0',
             'shipping_cost' => 'sometimes|nullable|numeric|min:0',
+            'fulfillment_method' => 'sometimes|required|in:store_pickup,supplier_delivery',
             'status' => 'sometimes|required|in:draft,pending_finance_approval',
             'notes' => 'sometimes|nullable|string',
             'terms_conditions' => 'sometimes|nullable|string',
@@ -985,13 +1029,33 @@ class PurchaseOrderController extends Controller
             $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
 
             // Update basic info
+            $nextFulfillmentMethod = $validated['fulfillment_method'] ?? $po->fulfillment_method ?? 'store_pickup';
+            $itemsForShipping = $validated['items'] ?? $po->items()->get()->map(fn ($item) => [
+                'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
+                'weight_kg' => $item->weight_kg,
+                'quantity_ordered' => $item->quantity_ordered,
+            ])->all();
+            $shippingFeeBreakdown = null;
+            $effectiveShippingCost = $this->resolvePoShippingCost(
+                $storeId,
+                (int) $supplierId,
+                (int) ($validated['branch_id'] ?? $po->branch_id),
+                $nextFulfillmentMethod,
+                $itemsForShipping,
+                (float) ($validated['shipping_cost'] ?? $po->shipping_cost ?? 0),
+                $shippingFeeService,
+                $shippingFeeBreakdown,
+            );
             $po->update([
                 'branch_id' => $validated['branch_id'] ?? $po->branch_id,
                 'supplier_id' => $validated['supplier_id'] ?? $po->supplier_id,
                 'order_date' => $validated['order_date'] ?? $po->order_date,
                 'payment_terms' => $validated['payment_terms'] ?? $po->payment_terms,
                 'discount_amount' => $validated['discount_amount'] ?? $po->discount_amount,
-                'shipping_cost' => $validated['shipping_cost'] ?? $po->shipping_cost,
+                'shipping_cost' => $effectiveShippingCost,
+                'shipping_fee_breakdown' => $shippingFeeBreakdown,
+                'fulfillment_method' => $nextFulfillmentMethod,
                 'contract_tax_rate' => $headerTaxRate,
                 'notes' => $validated['notes'] ?? $po->notes,
                 'terms_conditions' => $validated['terms_conditions'] ?? $po->terms_conditions,
@@ -1045,6 +1109,7 @@ class PurchaseOrderController extends Controller
                         'variation_id' => $item['variation_id'] ?? null,
                         'quantity_ordered' => $item['quantity_ordered'],
                         'unit_cost' => $item['unit_cost'],
+                        'weight_kg' => $item['weight_kg'] ?? null,
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $itemSubtotal,
                         'tax_rate' => $headerTaxRate,
@@ -1053,7 +1118,7 @@ class PurchaseOrderController extends Controller
                 }
 
                 // Update totals
-                $shippingCost = $validated['shipping_cost'] ?? $po->shipping_cost ?? 0;
+                $shippingCost = $effectiveShippingCost;
                 $discountAmount = $validated['discount_amount'] ?? $po->discount_amount;
                 $taxableAmount = max(0, $subtotal - (float) $discountAmount);
                 $taxAmount = round($taxableAmount * ($headerTaxRate / 100), 2);
@@ -1063,6 +1128,17 @@ class PurchaseOrderController extends Controller
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
                     'total_amount' => $totalAmount,
+                ]);
+            }
+
+            if (!isset($validated['items'])) {
+                $po->refresh();
+                $discountAmount = (float) ($validated['discount_amount'] ?? $po->discount_amount ?? 0);
+                $taxAmount = round(max(0, (float) $po->subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
+                $po->update([
+                    'discount_amount' => $discountAmount,
+                    'tax_amount' => $taxAmount,
+                    'total_amount' => (float) $po->subtotal + $taxAmount + $effectiveShippingCost - $discountAmount,
                 ]);
             }
 
@@ -1281,6 +1357,8 @@ class PurchaseOrderController extends Controller
     {
         $po = PurchaseOrder::with('supplier')->findOrFail($id);
 
+        abort_unless(!$po->supplier?->is_external, 422, 'External supplier orders must be marked as sent manually.');
+
         if (!in_array($po->status, ['approved'])) {
             return response()->json([
                 'success' => false,
@@ -1319,6 +1397,8 @@ class PurchaseOrderController extends Controller
         ]);
 
         $po = PurchaseOrder::where('store_id', (int) $request->user()->store_id)->findOrFail($id);
+        $po->loadMissing('supplier');
+        abort_unless((bool) $po->supplier?->is_external, 422, 'Manual send tracking is only available for external suppliers.');
         abort_unless($po->status === 'approved', 422, 'Only finance-approved purchase orders can be sent to suppliers.');
 
         DB::transaction(function () use ($po, $validated) {
@@ -1341,9 +1421,9 @@ class PurchaseOrderController extends Controller
 
         $validated = $request->validate([
             'response' => ['required', 'in:accepted,rejected'],
+            'fulfillment_method' => ['prohibited'],
             'response_channel' => ['required', 'in:email,phone,paper,in_person'],
             'response_date' => ['required', 'date', 'before_or_equal:today'],
-            'fulfillment_method' => ['required_if:response,accepted', 'nullable', 'in:store_pickup,supplier_delivery'],
             'expected_delivery_date' => ['nullable', 'date', 'after_or_equal:response_date'],
             'rejection_reason' => ['required_if:response,rejected', 'nullable', 'string', 'max:2000'],
             'notes' => ['nullable', 'string', 'max:3000'],
@@ -1354,11 +1434,16 @@ class PurchaseOrderController extends Controller
         $po = PurchaseOrder::with('supplier')
             ->where('store_id', (int) $user->store_id)
             ->findOrFail($id);
+        abort_unless((bool) $po->supplier?->is_external, 422, 'Manual supplier response tracking is only available for external suppliers.');
         abort_unless($po->status === 'sent_to_supplier', 422, 'A supplier response can only be recorded after the PO is sent.');
 
         $attachmentPath = $request->hasFile('attachment')
             ? $request->file('attachment')->store("procurement/purchase-orders/{$po->id}/supplier-responses", 'public')
             : null;
+
+        if ($validated['response'] === 'accepted' && !in_array($po->fulfillment_method, ['store_pickup', 'supplier_delivery'], true)) {
+            throw ValidationException::withMessages(['fulfillment_method' => 'Select a fulfillment method on the PO before recording supplier acceptance.']);
+        }
 
         $feedback = DB::transaction(function () use ($validated, $po, $user, $attachmentPath) {
             $feedback = SupplierPOFeedback::updateOrCreate(
@@ -1369,7 +1454,7 @@ class PurchaseOrderController extends Controller
                     'response_channel' => $validated['response_channel'],
                     'response_date' => $validated['response_date'],
                     'response' => $validated['response'],
-                    'fulfillment_method' => $validated['response'] === 'accepted' ? $validated['fulfillment_method'] : null,
+                    'fulfillment_method' => $validated['response'] === 'accepted' ? $po->fulfillment_method : null,
                     'rejection_reason' => $validated['rejection_reason'] ?? null,
                     'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
                     'delivery_notes' => $validated['notes'] ?? null,
@@ -1380,10 +1465,17 @@ class PurchaseOrderController extends Controller
             );
 
             if ($validated['response'] === 'accepted') {
+                $pickupFulfillment = $po->fulfillment_method === 'store_pickup';
                 $po->update(array_filter([
-                    'fulfillment_method' => $validated['fulfillment_method'],
                     'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
+                    'shipping_cost' => $pickupFulfillment ? 0 : null,
                 ], fn ($value) => $value !== null));
+                if ($pickupFulfillment) {
+                    $po->update([
+                        'shipping_fee_breakdown' => null,
+                        'total_amount' => (float) $po->subtotal + (float) $po->tax_amount - (float) $po->discount_amount,
+                    ]);
+                }
                 $po->markSupplierAccepted();
             } else {
                 $po->markSupplierDeclined($validated['rejection_reason']);
@@ -1418,7 +1510,8 @@ class PurchaseOrderController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $po = PurchaseOrder::where('store_id', (int) $request->user()->store_id)->findOrFail($id);
+        $po = PurchaseOrder::with('supplier')->where('store_id', (int) $request->user()->store_id)->findOrFail($id);
+        abort_unless((bool) $po->supplier?->is_external, 422, 'Manual supplier delivery tracking is only available for external suppliers.');
         abort_unless($po->fulfillment_method === 'supplier_delivery', 422, 'This status action is only for supplier-delivered orders.');
         $expectedFrom = $validated['status'] === 'out_for_delivery' ? 'supplier_accepted' : 'out_for_delivery';
         abort_unless($po->status === $expectedFrom, 422, "This purchase order must be {$expectedFrom} before this update.");
@@ -1538,7 +1631,7 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
-    private function createSplitPurchaseOrdersFromRequisition(array $validated, int $storeId): array
+    private function createSplitPurchaseOrdersFromRequisition(array $validated, int $storeId, PurchaseOrderShippingFeeService $shippingFeeService): array
     {
         $requisition = PurchaseRequisition::with([
             'items.product',
@@ -1621,7 +1714,18 @@ class PurchaseOrderController extends Controller
                 ];
             }
 
-            $shippingCost = 0;
+            $fulfillmentMethod = $validated['fulfillment_method'] ?? 'store_pickup';
+            $shippingFeeBreakdown = null;
+            $shippingCost = $this->resolvePoShippingCost(
+                $storeId,
+                (int) $supplierId,
+                (int) $requisition->branch_id,
+                $fulfillmentMethod,
+                $poItemsPayload,
+                (float) ($validated['shipping_cost'] ?? 0),
+                $shippingFeeService,
+                $shippingFeeBreakdown,
+            );
             $discountAmount = 0;
             $taxAmount = $subtotal * ($headerTaxRate / 100);
             $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
@@ -1635,11 +1739,13 @@ class PurchaseOrderController extends Controller
                 'store_id' => $storeId,
                 'branch_id' => $requisition->branch_id,
                 'supplier_id' => $supplierId,
+                'fulfillment_method' => $fulfillmentMethod,
                 'purchase_requisition_id' => $requisition->id,
                 'status' => $validated['status'] ?? 'pending_finance_approval',
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'shipping_cost' => $shippingCost,
+                'shipping_fee_breakdown' => $shippingFeeBreakdown,
                 'discount_amount' => $discountAmount,
                 'total_amount' => $totalAmount,
                 'approval_tier_level' => $approvalTier['level'] ?? null,
@@ -1731,6 +1837,34 @@ class PurchaseOrderController extends Controller
         $randomSuffix = str_pad((string) mt_rand(0, 9999), 4, '0', STR_PAD_LEFT);
 
         return 'PO-' . $timestamp . '-' . $randomSuffix;
+    }
+
+    private function resolvePoShippingCost(
+        int $storeId,
+        int $supplierId,
+        int $branchId,
+        string $fulfillmentMethod,
+        array $items,
+        float $manualFee,
+        PurchaseOrderShippingFeeService $shippingFeeService,
+        ?array &$breakdown = null,
+    ): float {
+        if ($fulfillmentMethod === 'store_pickup') {
+            $breakdown = null;
+            return 0.0;
+        }
+
+        $supplier = Supplier::query()->where('store_id', $storeId)->findOrFail($supplierId);
+        if (!$supplier->supplier_portal_id) {
+            $amount = round(max(0, $manualFee), 2);
+            $breakdown = ['manual_fee' => $amount];
+            return $amount;
+        }
+
+        $branch = Branch::query()->where('store_id', $storeId)->findOrFail($branchId);
+        $estimate = $shippingFeeService->estimate($storeId, $supplier, $branch, $items, 0);
+        $breakdown = $estimate['breakdown'] ?? null;
+        return (float) $estimate['shipping_fee'];
     }
 
     private function calculatePaymentDueDate(?string $paymentTerms)
@@ -1915,6 +2049,11 @@ class PurchaseOrderController extends Controller
     private function shouldAutoSendAfterFinanceApproval(PurchaseOrder $po): bool
     {
         if ($po->status !== 'approved') {
+            return false;
+        }
+
+        $po->loadMissing('supplier');
+        if ($po->supplier?->is_external) {
             return false;
         }
 

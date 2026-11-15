@@ -269,6 +269,8 @@ class SupplierContractController extends Controller
             'terms_conditions' => 'nullable|string',
             'contract_file_path' => 'nullable|string',
             'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'signed_copy' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240',
+            'signed_copy_confirmed' => 'nullable|accepted',
             'status' => 'nullable|in:draft,pending,active,completed,rejected',
         ]);
 
@@ -319,6 +321,17 @@ class SupplierContractController extends Controller
             ], 422);
         }
 
+        $isExternalSupplier = (bool) $supplier->is_external && !$isSupplierPortal && !$isInventoryRequest;
+        if ($isExternalSupplier) {
+            $request->validate([
+                'signed_copy' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+                'signed_copy_confirmed' => ['required', 'accepted'],
+            ], [
+                'signed_copy.required' => 'Upload the fully signed contract before activating an external supplier contract.',
+                'signed_copy_confirmed.accepted' => 'Confirm that both parties signed the uploaded contract.',
+            ]);
+        }
+
         $hasActiveContract = SupplierContract::query()
             ->where('store_id', $storeId)
             ->where('supplier_id', (int) $validated['supplier_id'])
@@ -338,7 +351,7 @@ class SupplierContractController extends Controller
         // Inventory records are manual external-supplier contracts, so the store's
         // authenticated user confirms the terms at creation time. Procurement
         // contracts remain pending until the supplier approves them in the portal.
-        $validated['status'] = $isInventoryRequest ? 'active' : 'pending';
+        $validated['status'] = ($isInventoryRequest || $isExternalSupplier) ? 'active' : 'pending';
         $validated['submitted_by_type'] = $isSupplierPortal ? 'supplier' : 'store';
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
@@ -347,6 +360,12 @@ class SupplierContractController extends Controller
         } else {
             // Generate a PDF (or printable HTML fallback) from our standard template.
             $validated['contract_file_path'] = $this->generateContractPdf($validated, $contractNumber, $storeId, $employeeId);
+        }
+
+        if ($isExternalSupplier) {
+            $validated['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
+            $validated['signed_copy_uploaded_by'] = (int) auth()->id();
+            $validated['signed_copy_uploaded_at'] = now();
         }
 
         $contract = SupplierContract::create($validated);
@@ -358,6 +377,14 @@ class SupplierContractController extends Controller
                 'success' => true,
                 'message' => 'Supplier contract created and activated successfully.',
                 'data' => $contract,
+            ], 201);
+        }
+
+        if ($isExternalSupplier) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Signed contract recorded and activated successfully.',
+                'data' => $contract->load('supplier'),
             ], 201);
         }
 
@@ -386,7 +413,7 @@ class SupplierContractController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $contract = SupplierContract::findOrFail($id);
+        $contract = SupplierContract::where('store_id', (int) ($request->user()?->store_id ?? 0))->findOrFail($id);
 
         $validated = $request->validate([
             'contract_title' => 'nullable|string|max:255',
@@ -401,11 +428,26 @@ class SupplierContractController extends Controller
             'terms_conditions' => 'nullable|string',
             'contract_file_path' => 'nullable|string',
             'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'signed_copy' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240',
+            'signed_copy_confirmed' => 'nullable|accepted',
             'status' => 'nullable|in:draft,pending,active,completed,terminated,rejected',
         ]);
 
+        if ($contract->supplier?->is_external && ($validated['status'] ?? null) === 'active') {
+            return response()->json(['success' => false, 'message' => 'Use the activate action after a signed copy has been uploaded.'], 422);
+        }
+
         if ($request->hasFile('contract_file')) {
             $validated['contract_file_path'] = $request->file('contract_file')->store('supplier-contracts', 'public');
+        }
+
+        if ($contract->supplier?->is_external && $request->hasFile('signed_copy')) {
+            $request->validate([
+                'signed_copy_confirmed' => ['required', 'accepted'],
+            ], ['signed_copy_confirmed.accepted' => 'Confirm that both parties signed the uploaded contract.']);
+            $validated['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
+            $validated['signed_copy_uploaded_by'] = (int) $request->user()->id;
+            $validated['signed_copy_uploaded_at'] = now();
         }
 
         $validated['tax_rate'] = 12;
@@ -482,6 +524,13 @@ class SupplierContractController extends Controller
             $request->validate([
                 'supplier_confirmed' => ['required', 'accepted'],
             ]);
+        }
+
+        if ($contract->supplier?->is_external && !$contract->signed_copy_path) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload the fully signed contract before activating this external supplier contract.',
+            ], 422);
         }
 
         $contract->update(['status' => 'active']);

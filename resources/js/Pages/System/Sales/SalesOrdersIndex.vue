@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
-        <p class="text-sm text-gray-500">Unified view of in-store and online orders.</p>
+        <p class="text-sm text-gray-500">Unified view of in-store, online, and replacement orders.</p>
       </div>
       <div class="flex items-center gap-2">
         <Button outlined icon="pi pi-refresh" text @click="loadOrders" />
@@ -73,7 +73,7 @@
           </Column>
           <Column field="channel" header="Channel" style="width: 12%;">
             <template #body="{ data }">
-              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Wholesale' ? 'warn' : 'success'" />
+              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Replacement' ? 'warn' : data.channel === 'Wholesale' ? 'warn' : 'success'" />
             </template>
           </Column>
           <!-- <Column field="branch_name" header="Branch">
@@ -150,8 +150,8 @@ type UnifiedOrder = {
   status: string
   total_amount: number
   created_at: string
-  channel: 'In-Store' | 'Online' | 'Wholesale'
-  order_type: 'pos' | 'ecommerce'
+  channel: 'In-Store' | 'Online' | 'Wholesale' | 'Replacement'
+  order_type: 'pos' | 'ecommerce' | 'replacement'
   branch_name?: string
   items_count?: number
   route_name: string
@@ -168,7 +168,7 @@ const orders = ref<UnifiedOrder[]>([])
 const filters = reactive({
   search: '',
   status: null as string | null,
-  channel: null as 'In-Store' | 'Online' | 'Wholesale' | null,
+  channel: null as 'In-Store' | 'Online' | 'Wholesale' | 'Replacement' | null,
   payment_method: null as string | null,
   payment_status: null as string | null,
   date_range: null as [Date | null, Date | null] | null,
@@ -183,10 +183,14 @@ const channelOptions = [
   { label: 'In-Store', value: 'In-Store' },
   { label: 'Online', value: 'Online' },
   { label: 'Wholesale', value: 'Wholesale' },
+  { label: 'Replacement', value: 'Replacement' },
 ]
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Sales Review', value: 'sales_review' },
+  { label: 'Awaiting Payment', value: 'awaiting_payment' },
+  { label: 'Payment Failed', value: 'payment_failed' },
   { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
   { label: 'Ready for Pickup', value: 'ready_for_pickup' },
   { label: 'Assigned', value: 'assigned' },

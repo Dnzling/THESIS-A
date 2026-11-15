@@ -26,6 +26,9 @@ class SupplierContract extends Model
         'tax_note',
         'terms_conditions',
         'contract_file_path',
+        'signed_copy_path',
+        'signed_copy_uploaded_by',
+        'signed_copy_uploaded_at',
         'status',
         'submitted_by_type',
         'rejection_reason',
@@ -50,6 +53,7 @@ class SupplierContract extends Model
         'tax_rate' => 'decimal:2',
         'is_tax_exempt' => 'boolean',
         'rejected_at' => 'datetime',
+        'signed_copy_uploaded_at' => 'datetime',
         'termination_requested_at' => 'datetime',
         'termination_responded_at' => 'datetime',
     ];

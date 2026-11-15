@@ -6,12 +6,6 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
-use App\Models\User;
-use App\Models\Core\Role;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\SupplierInvite;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -51,7 +45,8 @@ class SupplierController extends Controller
             ->where('status', 'approved')
             ->with([
                 'user:id,email,fname,lname',
-                'supplier:id,supplier_name,company_name,contact_person,email,phone,address,city,province,country,payment_terms,supplier_type',
+                'supplier:id,supplier_name,company_name,contact_person,email,phone,address,city,province,country,payment_terms,supplier_type,logo_path',
+                'supplier.products:id,product_name,sku',
             ])
             ->orderByDesc('verified_at');
 
@@ -71,8 +66,10 @@ class SupplierController extends Controller
             });
         }
 
-        $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail) {
-            return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
+        $portals = $query->limit($limit)->get();
+        $ratingsByPortal = $this->ratingsFromOtherStores($portals, (int) $storeId);
+        $rows = $portals->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail, $ratingsByPortal) {
+            return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail, $ratingsByPortal);
         })->values();
 
         if ($request->boolean('available_only', true)) {
@@ -114,7 +111,7 @@ class SupplierController extends Controller
             ->with([
                 'user:id,email,fname,lname',
                 'supplier',
-                'verificationDocuments',
+                'supplier.products:id,product_name,sku',
             ])
             ->first();
 
@@ -125,9 +122,8 @@ class SupplierController extends Controller
             ], 404);
         }
 
-        $data = $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
-        $data['verification_documents'] = $portal->verificationDocuments;
-
+        $ratingsByPortal = $this->ratingsFromOtherStores(collect([$portal]), (int) $storeId);
+        $data = $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail, $ratingsByPortal);
         return response()->json([
             'success' => true,
             'data' => $data,
@@ -259,9 +255,17 @@ class SupplierController extends Controller
         $validated = $request->validate([
             'supplier_portal_id' => 'nullable|integer|exists:supplier_portals,id',
             'supplier_name' => 'required_without:supplier_portal_id|string|max:255',
-            'contact_person' => 'required_without:supplier_portal_id|string|max:255',
+            'company_name' => 'nullable|string|max:255',
+            'contact_person' => ['required_without:supplier_portal_id', 'string', 'max:255', 'not_regex:/\d/'],
             'email' => 'required_without:supplier_portal_id|email|max:255',
-            'phone' => 'nullable|string|max:50',
+            'phone' => ['required_without:supplier_portal_id', 'string', 'max:50', 'regex:/^09\d{2} ?\d{3} ?\d{4}$/'],
+            'supplier_type' => 'required_without:supplier_portal_id|in:manufacturer,wholesaler,distributor,importer,local_artisan',
+            'address' => 'required_without:supplier_portal_id|string|max:500',
+            'province' => 'required_without:supplier_portal_id|string|max:120',
+            'city' => 'required_without:supplier_portal_id|string|max:120',
+            'barangay' => 'required_without:supplier_portal_id|string|max:120',
+            'latitude' => 'required_without:supplier_portal_id|numeric|between:-90,90',
+            'longitude' => 'required_without:supplier_portal_id|numeric|between:-180,180',
         ]);
 
         if (!empty($validated['supplier_portal_id'])) {
@@ -299,8 +303,9 @@ class SupplierController extends Controller
                     ], 409);
                 }
 
-                if (!$existing->supplier_portal_id) {
+                if (!$existing->supplier_portal_id || $existing->is_external) {
                     $existing->supplier_portal_id = $portal->id;
+                    $existing->is_external = false;
                     $existing->save();
                 }
 
@@ -326,6 +331,7 @@ class SupplierController extends Controller
                 'contact_person' => $contactPerson ?: null,
                 'email' => $email,
                 'phone' => $sourceSupplier?->phone ?: ($portal->phone ?? ''),
+                'logo_path' => $sourceSupplier?->logo_path,
                 'address' => $sourceSupplier?->address ?: $portal->address,
                 'city' => $sourceSupplier?->city ?: $portal->city,
                 'province' => $sourceSupplier?->province ?: $portal->province,
@@ -335,6 +341,7 @@ class SupplierController extends Controller
                 'supplier_type' => $sourceSupplier?->supplier_type ?: 'wholesaler',
                 'payment_terms' => $sourceSupplier?->payment_terms ?: 'net_30',
                 'status' => 'active',
+                'is_external' => false,
                 'rating' => 5.00,
             ]);
 
@@ -345,185 +352,35 @@ class SupplierController extends Controller
             ], 201);
         }
 
-        \Log::info('[Supplier] Starting supplier creation', ['email' => $validated['email']]);
-
-        // Generate supplier code like SUP-2026-005 (incrementing per year)
-        $supplierCode = $this->generateSupplierCode();
-
-        // Split supplier_name into first/last for supplier record
-        $supplierNameParts = preg_split('/\s+/', trim($validated['supplier_name']), 2);
-        $supplierFirstName = $supplierNameParts[0] ?? $validated['supplier_name'];
-        $supplierLastName = $supplierNameParts[1] ?? '';
-
-        // Split contact_person into first/last for user account
-        $contactNameParts = preg_split('/\s+/', trim($validated['contact_person']), 2);
-        $contactFirstName = $contactNameParts[0] ?? $validated['contact_person'];
-        $contactLastName = $contactNameParts[1] ?? '';
-
-        $data = [
-            'supplier_name' => $validated['supplier_name'],
-            'first_name' => $supplierFirstName,
-            'last_name' => $supplierLastName,
-            'contact_person' => $validated['contact_person'],
-            'email' => $validated['email'],
-            'store_id' => Auth::user()->store_id,
-            'supplier_code' => $supplierCode,
+        $storeId = (int) Auth::user()->store_id;
+        $supplier = Supplier::create([
+            'store_id' => $storeId,
+            'supplier_portal_id' => null,
+            'is_external' => true,
+            'supplier_code' => $this->generateSupplierCode(),
+            'supplier_name' => trim($validated['supplier_name']),
+            'company_name' => $validated['company_name'] ?? null,
+            'contact_person' => trim($validated['contact_person']),
+            'email' => strtolower(trim($validated['email'])),
+            'phone' => $validated['phone'] ?? '',
+            'supplier_type' => $validated['supplier_type'],
+            'address' => trim($validated['address']),
+            'province' => trim($validated['province']),
+            'city' => trim($validated['city']),
+            'barangay' => trim($validated['barangay']),
+            'latitude' => $validated['latitude'],
+            'longitude' => $validated['longitude'],
+            'country' => 'Philippines',
             'status' => 'active',
             'rating' => 5.00,
-            'country' => 'Philippines',
-            'phone' => $validated['phone'] ?? '',
-        ];
-
-        // A store may enter a supplier manually instead of linking it from the
-        // verified directory. Associate it with a portal account only when the
-        // normalized email identifies exactly one approved account.
-        $normalizedEmail = strtolower(trim($validated['email']));
-        $matchingPortals = SupplierPortal::query()
-            ->approved()
-            ->where(function ($query) use ($normalizedEmail) {
-                $query->whereHas('user', function ($userQuery) use ($normalizedEmail) {
-                    $userQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
-                })->orWhereHas('supplier', function ($supplierQuery) use ($normalizedEmail) {
-                    $supplierQuery->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail]);
-                });
-            })
-            ->limit(2)
-            ->pluck('id');
-
-        if ($matchingPortals->count() === 1) {
-            $data['supplier_portal_id'] = $matchingPortals->first();
-        }
-
-        \Log::info('[Supplier] Creating supplier record', ['supplier_code' => $supplierCode]);
-        $supplier = Supplier::create($data);
-        \Log::info('[Supplier] Supplier created successfully', ['supplier_id' => $supplier->id, 'supplier_code' => $supplierCode]);
-
-        // Create a corresponding user account for the supplier's contact person
-        $user = null;
-        $mailError = null;
-
-        try {
-            // Determine role id for 'supplier'
-            $roleId = Role::where('name', 'supplier')->value('id');
-
-            if (!$roleId) {
-                \Log::error('[Supplier] Role "supplier" not found in database');
-                throw new \Exception('Supplier role not found');
-            }
-
-            \Log::info('[Supplier] Found supplier role', ['role_id' => $roleId]);
-
-            // Use supplier code as the user's user_id
-
-
-            // Generate a random password for email
-            $plainPassword = Str::random(10);
-
-            \Log::info('[Supplier] Attempting to create user account for contact person', [
-                'email' => $validated['email'],
-                'user_id' => User::generateUserId(),
-                'fname' => $contactFirstName,
-                'lname' => $contactLastName
-            ]);
-
-            $user = User::create([
-                'fname' => $contactFirstName,  // Using contact person's first name
-                'lname' => $contactLastName,   // Using contact person's last name
-                'email' => $validated['email'],
-                'password' => Hash::make($plainPassword),
-                'role_id' => $roleId,
-                'is_active' => true,
-                'user_id' => $supplierCode,
-                'store_id' => Auth::user()->store_id,
-                'registered_by' => Auth::id(),
-                'created_at' => now(),
-                'email_verified_at' => now(),
-            ]);
-
-            if ($user && $user->id) {
-                \Log::info('[Supplier] User account created successfully', [
-                    'user_id' => $user->user_id,
-                    'email' => $user->email,
-                    'role_id' => $user->role_id,
-                    'fname' => $user->fname,
-                    'lname' => $user->lname
-                ]);
-            } else {
-                \Log::error('[Supplier] User creation failed - user object is empty or missing ID');
-                throw new \Exception('User creation returned invalid object');
-            }
-
-            // Send invite email with credentials
-            if ($user && filter_var($user->email, FILTER_VALIDATE_EMAIL)) {
-                $storeName = Auth::user()->store->store_name ?? null;
-                $systemName = config('app.name');
-
-                \Log::info('[Supplier] Attempting to send invite email', ['email' => $user->email]);
-
-                try {
-                    Mail::to($user->email)->send(new SupplierInvite($user, $plainPassword, $storeName, $systemName));
-                    \Log::info('[Supplier] Invite email sent successfully', ['email' => $user->email]);
-                } catch (\Throwable $mailEx) {
-                    $mailError = $mailEx->getMessage();
-                    \Log::error('[Supplier] Mail send failed', [
-                        'email' => $user->email,
-                        'error' => $mailError
-                    ]);
-                }
-            } else {
-                \Log::warning('[Supplier] Cannot send email - invalid email or user object', [
-                    'email' => $validated['email'],
-                    'has_user' => !is_null($user)
-                ]);
-            }
-
-        } catch (\Exception $e) {
-            // Log the full error details
-            \Log::error('[Supplier] FAILED to create user account', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'supplier_code' => $supplierCode,
-                'email' => $validated['email']
-            ]);
-
-            // Delete the supplier if user creation failed
-            if ($supplier && $supplier->id) {
-                \Log::warning('[Supplier] Rolling back supplier creation due to user creation failure', [
-                    'supplier_id' => $supplier->id
-                ]);
-                $supplier->delete();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to create user account for supplier: ' . $e->getMessage()
-                ], 500);
-            }
-        }
-
-        $response = [
-            'success' => true,
-            'message' => 'Supplier created successfully',
-            'data' => $supplier,
-        ];
-
-        if ($user && $user->id) {
-            $response['user_created'] = true;
-            $response['user_id'] = $user->id;
-        } else {
-            $response['user_created'] = false;
-            $response['user_error'] = 'User account was not created';
-        }
-
-        if (!empty($mailError)) {
-            $response['mail_error'] = $mailError;
-        }
-
-        \Log::info('[Supplier] Store method completed', [
-            'supplier_id' => $supplier->id,
-            'user_created' => !is_null($user),
-            'mail_sent' => empty($mailError)
         ]);
 
-        return response()->json($response, 201);
+        return response()->json([
+            'success' => true,
+            'message' => 'External supplier recorded. No supplier portal account was created.',
+            'data' => $supplier,
+            'user_created' => false,
+        ], 201);
     }
 
     private function generateSupplierCode(): string
@@ -544,7 +401,55 @@ class SupplierController extends Controller
         return sprintf('SUP-%s-%03d', $year, $nextNumber);
     }
 
-    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = [], array $linkedSupplierIdsByEmail = []): array
+    private function ratingsFromOtherStores($portals, int $storeId): array
+    {
+        $portalSupplierIds = $portals->mapWithKeys(fn (SupplierPortal $portal) => [
+            (int) $portal->supplier_id => (int) $portal->id,
+        ])->filter(fn ($portalId, $supplierId) => $supplierId > 0);
+        $portalIds = $portals->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $sourceSupplierIds = $portalSupplierIds->keys()->all();
+
+        $suppliers = Supplier::query()
+            ->where(function ($query) use ($portalIds, $sourceSupplierIds) {
+                $query->whereIn('supplier_portal_id', $portalIds);
+                if ($sourceSupplierIds) $query->orWhereIn('id', $sourceSupplierIds);
+            })
+            ->get(['id', 'supplier_portal_id']);
+
+        $portalBySupplierId = [];
+        foreach ($suppliers as $supplier) {
+            $portalId = (int) ($supplier->supplier_portal_id ?: ($portalSupplierIds[(int) $supplier->id] ?? 0));
+            if ($portalId > 0) $portalBySupplierId[(int) $supplier->id] = $portalId;
+        }
+
+        if (!$portalBySupplierId) return [];
+
+        $ratingRows = DB::table('supplier_ratings as ratings')
+            ->join('suppliers as rated_supplier', 'rated_supplier.id', '=', 'ratings.supplier_id')
+            ->whereIn('ratings.supplier_id', array_keys($portalBySupplierId))
+            ->where('rated_supplier.store_id', '<>', $storeId)
+            ->select('ratings.supplier_id', DB::raw('AVG(ratings.rating) as average_rating'), DB::raw('COUNT(*) as rating_count'))
+            ->groupBy('ratings.supplier_id')
+            ->get();
+
+        $summaries = [];
+        foreach ($ratingRows as $row) {
+            $portalId = $portalBySupplierId[(int) $row->supplier_id] ?? null;
+            if (!$portalId) continue;
+            $summaries[$portalId]['weighted_total'] = ($summaries[$portalId]['weighted_total'] ?? 0)
+                + ((float) $row->average_rating * (int) $row->rating_count);
+            $summaries[$portalId]['rating_count'] = ($summaries[$portalId]['rating_count'] ?? 0) + (int) $row->rating_count;
+        }
+
+        foreach ($summaries as &$summary) {
+            $summary['rating'] = round($summary['weighted_total'] / max(1, $summary['rating_count']), 2);
+            unset($summary['weighted_total']);
+        }
+
+        return $summaries;
+    }
+
+    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = [], array $linkedSupplierIdsByEmail = [], array $ratingsByPortal = []): array
     {
         $supplier = $portal->supplier;
         $user = $portal->user;
@@ -569,6 +474,14 @@ class SupplierController extends Controller
             'country' => $supplier?->country ?: $portal->country,
             'payment_terms' => $supplier?->payment_terms,
             'supplier_type' => $supplier?->supplier_type,
+            'logo_url' => $supplier?->logo_url,
+            'rating' => $ratingsByPortal[(int) $portal->id]['rating'] ?? null,
+            'rating_count' => $ratingsByPortal[(int) $portal->id]['rating_count'] ?? 0,
+            'products' => $supplier?->products?->map(fn ($product) => [
+                'id' => (int) $product->id,
+                'name' => $product->product_name,
+                'sku' => $product->sku,
+            ])->unique('id')->values()->all() ?? [],
             'verified_at' => optional($portal->verified_at)->toDateTimeString(),
             'already_linked' => $emailNormalized !== '' && in_array($emailNormalized, $linkedEmails, true),
         ];

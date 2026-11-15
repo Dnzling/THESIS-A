@@ -123,8 +123,8 @@
             <Column header="Status" style="min-width: 140px">
               <template #body="{ data }">
                 <Badge
-                  :value="formatStatus(getPurchaseOrderStatus(data))"
-                  :severity="getStatusSeverity(getPurchaseOrderStatus(data))"
+                  :value="data.supplier_fulfillment_status ? formatSupplierFulfillmentStatus(data.supplier_fulfillment_status) : formatStatus(getPurchaseOrderStatus(data))"
+                  :severity="data.supplier_fulfillment_status === 'delivered' || data.supplier_fulfillment_status === 'ready_for_pickup' ? 'success' : 'info'"
                 />
               </template>
             </Column>
@@ -365,6 +365,7 @@ const formatStatus = (status: string): string => {
   }
   return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
+const formatSupplierFulfillmentStatus = (status: string): string => ({ preparing: 'Preparing', ready_for_pickup: 'Ready for Pickup', dispatched: 'Dispatched', delivered: 'Delivered' } as Record<string, string>)[status] || formatStatus(status)
 
 const formatDate = (date: string): string => {
   if (!date) return '—'

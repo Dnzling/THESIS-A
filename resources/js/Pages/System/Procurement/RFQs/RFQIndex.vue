@@ -11,60 +11,7 @@
         @click="router.push({ name: 'procurement.rfqs.create' })" size="small" />
     </div>
   
-    <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Total RFQs</p>
-              <Skeleton v-if="loading" width="3rem" height="1.5rem" />
-              <p v-else class="text-xl font-bold text-gray-900">{{ summary.total || 0 }}</p>
-            </div>
-            <i class="pi pi-briefcase text-4xl text-black-500"></i>
-          </div>
-        </template>
-      </Card>
   
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Draft</p>
-              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
-              <p v-else class="text-xl font-bold text-black-600">{{ summary.draft || 0 }}</p>
-            </div>
-            <i class="pi pi-file text-4xl text-black-500"></i>
-          </div>
-        </template>
-      </Card>
-  
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Active</p>
-              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
-              <p v-else class="text-xl font-bold text-black">{{ summary.sent || 0 }}</p>
-            </div>
-            <i class="pi pi-send text-4xl text-black"></i>
-          </div>
-        </template>
-      </Card>
-  
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Approved</p>
-              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
-              <p v-else class="text-xl font-bold text-black-600">{{ summary.approved || 0 }}</p>
-            </div>
-            <i class="pi pi-check text-4xl text-black"></i>
-          </div>
-        </template>
-      </Card>
-    </div>
   
     <!-- DataTable -->
     <Card>

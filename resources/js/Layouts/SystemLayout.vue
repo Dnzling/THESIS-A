@@ -266,7 +266,7 @@
       </header>
   
       <!-- Main Content Area -->
-      <main data-page-scroll-container class="flex-1 overflow-y-auto p-6 bg-transparent">
+      <main data-page-scroll-container class="flex-1 overflow-y-auto p-6 bg-gray-50">
         <slot />
       </main>
     </div>

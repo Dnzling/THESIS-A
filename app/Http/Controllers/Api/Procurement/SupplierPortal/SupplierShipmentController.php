@@ -464,7 +464,9 @@ class SupplierShipmentController extends Controller
             $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
             $discountRate = $contract ? (float) ($contract->discount_percentage ?? 0) : 0.0;
             $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
-            $shippingCost = (float) ($po->shipping_cost ?? 0);
+            $shippingCost = $po->fulfillment_method === 'supplier_delivery'
+                ? (float) ($po->shipping_cost ?? 0)
+                : 0.0;
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
             $netAmount = $invoiceAmount + $taxAmount + $shippingCost - $discountAmount;
 

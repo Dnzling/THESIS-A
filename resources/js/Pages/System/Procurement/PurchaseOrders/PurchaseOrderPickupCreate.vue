@@ -21,7 +21,7 @@
           <div><span class="text-slate-500">Pickup From:</span> <strong>{{ po.supplier?.address || 'Supplier address on file' }}</strong></div>
           <div><span class="text-slate-500">Receive At:</span> <strong>{{ po.branch?.name || po.branch?.branch_name || 'Assigned branch' }}</strong></div>
           <div><span class="text-slate-500">Status:</span> <Tag :value="formatStatus(po.status)" severity="success" /></div>
-          <div><span class="text-slate-500">Recorded Shipping Fee:</span> <strong>{{ formatCurrency(po.shipping_cost) }}</strong></div>
+          <div><span class="text-slate-500">Supplier Shipping Fee:</span> <strong>{{ formatCurrency(0) }}</strong></div>
         </div>
       </template>
     </Card>

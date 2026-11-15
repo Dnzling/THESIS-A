@@ -38,6 +38,7 @@ class PurchaseOrder extends Model
         'subtotal',
         'tax_amount',
         'shipping_cost',
+        'shipping_fee_breakdown',
         'discount_amount',
         'contract_discount_percentage',
         'contract_tax_rate',
@@ -52,6 +53,7 @@ class PurchaseOrder extends Model
         'order_date',
         'expected_delivery_date',
         'fulfillment_method',
+        'supplier_fulfillment_status',
         'actual_delivery_date',
         'payment_due_date',
         'created_by',
@@ -63,6 +65,7 @@ class PurchaseOrder extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
+        'shipping_fee_breakdown' => 'array',
         'discount_amount' => 'decimal:2',
         'contract_discount_percentage' => 'decimal:2',
         'contract_tax_rate' => 'decimal:2',
@@ -147,6 +150,12 @@ class PurchaseOrder extends Model
     public function supplierResponse()
     {
         return $this->hasOne(SupplierPOFeedback::class)->latestOfMany();
+    }
+
+    public function supplierFulfillmentUpdates(): HasMany
+    {
+        return $this->hasMany(\App\Models\Procurement\SupplierPortal\SupplierPOFulfillmentUpdate::class)
+            ->orderBy('created_at');
     }
 
     // Scopes

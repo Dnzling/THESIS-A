@@ -4,62 +4,11 @@
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">Purchase Orders</h1>
+        <h1 class="text-lg font-bold text-gray-800">Purchase Orders</h1>
+        <p class="text-sm text-gray-500">Procurement Purchase Orders record supplier orders, approvals, costs, and receiving status.</p>
       </div>
       <!-- <Button v-if="canManagePurchaseOrders" label="New Purchase Order" icon="pi pi-plus" size="small"
         @click="goToCreatePO" /> -->
-    </div>
-
-    <!-- Quick Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div class="">
-              <p class="text-xs font-bold  uppercase tracking-wide">Total POs</p>
-              <Skeleton v-if="loading" width="3rem" height="1.75rem" />
-              <p v-else class="text-2xl font-bold text-black-600">{{ stats.totalCount }}</p>
-            </div>
-            <i class="pi pi-file text-4xl text-black-600"></i>
-          </div>
-        </template>
-      </Card>
-      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Sent to Supplier</p>
-              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
-              <p v-else class="text-2xl font-bold text-black-600">{{ stats.pendingApproval }}</p>
-            </div>
-            <i class="pi pi-send text-4xl text-black-600"></i>
-          </div>
-        </template>
-      </Card>
-      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Total Amount</p>
-              <Skeleton v-if="loading" width="6rem" height="1.75rem" />
-              <p v-else class="text-2xl font-bold text-black-600">₱ {{ formatNumber(stats.totalAmount) }}</p>
-            </div>
-            <i class="pi pi-money-bill text-4xl text-black-600"></i>
-          </div>
-        </template>
-      </Card>
-      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Delayed Orders</p>
-              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
-              <p v-else class="text-2xl font-bold text-red-600">{{ stats.delayedCount }}</p>
-            </div>
-            <i class="pi pi-clock text-4xl text-red-600"></i>
-          </div>
-        </template>
-      </Card>
     </div>
 
     <!-- POs Table -->

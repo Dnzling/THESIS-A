@@ -35,6 +35,7 @@
         <nav class="flex items-center gap-1" aria-label="Browse furniture">
           <Button label="Products" text severity="secondary" size="small" @click="toggleBrowse('products')" />
           <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
+          <Button label="Track Order" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.track-order' })" />
           <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
         </nav>
   
@@ -135,6 +136,7 @@
       <div class="mt-2 flex gap-2">
         <Button label="Products" text severity="secondary" size="small" @click="toggleBrowse('products')" />
         <Button label="Rooms" text severity="secondary" size="small" @click="toggleBrowse('rooms')" />
+        <Button label="Track Order" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.track-order' })" />
         <Button v-if="availableVoucherCount > 0" label="Vouchers" text severity="secondary" size="small" @click="router.push({ name: 'ecommerce.vouchers' })" />
       </div>
       </div>

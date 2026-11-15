@@ -9,11 +9,11 @@ use App\Models\ApplicantProfile;
 use App\Models\ApplicantProfileDocument;
 use App\Models\JobApplication;
 use App\Models\JobPosting;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 class ApplicantPortalController extends Controller
 {
@@ -87,13 +87,6 @@ class ApplicantPortalController extends Controller
                 ], 422);
             }
 
-            if ($profile->documents->isEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please upload at least one document in your applicant profile before applying.',
-                ], 422);
-            }
-
             $validated = [
                 'first_name' => $profile->first_name,
                 'last_name' => $profile->last_name,
@@ -112,28 +105,43 @@ class ApplicantPortalController extends Controller
                 'first_name' => 'required|string|max:100',
                 'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
-                'email' => ['required', 'email', 'max:255', 'regex:/@gmail\.com\z/i', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
-                'phone' => 'nullable|string|max:20',
-                'birthday' => 'nullable|date',
-                'city' => 'nullable|string|max:255',
-                'province' => 'nullable|string|max:255',
-                'barangay' => 'nullable|string|max:255',
-                'address' => 'nullable|string|max:255',
+                'email' => ['required', 'email', 'max:255', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
+                'phone' => ['required', 'string', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
+                'birthday' => 'required|date|before_or_equal:today',
+                'city' => 'required|string|max:255',
+                'province' => 'required|string|max:255',
+                'barangay' => 'required|string|max:255',
+                'address' => 'required|string|max:255',
                 'current_position' => 'nullable|string|max:255',
                 'current_company' => 'nullable|string|max:255',
-                'documents' => 'required|array|min:1',
+                'documents' => 'nullable|array',
                 'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png',
-                'document_types' => 'required|array|min:1',
-                'document_types.*' => ['required', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
-            ], [
-                'email.regex' => 'Invalid Gmail address. Please check your email and try again.',
+                'document_types' => 'nullable|array',
+                'document_types.*' => ['nullable', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
             ]);
         }
 
-        if (! preg_match('/@gmail\.com\z/i', $validated['email'])) {
-            throw ValidationException::withMessages([
-                'email' => ['Invalid Gmail address. Please check your email and try again.'],
+        if (empty($validated['birthday'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'birthday' => ['Enter your birthday to confirm you meet the minimum age for this job.'],
             ]);
+        }
+
+        $minimumAge = (int) ($posting->minimum_age ?: 18);
+        if (Carbon::parse($validated['birthday'])->diffInYears(Carbon::today()) < $minimumAge) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'birthday' => ["Applicants for this job must be at least {$minimumAge} years old."],
+            ]);
+        }
+
+        if (JobApplication::query()
+            ->where('job_posting_id', $posting->id)
+            ->where('email', $validated['email'])
+            ->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You already submitted an application for this job posting.',
+            ], 422);
         }
 
         $application = JobApplication::create([

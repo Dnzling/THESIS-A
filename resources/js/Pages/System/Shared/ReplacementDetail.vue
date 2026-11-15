@@ -50,26 +50,36 @@
         </template>
       </Card>
 
-      <Card v-if="item.status === 'received' && ['awaiting_stock', null].includes(item.replacement_status) && !isLogistics">
-        <template #title><span class="text-base">Offer a higher-value alternative</span></template>
+      <Card v-if="item.status === 'received' && ['awaiting_stock', null].includes(item.replacement_status) && !isLogistics && !isSales">
+        <template #title><span class="text-base">Request a higher-value alternative</span></template>
         <template #content>
-          <p class="mb-3 text-xs text-slate-600">If the original item is unavailable, select an in-stock alternative. Confirm the customer accepts it and verify collection of the displayed difference before recording payment and reserving the item. This records the collection in Finance; it does not initiate a payment.</p>
-          <Message v-if="!alternatives.length" severity="warn" :closable="false">No higher-value alternative with enough available branch stock was found. Check that the product is active and has available inventory at an active branch.</Message>
+          <p class="mb-3 text-xs text-slate-600">If the original item is unavailable, send this case to Sales Orders. Sales will select another product and collect only the excess value through PayMongo.</p>
+          <Button label="Send to Sales Orders" icon="pi pi-send" severity="warn" size="small" :loading="saving" @click="requestSalesAlternative" />
+        </template>
+      </Card>
+
+      <Card v-if="isSales && item.status === 'received' && ['sales_review', 'payment_failed'].includes(item.replacement_status)">
+        <template #title><span class="text-base">Select replacement and collect excess value</span></template>
+        <template #content>
+          <p class="mb-3 text-xs text-slate-600">Choose an available higher-value product. Its stock will be held while the customer completes the PayMongo checkout.</p>
+          <Message v-if="item.replacement_status === 'payment_failed'" severity="error" :closable="false" class="mb-3">The previous payment was not completed. Its stock hold was released; select an item to try again.</Message>
+          <Message v-if="!alternatives.length" severity="warn" :closable="false">No higher-value alternative with enough available stock was found.</Message>
           <Select v-else v-model="alternativeForm.inventory_id" :options="alternatives" optionLabel="label" optionValue="inventory_id" placeholder="Select an alternative item" size="small" fluid />
           <div v-if="selectedAlternative" class="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-            <p>Original item paid: <strong>{{ money(selectedAlternative.original_paid_value) }}</strong></p>
-            <p>Alternative total: <strong>{{ money(selectedAlternative.total_price) }}</strong></p>
+            <p>Original paid value: <strong>{{ money(selectedAlternative.original_paid_value) }}</strong></p>
+            <p>Replacement total: <strong>{{ money(selectedAlternative.total_price) }}</strong></p>
             <p>Replacement weight: <strong>{{ selectedAlternative.total_weight_kg == null ? 'Not recorded' : `${selectedAlternative.total_weight_kg} kg` }}</strong></p>
-            <p class="text-orange-700">Collect difference: <strong>{{ money(selectedAlternative.price_difference) }}</strong></p>
+            <p class="text-orange-700">Excess to pay: <strong>{{ money(selectedAlternative.price_difference) }}</strong></p>
           </div>
-          <label class="mt-3 flex items-start gap-2 text-xs text-slate-700"><input v-model="alternativeForm.customer_accepted" type="checkbox" class="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>Customer accepts this alternative and the additional amount shown above.</span></label>
-          <div class="mt-3 grid gap-3 sm:grid-cols-2">
-            <div><label class="mb-1 block text-xs font-medium">Payment method</label><Select v-model="alternativeForm.payment_method" :options="paymentMethods" optionLabel="label" optionValue="value" size="small" fluid /></div>
-            <div v-if="alternativeForm.payment_method !== 'cash'"><label class="mb-1 block text-xs font-medium">Payment reference</label><InputText v-model="alternativeForm.payment_reference" size="small" fluid placeholder="Transaction/reference number" /></div>
-          </div>
-          <label class="mt-3 flex items-start gap-2 text-xs text-slate-700"><input v-model="alternativeForm.payment_verified" type="checkbox" class="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>I have verified that the additional amount was collected.</span></label>
-          <Button label="Confirm collection and reserve alternative" severity="warn" size="small" class="mt-3" :disabled="!selectedAlternative || !alternativeForm.customer_accepted || !alternativeForm.payment_verified || (alternativeForm.payment_method !== 'cash' && !alternativeForm.payment_reference.trim())" :loading="saving" @click="reserveAlternative" />
+          <label class="mt-3 flex items-start gap-2 text-xs text-slate-700"><input v-model="alternativeForm.customer_accepted" type="checkbox" class="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>The customer accepts this replacement and its excess value.</span></label>
+          <div class="mt-3 max-w-sm"><label class="mb-1 block text-xs font-medium">PayMongo payment method</label><Select v-model="alternativeForm.payment_method" :options="paymentMethods" optionLabel="label" optionValue="value" size="small" fluid /></div>
+          <Button label="Continue to PayMongo" icon="pi pi-credit-card" severity="warn" size="small" class="mt-3" :disabled="!selectedAlternative || !alternativeForm.customer_accepted" :loading="saving" @click="startAlternativePayment" />
         </template>
+      </Card>
+
+      <Card v-if="isSales && item.replacement_status === 'awaiting_payment'">
+        <template #title><span class="text-base">Payment pending</span></template>
+        <template #content><p class="mb-3 text-xs text-slate-600">The selected stock is on hold. Continue the hosted checkout to complete the excess payment.</p><Button label="Continue PayMongo Payment" severity="warn" size="small" :loading="saving" @click="openPaymongoCheckout" /></template>
       </Card>
 
       <Card v-if="item.replacement_status === 'reserved' && canManageTrips" class="border border-slate-200 shadow-sm">
@@ -78,6 +88,11 @@
           <p class="mb-3 text-xs text-slate-600">Add this replacement to a planned trip. Its return pickup will be linked automatically, so the driver can exchange both items at the customer in one stop.</p>
           <Button label="Assign to Trip" icon="pi pi-truck" severity="warn" size="small" :loading="loadingCompatibleTrips" @click="openTripDialog" />
         </template>
+      </Card>
+
+      <Card v-if="isSales && item.replacement_status === 'reserved'" class="border border-emerald-200 shadow-sm">
+        <template #title><span class="text-base text-emerald-700">Paid and ready for dispatch</span></template>
+        <template #content><p class="text-xs text-slate-600">PayMongo confirmed the excess payment and the replacement stock is reserved. Logistics can now assign this replacement to a trip and dispatch it.</p></template>
       </Card>
 
       <Card v-if="item.replacement_status === 'assigned' && canManageTrips" class="border border-slate-200 shadow-sm">
@@ -192,6 +207,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import logisticsService from '@/services/logistics.service'
+import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -201,13 +217,14 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 const isDriver = window.location.pathname.startsWith('/driver/')
 const isLogistics = window.location.pathname.startsWith('/logistics/') || isDriver
+const isSales = window.location.pathname.startsWith('/sales/replacements/')
 const canManageTrips = authStore.hasPermission('logistics.deliveries.manage')
 const item = ref<any>(null)
 const branches = ref<any[]>([])
 const stock = ref<any[]>([])
 const alternatives = ref<any[]>([])
-const alternativeForm = reactive({ inventory_id: null as number | null, customer_accepted: false, payment_verified: false, payment_method: 'cash', payment_reference: '' })
-const paymentMethods = [{ label: 'Cash', value: 'cash' }, { label: 'Card', value: 'card' }, { label: 'GCash', value: 'gcash' }, { label: 'Bank transfer', value: 'bank_transfer' }]
+const alternativeForm = reactive({ inventory_id: null as number | null, customer_accepted: false, payment_method: 'gcash' })
+const paymentMethods = [{ label: 'GCash', value: 'gcash' }, { label: 'Maya', value: 'paymaya' }, { label: 'Credit / Debit Card', value: 'card' }, { label: 'QR Ph', value: 'qrph' }]
 const tripChoiceVisible = ref(false)
 const compatibleTrips = ref<any[]>([])
 const loadingCompatibleTrips = ref(false)
@@ -266,7 +283,7 @@ const isDepartureUnavailable = (date: any) => unavailableDepartureDates.value.so
 const label = (value: any) => String(value || 'Pending').replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())
 const formatDate = (value: any) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-'
 const money = (value: any) => `\u20B1${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const endpoint = `/api/logistics/replacements/${route.params.id}`
+const endpoint = isSales ? `/api/sales/replacements/${route.params.id}` : `/api/logistics/replacements/${route.params.id}`
 const replacementAddress = computed(() => item.value?.source_type === 'pos'
   ? item.value?.sales_order?.delivery_address || item.value?.order?.shipping_address
   : item.value?.order?.shipping_address)
@@ -309,7 +326,50 @@ const act = async (url: string, payload?: any) => {
 }
 const receive = () => act(`/api/crm/returns/${route.params.id}/receive`, receiveForm)
 const reserve = () => act(`${endpoint}/reserve`, { branch_id: selectedBranch.value })
-const reserveAlternative = () => act(`${endpoint}/alternative`, { inventory_id: alternativeForm.inventory_id, customer_accepted: alternativeForm.customer_accepted, payment_verified: alternativeForm.payment_verified, payment_method: alternativeForm.payment_method, payment_reference: alternativeForm.payment_reference.trim() || null })
+const requestSalesAlternative = () => act(`${endpoint}/sales-request`)
+const checkoutUrl = (query: Record<string, string>) => {
+  const resolved = router.resolve({ name: 'sales.replacements.detail', params: { id: route.params.id }, query })
+  return new URL(resolved.href, window.location.origin).toString()
+}
+const openPaymongoCheckout = async () => {
+  saving.value = true
+  try {
+    const method = String(item.value?.replacement_payment_method || alternativeForm.payment_method)
+    const amount = Math.round(Number(item.value?.replacement_price_difference || selectedAlternative.value?.price_difference || 0) * 100)
+    if (amount < 1) throw new Error('The replacement excess amount is invalid.')
+    const response = await paymongoService.createCheckoutSession({
+      amount,
+      payable_type: 'replacement_upgrade',
+      payable_id: Number(route.params.id),
+      store_id: Number(item.value?.store_id),
+      description: `Replacement excess payment ${item.value?.return_number || route.params.id}`,
+      payment_method_allowed: [method],
+      success_url: checkoutUrl({ paymongo: 'success' }),
+      cancel_url: checkoutUrl({ paymongo: 'cancelled' }),
+    })
+    const url = String(response?.data?.checkout_url || '')
+    if (!url.startsWith('https://checkout.paymongo.com/')) throw new Error('PayMongo did not return a valid checkout page.')
+    window.location.assign(url)
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Payment Could Not Start', detail: error?.response?.data?.message || error?.message || 'Unable to open PayMongo checkout.', life: 4000 })
+    saving.value = false
+  }
+}
+const startAlternativePayment = async () => {
+  saving.value = true
+  try {
+    const response = await axios.post(`${endpoint}/alternative`, {
+      inventory_id: alternativeForm.inventory_id,
+      customer_accepted: alternativeForm.customer_accepted,
+      payment_method: alternativeForm.payment_method,
+    })
+    item.value = response.data?.data || item.value
+    await openPaymongoCheckout()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Selection Failed', detail: error?.response?.data?.message || 'Unable to reserve this replacement.', life: 4000 })
+    saving.value = false
+  }
+}
 const openTripDialog = async () => {
   tripChoiceVisible.value = true
   loadingCompatibleTrips.value = true
@@ -394,8 +454,19 @@ const dispose = (disposition: 'resell' | 'discard') => confirm.require({
   rejectProps: { label: 'Cancel', outlined: true }, acceptProps: { label: 'Confirm', severity: 'warn' },
   accept: () => act(`${endpoint}/disposition`, { disposition }),
 })
-const goBack = () => router.push({ name: isDriver ? 'logistics.trips' : isLogistics ? 'logistics.deliveries' : window.location.pathname.startsWith('/warehouse/') ? 'warehouse.returns' : 'inventory.stock-returns' })
-onMounted(load)
+const goBack = () => router.push({ name: isSales ? 'sales.orders' : isDriver ? 'logistics.trips' : isLogistics ? 'logistics.deliveries' : window.location.pathname.startsWith('/warehouse/') ? 'warehouse.returns' : 'inventory.stock-returns' })
+onMounted(async () => {
+  if (isSales && route.query.paymongo) {
+    try {
+      await paymongoService.getLatestIntentByPayable('replacement_upgrade', Number(route.params.id), { sync: true })
+      toast.add({ severity: route.query.paymongo === 'success' ? 'success' : 'warn', summary: route.query.paymongo === 'success' ? 'Payment Checked' : 'Payment Not Completed', detail: route.query.paymongo === 'success' ? 'The payment status has been synchronized.' : 'You can continue or retry the payment.', life: 3500 })
+      await router.replace({ name: 'sales.replacements.detail', params: { id: route.params.id } })
+    } catch (error: any) {
+      toast.add({ severity: 'error', summary: 'Payment Check Failed', detail: error?.response?.data?.message || 'Unable to synchronize the payment.', life: 3500 })
+    }
+  }
+  await load()
+})
 </script>
 
 

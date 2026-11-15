@@ -26,6 +26,8 @@ class SupplierPortal extends Model
         'country',
         'latitude',
         'longitude',
+        'delivery_fee_per_km',
+        'delivery_fee_per_kg',
         'tin',
         'status',
         'rejection_reason',
@@ -40,6 +42,8 @@ class SupplierPortal extends Model
         'last_submission_at' => 'datetime',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
+        'delivery_fee_per_km' => 'decimal:2',
+        'delivery_fee_per_kg' => 'decimal:2',
     ];
 
     // Relationships

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Procurement\SupplierPortal;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
+use App\Models\Procurement\SupplierPortal\SupplierPOFulfillmentUpdate;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Core\ActivityLog;
@@ -151,7 +152,7 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract'])
+            $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract', 'supplierFulfillmentUpdates.creator'])
                 ->findOrFail($id);
 
             if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
@@ -159,6 +160,10 @@ class SupplierPOFeedbackController extends Controller
                     'success' => false,
                     'message' => 'Unauthorized access to this purchase order.',
                 ], 403);
+            }
+
+            if ($request->response === 'accepted' && !in_array($po->fulfillment_method, ['store_pickup', 'supplier_delivery'], true)) {
+                return response()->json(['success' => false, 'message' => 'The store has not selected a fulfillment method for this PO.'], 422);
             }
 
             foreach ($po->items as $item) {
@@ -217,6 +222,7 @@ class SupplierPOFeedbackController extends Controller
                 'data' => [
                     'po' => $po,
                     'supplier_feedback' => $feedback,
+                    'fulfillment_updates' => $po->supplierFulfillmentUpdates,
                     'shipment' => $shipment,
                     'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
@@ -243,6 +249,7 @@ class SupplierPOFeedbackController extends Controller
         $validator = Validator::make($request->all(), [
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'response' => 'required|in:accepted,rejected',
+            'fulfillment_method' => 'prohibited',
             'rejection_reason' => 'required_if:response,rejected|string',
             'expected_delivery_date' => 'nullable|date|after_or_equal:today',
             'delivery_quantity' => 'nullable|integer|min:1',
@@ -290,7 +297,7 @@ class SupplierPOFeedbackController extends Controller
                     'response_date' => now()->toDateString(),
                     'recorded_by' => null,
                     'response' => $request->response,
-                    'fulfillment_method' => $request->response === 'accepted' ? 'store_pickup' : null,
+                    'fulfillment_method' => $request->response === 'accepted' ? $po->fulfillment_method : null,
                     'rejection_reason' => $request->get('rejection_reason'),
                     'expected_delivery_date' => $request->get('expected_delivery_date'),
                     'delivery_quantity' => $request->get('delivery_quantity'),
@@ -300,7 +307,7 @@ class SupplierPOFeedbackController extends Controller
             );
 
             if ($request->response === 'accepted') {
-                $po->fulfillment_method = 'store_pickup';
+                $po->supplier_fulfillment_status = 'preparing';
                 $po->save();
                 $po->markSupplierAccepted();
 
@@ -310,7 +317,7 @@ class SupplierPOFeedbackController extends Controller
                     [
                         'po_number' => $po->po_number,
                         'supplier_id' => $po->supplier_id,
-                        'fulfillment_method' => 'store_pickup',
+                        'fulfillment_method' => $po->fulfillment_method,
                     ],
                     'purchase_order',
                     $po->id
@@ -376,6 +383,64 @@ class SupplierPOFeedbackController extends Controller
                 'message' => 'Error submitting feedback: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function updateFulfillment(Request $request, int $id): JsonResponse
+    {
+        $portal = SupplierPortal::where('user_id', (int) $request->user()->id)->firstOrFail();
+        abort_unless($portal->isVerified(), 409, 'Your supplier account is not verified yet.');
+        $po = PurchaseOrder::query()->whereIn('supplier_id', $portal->linkedSupplierIds())->findOrFail($id);
+        abort_unless($po->status === 'supplier_accepted' || $po->status === 'in_transit', 422, 'This PO is not in the supplier fulfillment workflow.');
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:ready_for_pickup,dispatched,delivered'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'photos' => ['required_if:status,dispatched,delivered', 'array', 'min:1'],
+            'photos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        $current = $po->supplier_fulfillment_status ?: 'preparing';
+        $next = $validated['status'];
+        if ($po->fulfillment_method === 'store_pickup') {
+            abort_unless($current === 'preparing' && $next === 'ready_for_pickup', 422, 'Store pickup can only move from Preparing to Ready for Pickup.');
+        } else {
+            $valid = ($current === 'preparing' && $next === 'dispatched')
+                || ($current === 'dispatched' && $next === 'delivered');
+            abort_unless($valid, 422, 'Supplier delivery must move from Preparing to Dispatched, then Delivered.');
+        }
+
+        $photoPaths = [];
+        foreach ($request->file('photos', []) as $photo) {
+            $photoPaths[] = $photo->store("supplier/purchase-orders/{$po->id}/fulfillment", 'public');
+        }
+
+        $update = SupplierPOFulfillmentUpdate::create([
+            'purchase_order_id' => $po->id,
+            'supplier_portal_id' => $portal->id,
+            'created_by' => $request->user()->id,
+            'status' => $next,
+            'notes' => $validated['notes'] ?? null,
+            'photo_paths' => $photoPaths,
+        ]);
+
+        $po->supplier_fulfillment_status = $next;
+        if ($next === 'dispatched') $po->markInTransit();
+        elseif ($next === 'delivered') $po->markDelivered();
+        else $po->save();
+
+        ActivityLog::record(
+            'po_supplier_fulfillment_updated',
+            "Supplier updated PO {$po->po_number} fulfillment to " . str_replace('_', ' ', $next) . '.',
+            ['status' => $next, 'photos' => count($photoPaths)],
+            'purchase_order',
+            $po->id
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Purchase order fulfillment updated.',
+            'data' => ['update' => $update->load('creator'), 'purchase_order' => $po->fresh()],
+        ]);
     }
 
     /**

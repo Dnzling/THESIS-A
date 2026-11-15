@@ -14,6 +14,7 @@ use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Logistics\DeliveryTrip;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Logistics\ReturnPickupLog;
+use App\Mail\CustomerOrderDeliveryAssignedMail;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
@@ -25,6 +26,7 @@ use App\Services\Logistics\ReplacementDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -1247,14 +1249,15 @@ class DeliveryTripController extends Controller
         $skipped = 0;
         $overCapacity = 0;
         $addedOrderNumbers = [];
+        $customerDeliveryAssignments = [];
         $capacityKg = (float) ($trip->vehicle?->capacity_kg ?? 0);
         $currentWeight = $this->currentTripWeight($trip);
         $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
         $currentStops = $this->tripStopCount($trip);
-        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers) {
+        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers, &$customerDeliveryAssignments) {
             if ($validated['source_type'] === 'ecommerce') {
                 $orders = EcommerceOrder::query()
-                    ->with(['items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
+                    ->with(['items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg', 'store:id,name'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->get();
@@ -1328,6 +1331,24 @@ class DeliveryTripController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
 
+                    $customerEmail = trim((string) ($order->shipping_email ?? ''));
+                    if ($customerEmail !== '' && filter_var($customerEmail, FILTER_VALIDATE_EMAIL)) {
+                        $deliveryDate = $order->requested_fulfillment_date ?: $delivery->estimated_delivery_at;
+                        $customerDeliveryAssignments[] = [
+                            'email' => $customerEmail,
+                            'customer_name' => (string) ($order->shipping_name ?? 'Customer'),
+                            'order_number' => (string) $order->order_number,
+                            'store_name' => (string) ($order->store?->name ?? 'FurniSync Store'),
+                            'trip_reference' => $this->tripReference($trip),
+                            'tracking_number' => (string) $delivery->tracking_number,
+                            'tracking_url' => url('/track-order?tracking_number='.urlencode((string) $delivery->tracking_number)),
+                            'departure_date' => $trip->scheduled_departure_at?->format('F j, Y'),
+                            'delivery_date' => $deliveryDate
+                                ? \Illuminate\Support\Carbon::parse($deliveryDate)->format('F j, Y')
+                                : null,
+                        ];
+                    }
+
                     $added++;
                     $addedOrderNumbers[] = (string) $order->order_number;
                     $currentWeight += $orderWeight;
@@ -1335,7 +1356,7 @@ class DeliveryTripController extends Controller
                 }
             } elseif ($validated['source_type'] === 'sales') {
                 $orders = SalesOrder::query()
-                    ->with(['items.product:id,weight_kg', 'items.variation:id,weight_kg', 'items.branchInventory.variation:id,weight_kg'])
+                    ->with(['items.product:id,weight_kg', 'items.variation:id,weight_kg', 'items.branchInventory.variation:id,weight_kg', 'delivery', 'store:id,name'])
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->where('delivery_required', true)
@@ -1393,6 +1414,27 @@ class DeliveryTripController extends Controller
                     }
                     $delivery->updated_by = $request->user()->id;
                     $delivery->save();
+
+                    $customerEmail = trim((string) ($order->delivery_email ?? ''));
+                    if ($customerEmail !== '' && filter_var($customerEmail, FILTER_VALIDATE_EMAIL)) {
+                        $requestedDeliveryDate = $delivery->scheduled_delivery_at;
+                        $legacyDeliveryDate = $order->getAttribute('scheduled_delivery_at');
+                        if (!$requestedDeliveryDate && $legacyDeliveryDate) {
+                            $requestedDeliveryDate = \Illuminate\Support\Carbon::parse($legacyDeliveryDate);
+                        }
+
+                        $customerDeliveryAssignments[] = [
+                            'email' => $customerEmail,
+                            'customer_name' => (string) ($order->customer_name ?? 'Customer'),
+                            'order_number' => (string) $order->order_number,
+                            'store_name' => (string) ($order->store?->name ?? 'FurniSync Store'),
+                            'trip_reference' => $this->tripReference($trip),
+                            'tracking_number' => (string) $delivery->tracking_number,
+                            'tracking_url' => url('/track-order?tracking_number='.urlencode((string) $delivery->tracking_number)),
+                            'departure_date' => $trip->scheduled_departure_at?->format('F j, Y'),
+                            'delivery_date' => $requestedDeliveryDate?->format('F j, Y'),
+                        ];
+                    }
 
                     SalesOrderDeliveryLog::query()->create([
                         'delivery_id' => $delivery->id,
@@ -1596,6 +1638,18 @@ class DeliveryTripController extends Controller
                 $trip->save();
             }
         });
+
+        foreach ($customerDeliveryAssignments as $assignment) {
+            try {
+                Mail::to($assignment['email'])->send(new CustomerOrderDeliveryAssignedMail($assignment));
+            } catch (\Throwable $exception) {
+                \Log::warning('Failed to send customer delivery assignment email.', [
+                    'order_number' => $assignment['order_number'],
+                    'email' => $assignment['email'],
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         if ($added === 0 && $overCapacity > 0) {
             return response()->json([

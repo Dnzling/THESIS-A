@@ -142,6 +142,7 @@ class StoreSettingsController extends Controller
                 'logo_dimensions' => is_array($mainBranch?->logo_dimensions) ? $mainBranch->logo_dimensions : null,
             ],
             'payments' => $this->resolvePaymentSettings($store),
+            'return_resolution' => app(\App\Services\Store\ReturnResolutionPolicy::class)->forStore($store),
             'branches' => $store?->branches()
                 ->orderByDesc('is_main_branch')
                 ->orderBy('name')
@@ -298,6 +299,43 @@ class StoreSettingsController extends Controller
         $store->save();
 
         return back()->with('success', 'Payment settings updated.');
+    }
+
+    public function updateReturnResolutionSettings(Request $request)
+    {
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404, 'Store not found for this user.');
+
+        $validated = $request->validate([
+            'allow_refunds' => ['required', 'boolean'],
+            'default_resolution' => ['required', Rule::in(['refund', 'replacement'])],
+            'allow_higher_value_replacements' => ['required', 'boolean'],
+            'return_window_days' => ['required', 'integer', 'min:1', 'max:30'],
+            'refund_methods' => ['required_if:allow_refunds,true', 'array', 'max:3'],
+            'refund_methods.*' => ['string', Rule::in(\App\Services\Store\ReturnResolutionPolicy::REFUND_METHODS)],
+        ]);
+
+        if ($validated['allow_refunds'] && empty($validated['refund_methods'])) {
+            return back()->withErrors(['refund_methods' => 'Select at least one refund payment method.']);
+        }
+        if (!$validated['allow_refunds'] && $validated['default_resolution'] === 'refund') {
+            return back()->withErrors(['default_resolution' => 'Replacement must be the default when refunds are disabled.']);
+        }
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $settings['return_resolution'] = [
+            'allow_refunds' => (bool) $validated['allow_refunds'],
+            'default_resolution' => $validated['default_resolution'],
+            'allow_higher_value_replacements' => (bool) $validated['allow_higher_value_replacements'],
+            'return_window_days' => (int) $validated['return_window_days'],
+            'refund_methods' => $validated['allow_refunds']
+                ? array_values(array_unique($validated['refund_methods'] ?? []))
+                : [],
+        ];
+        $store->settings = $settings;
+        $store->save();
+
+        return back()->with('success', 'Return resolution settings updated.');
     }
 
     public function updateLogo(Request $request)

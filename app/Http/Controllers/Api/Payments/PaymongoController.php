@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Payments;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceCartItem;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Finance\FinanceCashflowTransaction;
 use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
@@ -311,10 +312,25 @@ class PaymongoController extends Controller
             $data['amount'] = max(1, (int) round((float) ($invoice->net_amount ?: $invoice->invoice_amount) * 100));
         }
 
+        $replacement = null;
+        if (($data['payable_type'] ?? '') === 'replacement_upgrade') {
+            $replacement = EcommerceOrderReturn::query()
+                ->where('store_id', $resolvedStoreId)
+                ->where('return_type', 'replacement')
+                ->find((int) $data['payable_id']);
+            if (!$replacement || $replacement->replacement_status !== 'awaiting_payment'
+                || !$replacement->replacement_inventory_id || (float) $replacement->replacement_price_difference <= 0
+                || $replacement->replacement_payment_status === 'paid') {
+                return response()->json(['message' => 'This replacement is not available for online payment.'], 422);
+            }
+            $data['amount'] = max(1, (int) round((float) $replacement->replacement_price_difference * 100));
+        }
+
         $store = Store::query()->find($resolvedStoreId);
         $isEcommerceOrder = ($data['payable_type'] ?? '') === 'ecommerce_order';
         $isSalesOrder = ($data['payable_type'] ?? '') === 'sales_order';
-        $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order'], true);
+        $isReplacementUpgrade = ($data['payable_type'] ?? '') === 'replacement_upgrade';
+        $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order', 'replacement_upgrade'], true);
         if ($isHostedPayable && !$isEcommerceOrder && (int) ($request->user()?->store_id ?? 0) !== $resolvedStoreId
             && (int) ($store?->owner_id ?? 0) !== (int) ($request->user()?->id ?? 0)) {
             return response()->json(['message' => 'This payment does not belong to your store.'], 403);
@@ -350,8 +366,11 @@ class PaymongoController extends Controller
             if ($isSalesOrder && !in_array(strtolower((string) $salesOrder?->payment_method), $normalized, true)) {
                 return response()->json(['message' => 'The selected payment method does not match this POS order.'], 422);
             }
+            if ($isReplacementUpgrade && !in_array(strtolower((string) $replacement?->replacement_payment_method), $normalized, true)) {
+                return response()->json(['message' => 'The selected payment method does not match this replacement request.'], 422);
+            }
             $allowed = array_values(array_intersect($normalized, $storeAllowedMethods));
-            if (($isEcommerceOrder || $isSalesOrder) && count($allowed) !== count($normalized)) {
+            if (($isEcommerceOrder || $isSalesOrder || $isReplacementUpgrade) && count($allowed) !== count($normalized)) {
                 return response()->json(['message' => 'This payment method is not available for this store. Please choose another method.'], 422);
             }
             $data['payment_method_allowed'] = count($allowed) ? $allowed : $storeAllowedMethods;
@@ -363,7 +382,7 @@ class PaymongoController extends Controller
             ? $storeAllowedMethods
             : ['card', 'gcash', 'grab_pay', 'paymaya'];
         $methodTypes = array_values(array_intersect($data['payment_method_allowed'], $supportedForCheckout));
-        if (($isEcommerceOrder || $isSalesOrder) && is_array($requestedAllowed) && count($methodTypes) !== count(array_unique($requestedAllowed))) {
+        if (($isEcommerceOrder || $isSalesOrder || $isReplacementUpgrade) && is_array($requestedAllowed) && count($methodTypes) !== count(array_unique($requestedAllowed))) {
             return response()->json(['message' => 'This payment method is not available for checkout. Please choose another method.'], 422);
         }
         if (count($methodTypes) === 0) {
@@ -411,10 +430,12 @@ class PaymongoController extends Controller
             ];
         }
 
-        if ($isEcommerceOrder && isset($order)) {
+        if (($isEcommerceOrder && isset($order)) || ($isReplacementUpgrade && $replacement)) {
+            $hostedPayableType = $isReplacementUpgrade ? 'replacement_upgrade' : 'ecommerce_order';
+            $hostedPayableId = $isReplacementUpgrade ? (int) $replacement->id : (int) $order->id;
             $latest = PaymongoIntent::query()
-                ->where('payable_type', 'ecommerce_order')
-                ->where('payable_id', $order->id)
+                ->where('payable_type', $hostedPayableType)
+                ->where('payable_id', $hostedPayableId)
                 ->latest('id')
                 ->first();
 
@@ -429,7 +450,7 @@ class PaymongoController extends Controller
                 if ($paid) {
                     $latest->update(['status' => 'succeeded']);
                     $this->syncHostedCheckoutPayment($latest->fresh());
-                    return response()->json(['message' => 'This order has already been paid.'], 422);
+                    return response()->json(['message' => 'This payment has already been completed.'], 422);
                 }
 
                 $sessionStatus = strtolower((string) data_get($session, 'data.attributes.status', ''));
@@ -444,7 +465,7 @@ class PaymongoController extends Controller
                             if ($verifiedPaid) {
                                 $latest->update(['status' => 'succeeded']);
                                 $this->syncHostedCheckoutPayment($latest->fresh());
-                                return response()->json(['message' => 'This order has already been paid.'], 422);
+                                return response()->json(['message' => 'This payment has already been completed.'], 422);
                             }
                             $sessionStatus = strtolower((string) data_get($verified, 'data.attributes.status', ''));
                             if ($sessionStatus !== 'expired') {
@@ -468,6 +489,10 @@ class PaymongoController extends Controller
 
                 $latest->update(['status' => $sessionStatus]);
                 $this->syncEcommerceOrderFromIntent($latest->fresh(), $sessionStatus);
+                $this->syncReplacementUpgradeFromIntent($latest->fresh(), $sessionStatus);
+                if ($isReplacementUpgrade) {
+                    return response()->json(['message' => 'The previous payment attempt ended. Select the replacement item again to retry.'], 422);
+                }
             }
         }
 
@@ -533,6 +558,12 @@ class PaymongoController extends Controller
             }
             if ($isEcommerceOrder && isset($order) && $order->payment_status === 'failed') {
                 $order->update(['payment_status' => 'unpaid']);
+            }
+            if ($isReplacementUpgrade && $replacement) {
+                $replacement->update([
+                    'replacement_payment_status' => 'processing',
+                    'replacement_payment_reference' => $sessionId,
+                ]);
             }
         }
 
@@ -612,6 +643,7 @@ class PaymongoController extends Controller
             $freshIntent = $intent->fresh();
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncReplacementUpgradeFromIntent($freshIntent, $status);
             $this->syncInvoiceFromIntent($freshIntent, $status);
             $this->syncCashflowTopUpFromIntent($freshIntent, $status);
             $this->syncSubscriptionFromIntent($freshIntent, $status);
@@ -635,6 +667,16 @@ class PaymongoController extends Controller
                 ->exists();
             if (!$ownsOrder) {
                 return response()->json(['message' => 'Order not found.'], 404);
+            }
+        }
+
+        if ($validated['payable_type'] === 'replacement_upgrade') {
+            $ownsReplacement = EcommerceOrderReturn::query()
+                ->whereKey((int) $validated['payable_id'])
+                ->where('store_id', (int) ($request->user()?->store_id ?? 0))
+                ->exists();
+            if (!$ownsReplacement) {
+                return response()->json(['message' => 'Replacement request not found.'], 404);
             }
         }
 
@@ -688,6 +730,7 @@ class PaymongoController extends Controller
                 if (in_array($status, ['expired', 'cancelled', 'canceled', 'failed'], true)) {
                     $intent->update(['status' => $status]);
                     $this->syncEcommerceOrderFromIntent($intent->fresh(), $status);
+                    $this->syncReplacementUpgradeFromIntent($intent->fresh(), $status);
                 }
             }
             return;
@@ -708,6 +751,7 @@ class PaymongoController extends Controller
         if ($freshIntent) {
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncReplacementUpgradeFromIntent($freshIntent, $status);
             $this->syncInvoiceFromIntent($freshIntent, $status);
             $this->syncCashflowTopUpFromIntent($freshIntent, $status);
             $this->syncSubscriptionFromIntent($freshIntent, $status);
@@ -932,7 +976,7 @@ class PaymongoController extends Controller
             $session = data_get($event, 'data.attributes.data') ?? data_get($event, 'data.data');
             $sessionId = (string) data_get($session, 'id', '');
             $intent = PaymongoIntent::query()->where('payment_intent_id', $sessionId)
-                ->whereIn('payable_type', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order'])->first();
+                ->whereIn('payable_type', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order', 'replacement_upgrade'])->first();
             // The signed paid event is authoritative even when PayMongo omits payment details.
             if ($intent) {
                 if ($intent->status !== 'succeeded') {
@@ -947,6 +991,7 @@ class PaymongoController extends Controller
         if ($intent) {
             $this->syncSalesPaymentFromIntent($intent, (string) $intent->status);
             $this->syncEcommerceOrderFromIntent($intent, (string) $intent->status);
+            $this->syncReplacementUpgradeFromIntent($intent, (string) $intent->status);
             $this->syncInvoiceFromIntent($intent, (string) $intent->status);
             $this->syncCashflowTopUpFromIntent($intent, (string) $intent->status);
             $this->syncSubscriptionFromIntent($intent, (string) $intent->status);
@@ -960,6 +1005,7 @@ class PaymongoController extends Controller
     {
         $this->syncSalesPaymentFromIntent($intent, 'succeeded');
         $this->syncEcommerceOrderFromIntent($intent, 'succeeded');
+        $this->syncReplacementUpgradeFromIntent($intent, 'succeeded');
         $this->syncInvoiceFromIntent($intent, 'succeeded');
         $this->syncSubscriptionFromIntent($intent, 'succeeded');
     }
@@ -1017,6 +1063,83 @@ class PaymongoController extends Controller
         if ($nextPaymentStatus === 'failed' && $payment->order) {
             $this->salesSettlementService->markPaymentFailed($payment->order, $payment);
         }
+    }
+
+    private function syncReplacementUpgradeFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'replacement_upgrade') {
+            return;
+        }
+
+        DB::transaction(function () use ($intent, $paymongoStatus): void {
+            $return = EcommerceOrderReturn::query()->lockForUpdate()->find((int) $intent->payable_id);
+            if (!$return || (int) $return->store_id !== (int) $intent->store_id) {
+                return;
+            }
+
+            $status = strtolower(trim($paymongoStatus));
+            if ($status === 'succeeded') {
+                if ($return->replacement_payment_status === 'paid') {
+                    return;
+                }
+
+                $return->update([
+                    'replacement_payment_status' => 'paid',
+                    'replacement_payment_reference' => $intent->payment_intent_id,
+                    'replacement_paid_by' => $return->replacement_customer_accepted_by,
+                    'replacement_paid_at' => now(),
+                    'replacement_status' => 'reserved',
+                ]);
+
+                $alreadyRecorded = FinanceCashflowTransaction::query()
+                    ->where('store_id', $return->store_id)
+                    ->where('reference_type', 'replacement_upgrade')
+                    ->where('reference_id', $return->id)
+                    ->lockForUpdate()
+                    ->exists();
+                if (!$alreadyRecorded) {
+                    (new CashflowService())->credit(
+                        (int) $return->store_id,
+                        (float) $return->replacement_price_difference,
+                        'replacement_upgrade',
+                        (int) $return->id,
+                        null,
+                        'Replacement price difference ' . ($return->return_number ?: ('#' . $return->id)),
+                        (string) $return->replacement_payment_method,
+                        ['payment_intent_id' => $intent->payment_intent_id]
+                    );
+                }
+                return;
+            }
+
+            if (in_array($status, ['failed', 'cancelled', 'canceled', 'expired'], true)
+                && $return->replacement_payment_status !== 'paid') {
+                $quantity = max(1, (int) ($return->received_quantity ?: $return->requested_quantity));
+                if ($return->replacement_inventory_id) {
+                    $inventory = BranchInventory::query()->lockForUpdate()->find($return->replacement_inventory_id);
+                    if ($inventory) {
+                        $inventory->quantity_reserved = max(0, (int) $inventory->quantity_reserved - $quantity);
+                        $inventory->save();
+                    }
+                }
+                $return->update([
+                    'replacement_status' => 'payment_failed',
+                    'replacement_payment_status' => 'failed',
+                    'replacement_payment_reference' => $intent->payment_intent_id,
+                    'replacement_inventory_id' => null,
+                    'replacement_branch_id' => null,
+                    'replacement_product_id' => null,
+                    'replacement_variation_id' => null,
+                    'replacement_unit_price' => null,
+                    'replacement_price_difference' => null,
+                ]);
+                return;
+            }
+
+            if ($return->replacement_payment_status !== 'paid') {
+                $return->update(['replacement_payment_status' => 'processing']);
+            }
+        });
     }
 
     private function syncEcommerceOrderFromIntent(PaymongoIntent $intent, string $paymongoStatus): void

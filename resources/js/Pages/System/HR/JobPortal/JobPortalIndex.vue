@@ -51,6 +51,9 @@
                   <div v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="pi pi-building text-lg" /></div>
                   <span class="text-sm font-semibold text-slate-700">{{ storeLabel(posting) }}</span>
                 </div>
+                <p v-if="posting.branch?.name" class="text-xs text-slate-500">
+                  <i class="pi pi-map-marker mr-1" />{{ posting.branch.name }}<span v-if="posting.branch.city || posting.branch.province"> · {{ [posting.branch.city, posting.branch.province].filter(Boolean).join(', ') }}</span>
+                </p>
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag :value="posting.status || 'Open'" :severity="posting.status === 'Open' ? 'success' : 'warn'" />
                   <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />

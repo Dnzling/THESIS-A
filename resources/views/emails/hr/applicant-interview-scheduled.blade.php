@@ -28,6 +28,11 @@
                                 We’re pleased to invite you to interview for <strong style="color:#172033;">{{ $interview->application->jobPosting->title }}</strong>.
                             </p>
 
+                            <p style="margin:0 0 20px;color:#475569;font-size:14px;line-height:22px;">
+                                Store: <strong style="color:#172033;">{{ $interview->application->jobPosting->store?->name ?? $interview->application->jobPosting->store?->store_name ?? 'Store' }}</strong><br>
+                                Scheduled by: <strong style="color:#172033;">{{ $interview->interviewer->full_name ?? 'HR Team' }}</strong>
+                            </p>
+
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e2e8f0;border-radius:8px;background-color:#f8fafc;">
                                 <tr>
                                     <td style="padding:16px 18px;border-bottom:1px solid #e2e8f0;">
@@ -38,7 +43,7 @@
                                 </tr>
                                 <tr>
                                     <td style="padding:14px 18px;{{ $interview->duration_minutes ? 'border-bottom:1px solid #e2e8f0;' : '' }}">
-                                        <p style="margin:0 0 4px;color:#64748b;font-size:12px;line-height:17px;text-transform:uppercase;letter-spacing:.5px;">Interview type</p>
+                                        <p style="margin:0 0 4px;color:#64748b;font-size:12px;line-height:17px;text-transform:uppercase;letter-spacing:.5px;">Hiring stage</p>
                                         <p style="margin:0;color:#172033;font-size:14px;line-height:21px;font-weight:600;">{{ $interview->interview_type }}</p>
                                     </td>
                                 </tr>

@@ -21,12 +21,26 @@
         <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-start justify-between gap-4">
-              <div>
-                <p class="text-lg font-semibold text-slate-900">{{ supplierName }}</p>
-                <p class="text-sm text-slate-500">{{ supplierTypeLabel }}</p>
+              <div class="flex min-w-0 items-center gap-4">
+                <div class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <img v-if="companyLogoPreview || supplier?.logo_url" :src="companyLogoPreview || supplier.logo_url" alt="Company logo" class="h-full w-full object-contain" />
+                  <i v-else class="pi pi-building text-2xl text-slate-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-semibold text-slate-900">{{ supplierName }}</p>
+                  <p class="text-sm text-slate-500">{{ supplierTypeLabel }}</p>
+                  <input ref="companyLogoInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onCompanyLogoSelected" />
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <Button label="Choose Company Logo" icon="pi pi-image" severity="secondary" outlined size="small" @click="companyLogoInput?.click()" />
+                    <Button v-if="companyLogoFile" label="Save Logo" icon="pi pi-check" severity="warn" size="small" :loading="savingCompanyLogo" @click="saveCompanyLogo" />
+                  </div>
+                  <small class="mt-1 block text-xs text-slate-500">JPG, PNG, or WebP. Maximum 5 MB.</small>
+                </div>
               </div>
               <Tag :value="statusLabel" :severity="statusSeverity" rounded />
             </div>
+            <Message v-if="companyLogoError" severity="error" :closable="false" class="mt-3">{{ companyLogoError }}</Message>
+            <Message v-else-if="companyLogoMessage" severity="success" :closable="false" class="mt-3">{{ companyLogoMessage }}</Message>
   
             <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
               <table class="min-w-full text-sm">
@@ -60,6 +74,23 @@
               <p class="font-semibold">Verification Feedback</p>
               <p class="mt-1 text-rose-700">{{ portal?.rejection_reason }}</p>
             </div>
+          </section>
+
+          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div><h2 class="text-sm font-semibold text-slate-900">Supplier delivery rates</h2><p class="mt-1 text-xs text-slate-500">These rates are used to estimate delivery fees on partner stores’ purchase orders.</p></div>
+              <Button label="Save Rates" icon="pi pi-save" size="small" severity="warn" :loading="savingShippingRates" @click="saveShippingRates" />
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <label class="text-xs font-medium text-slate-600">Rate per kilometer
+                <InputNumber v-model="shippingRates.delivery_fee_per_km" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" />
+              </label>
+              <label class="text-xs font-medium text-slate-600">Rate per kilogram
+                <InputNumber v-model="shippingRates.delivery_fee_per_kg" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" />
+              </label>
+            </div>
+            <Message v-if="shippingRatesError" severity="error" :closable="false" class="mt-3">{{ shippingRatesError }}</Message>
+            <Message v-else-if="shippingRatesMessage" severity="success" :closable="false" class="mt-3">{{ shippingRatesMessage }}</Message>
           </section>
   
           <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4">
@@ -205,6 +236,7 @@ import Badge from 'primevue/badge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
@@ -216,6 +248,16 @@ const authStore = useAuthStore()
 const loading = ref(true)
 const portal = ref<any | null>(null)
 const supplier = ref<any | null>(null)
+const companyLogoInput = ref<HTMLInputElement | null>(null)
+const companyLogoFile = ref<File | null>(null)
+const companyLogoPreview = ref('')
+const savingCompanyLogo = ref(false)
+const companyLogoError = ref('')
+const companyLogoMessage = ref('')
+const shippingRates = reactive({ delivery_fee_per_km: 0, delivery_fee_per_kg: 0 })
+const savingShippingRates = ref(false)
+const shippingRatesError = ref('')
+const shippingRatesMessage = ref('')
 const paymentAccountSectionEl = ref<HTMLElement | null>(null)
 const loadingPaymentHistory = ref(false)
 const paymentHistoryRows = ref<any[]>([])
@@ -300,6 +342,56 @@ const goToVerification = () => {
   router.visit('/supplier-portal/registration')
 }
 
+const onCompanyLogoSelected = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0] || null
+  companyLogoError.value = ''
+  companyLogoMessage.value = ''
+  if (companyLogoPreview.value) URL.revokeObjectURL(companyLogoPreview.value)
+  companyLogoFile.value = file
+  companyLogoPreview.value = file ? URL.createObjectURL(file) : ''
+}
+
+const saveCompanyLogo = async () => {
+  if (!companyLogoFile.value || savingCompanyLogo.value) return
+  savingCompanyLogo.value = true
+  companyLogoError.value = ''
+  companyLogoMessage.value = ''
+  try {
+    const payload = new FormData()
+    payload.append('logo', companyLogoFile.value)
+    const response = await supplierService.updatePortalCompanyLogo(payload)
+    supplier.value = response?.data?.supplier || supplier.value
+    if (companyLogoPreview.value) URL.revokeObjectURL(companyLogoPreview.value)
+    companyLogoPreview.value = ''
+    companyLogoFile.value = null
+    if (companyLogoInput.value) companyLogoInput.value.value = ''
+    companyLogoMessage.value = 'Company logo saved and shared with connected stores.'
+  } catch (error: any) {
+    companyLogoError.value = error?.response?.data?.message || 'Unable to save the company logo.'
+  } finally {
+    savingCompanyLogo.value = false
+  }
+}
+
+const saveShippingRates = async () => {
+  if (savingShippingRates.value) return
+  savingShippingRates.value = true
+  shippingRatesError.value = ''
+  shippingRatesMessage.value = ''
+  try {
+    const response = await supplierService.updatePortalShippingRates({
+      delivery_fee_per_km: Number(shippingRates.delivery_fee_per_km || 0),
+      delivery_fee_per_kg: Number(shippingRates.delivery_fee_per_kg || 0),
+    })
+    portal.value = response?.data || portal.value
+    shippingRatesMessage.value = 'Delivery rates saved.'
+  } catch (error: any) {
+    shippingRatesError.value = error?.response?.data?.message || 'Unable to save delivery rates.'
+  } finally {
+    savingShippingRates.value = false
+  }
+}
+
 const loadPortal = async () => {
   loading.value = true
   try {
@@ -309,6 +401,8 @@ const loadPortal = async () => {
       return
     }
     portal.value = response.data
+    shippingRates.delivery_fee_per_km = Number(response.data?.delivery_fee_per_km ?? 0)
+    shippingRates.delivery_fee_per_kg = Number(response.data?.delivery_fee_per_kg ?? 0)
     supplier.value = response.data?.supplier || null
     locationSearch.value = [
       supplier.value?.address || response.data?.address,
@@ -529,6 +623,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (companyLogoPreview.value) URL.revokeObjectURL(companyLogoPreview.value)
   map?.remove()
   map = null
   marker = null

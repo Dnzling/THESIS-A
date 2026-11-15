@@ -6,12 +6,15 @@ use App\Http\Controllers\Api\Sales\SalesRefundController;
 use App\Http\Controllers\Api\Sales\SalesReportsController;
 use App\Http\Controllers\Api\Sales\WholesaleQuoteController;
 use App\Http\Controllers\Api\Inventory\EcommerceOrderManagementController;
+use App\Http\Controllers\Api\Logistics\ReplacementController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('sales')->group(function () {
     Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'sales'])->middleware('can:sales.dashboard.view');
     Route::get('/dashboard', [SalesPosController::class, 'dashboard'])->middleware('can:sales.dashboard.view');
     Route::get('/orders', [SalesPosController::class, 'unifiedOrders'])->middleware('can:sales.orders.view');
+    Route::get('/replacements/{id}', [ReplacementController::class, 'show'])->middleware('can:sales.orders.view');
+    Route::post('/replacements/{id}/alternative', [ReplacementController::class, 'reserveAlternative'])->middleware('can:sales.orders.manage');
 
     Route::prefix('wholesale-quotes')->group(function () {
         Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.wholesale.view');

@@ -38,6 +38,7 @@ use App\Services\Ecommerce\PromotionPricingService;
 use App\Services\Ecommerce\EcommerceStockReservationService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Payment\EcommerceRefundRoutingService;
+use App\Services\Store\ReturnResolutionPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -2607,6 +2608,10 @@ class EcommerceController extends Controller
             'reason' => ['required', 'string', 'max:1000'],
             'details' => ['nullable', 'string', 'max:2000'],
             'requested_quantity' => ['required', 'integer', 'min:1'],
+            'requested_resolution' => ['required', Rule::in(['refund', 'replacement'])],
+            'preferred_refund_method' => ['nullable', 'string'],
+            'refund_account_name' => ['nullable', 'string', 'max:255'],
+            'refund_account_number' => ['nullable', 'string', 'max:100'],
             'evidence_images' => ['required', 'array', 'min:1', 'max:5'],
             'evidence_images.*' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
@@ -2628,6 +2633,29 @@ class EcommerceController extends Controller
         }
 
         $storeIdForStorage = (int) ($orderItem->order?->store_id ?? 0);
+        $store = Store::query()->findOrFail($storeIdForStorage);
+        $returnPolicy = app(ReturnResolutionPolicy::class)->forStore($store);
+        $requestedResolution = (string) $validated['requested_resolution'];
+        $preferredRefundMethod = trim((string) ($validated['preferred_refund_method'] ?? ''));
+
+        if ($requestedResolution === 'refund') {
+            if (!$returnPolicy['allow_refunds']) {
+                throw ValidationException::withMessages([
+                    'requested_resolution' => ['This store only offers replacement for returned items.'],
+                ]);
+            }
+            if (!in_array($preferredRefundMethod, $returnPolicy['refund_methods'], true)) {
+                throw ValidationException::withMessages([
+                    'preferred_refund_method' => ['Select a refund payment method offered by this store.'],
+                ]);
+            }
+            $request->validate([
+                'refund_account_name' => ['required', 'string', 'min:2', 'max:255', "regex:/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*$/u"],
+                'refund_account_number' => $preferredRefundMethod === 'bank_transfer'
+                    ? ['required', 'string', 'min:5', 'max:100']
+                    : ['required', 'string', 'regex:/^09[0-9]{9}$/'],
+            ]);
+        }
 
         $orderStatus = strtolower((string) $orderItem->order?->status);
         if (!in_array($orderStatus, ['delivered', 'completed'], true)) {
@@ -2639,10 +2667,10 @@ class EcommerceController extends Controller
 
         $deliveredAt = $orderItem->order?->delivery?->delivered_at
             ?? $orderItem->order?->updated_at;
-        if (!$deliveredAt || $deliveredAt->lt(now()->subDays(7))) {
+        if (!$deliveredAt || $deliveredAt->lt(now()->subDays((int) $returnPolicy['return_window_days']))) {
             return response()->json([
                 'success' => false,
-                'message' => 'The 7-day return window has ended.',
+                'message' => "The {$returnPolicy['return_window_days']}-day return window has ended.",
             ], 422);
         }
 
@@ -2688,6 +2716,10 @@ class EcommerceController extends Controller
             'requested_quantity' => $requestedQuantity,
             'reason' => $validated['reason'],
             'details' => $validated['details'] ?? null,
+            'requested_resolution' => $requestedResolution,
+            'preferred_refund_method' => $requestedResolution === 'refund' ? $preferredRefundMethod : null,
+            'refund_account_name' => $requestedResolution === 'refund' ? trim((string) $validated['refund_account_name']) : null,
+            'refund_account_number' => $requestedResolution === 'refund' ? trim((string) $validated['refund_account_number']) : null,
             'evidence_urls' => $evidenceUrls,
             'status' => 'pending_verification',
         ]);
@@ -2730,10 +2762,19 @@ class EcommerceController extends Controller
     {
         abort_unless((int) $return->user_id === (int) $request->user()->id, 403, 'Unauthorized access to return request.');
 
+        $return->loadMissing('store');
+        $returnPolicy = app(ReturnResolutionPolicy::class)->forStore($return->store);
+        if (!$returnPolicy['allow_refunds']) {
+            throw ValidationException::withMessages(['refund_method' => ['Refunds are disabled by this store’s return resolution policy.']]);
+        }
+
+        $requestedMethod = (string) $request->input('refund_method');
         $validated = $request->validate([
-            'refund_method' => ['required', Rule::in(['gcash', 'maya'])],
+            'refund_method' => ['required', Rule::in($returnPolicy['refund_methods'])],
             'refund_account_name' => ['required', 'string', 'min:2', 'max:255', "regex:/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*$/u"],
-            'refund_account_number' => ['required', 'string', 'regex:/^09[0-9]{9}$/'],
+            'refund_account_number' => $requestedMethod === 'bank_transfer'
+                ? ['required', 'string', 'min:5', 'max:100']
+                : ['required', 'string', 'regex:/^09[0-9]{9}$/'],
         ]);
 
         if ((string) $return->return_type !== 'refund' || !in_array((string) $return->status, ['approved', 'received', 'refund_pending'], true)) {
@@ -3829,6 +3870,8 @@ class EcommerceController extends Controller
         $originalRefundMethod = $refundRouting?->originalMethod($order);
         $automaticOriginalRefund = $refundRouting?->canRefundToOriginal($order) ?? false;
 
+        $returnPolicy = app(ReturnResolutionPolicy::class)->forStore($order->store);
+
         return [
             'id' => $order->id,
             'store_id' => $order->store_id,
@@ -3893,6 +3936,7 @@ class EcommerceController extends Controller
             'placed_at' => $order->placed_at,
             'created_at' => $order->created_at,
             'store_name' => $order->store?->name ?? 'Store',
+            'return_resolution_policy' => $returnPolicy,
             'items_count' => (int) $order->items_count,
             'delivery' => $order->delivery ? [
                 'id' => $order->delivery->id,
@@ -3925,7 +3969,8 @@ class EcommerceController extends Controller
                 $review = $item->relationLoaded('review') ? $item->review : null;
                 $eligibleAfterDelivery = in_array($orderStatus, ['delivered', 'completed'], true);
                 $deliveredAt = $order->delivery?->delivered_at ?? $order->updated_at;
-                $withinReturnWindow = $deliveredAt && !$deliveredAt->lt(now()->subDays(7));
+                $returnWindowDays = (int) app(ReturnResolutionPolicy::class)->forStore($order->store)['return_window_days'];
+                $withinReturnWindow = $deliveredAt && !$deliveredAt->lt(now()->subDays($returnWindowDays));
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -3962,6 +4007,8 @@ class EcommerceController extends Controller
                         'status' => $latestReturn->status,
                         'reason' => $latestReturn->reason,
                         'details' => $latestReturn->details,
+                        'requested_resolution' => $latestReturn->requested_resolution,
+                        'preferred_refund_method' => $latestReturn->preferred_refund_method,
                         'review_notes' => $latestReturn->review_notes,
                         'requested_quantity' => (int) $latestReturn->requested_quantity,
                         'return_type' => $latestReturn->return_type,

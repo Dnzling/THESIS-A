@@ -85,8 +85,9 @@
                 @click="showRejectDialog = true"
               />
               <Message v-if="!canShowDecisionActions" severity="info" :closable="false">
-                Hiring and rejection become available on the recorded interview date: {{ formatDate(latestInterview?.interview_date) }}.
+                {{ latestInterview ? `Hiring and rejection become available on ${formatDate(latestInterview.interview_date)}.` : 'Schedule an interview before making a hiring decision.' }}
               </Message>
+              <Message v-else-if="isInterviewDatePast" severity="warn" :closable="false">Decision overdue</Message>
             </div>
           </template>
         </Card>
@@ -166,7 +167,8 @@ const dateKey = (value?: string | Date | null) => {
   const pad = (part: number) => String(part).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
-const canShowDecisionActions = computed(() => interviews.value.length !== 1 || dateKey(latestInterview.value?.interview_date) === dateKey(new Date()))
+const isInterviewDatePast = computed(() => Boolean(latestInterview.value?.interview_date) && dateKey(latestInterview.value.interview_date) < dateKey(new Date()))
+const canShowDecisionActions = computed(() => interviews.value.length > 0 && (dateKey(latestInterview.value?.interview_date) === dateKey(new Date()) || isInterviewDatePast.value))
 
 const loadApplication = async () => {
   loading.value = true

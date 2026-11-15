@@ -720,7 +720,9 @@ class GoodsReceiptController extends Controller
         $discountRate = (float) ($contract->discount_percentage ?? 0);
         $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
         $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-        $shippingCost = (float) ($po->shipping_cost ?? 0);
+        $shippingCost = $po->fulfillment_method === 'supplier_delivery'
+            ? (float) ($po->shipping_cost ?? 0)
+            : 0.0;
 
         $invoice = Invoice::create([
             'store_id' => $po->store_id,

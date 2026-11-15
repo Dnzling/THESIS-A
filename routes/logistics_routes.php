@@ -24,6 +24,7 @@ Route::prefix('logistics')->group(function () {
     Route::prefix('replacements')->middleware('can:logistics.return-pickups.view')->group(function () {
         Route::get('/', [ReplacementController::class, 'index']);
         Route::get('/{id}', [ReplacementController::class, 'show']);
+        Route::post('/{id}/sales-request', [ReplacementController::class, 'requestSalesAlternative'])->middleware('can:logistics.return-pickups.manage');
         Route::post('/{id}/reserve', [ReplacementController::class, 'reserve'])->middleware('can:logistics.return-pickups.manage');
         Route::post('/{id}/alternative', [ReplacementController::class, 'reserveAlternative'])->middleware('can:logistics.return-pickups.manage');
         Route::post('/{id}/deliver', [ReplacementController::class, 'deliver'])->middleware('can:logistics.return-pickups.manage');

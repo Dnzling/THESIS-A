@@ -22,6 +22,7 @@ class Supplier extends Model
     protected $fillable = [
         'store_id',
         'supplier_portal_id',
+        'is_external',
         'supplier_code',
         'supplier_name',
         'logo_path',
@@ -75,6 +76,7 @@ class Supplier extends Model
         'on_time_deliveries' => 'integer',
         'late_deliveries' => 'integer',
         'is_tax_exempt' => 'boolean',
+        'is_external' => 'boolean',
         'default_tax_rate' => 'decimal:2',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',

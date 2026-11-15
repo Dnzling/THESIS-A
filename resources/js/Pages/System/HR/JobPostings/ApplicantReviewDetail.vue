@@ -8,16 +8,16 @@
         <Skeleton height="16rem" />
       </div>
   
-      <div v-else class="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div v-else class="mt-4 grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div class="space-y-4">
           <Card class="border border-slate-200 shadow-none">
             <template #content>
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Screening and Interview</p>
                     <h1 class="text-3xl font-semibold tracking-tight text-slate-900">{{ applicantName }}</h1>
                     <p class="mt-1 text-sm text-slate-500">{{ application?.email }} - {{ application?.phone || 'No phone provided' }}</p>
+                    <p v-if="applicantLocation" class="mt-1 text-xs text-slate-500">{{ applicantLocation }}</p>
                   </div>
                 <Tag :value="displayStatusLabel" :severity="statusSeverity(displayStatusLabel)" />
                 </div>
@@ -50,25 +50,27 @@
               </div>
 
               <div v-else class="space-y-4">
-                <div class="space-y-3">
-                <DatePicker v-model="interviewForm.interview_date" :minDate="new Date()" showTime hourFormat="12" class="w-full"
-                  placeholder="Schedule Interview Date" showIcon />
-                <Select v-model="interviewForm.interview_type" :options="interviewTypeOptions" optionLabel="label"
-                  optionValue="value" placeholder="Interview type" class="w-full" />
-                <Textarea v-model="interviewForm.notes" rows="3" class="w-full" placeholder="Interview notes" />
-                <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
                 <Message v-if="scheduleDateLocked" severity="info" :closable="false">
-                  You can schedule the next interview attempt on {{ formatDate(latestInterview?.interview_date) }}.
+                  {{ isInterviewDatePast ? 'The interview date has passed. You can make a hiring decision below.' : `The next interview attempt can be scheduled on ${formatDate(latestInterview?.interview_date)}.` }}
                 </Message>
-                <Button v-if="canScheduleInterview" :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
-                  :disabled="scheduleDateLocked"
-                  @click="scheduleInterview" />
+                <div v-else class="space-y-3">
+                  <label class="block space-y-1 text-xs font-medium text-slate-600">Interview date and time
+                    <DatePicker v-model="interviewForm.interview_date" :minDate="new Date()" showTime hourFormat="12" class="w-full"
+                      placeholder="Schedule interview date" showIcon />
+                  </label>
+                  <label class="block space-y-1 text-xs font-medium text-slate-600">Hiring stage
+                    <Select v-model="interviewForm.interview_type" :options="interviewTypeOptions" optionLabel="label"
+                      optionValue="value" placeholder="Select posting stage" class="w-full" />
+                  </label>
+                  <label class="block space-y-1 text-xs font-medium text-slate-600">Notes
+                    <Textarea v-model="interviewForm.notes" rows="3" class="w-full" placeholder="Interview notes" />
+                  </label>
+                  <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
+                  <Button v-if="canScheduleInterview" :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
+                    @click="scheduleInterview" />
                 </div>
 
                 <div v-if="application?.interviews?.length" class="space-y-3">
-                  <Message severity="warn" :closable="false">
-                    Interview attempts are already recorded. You can schedule another attempt below before opening decision.
-                  </Message>
                   <div v-for="(interview, index) in application.interviews" :key="interview.id" class="rounded-2xl border border-slate-200 bg-white p-4">
                     <div class="flex items-center justify-between gap-3">
                       <div>
@@ -82,6 +84,7 @@
                 </div>
 
                 <div v-if="canShowDecisionActions" class="pt-6">
+                  <Message v-if="isInterviewDatePast" severity="warn" :closable="false" class="mb-3">Decision overdue</Message>
                  
                   <div class="grid gap-2 md:grid-cols-2">
                   
@@ -89,9 +92,6 @@
                       <Button label="Hire" icon="pi pi-check" severity="success" :loading="hiring" fluid @click="router.push({ name: 'hr.job-applications.onboarding', params: { applicationId: route.params.applicationId } })" />
                   </div>
                 </div>
-                <Message v-else severity="info" :closable="false">
-                  Hire and Reject become available on the recorded interview date: {{ formatDate(latestInterview?.interview_date) }}.
-                </Message>
               </div>
             </template>
           </Card>
@@ -160,12 +160,6 @@ const errorMessage = ref('')
 const showRejectDialog = ref(false)
 const rejectionError = ref('')
 
-const interviewTypeOptions = [
-  { label: 'Screening', value: 'Screening' },
-  { label: 'Technical/Skills Test', value: 'Technical/Skills Test' },
-  { label: 'Final Interview', value: 'Final Interview' },
-]
-
 const interviewForm = reactive({
   interview_date: null as Date | null,
   interview_type: '',
@@ -187,6 +181,15 @@ const rejectionReasons = [
 ]
 
 const applicantName = computed(() => application.value?.full_name || `${application.value?.first_name || ''} ${application.value?.last_name || ''}`.trim())
+const applicantLocation = computed(() => [application.value?.address, application.value?.barangay, application.value?.city, application.value?.province].filter(Boolean).join(', '))
+const interviewTypeOptions = computed(() => {
+  const posting = application.value?.jobPosting || application.value?.job_posting
+  const stages = posting?.screeningStages || posting?.screening_stages || []
+  return stages
+    .filter((stage: any) => stage?.stage_name || stage?.name)
+    .sort((a: any, b: any) => Number(a.order || 0) - Number(b.order || 0))
+    .map((stage: any) => ({ label: stage.stage_name || stage.name, value: stage.stage_name || stage.name }))
+})
 const interviewList = computed(() => Array.isArray(application.value?.interviews) ? application.value.interviews : [])
 const latestInterview = computed(() => [...interviewList.value].sort((a: any, b: any) => {
   const aIssued = new Date(a.created_at || a.interview_date || 0).getTime()
@@ -205,8 +208,9 @@ const dateKey = (value?: string | Date | null) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 const isInterviewDateToday = computed(() => dateKey(latestInterview.value?.interview_date) === dateKey(new Date()))
+const isInterviewDatePast = computed(() => Boolean(latestInterview.value?.interview_date) && dateKey(latestInterview.value.interview_date) < dateKey(new Date()))
 const scheduleDateLocked = computed(() => interviewList.value.length > 0 && !isInterviewDateToday.value)
-const canShowDecisionActions = computed(() => interviewList.value.length !== 1 || isInterviewDateToday.value)
+const canShowDecisionActions = computed(() => interviewList.value.length > 0 && (isInterviewDateToday.value || isInterviewDatePast.value))
 const upcomingInterview = computed(() => {
   const now = new Date()
   return [...interviewList.value]
@@ -321,7 +325,15 @@ const goBack = () => {
   router.push({ name: 'hr.job-postings' })
 }
 
-const formatDate = (value?: string) => (value ? new Date(value).toLocaleString('en-PH') : 'N/A')
+const formatDate = (value?: string) => value
+  ? new Date(value).toLocaleString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  : 'N/A'
 const statusSeverity = (status?: string) => ({ Applied: 'info', Screening: 'contrast', Interview: 'warn', 'Upcoming Interview': 'warn', Offer: 'success', Accepted: 'success', Hired: 'success', Rejected: 'danger' }[status || 'Applied'] || 'secondary')
 
 onMounted(loadApplication)

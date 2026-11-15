@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class ShiftScheduleController extends Controller
 {
@@ -58,7 +59,10 @@ class ShiftScheduleController extends Controller
 
         $validator = Validator::make($request->all(), [
             'employee_id' => 'required|exists:employees,id',
-            'shift_id' => 'required|exists:shifts,id',
+            'shift_id' => 'nullable|exists:shifts,id',
+            'start_time' => 'required_without:shift_id|date_format:H:i',
+            'end_time' => 'required_without:shift_id|date_format:H:i',
+            'custom_name' => 'nullable|string|max:100',
             'schedule_date' => 'required|date',
             'status' => 'nullable|in:scheduled,completed,cancelled,absent',
             'notes' => 'nullable|string'
@@ -83,10 +87,29 @@ class ShiftScheduleController extends Controller
             ], 422);
         }
 
-        // Verify shift belongs to store
-        $shift = Shift::where('id', $request->shift_id)
-            ->where('store_id', $storeId)
-            ->first();
+        // Link an existing shift when supplied, or create/reuse a store-scoped custom shift.
+        $shift = $request->filled('shift_id')
+            ? Shift::where('id', $request->shift_id)->where('store_id', $storeId)->first()
+            : Shift::where('store_id', $storeId)
+                ->where('start_time', $request->start_time)
+                ->where('end_time', $request->end_time)
+                ->where('name', 'like', 'Custom %')
+                ->first();
+
+        if (!$shift && !$request->filled('shift_id')) {
+            $shift = Shift::create([
+                'name' => $request->input('custom_name') ?: 'Custom schedule',
+                'code' => 'CUSTOM-' . $storeId . '-' . strtoupper(Str::random(8)),
+                'start_time' => $request->start_time,
+                'end_time' => $request->end_time,
+                'total_hours' => round((strtotime($request->end_time) - strtotime($request->start_time)) / 3600, 2),
+                'shift_type' => 'flexible',
+                'week_days' => [],
+                'grace_period_minutes' => 15,
+                'is_active' => true,
+                'store_id' => $storeId,
+            ]);
+        }
 
         if (!$shift) {
             return response()->json([
@@ -117,7 +140,7 @@ class ShiftScheduleController extends Controller
 
         $schedule = ShiftSchedule::create([
             'employee_id' => $request->employee_id,
-            'shift_id' => $request->shift_id,
+            'shift_id' => $shift->id,
             'schedule_date' => $request->schedule_date,
             'status' => $request->status ?? 'scheduled',
             'notes' => $request->notes,

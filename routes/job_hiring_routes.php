@@ -27,6 +27,10 @@ Route::prefix('job-postings')->group(function () {
 });
 
 Route::prefix('job-applications')->group(function () {
+    Route::post('/{application}/employment-contract/pdf', [\App\Http\Controllers\Api\Hr\RecruitmentController::class, 'employmentContractPdf']);
+    Route::get('/{application}/onboarding-requirements', [\App\Http\Controllers\Api\Hr\RecruitmentController::class, 'onboardingRequirements']);
+    Route::post('/{application}/onboarding-requirements', [\App\Http\Controllers\Api\Hr\RecruitmentController::class, 'saveOnboardingRequirements']);
+    Route::get('/{application}/onboarding-requirements/{kind}', [\App\Http\Controllers\Api\Hr\RecruitmentController::class, 'downloadOnboardingRequirement']);
     // Application Details
     Route::get('/{application}', [JobApplicationController::class, 'show']);
 

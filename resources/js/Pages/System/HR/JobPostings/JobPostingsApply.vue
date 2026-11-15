@@ -26,11 +26,7 @@
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-surface-700">Email</label>
-                <InputText v-model.trim="form.email" type="email" placeholder="name@gmail.com" class="w-full"
-                  :invalid="emailValidationAttempted && !isGmailAddress" />
-                <p v-if="emailValidationAttempted && !isGmailAddress" class="text-xs text-red-600">
-                  Invalid Gmail address. Please check your email and try again.
-                </p>
+                <InputText v-model.trim="form.email" type="email" placeholder="name@example.com" class="w-full" />
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-surface-700">Phone Number</label>
@@ -196,10 +192,7 @@ const form = ref({
 })
 
 const uploadedDocuments = ref<Record<string, File>>({})
-const emailValidationAttempted = ref(false)
-
 const uploadedDocumentCount = computed(() => Object.keys(uploadedDocuments.value).length)
-const isGmailAddress = computed(() => /^[^\s@]+@gmail\.com$/i.test(form.value.email))
 const canSubmit = computed(() => {
   const hasBasicInfo =
     form.value.first_name &&
@@ -244,9 +237,6 @@ const handleFileUpload = (docType: string, event: any) => {
 
 const submitApplication = async () => {
   if (!canSubmit.value) return
-  emailValidationAttempted.value = true
-  if (!isGmailAddress.value) return
-
   isSubmitting.value = true
   try {
     const formData = new FormData()

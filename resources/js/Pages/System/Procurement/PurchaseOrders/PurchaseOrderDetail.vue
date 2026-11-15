@@ -54,6 +54,19 @@
         </template>
       </Card>
 
+    <Card v-if="detail.supplier_fulfillment_status" class="rounded-2xl border border-orange-200 shadow-sm">
+      <template #header><div class="px-6 pt-5"><h3 class="font-semibold text-slate-900">Supplier Fulfillment Updates</h3></div></template>
+      <template #content>
+        <div class="space-y-3 px-6 pb-5">
+          <div v-for="update in detail.supplier_fulfillment_updates || []" :key="update.id" class="rounded-xl border border-slate-200 p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2"><Tag :value="supplierFulfillmentLabel(update.status)" severity="info" /><span class="text-xs text-slate-500">{{ formatDateWithTime(update.created_at) }}</span></div>
+            <p v-if="update.notes" class="mt-2 text-sm text-slate-700">{{ update.notes }}</p>
+            <div v-if="update.photos?.length" class="mt-3 flex flex-wrap gap-2"><a v-for="photo in update.photos" :key="photo" :href="photo" target="_blank" rel="noopener"><img :src="photo" alt="Supplier fulfillment photo" class="h-24 w-28 rounded-lg border border-slate-200 object-cover" /></a></div>
+          </div>
+        </div>
+      </template>
+    </Card>
+
     <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered', 'pending_receipt', 'partially_received', 'goods_received'].includes(detail?.status)" class="space-y-6">
         <Card class="overflow-hidden rounded-2xl border border-slate-200/70 shadow-sm" v-if="deliveryLogs.length || shipmentInfo">
           <template #header>
@@ -264,7 +277,14 @@
           <div class="flex items-center justify-between gap-4 text-slate-600"><span>Contract Discount ({{ formatDecimal(detail?.contract_discount_percentage) }}%)</span><span class="font-medium text-slate-900">- {{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span></div>
           <div class="flex items-center justify-between gap-4 text-slate-600"><span>Taxable Amount</span><span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, parseFloat(detail?.subtotal || 0) - parseFloat(detail?.discount_amount || 0))) }}</span></div>
           <div class="flex items-center justify-between gap-4 text-slate-600"><span>Tax ({{ formatDecimal(detail?.contract_tax_rate) }}%)</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}</span></div>
-          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}</span></div>
+          <div v-if="detail?.fulfillment_method === 'supplier_delivery'" class="space-y-1">
+            <div class="flex items-center justify-between gap-4 text-slate-600"><span>Supplier Delivery Fee</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}</span></div>
+            <div v-if="detail.shipping_fee_breakdown?.distance_km !== undefined" class="space-y-1 pl-2 text-xs text-slate-500">
+              <p>{{ detail.shipping_fee_breakdown.distance_km }} km x {{ formatCurrency(detail.shipping_fee_breakdown.rate_per_km) }}/km = {{ formatCurrency(detail.shipping_fee_breakdown.distance_fee) }}</p>
+              <p>{{ detail.shipping_fee_breakdown.total_weight_kg }} kg x {{ formatCurrency(detail.shipping_fee_breakdown.rate_per_kg) }}/kg = {{ formatCurrency(detail.shipping_fee_breakdown.weight_fee) }}</p>
+            </div>
+            <p v-else-if="detail.shipping_fee_breakdown?.manual_fee !== undefined" class="pl-2 text-xs text-slate-500">Manually entered supplier delivery fee</p>
+          </div>
         </div>
         <div class="my-5 border-t border-slate-200"></div>
         <div class="flex items-center justify-between gap-4 rounded-xl bg-slate-900 px-4 py-3 text-white"><span class="font-semibold">Total Amount</span><span class="text-xl font-bold">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</span></div>
@@ -329,19 +349,19 @@
       >
         <Button v-if="canManagePurchaseOrders && detail.status === 'draft'" label="Edit Purchase Order"
           icon="pi pi-pencil" size="small" severity="info" rounded @click="editPO" />
-        <Button v-if="canManagePurchaseOrders && detail.status === 'approved'" label="Send to Supplier"
+        <Button v-if="canManagePurchaseOrders && detail.status === 'approved' && !detail.supplier?.is_external" label="Send to Supplier"
           icon="pi pi-send" size="small" severity="success" rounded @click="confirmSend" />
-        <Button v-if="canManagePurchaseOrders && detail.status === 'approved'" label="Record Manual Send"
+        <Button v-if="canManagePurchaseOrders && detail.status === 'approved' && detail.supplier?.is_external" label="Record Manual Send"
           icon="pi pi-file-edit" size="small" severity="secondary" outlined rounded @click="openManualSendDialog" />
         <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Resend to Supplier"
           icon="pi pi-replay" size="small" severity="secondary" outlined rounded @click="confirmResend" />
-        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Record Supplier Response"
+        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier' && detail.supplier?.is_external" label="Record Supplier Response"
           icon="pi pi-file-edit" size="small" severity="warn" rounded @click="openSupplierResponseDialog" />
-        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier'" label="Mark Supplier Pickup"
+        <Button v-if="canManagePurchaseOrders && detail.status === 'sent_to_supplier' && detail.supplier?.is_external && detail.fulfillment_method === 'store_pickup'" label="Confirm Supplier Acceptance"
           icon="pi pi-box" size="small" severity="info" outlined rounded @click="openSupplierPickupDialog" />
-        <Button v-if="canManagePurchaseOrders && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'supplier_accepted'" label="Mark Supplier Dispatched"
+        <Button v-if="canManagePurchaseOrders && detail.supplier?.is_external && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'supplier_accepted'" label="Mark Supplier Dispatched"
           icon="pi pi-truck" size="small" severity="info" rounded @click="advanceSupplierDeliveryStatus('out_for_delivery')" />
-        <Button v-if="canManagePurchaseOrders && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'out_for_delivery'" label="Confirm Delivery at Store"
+        <Button v-if="canManagePurchaseOrders && detail.supplier?.is_external && detail.fulfillment_method === 'supplier_delivery' && detail.status === 'out_for_delivery'" label="Confirm Delivery at Store"
           icon="pi pi-check" size="small" severity="success" rounded @click="advanceSupplierDeliveryStatus('delivered')" />
         <Button v-if="canManageReceiving && detail.status === 'delivered'" label="Receive Supplies"
           icon="pi pi-inbox" size="small" severity="info" rounded @click="createGoodsReceipt" />
@@ -374,7 +394,7 @@
     <Dialog v-model:visible="supplierResponseVisible" modal :header="supplierPickupMode ? 'Mark Supplier Pickup' : 'Record Supplier Response'" :style="{ width: 'min(38rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
       <div class="space-y-4">
         <p class="text-sm text-slate-600">
-          {{ supplierPickupMode ? 'Confirm that the supplier accepted this PO and it is ready for your store to pick up. This will make it available to Logistics for driver assignment.' : "Record the supplier's response received outside the portal. You can attach the email or signed quotation as evidence." }}
+          {{ supplierPickupMode ? 'Record that the supplier accepted this PO. It will become available to Logistics for pickup assignment.' : "Record the supplier's response received outside the portal. You can attach the email or signed quotation as evidence." }}
         </p>
         <div class="grid gap-3 sm:grid-cols-2">
           <label v-if="!supplierPickupMode" class="text-xs font-medium text-slate-600">Response
@@ -384,16 +404,14 @@
             <select v-model="supplierResponseForm.response_channel" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="email">Email</option><option value="phone">Phone</option><option value="paper">Paper</option><option value="in_person">In person</option></select>
           </label>
           <label class="text-xs font-medium text-slate-600">Response date<input v-model="supplierResponseForm.response_date" type="date" :max="todayDate" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
-          <label v-if="supplierResponseForm.response === 'accepted' && !supplierPickupMode" class="text-xs font-medium text-slate-600">Fulfillment method
-            <select v-model="supplierResponseForm.fulfillment_method" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option value="store_pickup">Pickup from Supplier</option><option value="supplier_delivery">Supplier Delivery</option></select>
-          </label>
+          <div v-if="supplierResponseForm.response === 'accepted'" class="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm sm:col-span-2"><span class="text-slate-600">Store-selected fulfillment:</span> <strong class="text-slate-900">{{ formatFulfillment(detail?.fulfillment_method) }}</strong></div>
           <label v-if="supplierResponseForm.response === 'accepted'" class="text-xs font-medium text-slate-600">Expected delivery date<input v-model="supplierResponseForm.expected_delivery_date" type="date" :min="supplierResponseForm.response_date" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /></label>
         </div>
         <label v-if="supplierResponseForm.response === 'rejected'" class="block text-xs font-medium text-slate-600">Reason for decline<textarea v-model="supplierResponseForm.rejection_reason" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea></label>
         <label class="block text-xs font-medium text-slate-600">Notes<textarea v-model="supplierResponseForm.notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="Optional details"></textarea></label>
         <label class="block text-xs font-medium text-slate-600">Evidence attachment (optional)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" class="mt-1 block w-full text-sm" @change="supplierResponseForm.attachment = ($event.target as HTMLInputElement).files?.[0] || null" /></label>
       </div>
-      <template #footer><Button label="Cancel" severity="secondary" outlined @click="supplierResponseVisible = false" /><Button :label="supplierPickupMode ? 'Confirm Supplier Pickup' : supplierResponseForm.response === 'accepted' ? 'Record Acceptance' : 'Record Decline'" icon="pi pi-check" severity="warn" :loading="supplierResponseSaving" @click="submitSupplierResponse" /></template>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="supplierResponseVisible = false" /><Button :label="supplierPickupMode ? 'Record Acceptance' : supplierResponseForm.response === 'accepted' ? 'Record Acceptance' : 'Record Decline'" icon="pi pi-check" severity="warn" :loading="supplierResponseSaving" @click="submitSupplierResponse" /></template>
     </Dialog>
 
     <Dialog v-model:visible="manualSendVisible" modal header="Record Manual PO Send" :style="{ width: 'min(32rem, calc(100vw - 2rem))' }">
@@ -458,7 +476,7 @@ const todayDate = new Date().toISOString().slice(0, 10)
 const supplierResponseVisible = ref(false)
 const supplierResponseSaving = ref(false)
 const supplierPickupMode = ref(false)
-const supplierResponseForm = ref<any>({ response: 'accepted', response_channel: 'email', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null })
+const supplierResponseForm = ref<any>({ response: 'accepted', response_channel: 'email', response_date: todayDate, expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null })
 const manualSendVisible = ref(false)
 const manualSendSaving = ref(false)
 const manualSendForm = ref({ response_channel: 'phone', sent_at: todayDate, notes: '' })
@@ -470,7 +488,8 @@ const completedStage = computed(() => {
   const deliveredStage = pickupFlow ? 7 : 5
   const stages: Record<string, number> = {
     approved: 1,
-    sent_to_supplier: 2,
+    // Keep "Sent to supplier" current until the supplier responds.
+    sent_to_supplier: 1,
     supplier_accepted: 3,
     in_transit: pickupFlow ? 6 : 4,
     out_for_delivery: pickupFlow ? 6 : 4,
@@ -537,13 +556,13 @@ const emailForm = ref({
 
 const openSupplierResponseDialog = () => {
   supplierPickupMode.value = false
-  supplierResponseForm.value = { response: 'accepted', response_channel: 'email', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
+  supplierResponseForm.value = { response: 'accepted', response_channel: 'email', response_date: todayDate, expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
   supplierResponseVisible.value = true
 }
 
 const openSupplierPickupDialog = () => {
   supplierPickupMode.value = true
-  supplierResponseForm.value = { response: 'accepted', response_channel: 'phone', response_date: todayDate, fulfillment_method: 'store_pickup', expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
+  supplierResponseForm.value = { response: 'accepted', response_channel: 'phone', response_date: todayDate, expected_delivery_date: '', rejection_reason: '', notes: '', attachment: null }
   supplierResponseVisible.value = true
 }
 
@@ -579,7 +598,7 @@ const submitSupplierResponse = async () => {
   supplierResponseSaving.value = true
   try {
     const form = new FormData()
-    for (const key of ['response', 'response_channel', 'response_date', 'fulfillment_method', 'expected_delivery_date', 'rejection_reason', 'notes']) {
+    for (const key of ['response', 'response_channel', 'response_date', 'expected_delivery_date', 'rejection_reason', 'notes']) {
       if (supplierResponseForm.value[key]) form.append(key, supplierResponseForm.value[key])
     }
     if (supplierResponseForm.value.attachment) form.append('attachment', supplierResponseForm.value.attachment)
@@ -747,6 +766,7 @@ const formatStatus = (status: string) => {
   if (status === 'supplier_accepted' && detail.value?.fulfillment_method === 'store_pickup') return 'Supplier Pickup'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
+const supplierFulfillmentLabel = (status: string) => ({ preparing: 'Preparing', ready_for_pickup: 'Ready for Pickup', dispatched: 'Dispatched', delivered: 'Delivered' } as Record<string, string>)[status] || formatStatus(status)
 
 const getPersonName = (person: any): string => {
   const source = person?.user || person

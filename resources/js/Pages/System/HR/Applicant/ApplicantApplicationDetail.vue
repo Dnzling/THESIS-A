@@ -45,6 +45,10 @@
                     <p class="mt-1 text-sm font-semibold text-surface-900">{{ postingStore }}</p>
                   </div>
                   <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Branch</p>
+                    <p class="mt-1 text-sm font-semibold text-surface-900">{{ postingBranch }}</p>
+                  </div>
+                  <div>
                     <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Role</p>
                     <p class="mt-1 text-sm font-semibold text-surface-900">{{ postingRoleLabel }}</p>
                   </div>
@@ -160,6 +164,7 @@ const postingRef = computed(() => application.value?.jobPosting || application.v
 const postingTitle = computed(() => postingRef.value?.title || 'N/A')
 const postingDepartment = computed(() => postingRef.value?.department || '')
 const postingStore = computed(() => postingRef.value?.store?.store_name || postingRef.value?.store?.name || 'Store')
+const postingBranch = computed(() => postingRef.value?.branch?.name || 'Not specified')
 const postingRoleLabel = computed(() =>
   postingRef.value?.role?.display_name
   || postingRef.value?.role?.name

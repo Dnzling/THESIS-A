@@ -28,6 +28,8 @@ export interface SupplierPortal {
   user_id: number
   supplier_id?: number
   supplier?: any
+  delivery_fee_per_km?: number | string | null
+  delivery_fee_per_kg?: number | string | null
   latitude?: number | string | null
   longitude?: number | string | null
   status: 'pending' | 'approved' | 'rejected'
@@ -262,6 +264,18 @@ class SupplierService {
     return response.data
   }
 
+  async updatePortalCompanyLogo(data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/company-logo`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async updatePortalShippingRates(data: { delivery_fee_per_km: number; delivery_fee_per_kg: number }) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/shipping-rates`, data)
+    return response.data
+  }
+
   async updatePaymentAccount(data: {
     bank_name: string
     bank_account_name: string
@@ -476,13 +490,19 @@ class SupplierService {
   async submitPOFeedback(data: {
     purchase_order_id: number
     response: 'accepted' | 'rejected'
-    fulfillment_method?: 'store_pickup' | 'supplier_delivery'
     rejection_reason?: string
     expected_delivery_date?: string
     delivery_quantity?: number
     delivery_notes?: string
   }) {
     const response = await axiosClient.post(`${this.portalBaseUrl}/po-feedbacks`, data)
+    return response.data
+  }
+
+  async updatePOFulfillment(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/pos/${id}/fulfillment`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return response.data
   }
 

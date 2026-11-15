@@ -3,9 +3,10 @@
 namespace App\Services\Procurement;
 
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Store\Branch;
-use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Services\Logistics\DistanceService;
 use Illuminate\Validation\ValidationException;
 
@@ -13,6 +14,13 @@ class PurchaseOrderShippingFeeService
 {
     public function estimate(int $storeId, Supplier $supplier, Branch $branch, array $items, float $subtotal): array
     {
+        $portal = $supplier->supplier_portal_id
+            ? SupplierPortal::query()->whereKey($supplier->supplier_portal_id)->first()
+            : null;
+        if (!$portal || $portal->delivery_fee_per_km === null || $portal->delivery_fee_per_kg === null) {
+            throw ValidationException::withMessages(['shipping_fee' => 'The supplier must set both delivery rates before a Supplier Delivery PO can be created.']);
+        }
+
         $supplierProvince = $supplier->province ?: ($supplier->state ?? null);
         $supplierAddress = $this->address([$supplier->address, $supplier->barangay ?? null, $supplier->city, $supplierProvince, $supplier->postal_code, $supplier->country ?: 'Philippines']);
         $branchAddress = $this->address([$branch->address, $branch->barangay, $branch->city, $branch->province]);
@@ -40,35 +48,35 @@ class PurchaseOrderShippingFeeService
             throw ValidationException::withMessages(['shipping_fee' => 'Unable to locate the supplier address for road-distance calculation. Update the supplier address with a complete street, city, and province.']);
         }
 
-        $products = Product::query()->whereIn('id', collect($items)->pluck('product_id')->filter()->unique())->get()->keyBy('id');
+        $products = Product::query()->where('store_id', $storeId)->whereIn('id', collect($items)->pluck('product_id')->filter()->unique())->get()->keyBy('id');
+        $variations = ProductVariation::query()
+            ->where('store_id', $storeId)
+            ->whereIn('id', collect($items)->pluck('variation_id')->filter()->unique())
+            ->get()->keyBy('id');
         $totalWeight = 0.0;
-        $hasBulkyItems = false;
         foreach ($items as $item) {
             $product = $products->get((int) ($item['product_id'] ?? 0));
             $quantity = max(0, (float) ($item['quantity_ordered'] ?? 0));
             if (!$product) continue;
-            $weight = (float) ($product->weight_kg ?? 0);
+            $variation = $variations->get((int) ($item['variation_id'] ?? 0));
+            $weight = (float) ($item['weight_kg'] ?? $variation?->weight_kg ?? $product->weight_kg ?? 0);
             $totalWeight += $weight * $quantity;
-            $largestDimension = max((float) ($product->length_cm ?? 0), (float) ($product->width_cm ?? 0), (float) ($product->height_cm ?? 0), (float) ($product->depth_cm ?? 0));
-            $hasBulkyItems = $hasBulkyItems || $weight >= 25 || $largestDimension >= 150;
         }
-
-        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first()
-            ?? new StoreDeliveryFeeSetting(['is_active' => true, 'base_fee' => 100, 'per_km_fee' => 10, 'per_kg_fee' => 0, 'bulky_item_surcharge' => 0, 'remote_area_surcharge' => 0]);
-        if (!$setting->is_active) return ['shipping_fee' => 0.0, 'breakdown' => ['distance_km' => $distanceKm, 'total_weight_kg' => $totalWeight, 'disabled' => true]];
-        if ($setting->max_delivery_distance_km !== null && $distanceKm > (float) $setting->max_delivery_distance_km) {
-            throw ValidationException::withMessages(['shipping_fee' => 'The supplier is outside the store\'s maximum configured delivery distance.']);
-        }
-
-        $base = (float) $setting->base_fee;
-        $distanceFee = $distanceKm * (float) $setting->per_km_fee;
-        $weightFee = $totalWeight * (float) $setting->per_kg_fee;
-        $bulkyFee = $hasBulkyItems ? (float) $setting->bulky_item_surcharge : 0.0;
-        $remoteFee = 0.0;
-        $raw = $base + $distanceFee + $weightFee + $bulkyFee + $remoteFee;
-        $free = $setting->free_shipping_min_order !== null && $subtotal >= (float) $setting->free_shipping_min_order;
-        $shippingFee = $free ? 0.0 : $raw;
-        return ['shipping_fee' => round($shippingFee, 2), 'breakdown' => ['distance_km' => round($distanceKm, 2), 'total_weight_kg' => round($totalWeight, 2), 'base_fee' => round($base, 2), 'distance_fee' => round($distanceFee, 2), 'weight_fee' => round($weightFee, 2), 'bulky_item_surcharge' => round($bulkyFee, 2), 'remote_area_surcharge' => $remoteFee, 'free_shipping_applied' => $free]];
+        $perKm = (float) $portal->delivery_fee_per_km;
+        $perKg = (float) $portal->delivery_fee_per_kg;
+        $distanceFee = $distanceKm * $perKm;
+        $weightFee = $totalWeight * $perKg;
+        return [
+            'shipping_fee' => round($distanceFee + $weightFee, 2),
+            'breakdown' => [
+                'distance_km' => round($distanceKm, 2),
+                'total_weight_kg' => round($totalWeight, 2),
+                'rate_per_km' => $perKm,
+                'rate_per_kg' => $perKg,
+                'distance_fee' => round($distanceFee, 2),
+                'weight_fee' => round($weightFee, 2),
+            ],
+        ];
     }
 
     private function address(array $parts): string

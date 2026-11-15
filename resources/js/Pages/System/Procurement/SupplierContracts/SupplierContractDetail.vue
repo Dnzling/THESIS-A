@@ -21,6 +21,9 @@
             @click="openDocDialog"
             size="small"
           />
+          <a v-if="contract?.signed_copy_path" :href="signedCopyUrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-md border border-orange-300 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-50">
+            <i class="pi pi-file-check" /> View Signed Copy
+          </a>
           <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
           <Button v-if="!isSupplierRoute && canApproveSupplierContracts && (contract?.status === 'draft' || (contract?.status === 'pending' && contract?.submitted_by_type === 'supplier'))" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
@@ -530,6 +533,12 @@ const contract = ref<any>(null)
 
 const contractDocUrl = computed(() => {
   const raw = String(contract.value?.contract_file_path || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw
+  return `/storage/${raw.replace(/^storage\//, '')}`
+})
+const signedCopyUrl = computed(() => {
+  const raw = String(contract.value?.signed_copy_path || '').trim()
   if (!raw) return ''
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw
   return `/storage/${raw.replace(/^storage\//, '')}`

@@ -27,7 +27,9 @@ class JobApplicationController extends Controller
     {
         $application->load([
             'jobPosting.store',
+            'jobPosting.branch',
             'jobPosting.role',
+            'jobPosting.screeningStages',
             'employee',
             'timeline',
             'documents',
@@ -44,7 +46,7 @@ class JobApplicationController extends Controller
             'job_posting_id' => 'required|exists:job_postings,id',
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
-            'email' => ['required', 'email', 'max:255', 'regex:/@gmail\.com\z/i'],
+            'email' => ['required', 'email', 'max:255'],
             'phone' => 'required|string|max:20',
             'current_position' => 'nullable|string|max:255',
             'current_company' => 'nullable|string|max:255',
@@ -52,8 +54,6 @@ class JobApplicationController extends Controller
             'employee_id' => 'nullable|exists:employees,id|required_if:is_internal,true',
             'documents' => 'nullable|array',
             'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png'
-        ], [
-            'email.regex' => 'Invalid Gmail address. Please check your email and try again.',
         ]);
 
         $application = JobApplication::create([
@@ -105,6 +105,10 @@ class JobApplicationController extends Controller
             'stage_id' => 'nullable|exists:job_posting_screening_stages,id',
             'notes' => 'nullable|string'
         ]);
+
+        if ($validated['status'] === 'Hired') {
+            return response()->json(['message' => 'Complete hiring prerequisites through employee onboarding before marking the applicant hired.'], 422);
+        }
 
         $application->update(['status' => $validated['status']]);
 

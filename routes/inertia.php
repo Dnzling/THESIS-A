@@ -177,6 +177,8 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
             ->name('store.settings.logo');
         Route::put('/store/settings/payments', [WebStoreSettingsController::class, 'updatePaymentSettings'])
             ->name('store.settings.payments');
+        Route::put('/store/settings/return-resolution', [WebStoreSettingsController::class, 'updateReturnResolutionSettings'])
+            ->name('store.settings.return-resolution');
         Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
             ->name('store.settings.attendance');
         Route::put('/store/settings/operating-hours', [WebStoreSettingsController::class, 'updateOperatingHours'])
@@ -446,6 +448,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     Route::redirect('/sales', '/sales/dashboard')->name('sales');
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
     $inertia('/sales/orders', 'System/Sales/SalesOrdersIndex', 'sales.orders', 'Orders');
+    $inertia('/sales/replacements/{id}', 'System/Shared/ReplacementDetail', 'sales.replacements.detail', 'Replacement Order');
     $inertia('/sales/wholesale-quotes', 'System/Sales/WholesaleQuotes', 'sales.wholesale-quotes', 'Wholesale Quotations');
     $inertia('/sales/wholesale-quotes/create', 'System/Sales/WholesaleQuoteCreate', 'sales.wholesale-quotes.create', 'Create Wholesale Quotation');
     $inertia('/sales/wholesale-quotes/{id}', 'System/Sales/WholesaleQuoteShow', 'sales.wholesale-quotes.show', 'Wholesale Quotation');
@@ -613,6 +616,7 @@ $inertia('/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My 
 $inertia('/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
 $inertia('/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
 $inertia('/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
+$inertia('/track-order', 'System/Ecommerce/OrderTracking', 'ecommerce.track-order', 'Track Order');
 $inertia('/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
 $inertia('/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
 $inertia('/notifications', 'System/Ecommerce/EcommerceNotifications', 'ecommerce.notifications', 'Notifications');
