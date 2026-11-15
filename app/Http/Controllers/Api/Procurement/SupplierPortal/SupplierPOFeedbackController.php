@@ -162,10 +162,6 @@ class SupplierPOFeedbackController extends Controller
                 ], 403);
             }
 
-            if ($request->response === 'accepted' && !in_array($po->fulfillment_method, ['store_pickup', 'supplier_delivery'], true)) {
-                return response()->json(['success' => false, 'message' => 'The store has not selected a fulfillment method for this PO.'], 422);
-            }
-
             foreach ($po->items as $item) {
                 foreach (['length_cm', 'width_cm', 'height_cm'] as $dimension) {
                     $item->setAttribute(
@@ -282,6 +278,10 @@ class SupplierPOFeedbackController extends Controller
                     'success' => false,
                     'message' => 'Unauthorized access to this purchase order.',
                 ], 403);
+            }
+
+            if ($request->response === 'accepted' && !in_array($po->fulfillment_method, ['store_pickup', 'supplier_delivery'], true)) {
+                return response()->json(['success' => false, 'message' => 'The store has not selected a fulfillment method for this PO.'], 422);
             }
 
             // Create or update feedback

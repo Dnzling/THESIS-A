@@ -123,6 +123,15 @@
                     <Button type="button" label="Create Shift" icon="pi pi-plus" severity="secondary" outlined size="small" @click="openShiftCreate" />
                     <Button type="button" icon="pi pi-refresh" severity="secondary" text rounded aria-label="Refresh shift templates" v-tooltip.top="'Refresh shift templates'" :loading="templatesLoading" @click="refreshShiftOptions" />
                   </div>
+                  <div v-if="selectedTemplate" class="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ selectedTemplate.name }} - Full Weekly Schedule</p>
+                    <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <div v-for="day in templateSchedulePreview" :key="day.day" class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                        <span class="font-medium text-slate-700">{{ formatDayLabel(day.day) }}</span>
+                        <span :class="day.is_working ? 'text-slate-700' : 'text-slate-400'">{{ day.time }}</span>
+                      </div>
+                    </div>
+                  </div>
                   <p class="mt-2 text-xs text-slate-500">Applying a template fills the weekly table. You can change the working days and times afterward; unmatched times are saved as custom shifts.</p>
                   <p v-if="!shiftTemplates.length && !templatesLoading" class="mt-2 text-xs text-amber-700">No saved shift templates are available. Create a shift or enter a custom schedule below.</p>
                 </div>
@@ -614,6 +623,21 @@ const templateOptions = computed(() =>
 )
 
 const currentTemplateDays = computed(() => templateWorkingDaysFor(selectedTemplate.value))
+const templateSchedulePreview = computed(() => {
+  const entries = templatePatternEntries(selectedTemplate.value)
+  const entriesByDay = new Map(entries.map((entry) => [entry.day.toLowerCase(), entry]))
+  return weekDayOrder.map((day) => {
+    const entry = entriesByDay.get(day)
+    const isWorking = Boolean(entry?.is_working)
+    const start = entry?.start_time ? formatTime12h(entry.start_time) : ''
+    const end = entry?.end_time ? formatTime12h(entry.end_time) : ''
+    return {
+      day,
+      is_working: isWorking,
+      time: isWorking ? (start && end ? `${start} - ${end}` : 'Time not set') : 'Off',
+    }
+  })
+})
 
 const formatTemplateSummary = (template: any) => {
   const days = templateWorkingDaysFor(template)

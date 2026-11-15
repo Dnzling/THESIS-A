@@ -189,6 +189,12 @@
       <div class="space-y-2">
         <label class="text-xs font-semibold text-slate-500">New Password</label>
         <Password v-model="passwordForm.password" toggleMask class="w-full small-input" inputClass="w-full" />
+        <ul class="space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+          <li v-for="rule in passwordValidationRules" :key="rule.label" class="flex items-center gap-2" :class="rule.valid ? 'text-emerald-700' : 'text-slate-500'">
+            <i :class="rule.valid ? 'pi pi-check-circle' : 'pi pi-circle'" />
+            <span>{{ rule.label }}</span>
+          </li>
+        </ul>
       </div>
       <div class="space-y-2">
         <label class="text-xs font-semibold text-slate-500">Confirm Password</label>
@@ -472,6 +478,11 @@ const passwordForm = reactive({
   password: '',
   password_confirmation: '',
 })
+const passwordValidationRules = computed(() => [
+  { label: 'At least 8 characters', valid: passwordForm.password.length >= 8 },
+  { label: 'Different from your current password', valid: Boolean(passwordForm.password) && passwordForm.password !== passwordForm.current_password },
+  { label: 'Confirmation matches', valid: Boolean(passwordForm.password_confirmation) && passwordForm.password === passwordForm.password_confirmation },
+])
 
 const leaveForm = reactive({
   leave_type: '',

@@ -27,121 +27,72 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button label="Change Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
-          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Record Resignation" severity="warn" outlined @click="showResignationDialog = true" />
+                    <Button v-if="!employeeInfo.employment_details?.resignation_date"  label="Record Resignation" severity="danger" rounded size="small" @click="showResignationDialog = true" />
+          <Button label="Change Role & Salary" rounded size="small" icon="pi pi-id-card" @click="openEditDialog" />
+
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
       </div>
   
-      <!-- Employee Profile Summary Card -->
-      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
-        <div class="flex flex-wrap items-start gap-6">
-          <div class="relative">
-            <img v-if="employeeInfo.basic_info?.avatar_url" :src="employeeInfo.basic_info.avatar_url" :alt="`${employeeInfo.basic_info?.name} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
-            <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-2xl font-semibold text-blue-600">{{ getInitials(employeeInfo.basic_info?.name) }}</div>
-            <label class="absolute -bottom-1 -left-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload employee photo">
-              <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadEmployeePhoto" />
-            </label>
-            <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"></div>
+      <div class="mt-6 grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <aside class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div class="relative h-24 bg-gradient-to-br from-orange-100 via-orange-50 to-slate-100">
+            <div class="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white/70 to-transparent"></div>
           </div>
+          <div class="px-4 pb-5">
+            <div class="-mt-10 flex items-end justify-between">
+              <div class="relative rounded-full border-4 border-white bg-white shadow-sm">
+                <img v-if="employeeInfo.basic_info?.avatar_url" :src="employeeInfo.basic_info.avatar_url" :alt="`${employeeInfo.basic_info?.name} photo`" class="h-20 w-20 rounded-full object-cover" />
+                <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-orange-100 text-2xl font-semibold text-orange-700">{{ getInitials(employeeInfo.basic_info?.name) }}</div>
+                <label class="absolute bottom-0 right-0 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload employee photo">
+                  <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadEmployeePhoto" />
+                </label>
+              </div>
+              <Badge class="mb-1 capitalize" :value="employeeInfo.employment_details?.status || 'Active'" :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
+            </div>
+            <h2 class="mt-3 text-base font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
+            <p class="mt-0.5 text-xs text-slate-500">{{ employeeInfo.basic_info?.employee_number || '-' }}</p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <Tag :value="formatLabel(employeeInfo.employment_details?.role)" severity="warn" />
+              <Tag :value="formatLabel(employeeInfo.employment_details?.department)" severity="secondary" />
+            </div>
 
-          <div class="flex-1">
-            <div class="flex flex-wrap items-center gap-3">
-              <h2 class="text-2xl font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
-              <Badge class="capitalize" :value="employeeInfo.employment_details?.status || 'Active'"
-                :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
+            <div class="mt-5 border-t border-slate-100 pt-4">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Basic Information</p>
+              <div class="space-y-3 text-xs">
+                <div class="flex gap-2.5"><i class="pi pi-envelope mt-0.5 w-4 text-center text-slate-400"></i><span class="min-w-0 break-all text-slate-700">{{ employeeInfo.contact_info?.email || employeeInfo.basic_info?.email || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-phone mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.contact_info?.phone || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-calendar mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">Birthday: {{ formatDate(employeeInfo.basic_info?.birthday) }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-user mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ formatLabel(employeeInfo.basic_info?.gender) }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-map-marker mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.contact_info?.address || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-briefcase mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.employment_details?.branch || '-' }}</span></div>
+              </div>
             </div>
-            <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-              <span>{{ formatLabel(employeeInfo.employment_details?.role) }}</span>
-              <span class="text-slate-300">|</span>
-              <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
-              <span class="text-slate-300">|</span>
-              <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
-            </div>
+
             <div v-if="employeeInfo.employment_details?.resignation_date" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              <span class="font-semibold">Resignation notice:</span>
-              {{ formatDate(employeeInfo.employment_details.resignation_date) }}
-              <span class="mx-1">|</span>
-              Last working day: {{ formatDate(employeeInfo.employment_details.last_working_day) }}
-              <span class="mx-1">|</span>
-              Handover: {{ formatLabel(employeeInfo.employment_details.handover_status) }}
-              <span class="mx-1">|</span>
-              Reason: {{ formatLabel(employeeInfo.employment_details.resignation_reason) }}
-              <a v-if="employeeInfo.employment_details.resignation_letter_url" :href="employeeInfo.employment_details.resignation_letter_url" target="_blank" rel="noopener" class="ml-2 font-semibold underline">View letter</a>
+              <p class="font-semibold">Resignation notice · {{ formatDate(employeeInfo.employment_details.resignation_date) }}</p>
+              <p class="mt-1">Last working day: {{ formatDate(employeeInfo.employment_details.last_working_day) }}</p>
+              <p>Handover: {{ formatLabel(employeeInfo.employment_details.handover_status) }}</p>
+              <p>Reason: {{ formatLabel(employeeInfo.employment_details.resignation_reason) }}</p>
+              <a v-if="employeeInfo.employment_details.resignation_letter_url" :href="employeeInfo.employment_details.resignation_letter_url" target="_blank" rel="noopener" class="mt-1 inline-block font-semibold underline">View letter</a>
               <p v-if="employeeInfo.employment_details.resignation_notes" class="mt-1">{{ employeeInfo.employment_details.resignation_notes }}</p>
             </div>
-
-            <!-- <div class="mt-5 grid gap-3 md:grid-cols-5">
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Join Date</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Employment</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatLabel(employeeInfo.employment_details?.type) }}</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Leave Balance</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ leaveBalance }} days</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Attendance Rate</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ attendanceRate }}%</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Current Shift</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ employeeInfo.current_shift?.shift_name || '-' }}</div>
-                <div v-if="employeeInfo.current_shift?.time_range" class="text-xs text-slate-500">
-                  {{ employeeInfo.current_shift.time_range }}
-                </div>
-                <div v-if="employeeInfo.current_shift?.covers_days_label" class="text-xs text-slate-500">
-                  {{ employeeInfo.current_shift.covers_days_label }}
-                </div>
-              </div>
-            </div> -->
           </div>
-        </div>
-      </div>
+        </aside>
 
       <!-- Main Tabs -->
-      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 shadow-sm">
+      <div class="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <Tabs v-model:value="activeTab">
-          <TabList class="px-6 pt-3">
-            <Tab value="info">
-              <div class="flex items-center gap-2">
-                <span>Full Information</span>
-              </div>
-            </Tab>
-            <Tab value="attendance">
-              <div class="flex items-center gap-2">
-                <span>Attendance History</span>
-              </div>
-            </Tab>
-            <Tab value="overtime">
-              <div class="flex items-center gap-2">
-                <span>Overtime History</span>
-              </div>
-            </Tab>
-            <Tab value="leave">
-              <div class="flex items-center gap-2">
-                <span>Leave History</span>
-              </div>
-            </Tab>
-            <Tab value="payslip">
-              <div class="flex items-center gap-2">
-                <span>Payslip History</span>
-              </div>
-            </Tab>
-            <Tab value="deductions">
-              <div class="flex items-center gap-2">
-                <span>Contributions</span>
-              </div>
-            </Tab>
+          <TabList class="overflow-x-auto px-4 pt-3">
+            <Tab value="info">Information</Tab>
+            <Tab value="attendance">Attendance</Tab>
+            <Tab value="overtime">Overtime</Tab>
+            <Tab value="leave">Leave</Tab>
+            <Tab value="payslip">Payslips</Tab>
           </TabList>
   
           <TabPanels class="p-6">
-            <!-- FULL INFORMATION TAB -->
             <TabPanel value="info">
               <EmployeeInfoTab
                 :employee-info="employeeInfo"
@@ -150,6 +101,8 @@
                 @edit-card="openCreditCardDialog"
                 @verify-id="verifyGovernmentIdRecord"
               />
+              <Divider align="left"><span class="text-sm font-semibold text-slate-800">Contributions</span></Divider>
+              <EmployeeDeductionsTab :contributions="employeeInfo.payroll" />
             </TabPanel>
   
             <!-- ATTENDANCE HISTORY TAB -->
@@ -193,11 +146,9 @@
               />
             </TabPanel>
 
-            <TabPanel value="deductions">
-              <EmployeeDeductionsTab :contributions="employeeInfo.payroll" />
-            </TabPanel>
           </TabPanels>
         </Tabs>
+      </div>
       </div>
 
       <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '760px' }" modal>
@@ -451,6 +402,15 @@
         <div class="space-y-3">
           <p class="text-sm text-slate-600">Select a saved schedule or shift template to fill this employee's weekly schedule. You can still edit each day afterward.</p>
           <Select v-model="selectedScheduleTemplateId" :options="scheduleTemplateOptions" optionLabel="label" optionValue="value" placeholder="Select a template" filter showClear class="w-full" :loading="loadingScheduleTemplates" :disabled="!scheduleTemplateOptions.length" />
+          <div v-if="selectedScheduleTemplate" class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Full Weekly Schedule</p>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <div v-for="day in selectedSchedulePreview" :key="day.day" class="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm">
+                <span class="font-medium text-slate-700">{{ day.label }}</span>
+                <span :class="day.isWorking ? 'text-slate-700' : 'text-slate-400'">{{ day.time }}</span>
+              </div>
+            </div>
+          </div>
           <p v-if="!scheduleTemplateOptions.length && !loadingScheduleTemplates" class="text-sm text-amber-700">No active templates are available. You can continue entering the schedule manually.</p>
         </div>
         <template #footer>
@@ -668,6 +628,26 @@ const showScheduleTemplateDialog = ref(false)
 const loadingScheduleTemplates = ref(false)
 const selectedScheduleTemplateId = ref<number | string | null>(null)
 const scheduleTemplateOptions = ref<Array<{ label: string; value: number | string; pattern: any }>>([])
+const scheduleWeekDays = [
+  { key: 'monday', label: 'Monday' }, { key: 'tuesday', label: 'Tuesday' }, { key: 'wednesday', label: 'Wednesday' },
+  { key: 'thursday', label: 'Thursday' }, { key: 'friday', label: 'Friday' }, { key: 'saturday', label: 'Saturday' }, { key: 'sunday', label: 'Sunday' },
+]
+const selectedScheduleTemplate = computed(() => scheduleTemplateOptions.value.find((option) => String(option.value) === String(selectedScheduleTemplateId.value)) || null)
+const selectedSchedulePreview = computed(() => {
+  const template = selectedScheduleTemplate.value
+  if (!template) return []
+  const entries = Array.isArray(template.pattern)
+    ? template.pattern
+    : Object.entries(template.pattern || {}).map(([day, entry]: [string, any]) => ({ day, ...entry }))
+  const byDay = new Map(entries.map((entry: any) => [String(entry.day || '').toLowerCase(), entry]))
+  return scheduleWeekDays.map((day) => {
+    const entry: any = byDay.get(day.key)
+    const isWorking = Boolean(entry?.is_working)
+    const start = formatShiftTime(entry?.start_time || '')
+    const end = formatShiftTime(entry?.end_time || '')
+    return { ...day, isWorking, time: isWorking ? (start !== '-' && end !== '-' ? `${start} - ${end}` : 'Time not set') : 'Off' }
+  })
+})
 const payrollScheduleDefaults = ref({ workStart: '08:00', workEnd: '17:00', lunchBreak: 60, paidHours: 8 })
 const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
