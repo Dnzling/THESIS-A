@@ -163,7 +163,7 @@
 
             <Column field="source_reference" header="Reference" style="min-width: 180px">
               <template #body="{ data }">
-                <span class="font-medium text-slate-700">{{ data.source_reference || '-' }}</span>
+                <span class="block max-w-full truncate font-mono text-xs font-semibold text-slate-800" :title="data.source_reference || '-'">{{ data.source_reference || '-' }}</span>
               </template>
             </Column>
 

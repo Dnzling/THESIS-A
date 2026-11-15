@@ -77,7 +77,7 @@
             <template #body="{ data }">{{ formatDate(data.date) }}</template>
           </Column>
           <Column field="reference" header="Reference" style="min-width: 150px">
-            <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.reference }}</span></template>
+            <template #body="{ data }"><span class="block max-w-full truncate font-mono text-xs font-semibold text-slate-800" :title="data.reference">{{ data.reference }}</span></template>
           </Column>
           <Column field="source_label" header="Source" style="min-width: 130px">
             <template #body="{ data }"><Tag :value="data.source_label" :severity="sourceSeverity(data.source)" /></template>

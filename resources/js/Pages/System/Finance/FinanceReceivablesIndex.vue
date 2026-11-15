@@ -143,7 +143,7 @@
 
             <Column field="reference" header="Invoice #" style="min-width: 140px">
               <template #body="{ data }">
-                <button class="text-sm font-medium text-blue-600 hover:underline" @click="viewDetail(data)">{{ data.reference }}</button>
+                <button class="block max-w-full truncate font-mono text-xs font-semibold text-slate-800 hover:underline" :title="data.reference" @click="viewDetail(data)">{{ data.reference }}</button>
               </template>
             </Column>
 
@@ -167,12 +167,6 @@
             <Column field="processed_by" header="POS Created By" style="min-width: 160px">
               <template #body="{ data }">
                 <span class="text-sm">{{ data.processed_by || '—' }}</span>
-              </template>
-            </Column>
-
-            <Column field="marked_for_dispatch_by" header="Marked for Dispatch By" style="min-width: 190px">
-              <template #body="{ data }">
-                <span class="text-sm">{{ data.marked_for_dispatch_by || '—' }}</span>
               </template>
             </Column>
 

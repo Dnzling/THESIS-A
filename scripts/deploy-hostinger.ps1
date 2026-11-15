@@ -34,6 +34,14 @@ try {
         throw "Current branch is '$currentBranch'; switch to '$Branch' before deploying."
     }
 
+    Write-Host 'Building frontend assets before staging or pushing changes...'
+    pnpm run build
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed. Fix the displayed build error, then rerun the deployment script.' }
+
+    if (-not (Test-Path (Join-Path $publicBuild 'manifest.json'))) {
+        throw "Build manifest was not produced at $(Join-Path $publicBuild 'manifest.json')"
+    }
+
     $pendingChanges = @(& git status --short)
     if ($LASTEXITCODE -ne 0) { throw 'Could not read Git status.' }
     if ($pendingChanges.Count -gt 0) {
@@ -64,23 +72,16 @@ try {
     Pop-Location
 }
 
-Write-Host 'Building frontend assets...'
-Push-Location $appRoot
-try {
-    pnpm run build
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
-} finally {
-    Pop-Location
-}
-
-if (-not (Test-Path (Join-Path $publicBuild 'manifest.json'))) {
-    throw "Build manifest was not produced at $(Join-Path $publicBuild 'manifest.json')"
-}
-
 try {
     New-Item -ItemType Directory -Path $stagingRoot | Out-Null
     Copy-Item -Path $publicBuild -Destination $stagingRoot -Recurse
-    Compress-Archive -Path (Join-Path $stagingRoot 'build') -DestinationPath $zipPath -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        (Join-Path $stagingRoot 'build'),
+        $zipPath,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false
+    )
 
     Write-Host "Uploading frontend build to $remote`:$remoteZip ..."
     & scp -P $Port $zipPath "${remote}:$remoteZip"

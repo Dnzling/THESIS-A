@@ -170,7 +170,8 @@
                   <td class="px-3 py-3">
                     <RouterLink
                       :to="{ name: 'finance.invoices.detail', params: { id: inv.id } }"
-                      class="text-blue-500 hover:text-blue-600 font-medium"
+                      class="block max-w-full truncate font-mono text-xs font-semibold text-slate-800 hover:underline"
+                      :title="inv.invoice_number"
                     >
                       {{ inv.invoice_number }}
                     </RouterLink>
@@ -195,10 +196,7 @@
                     </div>
                   </td>
                   <td class="px-5 py-4">
-                    <div class="space-y-1">
-                      <Badge :value="formatStatus(inv.status)" :severity="invoiceSeverity(inv.status)" />
-                      <Badge v-if="inv.payment_status" :value="formatFinanceStatus(inv.payment_status)" :severity="paymentSeverity(inv.payment_status)" />
-                    </div>
+                    <Badge :value="formatStatus(inv.status)" :severity="invoiceSeverity(inv.status)" />
                   </td>
                   <td class="px-5 py-4">
                     <div class="flex items-center justify-center gap-1">

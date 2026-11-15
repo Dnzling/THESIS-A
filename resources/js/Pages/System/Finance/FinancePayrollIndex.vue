@@ -8,44 +8,7 @@
       <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadPayrolls" />
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-        <template #content>
-          <div class="p-5">
-            <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Pay Periods</p>
-            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
-            <p v-else class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalPeriods }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-        <template #content>
-          <div class="p-5">
-            <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Employees</p>
-            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
-            <p v-else class="mt-2 text-2xl font-semibold text-gray-900">{{ periodSummary.totalEmployees }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-        <template #content>
-          <div class="p-5">
-            <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Needs Approval</p>
-            <Skeleton v-if="loading" class="mt-2" width="3rem" height="1.75rem" />
-            <p v-else class="mt-2 text-2xl font-semibold text-orange-600">{{ periodSummary.pendingApproval }}</p>
-          </div>
-        </template>
-      </Card>
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-        <template #content>
-          <div class="p-5">
-            <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Total Net Salary</p>
-            <Skeleton v-if="loading" class="mt-2" width="7rem" height="1.75rem" />
-            <p v-else class="mt-2 text-xl font-semibold text-green-700">₱ {{ formatMoney(periodSummary.totalNetSalary) }}</p>
-          </div>
-        </template>
-      </Card>
-    </div>
+
 
     <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
       <template #header><div class="m-4 mt-6"><h2 class="text-sm font-semibold text-slate-900">Payroll Periods</h2></div></template>

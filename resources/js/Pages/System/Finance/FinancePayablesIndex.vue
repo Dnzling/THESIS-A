@@ -112,7 +112,7 @@
                 </Column>
                 <Column field="reference" header="Invoice #" style="min-width: 130px">
                   <template #body="{ data }">
-                    <span class="text-sm font-medium text-blue-600">{{ data.reference }}</span>
+                    <span class="block max-w-full truncate font-mono text-xs font-semibold text-slate-800" :title="data.reference">{{ data.reference }}</span>
                   </template>
                 </Column>
                 <Column field="supplier" header="Supplier" style="min-width: 170px">

@@ -218,6 +218,7 @@ const sourceOptions = [
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'In Store', value: 'sales' },
   { label: 'Supplier Pickups', value: 'pickup' },
+  { label: 'Return Pickups', value: 'return_pickup' },
   { label: 'Replacements', value: 'replacement' },
   { label: 'Internal Stock Transfers', value: 'stock_transfer' },
 ]
@@ -247,7 +248,6 @@ const loadOrders = async () => {
       search: filters.search || undefined,
       date_from: formatDateParam(filters.date_range?.[0]),
       date_to: formatDateParam(filters.date_range?.[1]),
-      exclude_return_pickups: true,
     })
 
     const payload = response?.data || {}
@@ -301,6 +301,10 @@ const openDetail = (order: any) => {
       name: 'logistics.deliveries.detail',
       params: { source: 'pickup', orderId: order.order_id },
     })
+    return
+  }
+  if (order.source_type === 'return_pickup') {
+    router.push({ name: 'logistics.return-pickups.detail', params: { id: order.order_id } })
     return
   }
   router.push({
@@ -407,6 +411,7 @@ const sourceLabel = (source: string) => ({
   ecommerce: 'Ecommerce',
   sales: 'In Store',
   pickup: 'Supplier Pickup',
+  return_pickup: 'Return Pickup',
   replacement: 'Replacement',
   stock_transfer: 'Stock Transfer',
 } as Record<string, string>)[source] || 'Delivery'
@@ -415,6 +420,7 @@ const sourceSeverity = (source: string) => ({
   ecommerce: 'info',
   sales: 'success',
   pickup: 'warn',
+  return_pickup: 'warn',
   replacement: 'danger',
   stock_transfer: 'contrast',
 } as Record<string, string>)[source] || 'secondary'
