@@ -60,7 +60,7 @@
             <template #body="slotProps"><span class="font-medium text-slate-700">{{ slotProps.data.employee_number }}</span></template>
           </Column>
 
-            <template #body="slotProps"><span class="text-xs">&#8369;{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
+          <Column field="monthly_salary" header="Salary" sortable style="min-width: 140px">
             <template #body="slotProps"><span class="text-xs">&#8369;{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} / {{ slotProps.data.pay_type === 'daily' ? 'day' : slotProps.data.pay_type === 'hourly' ? 'hour' : 'month' }}</span></template>
           </Column>
           <Column field="pay_type" header="Pay Type" sortable>
