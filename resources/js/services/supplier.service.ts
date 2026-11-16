@@ -392,10 +392,10 @@ class SupplierService {
     rfq_item_id: number
     quoted_price: number
     available_quantity: number
-    length_cm: number
-    width_cm: number
-    height_cm: number
-    weight_kg: number
+    length_cm?: number | null
+    width_cm?: number | null
+    height_cm?: number | null
+    weight_kg?: number | null
     estimated_delivery_date: string
     quotation_valid_until: string
     attachment?: File | null

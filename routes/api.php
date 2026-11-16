@@ -69,6 +69,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
+Route::get('/public/holidays', [\App\Http\Controllers\Api\PublicHolidayController::class, 'index']);
 Route::get('/public/shopping-rooms', [\App\Http\Controllers\Api\Admin\ShoppingRoomController::class, 'publicIndex']);
 Route::get('/public/wholesale/stores', [\App\Http\Controllers\Api\Ecommerce\WholesaleAccessController::class, 'publicStores']);
 Route::post('/public/order-tracking', [PublicOrderTrackingController::class, 'show'])->middleware('throttle:10,1');

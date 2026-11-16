@@ -732,6 +732,19 @@ class DeliveryTripController extends Controller
             return response()->json(['success' => false, 'message' => 'Only planned trips can be dispatched.'], 422);
         }
 
+        if ($validated['status'] === 'out_for_delivery') {
+            $scheduledDate = $trip->scheduled_departure_at?->timezone('Asia/Manila')->toDateString();
+            $today = now('Asia/Manila')->toDateString();
+            if (!$scheduledDate || $scheduledDate !== $today) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $scheduledDate
+                        ? "This trip can only be dispatched on its scheduled departure date ({$scheduledDate}). Update the trip date to today to dispatch it."
+                        : 'Set the trip departure date to today before dispatching.',
+                ], 422);
+            }
+        }
+
         if ($validated['status'] === 'out_for_delivery' && !$trip->ecommerceDeliveries()->exists()
             && !$trip->salesDeliveries()->exists() && !$trip->returnPickups()->exists() && !$trip->stockTransfers()->exists()
             && !$trip->replacementReturns()->exists() && !$trip->purchaseOrderShipments()->exists()) {

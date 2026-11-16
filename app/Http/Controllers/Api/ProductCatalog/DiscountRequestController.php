@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\ProductCatalog;
 
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\Promotion;
 use App\Services\Core\PermissionService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -23,13 +25,16 @@ class DiscountRequestController extends BaseController
             ->join('products as p', 'p.id', '=', 'r.product_id')
             ->join('branches as b', 'b.id', '=', 'r.branch_id')
             ->leftJoin('product_variations as v', 'v.id', '=', 'r.variation_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.subcategory_id')
             ->leftJoin('users as u', 'u.id', '=', 'r.requested_by')
             ->where('r.store_id', (int) $this->getStoreId())
             ->when($assignedBranch > 0, fn ($q) => $q->where('r.branch_id', $assignedBranch))
             ->select([
                 'r.id', 'r.discount_type', 'r.discount_value', 'r.report_period_start', 'r.report_period_end',
                 'r.units_sold', 'r.available_stock', 'r.days_cover', 'r.days_without_sale', 'r.days_listed',
-                'r.stock_value', 'r.reason', 'r.status', 'r.created_at', 'p.product_name', 'p.sku',
+                'r.stock_value', 'r.reason', 'r.status', 'r.created_at', 'r.variation_id', 'p.product_name', 'p.sku',
+                'c.category_name', 'sc.category_name as subcategory_name',
                 'b.name as branch_name', 'v.variation_name', 'u.fname as requester_fname', 'u.lname as requester_lname',
             ]);
 
@@ -46,7 +51,10 @@ class DiscountRequestController extends BaseController
         $rows = $query->orderByDesc('r.created_at')->limit(200)->get()->map(fn ($row) => [
             'id' => (int) $row->id,
             'product_name' => $row->product_name,
+            'category_name' => $row->category_name,
+            'subcategory_name' => $row->subcategory_name,
             'sku' => $row->sku,
+            'variation_id' => $row->variation_id === null ? null : (int) $row->variation_id,
             'variation_name' => $row->variation_name,
             'branch_name' => $row->branch_name,
             'discount_type' => $row->discount_type,
@@ -157,6 +165,92 @@ class DiscountRequestController extends BaseController
         ]);
 
         return $this->successResponse(['id' => $id], 'Discount request submitted for merchandising review.', 201);
+    }
+
+    public function decide(Request $request, PermissionService $permissions): JsonResponse
+    {
+        $reviewer = $request->user();
+        $canManagePricing = $reviewer && collect(['merchandising.pricing.manage', 'merchandising.pricing.create', 'merchandising.pricing.edit'])
+            ->contains(fn (string $permission) => $permissions->userHasPermission($reviewer, $permission, (int) $this->getStoreId()));
+        abort_unless($canManagePricing, 403, 'You do not have permission to review discount requests.');
+        $data = $request->validate([
+            'request_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'request_ids.*' => ['required', 'integer', 'distinct'],
+            'decision' => ['required', Rule::in(['approve', 'reject'])],
+            'starts_at' => ['required_if:decision,approve', 'nullable', 'date', 'after_or_equal:today'],
+            'ends_at' => ['required_if:decision,approve', 'nullable', 'date', 'after:starts_at'],
+            'reason' => ['required_if:decision,reject', 'nullable', 'string', 'min:3', 'max:1500'],
+        ]);
+
+        $storeId = (int) $this->getStoreId();
+        $user = $request->user();
+        $assignedBranch = (int) ($user?->branch_id ?: DB::table('employees')->where('user_id', $user?->id)->value('branch_id'));
+        $promotionIds = [];
+        $processedCount = DB::transaction(function () use ($data, $storeId, $assignedBranch, $user, &$promotionIds) {
+            $requests = DB::table('merchandising_discount_requests')
+                ->where('store_id', $storeId)
+                ->whereIn('id', $data['request_ids'])
+                ->when($assignedBranch > 0, fn ($query) => $query->where('branch_id', $assignedBranch))
+                ->lockForUpdate()
+                ->get();
+
+            if ($requests->count() !== count($data['request_ids'])) {
+                throw ValidationException::withMessages(['request_ids' => 'One or more selected requests are unavailable in your store or assigned branch.']);
+            }
+            if ($requests->contains(fn ($item) => $item->status !== 'pending')) {
+                throw ValidationException::withMessages(['request_ids' => 'Only pending discount requests can be reviewed. Refresh the list and try again.']);
+            }
+            if ($data['decision'] === 'approve' && $requests->contains(fn ($item) => $item->variation_id !== null)) {
+                throw ValidationException::withMessages(['request_ids' => 'Variant-level requests cannot be approved because promotions currently target the whole product.']);
+            }
+
+            foreach ($requests as $discountRequest) {
+                $changes = [
+                    'status' => $data['decision'] === 'approve' ? 'approved' : 'rejected',
+                    'decided_by' => $user->id,
+                    'decided_at' => now(),
+                    'decision_reason' => $data['decision'] === 'reject' ? trim($data['reason']) : null,
+                    'updated_at' => now(),
+                ];
+
+                if ($data['decision'] === 'approve') {
+                    $product = Product::byStore($storeId)->find($discountRequest->product_id);
+                    if (!$product || $product->product_type !== 'finished_good') {
+                        throw ValidationException::withMessages(['request_ids' => 'A selected product is no longer available for promotion.']);
+                    }
+
+                    $promotion = Promotion::query()->create([
+                        'store_id' => $storeId,
+                        'name' => mb_substr('Slow-moving product discount: ' . $product->product_name, 0, 120),
+                        'description' => 'Approved from discount request #' . $discountRequest->id . '. ' . trim((string) $discountRequest->reason),
+                        'discount_type' => $discountRequest->discount_type,
+                        'discount_value' => $discountRequest->discount_value,
+                        'target_type' => 'products',
+                        'minimum_order_amount' => 0,
+                        'starts_at' => $data['starts_at'],
+                        'ends_at' => $data['ends_at'],
+                        'priority' => 0,
+                        'is_active' => true,
+                    ]);
+                    $promotion->products()->sync([(int) $product->id]);
+                    $promotion->branches()->sync([(int) $discountRequest->branch_id]);
+                    $changes['promotion_id'] = $promotion->id;
+                    $promotionIds[] = (int) $promotion->id;
+                }
+
+                DB::table('merchandising_discount_requests')->where('id', $discountRequest->id)->update($changes);
+            }
+
+            return $requests->count();
+        });
+
+        return $this->successResponse([
+            'decision' => $data['decision'],
+            'processed_count' => $processedCount,
+            'promotion_ids' => $promotionIds,
+        ], $data['decision'] === 'approve'
+            ? 'Selected requests approved and branch-scoped promotions created.'
+            : 'Selected requests rejected.');
     }
 
     private function authorizePermission(PermissionService $permissions, string $permission): void

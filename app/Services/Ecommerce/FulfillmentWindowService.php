@@ -3,6 +3,7 @@
 namespace App\Services\Ecommerce;
 
 use App\Models\Store\Store;
+use App\Services\Calendar\PhilippineHolidayService;
 use Carbon\CarbonImmutable;
 
 class FulfillmentWindowService
@@ -27,18 +28,24 @@ class FulfillmentWindowService
         $now = CarbonImmutable::now('Asia/Manila');
         $today = $now->startOfDay();
         $dates = [];
+        $holidays = app(PhilippineHolidayService::class)->between(
+            $today->toDateString(),
+            $today->addDays(45)->toDateString(),
+        );
+        $holidayDates = array_fill_keys(array_column($holidays, 'date'), true);
 
         for ($offset = (int) $window['lead_days']; $offset <= 30 && count($dates) < 14; $offset++) {
             $date = $today->addDays($offset);
             if ($offset === 0 && $now->format('H:i') >= $window['end']) {
                 continue;
             }
-            if (in_array(strtolower($date->englishDayOfWeek), $window['days'], true)) {
+            if (in_array(strtolower($date->englishDayOfWeek), $window['days'], true)
+                && !isset($holidayDates[$date->toDateString()])) {
                 $dates[] = $date->toDateString();
             }
         }
 
-        return ['dates' => $dates, 'window' => $window];
+        return ['dates' => $dates, 'window' => $window, 'holidays' => $holidays];
     }
 
     public function isAvailable(Store $store, string $method, string $date): bool

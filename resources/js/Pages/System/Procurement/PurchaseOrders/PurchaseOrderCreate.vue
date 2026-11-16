@@ -22,13 +22,17 @@
             <div class="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 class="text-lg font-semibold text-slate-900">Order Information</h3>
-                <p class="mt-1 text-sm text-slate-500">Choose a supplier that can provide every product in this purchase order.</p>
+                <p class="mt-1 text-sm text-slate-500">{{ isPrBasedCreation ? 'Review the supplier and destination assigned to this purchase request.' : 'Choose a supplier that can provide every product in this purchase order.' }}</p>
               </div>
               <Tag v-if="form.purchase_requisition_id" value="From Purchase Requisition" severity="info" />
             </div>
 
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <div v-if="!splitPoMode">
+              <div v-if="isPrBasedCreation && (form.supplier_id || splitPoMode)" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Supplier</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ selectedSupplierName }}</p>
+              </div>
+              <div v-else-if="!splitPoMode">
                 <label class="mb-1.5 block text-xs font-semibold text-slate-600">
                   Supplier <span class="text-red-500">*</span>
                 </label>
@@ -50,7 +54,7 @@
                 <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
                 <small v-else class="mt-1 block text-slate-500">Suppliers linked to all listed products with an active contract.</small>
               </div>
-              <div v-else class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              <div v-else-if="splitPoMode" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 Suppliers are assigned separately to each product group in this split purchase order.
               </div>
               <div>
@@ -141,7 +145,7 @@
                 <h3 class="text-lg font-semibold text-slate-900">Purchase Items</h3>
                 <p class="mt-1 text-sm text-slate-500">Verify the ordered quantity and supplier-quoted cost for each item.</p>
               </div>
-              <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"/>
+              <Button v-if="!isPrBasedCreation" label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"/>
             </div>
   
            
@@ -157,7 +161,7 @@
                   >
                     <div class="flex items-center justify-between mb-4">
                       <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Item {{ index + 1 }}</div>
-                      <Button
+                      <Button v-if="!isPrBasedCreation"
                         icon="pi pi-trash"
                         text
                         severity="danger"
@@ -170,7 +174,11 @@
                     <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
               <div class="lg:col-span-4">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
-                        <Select
+                        <div v-if="isPrBasedCreation" class="min-h-[3.25rem] rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <p class="text-sm font-medium text-slate-900">{{ itemProductName(item) }}</p>
+                          <p v-if="itemProductSku(item)" class="mt-0.5 text-xs text-slate-500">SKU: {{ itemProductSku(item) }}</p>
+                        </div>
+                        <Select v-else
                           :model-value="itemSelectionKey(item)"
                           :options="products"
                           option-label="product_name"
@@ -194,7 +202,10 @@
 
                       <div class="lg:col-span-2">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
-                        <InputNumber
+                        <p v-if="isPrBasedCreation" class="flex min-h-[3.25rem] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900">
+                          {{ Number(item.quantity_ordered || 0).toLocaleString('en-PH') }} {{ getItemUnitOfMeasurement(item) }}
+                        </p>
+                        <InputNumber v-else
                           v-model="item.quantity_ordered"
                           :min="1"
                           :max="item.available_quantity ?? undefined"
@@ -251,7 +262,8 @@
           <section>
             <label class="mb-2 block text-sm font-semibold text-slate-900">Notes / Special Instructions</label>
             <p class="mb-3 text-sm text-slate-500">Add delivery instructions, packaging requirements, or other supplier notes.</p>
-            <Textarea v-model="form.notes" rows="4" auto-resize class="w-full"
+            <p v-if="isPrBasedCreation && form.notes.trim()" class="whitespace-pre-line rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">{{ form.notes }}</p>
+            <Textarea v-else v-model="form.notes" rows="4" auto-resize class="w-full"
               placeholder="Add any special instructions or notes for this purchase order..." />
           </section>
           <div class="flex justify-end">
@@ -477,6 +489,9 @@ const selectedBranchName = computed(() => {
 const showRfqReceivingBranchSelect = computed(() =>
   Boolean(route.query.rfq_id) && !isEditing.value && !rfqHasConnectedReceivingBranch.value
 )
+const isPrBasedCreation = computed(() =>
+  !isEditing.value && Boolean(route.query.requisition_id) && !route.query.rfq_id
+)
 const listedProductIds = computed(() => Array.from(new Set(
   form.items.map((item: any) => Number(item?.product_id || 0)).filter((id: number) => id > 0)
 )))
@@ -484,6 +499,9 @@ const productSelectionKey = (productId: any, variationId: any = null) =>
   `${Number(productId || 0)}:${Number(variationId || 0)}`
 const itemSelectionKey = (item: any) =>
   productSelectionKey(item?.product_id, item?.variation_id || item?.variation?.id)
+const itemProduct = (item: any) => products.value.find((product: any) => product.selection_key === itemSelectionKey(item))
+const itemProductName = (item: any) => itemProduct(item)?.product_name || item?.product_name || `Product #${item?.product_id || ''}`
+const itemProductSku = (item: any) => itemProduct(item)?.sku || item?.sku || ''
 const selectedSupplierName = computed(() => {
   if (splitPoMode.value) {
     return `${splitPoSupplierGroups.value} assigned suppliers`

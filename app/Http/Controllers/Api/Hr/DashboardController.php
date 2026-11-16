@@ -85,22 +85,37 @@ class DashboardController extends Controller
 
     public function getAnalyticsOverview(Request $request)
     {
-        $user = Auth::user();
-        $storeId = $user->store_id;
-        $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+        $user = $request->user();
+        $storeId = (int) ($user?->store_id ?: DB::table('employees')->where('user_id', $user?->id)->value('store_id'));
+        if ($storeId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Your account is not assigned to a store.'], 422);
+        }
 
-        $startDate = $request->filled('start_date')
-            ? Carbon::parse($request->input('start_date'))->startOfDay()
+        $filters = $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+        $branchId = !empty($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $assignedBranchId = (int) ($user?->branch_id ?: DB::table('employees')->where('user_id', $user?->id)->value('branch_id'));
+        if ($assignedBranchId > 0) {
+            if ($branchId && $branchId !== $assignedBranchId) {
+                return response()->json(['success' => false, 'message' => 'You can only view analytics for your assigned branch.'], 403);
+            }
+            $branchId = $assignedBranchId;
+        }
+        if ($branchId && !DB::table('branches')->where('store_id', $storeId)->where('id', $branchId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'The selected branch is not part of this store.'], 422);
+        }
+
+        $startDate = isset($filters['start_date'])
+            ? Carbon::parse($filters['start_date'])->startOfDay()
             : now()->subDays(29)->startOfDay();
-        $endDate = $request->filled('end_date')
-            ? Carbon::parse($request->input('end_date'))->endOfDay()
+        $endDate = isset($filters['end_date'])
+            ? Carbon::parse($filters['end_date'])->endOfDay()
             : now()->endOfDay();
-
-        if ($endDate->lt($startDate)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid date range. End date must be on or after start date.',
-            ], 422);
+        if ($startDate->diffInDays($endDate) > 366) {
+            return response()->json(['success' => false, 'message' => 'Choose a date range of one year or less.'], 422);
         }
 
         $employeesBase = Employee::query()->where('store_id', $storeId);
@@ -116,17 +131,18 @@ class DashboardController extends Controller
             ->whereBetween('termination_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->count();
 
-        // Count distinct employees scheduled in the period (avoid double-counting multiple shifts)
+        // Count scheduled shifts, not distinct employees, so attendance rates use
+        // the same unit as attendance records (one employee per scheduled day).
         $scheduledCount = ShiftSchedule::query()
             ->whereBetween('schedule_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->whereIn('status', ['scheduled', 'completed'])
             ->whereHas('employee', function ($q) use ($storeId, $branchId) {
                 $q->where('store_id', $storeId);
                 if ($branchId) {
                     $q->where('branch_id', $branchId);
                 }
             })
-            ->distinct('employee_id')
-            ->count('employee_id');
+            ->count();
 
         // Aggregate attendance by status (use DATE on attendance_date if datetime stored)
         $attendanceStats = Attendance::query()
@@ -145,6 +161,9 @@ class DashboardController extends Controller
         $lateCount = (int) ($attendanceStats['late'] ?? 0);
         $absentCount = (int) ($attendanceStats['absent'] ?? 0);
         $leaveCount = (int) ($attendanceStats['on_leave'] ?? 0);
+        $halfDayCount = (int) ($attendanceStats['half_day'] ?? 0);
+        $holidayCount = (int) ($attendanceStats['holiday'] ?? 0);
+        $eligibleScheduledCount = max(0, $scheduledCount - $leaveCount - $holidayCount);
 
         $leavePending = Leave::query()
             ->where('status', 'pending')
@@ -243,12 +262,62 @@ class DashboardController extends Controller
             ])
             ->values();
 
-        $attendanceRate = $scheduledCount > 0
-            ? round((($presentCount + $lateCount) / $scheduledCount) * 100, 2)
+        $performanceEndDate = min($endDate->toDateString(), now()->toDateString());
+        $employeePerformance = collect();
+        if ($startDate->toDateString() <= $performanceEndDate) {
+            $employeePerformance = DB::table('shift_schedules as ss')
+                ->join('employees as e', 'e.id', '=', 'ss.employee_id')
+                ->leftJoin('attendances as a', function ($join) {
+                    $join->on('a.schedule_id', '=', 'ss.id')->whereNull('a.deleted_at');
+                })
+                ->where('e.store_id', $storeId)
+                ->when($branchId, fn ($query) => $query->where('e.branch_id', $branchId))
+                ->whereBetween('ss.schedule_date', [$startDate->toDateString(), $performanceEndDate])
+                ->whereIn('ss.status', ['scheduled', 'completed'])
+                ->whereNull('ss.deleted_at')
+                ->selectRaw('e.id as employee_id, e.fname, e.lname, e.department, COUNT(ss.id) as scheduled_shifts')
+                ->selectRaw("SUM(CASE WHEN a.status IN ('present', 'late', 'half_day') THEN 1 ELSE 0 END) as attended_shifts")
+                ->selectRaw("SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_shifts")
+                ->selectRaw("SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_shifts")
+                ->selectRaw("SUM(CASE WHEN a.status = 'absent' OR a.id IS NULL THEN 1 ELSE 0 END) as missed_or_unrecorded_shifts")
+                ->selectRaw("SUM(CASE WHEN a.status = 'on_leave' OR a.status = 'holiday' THEN 1 ELSE 0 END) as excused_shifts")
+                ->selectRaw('COALESCE(SUM(a.late_minutes), 0) as late_minutes')
+                ->selectRaw('COALESCE(SUM(a.total_worked_minutes), 0) as worked_minutes')
+                ->groupBy('e.id', 'e.fname', 'e.lname', 'e.department')
+                ->get()
+                ->map(function ($row) {
+                    $eligible = max(0, (int) $row->scheduled_shifts - (int) $row->excused_shifts);
+                    $attended = (int) $row->attended_shifts;
+                    $present = (int) $row->present_shifts;
+                    $late = (int) $row->late_shifts;
+                    $reliability = $eligible > 0 ? round(($attended / $eligible) * 100, 1) : null;
+                    $punctuality = ($present + $late) > 0 ? round(($present / ($present + $late)) * 100, 1) : null;
+
+                    return [
+                        'employee_id' => (int) $row->employee_id,
+                        'name' => trim(($row->fname ?? '') . ' ' . ($row->lname ?? '')),
+                        'department' => $row->department ?: 'Unassigned',
+                        'scheduled_shifts' => (int) $row->scheduled_shifts,
+                        'attended_shifts' => $attended,
+                        'reliability_rate' => $reliability,
+                        'punctuality_rate' => $punctuality,
+                        'late_shifts' => $late,
+                        'missed_or_unrecorded_shifts' => (int) $row->missed_or_unrecorded_shifts,
+                        'late_minutes' => (int) $row->late_minutes,
+                        'worked_hours' => round(((int) $row->worked_minutes) / 60, 1),
+                    ];
+                })
+                ->sortBy(fn ($row) => [$row['reliability_rate'] ?? 101, -$row['late_shifts'], $row['name']])
+                ->take(10)
+                ->values();
+        }
+
+        $attendanceRate = $eligibleScheduledCount > 0
+            ? round((($presentCount + $lateCount + $halfDayCount) / $eligibleScheduledCount) * 100, 2)
             : 0;
 
-        $lateRate = $scheduledCount > 0
-            ? round(($lateCount / $scheduledCount) * 100, 2)
+        $lateRate = $eligibleScheduledCount > 0
+            ? round(($lateCount / $eligibleScheduledCount) * 100, 2)
             : 0;
 
         return response()->json([
@@ -271,6 +340,8 @@ class DashboardController extends Controller
                     'late' => $lateCount,
                     'absent' => $absentCount,
                     'on_leave' => $leaveCount,
+                    'half_day' => $halfDayCount,
+                    'holiday' => $holidayCount,
                     'attendance_rate' => $attendanceRate,
                     'late_rate' => $lateRate,
                 ],
@@ -284,6 +355,7 @@ class DashboardController extends Controller
                     'department_distribution' => $departmentDistribution,
                     'employment_distribution' => $employmentDistribution,
                     'top_absences' => $topAbsences,
+                    'employee_performance' => $employeePerformance,
                 ],
             ],
         ]);

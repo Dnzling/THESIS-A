@@ -204,6 +204,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/hr/employees/view/{id?}', 'System/HR/EmployeeView', 'hr.employees.view', 'View Employee');
     Route::get('/hr/profile', fn() => redirect('/employee-profile'));
     $inertia('/hr/shifts', 'System/HR/ShiftIndex', 'hr.shifts', 'Shift Management');
+    $inertia('/hr/shifts/templates', 'System/HR/ShiftTemplates', 'hr.shifts.templates', 'Shift Templates');
     $inertia('/hr/shifts/employees', 'System/HR/EmployeeShifts', 'hr.shifts.employees', 'Employee Shifts');
     $inertia('/hr/shifts/create', 'System/HR/ShiftCreate', 'hr.shifts.create', 'Create Shift');
     $inertia('/hr/attendance', 'System/HR/Attendance', 'hr.attendance', 'Attendance');

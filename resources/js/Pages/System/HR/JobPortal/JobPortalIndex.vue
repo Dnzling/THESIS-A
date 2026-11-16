@@ -25,10 +25,10 @@
         </form>
 
         <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <Select v-model="payFilter" :options="payOptions" optionLabel="label" optionValue="value" aria-label="Filter by pay" class="job-filter" @change="fetchPostings(1)" />
-          <Select v-model="employmentType" :options="typeOptions" optionLabel="label" optionValue="value" aria-label="Filter by employment type" class="job-filter" @change="fetchPostings(1)" />
-          <Select v-model="department" :options="departmentOptions" optionLabel="label" optionValue="value" aria-label="Filter by department" class="job-filter" @change="fetchPostings(1)" />
-          <Select v-model="postedWithin" :options="postedOptions" optionLabel="label" optionValue="value" aria-label="Filter by listing date" class="job-filter" @change="fetchPostings(1)" />
+          <Select v-model="payFilter" :options="payOptions" optionLabel="label" optionValue="value" placeholder="Any pay" aria-label="Filter by pay" class="job-filter" @change="fetchPostings(1)" />
+          <Select v-model="employmentType" :options="typeOptions" optionLabel="label" optionValue="value" placeholder="Any employment type" aria-label="Filter by employment type" class="job-filter" @change="fetchPostings(1)" />
+          <Select v-model="department" :options="departmentOptions" optionLabel="label" optionValue="value" placeholder="Any department" aria-label="Filter by department" class="job-filter" @change="fetchPostings(1)" />
+          <Select v-model="postedWithin" :options="postedOptions" optionLabel="label" optionValue="value" placeholder="Any listing date" aria-label="Filter by listing date" class="job-filter" @change="fetchPostings(1)" />
         </div>
       </section>
 
@@ -78,7 +78,7 @@
                 </div>
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                <span v-if="posting.branch"><i class="pi pi-map-marker mr-1 text-orange-600" />{{ posting.branch.name }}<template v-if="branchLocation(posting)"> · {{ branchLocation(posting) }}</template></span>
+                <span v-if="posting.branch"><i class="pi pi-map-marker mr-1 text-orange-600" />{{ posting.branch.name }}<template v-if="branchLocation(posting)">  -  {{ branchLocation(posting) }}</template></span>
                 <span><i class="pi pi-briefcase mr-1 text-orange-600" />{{ employmentTypeLabel(posting.employment_type) }}</span>
               </div>
               <p class="mt-3 line-clamp-3 text-sm leading-5 text-slate-600">{{ posting.description }}</p>
@@ -119,7 +119,7 @@
                   <span v-else class="flex h-12 w-12 items-center justify-center rounded-lg border border-orange-100 bg-orange-50 text-orange-700"><i class="pi pi-building text-lg" /></span>
                   <div class="min-w-0">
                     <p class="truncate text-sm font-semibold text-slate-700">{{ storeLabel(selectedPosting) }}</p>
-                    <p v-if="branchLocation(selectedPosting)" class="mt-0.5 text-xs text-slate-500"><i class="pi pi-map-marker mr-1 text-orange-600" />{{ selectedPosting.branch?.name }} · {{ branchLocation(selectedPosting) }}</p>
+                    <p v-if="branchLocation(selectedPosting)" class="mt-0.5 text-xs text-slate-500"><i class="pi pi-map-marker mr-1 text-orange-600" />{{ selectedPosting.branch?.name }} | {{ branchLocation(selectedPosting) }}</p>
                   </div>
                 </div>
                 <h2 class="mt-5 text-2xl font-bold leading-tight text-slate-900">{{ roleLabel(selectedPosting) }}</h2>
@@ -189,9 +189,9 @@ let requestNumber = 0
 
 const payOptions = [
   { label: 'Any pay', value: '' },
-  { label: 'Below ₱25,000', value: '0:25000' },
-  { label: '₱25,000–₱50,000', value: '25000:50000' },
-  { label: '₱50,000 and above', value: '50000:' },
+  { label: 'Below PHP 25,000', value: '0:25000' },
+  { label: 'PHP 25,000 - PHP 50,000', value: '25000:50000' },
+  { label: 'PHP 50,000 and above', value: '50000:' },
 ]
 const typeOptions = [
   { label: 'Any employment type', value: '' },
@@ -295,7 +295,7 @@ const formatSalary = (posting: any) => {
   if (!min && !max) return 'Salary not listed'
   const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(value)
   if (!max || min === max) return money(min || max)
-  return `${money(min)} – ${money(max)}`
+  return `${money(min)} - ${money(max)}`
 }
 const postedLabel = (value?: string) => {
   if (!value) return 'Recently posted'
@@ -314,23 +314,23 @@ onMounted(() => fetchPostings(1))
 :deep(.job-filter.p-select) {
   width: 100%;
   min-height: 2.5rem;
-  border-color: rgb(255 255 255 / 45%);
+  border-color: rgb(203 213 225);
   border-radius: 9999px;
-  background: transparent;
-  color: white;
+  background: white;
+  color: rgb(15 23 42);
 }
 
 :deep(.job-filter .p-select-label),
 :deep(.job-filter .p-select-dropdown) {
-  color: white;
+  color: rgb(15 23 42);
 }
 
 :deep(.job-filter.p-select:not(.p-disabled).p-focus) {
-  border-color: white;
-  box-shadow: 0 0 0 1px white;
+  border-color: rgb(249 115 22);
+  box-shadow: 0 0 0 1px rgb(249 115 22);
 }
 
 :deep(.job-filter .p-select-label.p-placeholder) {
-  color: rgb(255 255 255 / 85%);
+  color: rgb(100 116 139);
 }
 </style>

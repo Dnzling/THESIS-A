@@ -115,18 +115,11 @@
                 </div>
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Collection Name</label>
-                  <InputText v-model="form.collection_name" placeholder="e.g., Summer 2024"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                  <Select v-model="form.collection_name" :options="availableTags" optionLabel="tag_name" optionValue="tag_name"
+                    placeholder="Select a store collection" :loading="loadingTags" :disabled="loadingTags || availableTags.length === 0"
+                    showClear fluid class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                  <small v-if="!loadingTags && availableTags.length === 0" class="text-xs text-amber-700">No active collections are available. Add one in Collections first.</small>
                 </div>
-              </div>
-
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">Collection</label>
-                <Select v-model="form.collection_name" :options="availableTags" optionLabel="tag_name" optionValue="tag_name"
-                  placeholder="Select a store collection" :loading="loadingTags" :disabled="loadingTags || availableTags.length === 0"
-                  showClear fluid size="small" />
-                <small class="text-xs text-gray-500">Choose from this stores active collection records.</small>
-                <small v-if="!loadingTags && availableTags.length === 0" class="text-xs text-amber-700">No active collections are available. Add one in Collections first.</small>
               </div>
 
               <div v-if="form.product_type === 'finished_good'" class="space-y-2">
@@ -136,30 +129,6 @@
                 <small class="text-xs text-gray-500">Optional. Room names and images are managed by FurniSync.</small>
               </div>
 
-              <!-- Store Tags -->
-              <div v-if="showInventoryFields" class="space-y-2">
-                <div class="flex items-center justify-between">
-                  <label class="text-sm font-medium text-gray-700">Tags</label>
-                  <small class="text-xs text-gray-500">{{ form.tag_ids.length }}/3 selected</small>
-                </div>
-                <MultiSelect
-                  v-model="form.tag_ids"
-                  :options="availableTags"
-                  optionLabel="tag_name"
-                  optionValue="id"
-                  placeholder="Select up to 3 store tags"
-                  :maxSelectedLabels="3"
-                  :selectionLimit="3"
-                  :loading="loadingTags"
-                  :disabled="loadingTags"
-                  display="chip"
-                  class="w-full bg-gray-50 border-gray-200 rounded-xl"
-                />
-                <small class="text-gray-500 text-xs">
-                  Only tags created for this store are available.
-                </small>
-              </div>
-  
             </section>
   
             <!-- Pricing -->

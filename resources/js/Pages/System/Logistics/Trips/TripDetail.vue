@@ -246,7 +246,10 @@
 
     <div class="flex justify-end gap-3">
               <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-times" label="Cancel Trip" severity="secondary" rounded outlined :loading="savingStatus" @click="confirmCancelTrip" />
-       <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-send" label="Dispatch Trip" rounded :loading="savingStatus" :disabled="!assignedOrders.length" @click="dispatchTrip" />
+       <div v-if="canManage && trip?.status === 'planned'" class="flex flex-col items-end gap-1">
+         <Button icon="pi pi-send" label="Dispatch Trip" rounded :loading="savingStatus" :disabled="!assignedOrders.length || !dispatchAllowed" @click="dispatchTrip" />
+         <p v-if="!dispatchAllowed" class="max-w-sm text-right text-xs text-amber-700">{{ dispatchBlockMessage }}</p>
+       </div>
 
     </div>
   
@@ -851,6 +854,19 @@ const manilaDateKey = (value: string | Date | null | undefined): string | null =
   return `${values.year}-${values.month}-${values.day}`
 }
 
+const dispatchAllowed = computed(() => Boolean(
+  trip.value?.scheduled_departure_at
+  && manilaDateKey(trip.value.scheduled_departure_at) === manilaDateKey(new Date()),
+))
+const dispatchBlockMessage = computed(() => {
+  const scheduled = manilaDateKey(trip.value?.scheduled_departure_at)
+  const today = manilaDateKey(new Date())
+  if (!scheduled) return 'Set the trip departure date to today before dispatching.'
+  if (scheduled > (today || '')) return `Dispatch is available on ${formatDateOnly(trip.value?.scheduled_departure_at)}.`
+  if (scheduled < (today || '')) return 'The scheduled departure date has passed. Update the trip date to today before dispatching.'
+  return ''
+})
+
 const ecommerceOrdersBeforePreferredDate = (orders: any[], departure: string | Date | null | undefined) => {
   const departureDate = manilaDateKey(departure)
   if (!departureDate) return []
@@ -867,6 +883,10 @@ const earlyDeliveryWarning = (orders: any[]) => {
 
 const dispatchTrip = async () => {
   if (!trip.value || trip.value.status !== 'planned' || !assignedOrders.value.length) return
+  if (!dispatchAllowed.value) {
+    toast.add({ severity: 'warn', summary: 'Dispatch not available', detail: dispatchBlockMessage.value, life: 4000 })
+    return
+  }
   confirm.require({
     header: 'Dispatch this trip?',
     message: 'The trip and its assigned deliveries will move to Out For Delivery. Continue?',

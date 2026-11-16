@@ -6,6 +6,10 @@
       <div>
         <h1 class="text-lg font-semibold text-slate-900">Weekly Schedule Management</h1>
       </div>
+      <div class="flex flex-wrap gap-2">
+        <Button label="Shift Templates" icon="pi pi-clock" severity="secondary" outlined size="small" @click="router.push({ name: 'hr.shifts.templates' })" />
+        <Button label="Create Shift Template" icon="pi pi-plus" severity="warn" size="small" @click="goToCreateShift" />
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

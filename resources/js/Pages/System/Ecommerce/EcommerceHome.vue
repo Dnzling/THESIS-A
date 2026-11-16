@@ -1,7 +1,7 @@
 <template>
     <div class="space-y-14 pb-8 sm:space-y-20">
         <section
-            class="relative overflow-hidden rounded-[2rem] bg-[#f56617] px-6 py-8 text-white shadow-xl shadow-orange-200/60 sm:px-10 sm:py-12 lg:min-h-[430px] lg:px-14"
+            class="relative hidden overflow-hidden rounded-[2rem] bg-[#f56617] px-6 py-8 text-white shadow-xl shadow-orange-200/60 sm:block sm:px-10 sm:py-12 lg:min-h-[430px] lg:px-14"
         >
             <div
                 class="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-amber-300/30 blur-3xl"

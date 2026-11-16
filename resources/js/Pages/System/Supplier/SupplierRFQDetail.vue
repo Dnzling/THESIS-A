@@ -209,7 +209,7 @@
               </div>
             </div>
 
-            <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div v-if="item.supplier_offer" class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p class="mb-3 text-sm font-semibold text-slate-800">Supplier product specifications</p>
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 <div v-for="dimension in dimensionFields" :key="dimension.key" class="rounded-lg bg-white p-2">
@@ -236,6 +236,11 @@
                 <span class="font-medium text-slate-800">Requested specifications:</span> {{ item.specifications }}
               </p>
               <small v-if="quoteErrors[item.id]?.specifications" class="mt-3 block text-red-600">{{ quoteErrors[item.id].specifications }}</small>
+            </div>
+            <div v-else class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <label :for="`supplier-specifications-${item.id}`" class="mb-1 block text-sm font-semibold text-slate-800">Your product details <span class="font-normal text-slate-500">(optional)</span></label>
+              <p class="mb-2 text-xs text-slate-600">This item is not in your supplier product list. Add any details that will help describe your offer. Dimensions and weight are not required.</p>
+              <Textarea :id="`supplier-specifications-${item.id}`" v-model="quoteData[item.id].product_specifications" rows="3" autoResize class="w-full" placeholder="Product specifications or details" />
             </div>
   
             <div class="grid grid-cols-2 gap-4">
@@ -318,6 +323,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import Textarea from 'primevue/textarea'
 import Skeleton from 'primevue/skeleton'
 import ConfirmDialog from 'primevue/confirmdialog'
 import supplierService from '../../../services/supplier.service'
@@ -533,10 +539,12 @@ const validateAllQuotes = () => {
     if (!quote.available_quantity || Number(quote.available_quantity) <= 0) {
       itemErrors.available_quantity = 'Enter the available quantity.'
     }
-    for (const field of ['length_cm', 'width_cm', 'height_cm', 'weight_kg']) {
-      const catalogValue = productValue(item, field)
-      if (!catalogValue || Number(catalogValue) <= 0) {
-        itemErrors.specifications = 'Complete the product dimensions and weight in your supplier product catalog before submitting this quote.'
+    if (item.supplier_offer) {
+      for (const field of ['length_cm', 'width_cm', 'height_cm', 'weight_kg']) {
+        const catalogValue = productValue(item, field)
+        if (!catalogValue || Number(catalogValue) <= 0) {
+          itemErrors.specifications = 'Complete the product dimensions and weight in your supplier product catalog before submitting this quote.'
+        }
       }
     }
     if (!quote.estimated_delivery_date) {
@@ -618,7 +626,7 @@ const performQuoteSubmission = async () => {
         estimated_delivery_date: formatDateForApi(quote.estimated_delivery_date),
         quotation_valid_until: formatDateForApi(quote.quotation_valid_until),
         attachment: quote.attachment,
-        product_specifications: catalogSpecifications(item),
+        product_specifications: item.supplier_offer ? catalogSpecifications(item) : (quote.product_specifications?.trim() || undefined),
       })
     }
 

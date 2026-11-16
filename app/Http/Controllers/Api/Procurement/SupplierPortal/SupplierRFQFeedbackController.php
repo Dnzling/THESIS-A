@@ -336,10 +336,10 @@ class SupplierRFQFeedbackController extends Controller
             'additional_variants.*.variant_material' => 'nullable|string|max:100',
             'additional_variants.*.variant_texture' => 'nullable|string|max:100',
             'additional_variants.*.variant_finish' => 'nullable|string|max:100',
-            'length_cm' => 'required|numeric|min:0.01',
-            'width_cm' => 'required|numeric|min:0.01',
-            'height_cm' => 'required|numeric|min:0.01',
-            'weight_kg' => 'required|numeric|min:0.001',
+            'length_cm' => 'nullable|numeric|min:0.01',
+            'width_cm' => 'nullable|numeric|min:0.01',
+            'height_cm' => 'nullable|numeric|min:0.01',
+            'weight_kg' => 'nullable|numeric|min:0.001',
             'estimated_delivery_date' => 'required|date',
             'quotation_valid_until' => 'required|date|after_or_equal:today',
             'attachment' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx|max:5120',
@@ -378,8 +378,29 @@ class SupplierRFQFeedbackController extends Controller
             $supplierId = (int) $rfqSupplier->supplier_id;
 
             $rfq = RequestForQuotation::findOrFail($request->rfq_id);
-            if (!RFQItem::where('id', $request->rfq_item_id)->where('rfq_id', $rfq->id)->exists()) {
+            $rfqItem = RFQItem::where('id', $request->rfq_item_id)->where('rfq_id', $rfq->id)->first();
+            if (!$rfqItem) {
                 return response()->json(['success' => false, 'message' => 'The selected item does not belong to this RFQ.'], 422);
+            }
+
+            $isSupplierCatalogProduct = DB::table('supplier_products')
+                ->where('supplier_id', $supplierId)
+                ->where('product_id', $rfqItem->product_id)
+                ->exists();
+            if ($isSupplierCatalogProduct) {
+                $dimensionValidator = Validator::make($request->all(), [
+                    'length_cm' => 'required|numeric|min:0.01',
+                    'width_cm' => 'required|numeric|min:0.01',
+                    'height_cm' => 'required|numeric|min:0.01',
+                    'weight_kg' => 'required|numeric|min:0.001',
+                ]);
+                if ($dimensionValidator->fails()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product dimensions and weight are required for items in your supplier product list.',
+                        'errors' => $dimensionValidator->errors(),
+                    ], 422);
+                }
             }
 
             if ($rfq->status === 'closed') {

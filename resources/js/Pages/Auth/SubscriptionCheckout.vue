@@ -234,11 +234,7 @@ const normalizeStatus = (value: unknown) => String(value || '').toLowerCase()
 const refreshAgreementStatus = async () => {
   const response = await axiosClient.get('/api/store/subscription-agreement/status')
   activeAgreement.value = response.data?.data?.agreement || null
-  const store = (authStore.currentUser as any)?.store || authStore.currentUser as any || {}
-  hasActiveAgreement.value = Boolean(activeAgreement.value
-    && String(store.subscription_status || '').toLowerCase() !== 'trial'
-    && String(activeAgreement.value.plan_key || '').toLowerCase() === String(selectedPlan.value?.plan_key || '').toLowerCase()
-    && String(activeAgreement.value.billing_cycle || '').toLowerCase() === billingCycle.value)
+  hasActiveAgreement.value = Boolean(activeAgreement.value)
 }
 
 const startSignature = (event: PointerEvent) => {

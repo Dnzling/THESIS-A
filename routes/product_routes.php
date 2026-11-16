@@ -116,6 +116,7 @@ Route::prefix('product-catalog')->group(function () {
     // Store-scoped promotions
     Route::get('discount-requests', [DiscountRequestController::class, 'index']);
     Route::post('discount-requests', [DiscountRequestController::class, 'store']);
+    Route::post('discount-requests/decision', [DiscountRequestController::class, 'decide']);
     Route::get('promotions/options', [PromotionController::class, 'options']);
     Route::post('promotions/{id}/toggle', [PromotionController::class, 'toggle']);
     Route::post('promotions/{id}/duplicate', [PromotionController::class, 'duplicate']);

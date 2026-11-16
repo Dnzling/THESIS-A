@@ -120,8 +120,8 @@
         </div>
         <div class="sm:col-span-2">
           <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
-          <DatePicker v-model="form.scheduled_departure_at" dateFormat="M d, yy" :minDate="new Date()" :disabledDates="unavailableDepartureDates" showIcon fluid>
-            <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isUnavailableCalendarDate(date) }">{{ date.day }}</span></template>
+          <DatePicker v-model="form.scheduled_departure_at" dateFormat="M d, yy" :minDate="new Date()" :disabledDates="unavailableDepartureDates" showIcon fluid @month-change="onCalendarMonthChange" @date-select="onDepartureDateSelect">
+            <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isUnavailableCalendarDate(date) }" :title="holidayForCalendarDate(date)?.name || undefined">{{ date.day }}<i v-if="holidayForCalendarDate(date)" class="pi pi-info-circle ml-1 text-[9px]" /></span></template>
           </DatePicker>
           <p v-if="form.vehicle_id" class="mt-1 text-xs text-slate-500">Crossed-out dates already have a planned trip for this vehicle.</p>
         </div>
@@ -159,6 +159,7 @@ import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import Skeleton from 'primevue/skeleton'
 import logisticsService from '@/services/logistics.service'
+import { getPhilippineHolidays, type PhilippineHoliday } from '@/services/holidays.service'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -200,6 +201,9 @@ const employees = ref<any[]>([])
 const assistants = ref<any[]>([])
 const vehicles = ref<any[]>([])
 const unavailableDepartureDates = ref<Date[]>([])
+const holidays = ref<PhilippineHoliday[]>([])
+const loadedHolidayYears = new Set<number>()
+let lastAcceptedDeparture: Date | null = null
 
 const form = reactive({
   driver_user_id: null as number | null,
@@ -236,6 +240,36 @@ const isDepartureDateUnavailable = (value: Date | null) => Boolean(value && isUn
   month: value.getMonth(),
   day: value.getDate(),
 }))
+const holidayForKey = (key: string | null) => holidays.value.find(holiday => holiday.date === key) || null
+const holidayForCalendarDate = (date: any) => holidayForKey(`${date.year}-${String(date.month + 1).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`)
+const loadHolidayYear = async (year: number) => {
+  if (loadedHolidayYears.has(year)) return
+  try {
+    holidays.value = [...holidays.value, ...await getPhilippineHolidays(`${year}-01-01`, `${year}-12-31`)]
+    loadedHolidayYears.add(year)
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Holiday Calendar Unavailable', detail: 'Trip dates can still be selected, but holiday warnings are temporarily unavailable.', life: 4000 })
+  }
+}
+const onCalendarMonthChange = (event: any) => { void loadHolidayYear(Number(event.year)) }
+const onDepartureDateSelect = async () => {
+  const selected = form.scheduled_departure_at
+  if (!selected) return
+  await loadHolidayYear(selected.getFullYear())
+  const holiday = holidayForKey(toDateOnly(selected))
+  if (!holiday) { lastAcceptedDeparture = selected; return }
+  confirm.require({
+    header: 'Public holiday selected',
+    message: `${holiday.name} falls on this departure date. Confirm that the trip can operate on this holiday.`,
+    icon: 'pi pi-info-circle',
+    rejectLabel: 'Choose another date',
+    acceptLabel: 'Use this date',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptProps: { severity: 'warn' },
+    accept: () => { lastAcceptedDeparture = selected },
+    reject: () => { form.scheduled_departure_at = lastAcceptedDeparture },
+  })
+}
 
 const loadOptions = async () => {
   loadingOptions.value = true
@@ -336,6 +370,10 @@ const openCreate = async () => {
   form.vehicle_id = null
   form.scheduled_departure_at = null
   form.notes = ''
+  lastAcceptedDeparture = null
+  const currentYear = new Date().getFullYear()
+  void loadHolidayYear(currentYear)
+  void loadHolidayYear(currentYear + 1)
   tripDialog.value = true
   if (!employees.value.length || !vehicles.value.length) await loadOptions()
 }

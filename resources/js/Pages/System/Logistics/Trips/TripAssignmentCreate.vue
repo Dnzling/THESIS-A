@@ -1,5 +1,6 @@
 <template>
   <div class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <ConfirmDialog />
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded aria-label="Back to trips" @click="router.push({ name: 'logistics.trips' })" />
       <div>
@@ -55,10 +56,11 @@
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
-            <DatePicker v-model="form.scheduled_departure_at" :minDate="new Date()" :disabledDates="unavailableDepartureDates" dateFormat="M d, yy" showIcon fluid>
-              <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isUnavailableCalendarDate(date) }">{{ date.day }}</span></template>
+            <DatePicker v-model="form.scheduled_departure_at" :minDate="new Date()" :disabledDates="unavailableDepartureDates" dateFormat="M d, yy" showIcon fluid @month-change="onCalendarMonthChange" @date-select="onDepartureDateSelect">
+              <template #date="{ date }"><span :class="{ 'text-red-600 line-through': isUnavailableCalendarDate(date) }" :title="holidayForCalendarDate(date)?.name || undefined">{{ date.day }}<i v-if="holidayForCalendarDate(date)" class="pi pi-info-circle ml-1 text-[9px]" /></span></template>
             </DatePicker>
             <p v-if="form.vehicle_id" class="mt-1 text-xs text-slate-500">Crossed-out dates already have a planned trip for this vehicle.</p>
+            <p class="mt-1 text-xs text-amber-700">Selecting a public holiday opens a warning; you can still schedule the trip if logistics will operate.</p>
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Notes</label>
@@ -78,6 +80,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
@@ -86,11 +89,13 @@ import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
 import logisticsService from '@/services/logistics.service'
+import { getPhilippineHolidays, type PhilippineHoliday } from '@/services/holidays.service'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const canManage = useAuthStore().hasPermission('logistics.deliveries.manage')
 const source = computed<'ecommerce' | 'sales' | 'return_pickup' | 'pickup'>(() => {
   const value = String(route.query.source || '').toLowerCase()
@@ -106,6 +111,9 @@ const drivers = ref<any[]>([])
 const vehicles = ref<any[]>([])
 const assistants = ref<any[]>([])
 const unavailableDepartureDates = ref<Date[]>([])
+const holidays = ref<PhilippineHoliday[]>([])
+const loadedHolidayYears = new Set<number>()
+let lastAcceptedDeparture: Date | null = null
 const form = reactive({ driver_user_id: null as number | null, assistant_user_ids: [] as number[], vehicle_id: null as number | null, scheduled_departure_at: null as Date | null, notes: '' })
 const toDateOnly = (value: Date | null) => value
   ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
@@ -133,6 +141,36 @@ const isUnavailableCalendarDate = (date: any) => unavailableDepartureDates.value
 const isDepartureDateUnavailable = (value: Date | null) => Boolean(value && isUnavailableCalendarDate({
   year: value.getFullYear(), month: value.getMonth(), day: value.getDate(),
 }))
+const holidayForKey = (key: string | null) => holidays.value.find(holiday => holiday.date === key) || null
+const holidayForCalendarDate = (date: any) => holidayForKey(`${date.year}-${String(date.month + 1).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`)
+const loadHolidayYear = async (year: number) => {
+  if (loadedHolidayYears.has(year)) return
+  try {
+    holidays.value = [...holidays.value, ...await getPhilippineHolidays(`${year}-01-01`, `${year}-12-31`)]
+    loadedHolidayYears.add(year)
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Holiday Calendar Unavailable', detail: 'Trip dates can still be selected, but holiday warnings are temporarily unavailable.', life: 4000 })
+  }
+}
+const onCalendarMonthChange = (event: any) => { void loadHolidayYear(Number(event.year)) }
+const onDepartureDateSelect = async () => {
+  const selected = form.scheduled_departure_at
+  if (!selected) return
+  await loadHolidayYear(selected.getFullYear())
+  const holiday = holidayForKey(toDateOnly(selected))
+  if (!holiday) { lastAcceptedDeparture = selected; return }
+  confirm.require({
+    header: 'Public holiday selected',
+    message: `${holiday.name} falls on this departure date. Confirm that the trip can operate on this holiday.`,
+    icon: 'pi pi-info-circle',
+    rejectLabel: 'Choose another date',
+    acceptLabel: 'Use this date',
+    rejectProps: { severity: 'secondary', outlined: true },
+    acceptProps: { severity: 'warn' },
+    accept: () => { lastAcceptedDeparture = selected },
+    reject: () => { form.scheduled_departure_at = lastAcceptedDeparture },
+  })
+}
 const selectedDriver = computed(() => drivers.value.find(driver => Number(driver.id) === Number(form.driver_user_id)))
 const selectedVehicle = computed(() => vehicles.value.find(vehicle => Number(vehicle.id) === Number(form.vehicle_id)))
 const customerName = computed(() => (source.value === 'pickup' ? order.value?.supplier?.supplier_name || order.value?.customer_name : source.value === 'return_pickup' ? order.value?.pickup_name : source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
@@ -208,5 +246,11 @@ const submit = async () => {
   }
 }
 
-onMounted(() => { void loadOrder(); void loadOptions() })
+onMounted(() => {
+  void loadOrder()
+  void loadOptions()
+  const currentYear = new Date().getFullYear()
+  void loadHolidayYear(currentYear)
+  void loadHolidayYear(currentYear + 1)
+})
 </script>

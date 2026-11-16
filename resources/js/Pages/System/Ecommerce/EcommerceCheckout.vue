@@ -129,11 +129,17 @@
             </div>
             <div class="mt-5 border-t border-slate-200 pt-4">
               <label class="mb-2 block text-xs font-semibold text-slate-700">Preferred {{ serviceMethod }} date *</label>
-              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="minFulfillmentDate" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon  size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate />
+              <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="minFulfillmentDate" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate>
+                <template #date="{ date }">
+                  <span :class="holidayForCalendarDate(date) ? 'text-red-700 line-through' : ''" :title="holidayForCalendarDate(date)?.name || undefined">
+                    {{ date.day }}<i v-if="holidayForCalendarDate(date)" class="pi pi-info-circle ml-1 text-[9px]" />
+                  </span>
+                </template>
+              </DatePicker>
               <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
               <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
               <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
-              <p v-if="fulfillmentDates.length" class="mt-2 text-xs text-orange-800">Available dates account for branch service suspensions and stock availability.</p>
+              <p v-if="fulfillmentDates.length" class="mt-2 text-xs text-orange-800">Crossed-out dates include Philippine public holidays. Hover over the info icon to see the holiday name. Other available dates account for branch service suspensions and stock availability.</p>
             </div>
           </template>
         </Card>
@@ -588,6 +594,7 @@ const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
 const branchItemPrices = ref<Record<number, { unit_price: number; regular_unit_price: number; line_subtotal: number }>>({})
 const branchPricedSubtotal = ref<number | null>(null)
 const fulfillmentDates = ref<string[]>([])
+const fulfillmentHolidays = ref<{ date: string; name: string }[]>([])
 const pickupBranchesByDate = ref<Record<string, any>>({})
 const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
 const fulfillmentDate = ref<Date | null>(null)
@@ -620,12 +627,17 @@ const disabledFulfillmentDates = computed(() => {
   }
   return days
 })
+const holidayForCalendarDate = (date: any) => {
+  const key = `${date.year}-${String(date.month + 1).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
+  return fulfillmentHolidays.value.find(holiday => holiday.date === key) || null
+}
 
 async function loadFulfillmentAvailability() {
   const requestId = ++availabilityRequest
   const storeId = Number(checkoutItems.value[0]?.store_id || 0)
   fulfillmentDate.value = null
   fulfillmentDates.value = []
+  fulfillmentHolidays.value = []
   pickupBranchesByDate.value = {}
   fulfillmentWindow.value = null
   if (!storeId) return
@@ -639,6 +651,7 @@ async function loadFulfillmentAvailability() {
     if (requestId !== availabilityRequest) return
     pickupBranchesByDate.value = response.data?.data?.pickup_branches_by_date || {}
     fulfillmentDates.value = response.data?.data?.dates || []
+    fulfillmentHolidays.value = response.data?.data?.holidays || []
     fulfillmentWindow.value = response.data?.data?.window || null
     if (fulfillmentDates.value.length) {
       const [year, month, day] = fulfillmentDates.value[0].split('-').map(Number)

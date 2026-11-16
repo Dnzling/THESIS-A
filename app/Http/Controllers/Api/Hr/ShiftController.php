@@ -29,7 +29,8 @@ class ShiftController extends Controller
             $query->where('shift_type', $request->shift_type);
         }
         
-        $shifts = $query->paginate(15);
+        $perPage = max(1, min(200, (int) $request->input('per_page', 15)));
+        $shifts = $query->paginate($perPage);
         
         return response()->json([
             'success' => true,

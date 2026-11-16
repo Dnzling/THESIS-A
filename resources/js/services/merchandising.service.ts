@@ -201,6 +201,16 @@ class MerchandisingService {
         const response = await axiosClient.post(`${this.baseUrl}/discount-requests`, data)
         return response.data
     }
+    async decideDiscountRequests(data: {
+        request_ids: number[]
+        decision: 'approve' | 'reject'
+        starts_at?: string
+        ends_at?: string
+        reason?: string
+    }) {
+        const response = await axiosClient.post(`${this.baseUrl}/discount-requests/decision`, data)
+        return response.data
+    }
     async getActivityLog(params: any) {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/activity`, { params })
         return response.data
