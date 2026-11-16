@@ -3,8 +3,8 @@
     <!-- Header -->
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 ">
       <div>
-        <h1 class="text-lg font-bold text-gray-900">Product Catalog</h1>
-        <p class="text-xs text-gray-500">Manage product details, categories, suppliers, and purchasing costs.</p>
+        <h1 class="text-lg font-bold text-gray-900">Items</h1>
+        <p class="text-xs text-gray-500">Manage item details, categories, suppliers, and purchasing costs.</p>
       </div>
       <SplitButton v-if="canCreateInventoryItems" label="Add Branch Item" icon="pi pi-plus" size="small"
         :model="createItemOptions" @click="createInventoryItem('supply')" />
@@ -13,7 +13,7 @@
     <Card class="border border-gray-200 shadow-sm">
       <template #content>
         <!-- Filters -->
-        <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-6 mb-4">
+        <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-7 mb-4">
           <div class="md:col-span-2">
             <IconField class="w-full">
               <InputIcon class="pi pi-search" />
@@ -63,6 +63,17 @@
             @change="onFilterChange"
           />
 
+          <Select
+            v-model="filters.branch_id"
+            :options="branches"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Select branch for pricing"
+            class="w-full text-sm"
+            size="small"
+            @change="onFilterChange"
+          />
+
           <div v-if="hasActiveFilters" class="flex justify-end">
             <Button
               @click="resetFilters"
@@ -81,7 +92,7 @@
             severity="warn" outlined size="small" class="text-sm" />
         
         </div>
-        <!-- Products Table -->
+        <!-- Items Table -->
         <div v-if="loading" class="space-y-2">
           <div class="grid grid-cols-6 gap-3">
             <Skeleton v-for="i in 6" :key="i" height="22px" />
@@ -100,13 +111,13 @@
           <template #empty>
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
-              <p class="text-gray-600 mt-2">No products found</p>
+              <p class="text-gray-600 mt-2">No items found</p>
             </div>
           </template>
   
           <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
   
-          <Column field="product_name" header="Product" sortable style="min-width: 240px">
+          <Column field="product_name" header="Item" sortable style="min-width: 240px">
             <template #body="{ data }">
               <div class="flex items-center gap-3">
                 <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
@@ -130,7 +141,7 @@
 
          
   
-          <Column field="product_type" header="Type">
+          <Column field="product_type" header="Item Type">
             <template #body="{ data }">
               <Tag :severity="getTypeSeverity(data.product_type)" size="small">
                 <span class="text-xs">{{ getTypeLabel(data.product_type) }}</span>
@@ -151,9 +162,13 @@
             <template #body="{ data }"><span class="text-xs text-gray-700">{{ data.brand || '-' }}</span></template>
           </Column>
   
-          <Column field="base_price" header="Selling Price" sortable>
+          <Column field="base_price" header="Branch Price" sortable>
             <template #body="{ data }">
-              <span class="text-xs font-medium text-gray-900">₱{{ formatPrice(Number(data.base_price || 0)) }}</span>
+              <div>
+                <p v-if="Number(data.regular_price || 0) > Number(data.effective_price ?? data.base_price ?? 0)" class="text-[11px] text-slate-400 line-through">₱{{ formatPrice(Number(data.regular_price || data.base_price || 0)) }}</p>
+                <p class="text-xs font-medium text-gray-900">₱{{ formatPrice(Number(data.effective_price ?? data.base_price ?? 0)) }}</p>
+                <Tag v-if="Number(data.discount_percentage || 0) > 0 || data.pricing_source === 'promotion'" :value="data.pricing_source === 'promotion' ? (Number(data.discount_percentage || 0) > 0 ? `${data.discount_percentage}% off · Promotion` : 'Promotion') : `${data.discount_percentage}% off`" severity="success" size="small" class="mt-1" />
+              </div>
             </template>
           </Column>
 
@@ -187,7 +202,7 @@
           <Column header="Actions" frozen alignFrozen="right">
             <template #body="{ data }">
               <div class="flex gap-1">
-                <Button icon="pi pi-eye" outlined label="View" rounded size="small" aria-label="View product" @click.stop="viewProduct(data.id)" />
+                <Button icon="pi pi-eye" outlined label="View" rounded size="small" aria-label="View item" @click.stop="viewProduct(data.id)" />
           
               </div>
             </template>
@@ -203,7 +218,7 @@
       <div class="flex items-center gap-3">
         <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
         <div>
-          <p class="font-semibold">Are you sure you want to delete this product?</p>
+          <p class="font-semibold">Are you sure you want to delete this item?</p>
           <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
         </div>
       </div>
@@ -233,6 +248,7 @@ const toast = useToast()
 // State
 const products = ref<any[]>([])
 const categories = ref<any[]>([])
+const branches = ref<any[]>([])
 const selectedProducts = ref<any[]>([])
 const loading = ref(true)
 const totalRecords = ref(0)
@@ -244,6 +260,7 @@ const filters = reactive({
   search: '',
   category_id: null,
   product_type: null,
+  branch_id: null as number | null,
   status: null as string | null,
   available_only: false,
   page: 1,
@@ -257,7 +274,7 @@ const statusOptions = [
   { label: 'No Supplier', value: 'no_supplier' }
 ]
 const productTypeOptions = [
-  { label: 'Product', value: 'finished_good' },
+  { label: 'Item', value: 'finished_good' },
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' }
@@ -268,6 +285,7 @@ const hasActiveFilters = computed(() => {
     filters.search.trim() ||
     filters.category_id ||
     filters.product_type ||
+    filters.branch_id ||
     filters.status ||
     filters.available_only
   )
@@ -290,6 +308,14 @@ const loadProducts = async () => {
     const response = await inventoryService.getProducts(filters)
     // inventoryService returns the API body. Products are in response.data.data.
     products.value = response?.data?.data || []
+    branches.value = response?.data?.branches || branches.value
+    if (!filters.branch_id && branches.value.length) {
+      const assignedBranchId = Number(authStore.user?.branch_id)
+      filters.branch_id = branches.value.some((branch: any) => Number(branch.id) === assignedBranchId)
+        ? assignedBranchId
+        : Number(branches.value[0].id)
+      if (filters.branch_id) return loadProducts()
+    }
     totalRecords.value = Number(response?.data?.total ?? products.value.length)
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load products', life: 3000 })
@@ -339,6 +365,7 @@ const resetFilters = () => {
   filters.search = ''
   filters.category_id = null
   filters.product_type = null
+  filters.branch_id = null
   filters.status = null
   filters.available_only = false
   showBranchOnly.value = false
@@ -379,11 +406,11 @@ const deleteProduct = async () => {
   deleting.value = true
   try {
     await inventoryService.deleteProduct(currentProduct.value.id)
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Product deleted', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Item deleted', life: 3000 })
     deleteDialogVisible.value = false
     loadProducts()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to delete product', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to delete item', life: 3000 })
   } finally {
     deleting.value = false
   }
@@ -393,11 +420,11 @@ const bulkActivate = async () => {
   try {
     const ids = selectedProducts.value.map((p: any) => p.id)
     await inventoryService.bulkStatusUpdate(ids, true)
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Products activated', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Items activated', life: 3000 })
     selectedProducts.value = []
     loadProducts()
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate products', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to activate items', life: 3000 })
   }
 }
 
@@ -405,11 +432,11 @@ const bulkDeactivate = async () => {
   try {
     const ids = selectedProducts.value.map((p: any) => p.id)
     await inventoryService.bulkStatusUpdate(ids, false)
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Products deactivated', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Items deactivated', life: 3000 })
     selectedProducts.value = []
     loadProducts()
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate products', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate items', life: 3000 })
   }
 }
 

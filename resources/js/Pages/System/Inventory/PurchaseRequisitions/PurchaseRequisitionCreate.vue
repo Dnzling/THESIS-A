@@ -5,7 +5,7 @@
       <div class="mb-4 flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
         <div>
-          <h1 class="text-xl font-bold text-gray-800">{{ editId ? 'Edit Draft Supplier Request' : 'Request Stock from Supplier' }}</h1>
+          <h1 class="text-xl font-bold text-gray-800">{{ editId ? 'Edit Draft Supplier Request' : 'Request Stock' }}</h1>
           <p class="text-xs text-gray-500 mt-0.5">Submit branch replenishment items for approval. Approved requests continue through the supplier workflow enabled for your store.</p>
         </div>
       </div>

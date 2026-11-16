@@ -395,7 +395,7 @@
           />
         </div>
         <div class="md:col-span-2">
-          <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location</label>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location <span class="text-red-600">*</span></label>
           <div class="mb-2 flex gap-2">
             <InputText
               v-model="addressSearchText"
@@ -523,6 +523,7 @@ const customerInformationError = computed(() => {
     deliveryRequired.value && !addressSelection.value.barangayCode && 'barangay',
     deliveryRequired.value && !customerForm.value.addressLine.trim() && 'address line',
     deliveryRequired.value && !customerForm.value.preferredDeliveryDate && 'preferred delivery date',
+    deliveryRequired.value && (customerForm.value.latitude === null || customerForm.value.longitude === null || !Number.isFinite(Number(customerForm.value.latitude)) || !Number.isFinite(Number(customerForm.value.longitude))) && 'map coordinates (pin the delivery location)',
   ].filter(Boolean)
   if (missing.length) return `Complete the following before checkout: ${missing.join(', ')}.`
   if (customerForm.value.email.trim() && !isValidCustomerEmail.value) return 'Enter a valid customer email address.'

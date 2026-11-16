@@ -19,6 +19,7 @@ use App\Models\Store\Branch;
 use App\Models\Core\Role;
 use App\Services\Modules\ModuleAccessService;
 use App\Services\Hr\AttendanceClockInService;
+use App\Services\Hr\AttendanceGeofenceService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -691,33 +692,8 @@ class AuthController extends Controller
 
     private function passesGeofence(User $user, ?float $latitude, ?float $longitude): bool
     {
-        if ($user->isSuperAdmin() || $user->isOwner()) {
-            return true;
-        }
-
-        $employee = Employee::where('user_id', $user->id)
-            ->where('store_id', $user->store_id)
-            ->first();
-
-        if (!$employee) {
-            return true;
-        }
-
-        $branch = $this->resolveGeofenceBranch($user, $employee);
-        if (!$branch || !$branch->geofence_enabled) {
-            return true;
-        }
-
-        if ($branch->latitude === null || $branch->longitude === null) {
-            return false;
-        }
-
-        if ($latitude === null || $longitude === null) {
-            return false;
-        }
-
-        $radius = (int) ($branch->geofence_radius_m ?? 5);
-        return $this->isWithinRadius($latitude, $longitude, (float) $branch->latitude, (float) $branch->longitude, $radius);
+        return app(AttendanceGeofenceService::class)
+            ->check($user, $latitude, $longitude)['allowed'];
     }
 
     private function clockInSimpleEmployee(User $user): ?array
@@ -838,38 +814,6 @@ class AuthController extends Controller
             ->whereNull('permissions.deleted_at')
             ->where('permissions.name', 'like', 'hr.%')
             ->exists();
-    }
-
-    private function resolveGeofenceBranch(User $user, Employee $employee): ?Branch
-    {
-        $branchId = $user->branch_id ?: $employee->branch_id;
-        if ($branchId) {
-            $branch = Branch::query()->where('store_id', $user->store_id)->find($branchId);
-            if ($branch) {
-                return $branch;
-            }
-        }
-
-        if ($user->store_id) {
-            return Branch::query()
-                ->where('store_id', $user->store_id)
-                ->orderByDesc('is_main_branch')
-                ->orderBy('id')
-                ->first();
-        }
-
-        return null;
-    }
-
-    private function isWithinRadius(float $userLat, float $userLng, float $targetLat, float $targetLng, int $radiusMeters): bool
-    {
-        $earthRadius = 6371000;
-        $dLat = deg2rad($targetLat - $userLat);
-        $dLng = deg2rad($targetLng - $userLng);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($userLat)) * cos(deg2rad($targetLat)) * sin($dLng / 2) ** 2;
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-        $distance = $earthRadius * $c;
-        return $distance <= $radiusMeters;
     }
 
     public function logout(Request $request)

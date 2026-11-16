@@ -122,15 +122,15 @@ Route::prefix('logistics')->group(function () {
     });
 
     // Return Pickups (Customer Returns)
-    Route::prefix('return-pickups')->middleware('can:logistics.return-pickups.view')->group(function () {
-        Route::get('/options/branches', [ReturnPickupController::class, 'branches']);
-        Route::post('/{pickup}/estimate', [ReturnPickupController::class, 'estimate']);
-        Route::get('/', [ReturnPickupController::class, 'index']);
+    Route::prefix('return-pickups')->middleware('permission.any:logistics.return-pickups.view,logistics.return-pickups.manage,logistics.driver.trips')->group(function () {
+        Route::get('/options/branches', [ReturnPickupController::class, 'branches'])->middleware('permission.any:logistics.return-pickups.view,logistics.return-pickups.manage');
+        Route::post('/{pickup}/estimate', [ReturnPickupController::class, 'estimate'])->middleware('permission.any:logistics.return-pickups.view,logistics.return-pickups.manage');
+        Route::get('/', [ReturnPickupController::class, 'index'])->middleware('permission.any:logistics.return-pickups.view,logistics.return-pickups.manage');
         Route::get('/{pickup}', [ReturnPickupController::class, 'show']);
-        Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('can:logistics.return-pickups.manage');
-        Route::post('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('can:logistics.return-pickups.manage');
-        Route::post('/{pickup}/location', [ReturnPickupController::class, 'updateLocation'])->middleware('can:logistics.return-pickups.manage');
-        Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver'])->middleware('can:logistics.return-pickups.manage');
+        Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('permission.any:logistics.return-pickups.manage,logistics.driver.trips');
+        Route::post('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('permission.any:logistics.return-pickups.manage,logistics.driver.trips');
+        Route::post('/{pickup}/location', [ReturnPickupController::class, 'updateLocation'])->middleware('permission.any:logistics.return-pickups.manage,logistics.driver.trips');
+        Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver'])->middleware('permission.any:logistics.return-pickups.manage');
         Route::post('/{pickup}/proof', [ReturnPickupController::class, 'uploadProof'])->middleware('can:logistics.return-pickups.manage');
     });
 });

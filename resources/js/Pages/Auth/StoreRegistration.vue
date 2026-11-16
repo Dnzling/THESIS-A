@@ -34,6 +34,11 @@
           <div class="md:col-span-2 mt-2 border-t border-slate-100 pt-4 text-base font-semibold text-slate-800">Contact information</div>
           <div><label class="mb-2 block text-sm font-medium text-slate-700">Contact Person</label><input :value="contactPerson" type="text" class="field bg-slate-100" disabled data-testid="contact-person" /></div>
           <div><label class="mb-2 block text-sm font-medium text-slate-700">Contact Email</label><input :value="(authStore.currentUser as any)?.email || ''" type="email" class="field bg-slate-100" disabled /></div>
+          <div class="md:col-span-2">
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="store-contact-number">Store Phone Number</label>
+            <input id="store-contact-number" v-model="form.contact_number" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" class="field" placeholder="Enter the store phone number" data-testid="store-phone" />
+            <p class="mt-1 text-xs text-slate-500">This number will also be used for the main branch unless changed later.</p>
+          </div>
 
           <div class="md:col-span-2 mt-2 border-t border-slate-100 pt-4 text-base font-semibold text-slate-800">Address</div>
           <div>
@@ -175,6 +180,7 @@ const businessTypeOptions = [
 const form = ref({
   store_name: '',
   business_type: 'retail',
+  contact_number: String((authStore.currentUser as any)?.contact_number || (authStore.currentUser as any)?.phone_number || ''),
   city_id: '',
   barangay: '',
   address: '',
@@ -458,7 +464,7 @@ const submitStore = async () => {
       latitude: form.value.latitude,
       longitude: form.value.longitude,
       email: (authStore.currentUser as any)?.email || null,
-      contact_number: (authStore.currentUser as any)?.contact_number || null,
+      contact_number: form.value.contact_number.trim() || null,
     }
 
     const response = await axiosClient.post('/api/stores/register', payload)

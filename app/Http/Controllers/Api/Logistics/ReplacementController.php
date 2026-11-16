@@ -7,6 +7,8 @@ use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Hr\Employee;
+use App\Models\Logistics\ReturnPickup;
+use App\Models\Logistics\DeliveryTrip;
 use App\Models\Store\Branch;
 use App\Services\Store\ReturnResolutionPolicy;
 use Illuminate\Http\JsonResponse;
@@ -143,6 +145,43 @@ class ReplacementController extends Controller
             || $request->user()->hasRole('owner')
             || ($driverId && (int) $request->user()->id === $driverId);
         abort_unless($allowed, 403);
+    }
+
+    private function assertReplacementHandoffReady(Request $request, EcommerceOrderReturn $return): ReturnPickup
+    {
+        $permissionService = app(\App\Services\Core\PermissionService::class);
+        $canManage = $permissionService->userHasPermission($request->user(), 'logistics.deliveries.manage')
+            || $permissionService->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+        $canUseDriverTrip = $permissionService->userHasPermission($request->user(), 'logistics.driver.trips');
+        abort_unless($canManage || $canUseDriverTrip, 403);
+
+        $trip = DeliveryTrip::query()
+            ->where('store_id', (int) $return->store_id)
+            ->find((int) $return->replacement_trip_id);
+        abort_unless($trip && $trip->status === 'out_for_delivery', 422, 'The linked replacement trip has not been dispatched.');
+        abort_unless(
+            (int) $return->replacement_driver_id === (int) $trip->driver_user_id,
+            403,
+            'The replacement driver does not match the assigned trip driver.',
+        );
+        if (!$canManage) {
+            abort_unless($canUseDriverTrip && (int) $trip->driver_user_id === (int) $request->user()->id, 403);
+        }
+
+        $pickup = ReturnPickup::query()
+            ->where('store_id', (int) $return->store_id)
+            ->where('return_id', (int) $return->id)
+            ->where('trip_id', (int) $trip->id)
+            ->where('driver_user_id', (int) $trip->driver_user_id)
+            ->first();
+        abort_unless($pickup && $pickup->status === 'picked_up', 422, 'The driver must first record photo proof that the returned item was picked up.');
+        abort_unless(
+            filled($pickup->proof_photo_path) || $pickup->logs()->where('status_to', 'picked_up')->whereNotNull('proof_photo_path')->exists(),
+            422,
+            'Pickup photo proof is required before the replacement can be delivered.',
+        );
+
+        return $pickup;
     }
 
     private function resolveSourceBranchId(EcommerceOrderReturn $return): int
@@ -467,7 +506,7 @@ class ReplacementController extends Controller
     public function deliver(Request $request, int $id): JsonResponse
     {
         $return = $this->scopedReturn($request, $id);
-        $this->authorizeLogistics($request, (int) $return->replacement_driver_id);
+        $this->assertReplacementHandoffReady($request, $return);
         $validated = $request->validate([
             'received_by' => ['required', 'string', 'max:255'],
             'proof' => ['required', 'image', 'max:5120'],
@@ -480,10 +519,44 @@ class ReplacementController extends Controller
         }
         $path = $validated['proof']->store("replacement-proofs/{$return->store_id}", 'public');
         try {
-            DB::transaction(function () use ($return, $validated, $path): void {
-                $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            DB::transaction(function () use ($return, $validated, $path, $request): void {
+                $case = EcommerceOrderReturn::query()
+                    ->where('store_id', (int) $return->store_id)
+                    ->lockForUpdate()
+                    ->findOrFail($return->id);
                 if ($case->replacement_status !== 'out_for_delivery') {
                     throw ValidationException::withMessages(['replacement' => 'Replacement was already delivered.']);
+                }
+                $trip = DeliveryTrip::query()
+                    ->where('store_id', (int) $case->store_id)
+                    ->lockForUpdate()
+                    ->find((int) $case->replacement_trip_id);
+                if (!$trip || $trip->status !== 'out_for_delivery'
+                    || (int) $trip->driver_user_id !== (int) $case->replacement_driver_id) {
+                    throw ValidationException::withMessages(['replacement' => 'The assigned replacement trip or driver changed. Refresh and verify the trip assignment.']);
+                }
+                $permissions = app(\App\Services\Core\PermissionService::class);
+                $canManage = $permissions->userHasPermission($request->user(), 'logistics.deliveries.manage')
+                    || $permissions->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+                if (!$canManage && (
+                    !$permissions->userHasPermission($request->user(), 'logistics.driver.trips')
+                    || (int) $trip->driver_user_id !== (int) $request->user()->id
+                )) {
+                    throw ValidationException::withMessages(['replacement' => 'You are no longer authorized for this assigned replacement trip.']);
+                }
+                $pickup = ReturnPickup::query()
+                    ->where('store_id', (int) $case->store_id)
+                    ->where('return_id', (int) $case->id)
+                    ->where('trip_id', (int) $trip->id)
+                    ->where('driver_user_id', (int) $trip->driver_user_id)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$pickup || $pickup->status !== 'picked_up') {
+                    throw ValidationException::withMessages(['replacement' => 'The return must be picked up and photo-confirmed before the replacement can be handed to the customer.']);
+                }
+                if (!filled($pickup->proof_photo_path)
+                    && !$pickup->logs()->where('status_to', 'picked_up')->whereNotNull('proof_photo_path')->exists()) {
+                    throw ValidationException::withMessages(['replacement' => 'Pickup photo proof is required before the replacement can be delivered.']);
                 }
                 $case->replacement_status = 'delivered';
                 $case->replacement_delivered_at = now();
@@ -499,6 +572,15 @@ class ReplacementController extends Controller
                     $case->resolved_at = now();
                 }
                 $case->save();
+                $pickup->update(['status' => 'in_transit', 'updated_by' => $request->user()->id]);
+                \App\Models\Logistics\ReturnPickupLog::query()->create([
+                    'return_pickup_id' => $pickup->id,
+                    'event_type' => 'replacement_handoff',
+                    'status_from' => 'picked_up',
+                    'status_to' => 'in_transit',
+                    'message' => 'Replacement handed to the customer; returned item is now in transit to the branch.',
+                    'created_by' => $request->user()->id,
+                ]);
                 app(\App\Services\Logistics\CompleteDeliveryTrip::class)->afterDeliveryUpdate($case);
             });
         } catch (\Throwable $e) {

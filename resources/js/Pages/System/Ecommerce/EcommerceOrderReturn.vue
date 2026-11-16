@@ -41,10 +41,16 @@
             <Textarea v-model="form.details" rows="3" fluid placeholder="Add details (damage, wrong item, etc.)." />
           </div>
 
-          <div class="space-y-2">
+          <div v-if="returnPolicy.allow_refunds" class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Preferred resolution <span class="text-red-500">*</span></label>
             <Select v-model="form.requested_resolution" :options="resolutionOptions" optionLabel="label" optionValue="value" fluid placeholder="Select refund or replacement" />
-            <small v-if="!returnPolicy.allow_refunds" class="text-xs text-slate-500">This store currently offers replacement only.</small>
+          </div>
+          <div v-else class="space-y-2">
+            <label class="text-sm font-semibold text-slate-700">Resolution</label>
+            <div class="flex items-center gap-2">
+              <Tag value="Replacement" severity="info" />
+              <small class="text-xs text-slate-500">This store offers replacement only.</small>
+            </div>
           </div>
 
           <div v-if="form.requested_resolution === 'refund'" class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -135,13 +141,14 @@
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
+import Tag from 'primevue/tag'
 import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -175,6 +182,9 @@ const resolutionOptions = computed(() => [
   { label: 'Replacement', value: 'replacement' },
   ...(returnPolicy.value.allow_refunds ? [{ label: 'Refund', value: 'refund' }] : []),
 ])
+watch(() => returnPolicy.value.allow_refunds, (allowRefunds) => {
+  if (!allowRefunds) form.requested_resolution = 'replacement'
+}, { immediate: true })
 const refundMethodLabels: Record<string, string> = { gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank transfer' }
 const refundMethodOptions = computed(() => (returnPolicy.value.refund_methods || []).map((value: string) => ({ label: refundMethodLabels[value] || value, value })))
 const refundDetailsValid = computed(() => {

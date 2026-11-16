@@ -36,7 +36,11 @@ class PurchaseRequisitionController extends Controller
         }
 
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            if ($request->status === 'pending') {
+                $query->whereIn('status', ['pending', 'procurement_pending']);
+            } else {
+                $query->where('status', $request->status);
+            }
         }
 
         if ($request->has('requisition_type')) {

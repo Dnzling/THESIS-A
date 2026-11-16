@@ -270,7 +270,7 @@ const workflowOptions = [
   { label: 'Assigned to Me', value: 'assigned_to_me' },
   { label: 'Needs Investigation', value: 'needs_investigation' },
   { label: 'Awaiting Manager Decision', value: 'awaiting_manager_decision' },
-  { label: 'Approved / Awaiting Pickup', value: 'approved' },
+  { label: 'Approved / In Progress', value: 'approved' },
   { label: 'Awaiting Physical Inspection', value: 'awaiting_inspection' },
   { label: 'Awaiting Finance Refund', value: 'awaiting_refund' },
   { label: 'Completed', value: 'completed' },
@@ -391,13 +391,24 @@ const workflowStatus = (row: any): { label: string; severity: string } => {
 
   if (returnStatus === 'rejected') return { label: 'Rejected', severity: 'danger' }
   if (returnStatus === 'refunded') return { label: 'Refunded', severity: 'success' }
-  if (returnStatus === 'replaced') return { label: 'Replacement Completed', severity: 'success' }
+  if (returnStatus === 'replaced') return { label: 'Completed', severity: 'success' }
   if (returnStatus === 'refund_pending') return { label: 'Awaiting Finance Refund', severity: 'warn' }
   if (returnStatus === 'received') return { label: 'Physical Inspection Complete', severity: 'info' }
 
   if (returnStatus === 'approved') {
+    if (row?.return_type === 'replacement' && row?.replacement_status === 'out_for_delivery') {
+      return { label: 'Dispatching', severity: 'info' }
+    }
+    if (row?.return_type === 'replacement' && row?.replacement_status === 'delivered') {
+      return pickupStatus === 'delivered'
+        ? { label: 'Awaiting Physical Inspection', severity: 'warn' }
+        : { label: 'Awaiting Return to Store', severity: 'warn' }
+    }
+    if (row?.return_type === 'replacement') {
+      return { label: 'Awaiting Replacement', severity: 'warn' }
+    }
     return ['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(pickupStatus)
-      ? { label: 'Awaiting Physical Inspection', severity: 'warn' }
+      ? { label: pickupStatus === 'delivered' ? 'Awaiting Physical Inspection' : 'Return Delivery In Progress', severity: 'warn' }
       : { label: 'Awaiting Pickup', severity: 'info' }
   }
 

@@ -826,8 +826,24 @@ const loadReturn = async () => {
 
 const returnDisplayStatus = computed(() => {
   const pickupStatus = String(returnRequest.value?.pickup?.status || '')
+  if (returnRequest.value?.return_type === 'replacement'
+    && returnRequest.value?.replacement_status === 'out_for_delivery') {
+    return { label: 'Dispatching', severity: 'info' }
+  }
+  if (returnRequest.value?.status === 'replaced') {
+    return { label: 'Completed', severity: 'success' }
+  }
+  if (returnRequest.value?.return_type === 'replacement'
+    && returnRequest.value?.replacement_status === 'delivered') {
+    return pickupStatus === 'delivered'
+      ? { label: 'Awaiting Physical Inspection', severity: 'warn' }
+      : { label: 'Awaiting Return to Store', severity: 'warn' }
+  }
+  if (returnRequest.value?.status === 'approved' && returnRequest.value?.return_type === 'replacement') {
+    return { label: 'Awaiting Replacement', severity: 'warn' }
+  }
   if (returnRequest.value?.status === 'approved' && ['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(pickupStatus)) {
-    return { label: 'Awaiting Physical Inspection', severity: 'warn' }
+    return { label: pickupStatus === 'delivered' ? 'Awaiting Physical Inspection' : 'Return Delivery In Progress', severity: 'warn' }
   }
   return { label: prettyStatus(returnRequest.value?.status), severity: statusSeverity(returnRequest.value?.status) }
 })

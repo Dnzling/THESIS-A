@@ -58,6 +58,16 @@ class StockReturnController extends Controller
         abort(403, 'You do not have permission to access this stock return action.');
     }
 
+    private function blockLinkedCustomerReturn(StockReturn $return): ?JsonResponse
+    {
+        return $return->ecommerce_return_id
+            ? response()->json([
+                'success' => false,
+                'message' => 'This customer return is completed through its linked Logistics delivery and Inventory inspection workflow.',
+            ], 422)
+            : null;
+    }
+
     /**
      * Display a listing of stock returns
      * GET /api/inventory/returns
@@ -74,7 +84,10 @@ class StockReturnController extends Controller
                 'supplier',
                 'requestedBy.user',
                 'approvedBy',
-                'items.product'
+                'items.product',
+                'ecommerceReturn.orderItem.product',
+                'ecommerceReturn.salesOrderItem.product',
+                'ecommerceReturn.pickup.destinationBranch',
             ])
             ->where('store_id', $context['store_id']);
 
@@ -194,7 +207,6 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
-
             $return->load([
                 'fromBranch',
                 'toBranch',
@@ -205,7 +217,10 @@ class StockReturnController extends Controller
                 'receivedBy',
                 'items.product',
                 'items.variation',
-                'items.branchInventory'
+                'items.branchInventory',
+                'ecommerceReturn.orderItem.product',
+                'ecommerceReturn.salesOrderItem.product',
+                'ecommerceReturn.pickup.destinationBranch',
             ]);
 
             return response()->json([
@@ -241,6 +256,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             // Only allow updates for draft or requested returns
             if (!in_array($return->status, ['draft', 'requested'])) {
@@ -287,6 +303,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             // Only allow deletion for draft returns
             if ($return->status !== 'draft') {
@@ -326,6 +343,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             $request->validate([
                 'notes' => 'nullable|string|max:500',
@@ -365,6 +383,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             $request->validate([
                 'rejection_reason' => 'required|string|max:500',
@@ -403,6 +422,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             $request->validate([
                 'vehicle_type' => 'nullable|string|max:100',
@@ -445,6 +465,7 @@ class StockReturnController extends Controller
                     'message' => 'Unauthorized access to stock return',
                 ], 403);
             }
+            if ($blocked = $this->blockLinkedCustomerReturn($return)) return $blocked;
 
             $validated = $request->validate([
                 'supplier_resolution' => $return->return_type === 'supplier_return'

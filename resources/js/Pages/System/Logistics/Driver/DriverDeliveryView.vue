@@ -507,19 +507,23 @@
       </template>
     </Dialog>
 
-    <div v-if="canShowDeliveryAction" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn" class="fixed inset-x-0 bottom-0 z-40 flex justify-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+      <Button v-if="canOpenReplacementFromReturn" icon="pi pi-box" label="Replacement" severity="warn" size="large" class="flex-1" @click="openLinkedReplacement" />
       <Button
+        v-if="canShowDeliveryAction"
         icon="pi pi-check"
         :label="nextStatusLabel"
         size="large"
-        class="w-full max-w-md"
+        class="flex-1"
         :loading="updating"
         :disabled="updating"
         @click="beginAdvance"
       />
     </div>
-    <div v-if="canShowDeliveryAction" class="fixed bottom-6 right-8 z-40 hidden md:block">
+    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn" class="fixed bottom-6 right-8 z-40 hidden gap-2 md:flex">
+      <Button v-if="canOpenReplacementFromReturn" icon="pi pi-box" label="Replacement" severity="warn" size="large" @click="openLinkedReplacement" />
       <Button
+        v-if="canShowDeliveryAction"
         icon="pi pi-check"
         :label="nextStatusLabel"
         size="large"
@@ -631,6 +635,11 @@ const linkedRequisition = computed(
 )
 
 const returnRequest = computed(() => detail.value?.return_request || detail.value?.order?.return_request || null)
+const openLinkedReplacement = () => {
+  const returnId = Number(returnRequest.value?.id || detail.value?.order?.return_id || 0)
+  if (!returnId || !isAssignedDriver.value || !authStore.hasPermission('logistics.driver.trips')) return
+  router.push({ name: 'driver.replacements.detail', params: { id: returnId } })
+}
 const returnEvidence = computed<string[]>(() => Array.isArray(returnRequest.value?.evidence_urls) ? returnRequest.value.evidence_urls : [])
 
 const linkedStatusesDelivered = computed(
@@ -734,7 +743,7 @@ const destinationAddress = computed(() =>
 
 const returnPickupToCustomer = computed(() =>
   source.value === 'return_pickup' &&
-  !['picked_up', 'out_for_delivery', 'delivered'].includes(currentDeliveryStatus.value),
+  !['picked_up', 'in_transit', 'out_for_delivery', 'delivered'].includes(currentDeliveryStatus.value),
 )
 
 const destinationPoint = computed<[number, number] | null>(() => {
@@ -835,27 +844,36 @@ const canOperateDelivery = computed(() => source.value === 'pickup'
   ? authStore.hasPermission('logistics.driver.supplier-pickups')
   : isAssignedDriver.value,
 )
+const canOpenReplacementFromReturn = computed(() =>
+  source.value === 'return_pickup'
+  && currentDeliveryStatus.value === 'picked_up'
+  && returnRequest.value?.return_type === 'replacement'
+  && isAssignedDriver.value
+  && authStore.hasPermission('logistics.driver.trips'),
+)
 const canShowDeliveryAction = computed(() =>
   canOperateDelivery.value
   && !!nextStatus.value
-  && (source.value === 'pickup' || currentDeliveryStatus.value === 'out_for_delivery'),
+  && (source.value === 'pickup'
+    || (source.value === 'return_pickup' && ['assigned', 'in_transit'].includes(currentDeliveryStatus.value))
+    || currentDeliveryStatus.value === 'out_for_delivery'),
 )
 
 const returnDeliverySteps = [
-  { label: 'Pickup', value: 'picked_up' },
-  { label: 'Out for Delivery', value: 'out_for_delivery' },
-  { label: 'Delivered', value: 'delivered' },
+  { label: 'Picked Up', value: 'picked_up' },
+  { label: 'Replacement Delivered / In Transit', value: 'in_transit' },
+  { label: 'Delivered to Store', value: 'delivered' },
 ]
 const returnStatusIndex = computed(() => returnDeliverySteps.findIndex(step => step.value === currentDeliveryStatus.value))
 const isReturnStepCompleted = (status: string) => returnDeliverySteps.findIndex(step => step.value === status) < returnStatusIndex.value
 const returnStepSeverity = (status: string) => isReturnStepCompleted(status) || (status === 'delivered' && currentDeliveryStatus.value === 'delivered') ? 'success' : currentDeliveryStatus.value === status ? 'info' : 'secondary'
-const returnStepIcon = (status: string) => isReturnStepCompleted(status) || (status === 'delivered' && currentDeliveryStatus.value === 'delivered') ? 'pi pi-check' : status === 'picked_up' ? 'pi pi-camera' : status === 'out_for_delivery' ? 'pi pi-truck' : 'pi pi-check-circle'
+const returnStepIcon = (status: string) => isReturnStepCompleted(status) || (status === 'delivered' && currentDeliveryStatus.value === 'delivered') ? 'pi pi-check' : status === 'picked_up' ? 'pi pi-camera' : status === 'in_transit' ? 'pi pi-truck' : 'pi pi-check-circle'
 
 const nextStatus = computed(() =>
   source.value === 'replacement'
     ? (currentDeliveryStatus.value === 'out_for_delivery' ? 'delivered' : null)
     : source.value === 'return_pickup'
-    ? ({ assigned: 'out_for_delivery', picked_up: 'out_for_delivery', out_for_delivery: 'delivered' } as any)[currentDeliveryStatus.value]
+    ? ({ assigned: 'picked_up', in_transit: 'delivered' } as any)[currentDeliveryStatus.value]
     : source.value === 'pickup'
     ? (
         {
@@ -889,8 +907,11 @@ const nextStatusLabel = computed(() => {
   if (source.value === 'pickup' && nextStatus.value === 'out_for_delivery') {
     return 'Continue Delivery to Store'
   }
-  if (source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned') {
-    return 'Confirm Pickup & Start Delivery'
+  if (source.value === 'return_pickup' && nextStatus.value === 'picked_up') {
+    return 'Picked Up'
+  }
+  if (source.value === 'return_pickup' && nextStatus.value === 'delivered') {
+    return 'Delivered to Store'
   }
   if (nextStatus.value === 'out_for_delivery') {
     return source.value === 'pickup' ? 'Confirm Pickup & Start Delivery' : 'Mark Out for Delivery'
@@ -910,7 +931,7 @@ const nextStatusLabel = computed(() => {
 const proofPhotoLabel = computed(() =>
   source.value === 'replacement' && nextStatus.value === 'delivered'
     ? 'Replacement handoff photo'
-    : source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
+    : source.value === 'return_pickup' && nextStatus.value === 'picked_up'
     ? 'Customer pickup photo'
     : source.value === 'return_pickup' && nextStatus.value === 'delivered'
       ? 'Return delivered to branch photo'
@@ -930,7 +951,7 @@ const proofInstruction = computed(() =>
   source.value === 'replacement'
     ? 'Attach a photo confirming the replacement was handed to the customer. Enter the recipient name; your final GPS location will be captured.'
     : source.value === 'return_pickup'
-    ? nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
+    ? nextStatus.value === 'picked_up'
       ? 'Attach a photo confirming the item was collected from the customer. Your GPS location will also be captured.'
       : 'Attach a photo confirming the returned item was delivered to the destination branch. Your final GPS location will be captured.'
     : source.value === 'pickup' && ['en_route_to_supplier', 'in_transit'].includes(currentDeliveryStatus.value) && nextStatus.value === 'out_for_delivery'
@@ -950,8 +971,8 @@ const proofInstruction = computed(() =>
 )
 
 const proofSubmitLabel = computed(() =>
-  source.value === 'return_pickup' && nextStatus.value === 'out_for_delivery' && currentDeliveryStatus.value === 'assigned'
-    ? 'Confirm Pickup & Start Delivery'
+  source.value === 'return_pickup' && nextStatus.value === 'picked_up'
+    ? 'Confirm Pickup'
     : source.value === 'pickup' && ['en_route_to_supplier', 'in_transit'].includes(currentDeliveryStatus.value) && nextStatus.value === 'out_for_delivery'
       ? 'Confirm Pickup & Start Delivery'
     : nextStatus.value === 'delivered'
@@ -1302,14 +1323,22 @@ const submitPickupStatus = async () => {
     toast.add({
       severity: 'success',
       summary:
-        targetStatus === 'delivered'
-          ? source.value === 'pickup' ? 'Store Handoff Confirmed' : 'Delivery Completed'
+        source.value === 'return_pickup' && targetStatus === 'picked_up'
+          ? 'Return Picked Up'
+          : source.value === 'return_pickup' && targetStatus === 'delivered'
+            ? 'Delivered to Store'
+          : targetStatus === 'delivered'
+            ? source.value === 'pickup' ? 'Store Handoff Confirmed' : 'Delivery Completed'
           : source.value === 'pickup' && targetStatus === 'out_for_delivery'
             ? 'Supplier Pickup Confirmed'
           : 'Delivery In Transit',
       detail:
-        targetStatus === 'delivered'
-          ? source.value === 'pickup'
+        source.value === 'return_pickup' && targetStatus === 'picked_up'
+          ? 'Pickup proof saved. Continue to the linked Replacement delivery.'
+          : source.value === 'return_pickup' && targetStatus === 'delivered'
+            ? 'Return delivery proof saved. The item is now received at the branch.'
+          : targetStatus === 'delivered'
+            ? source.value === 'pickup'
             ? 'The handoff photo was recorded and the goods were delivered to the receiving store.'
             : 'The delivery proof was recorded and the order was marked delivered.'
           : source.value === 'pickup' && targetStatus === 'out_for_delivery'
@@ -1318,6 +1347,11 @@ const submitPickupStatus = async () => {
       life: 3000,
     })
 
+    const linkedPickupId = Number(detail.value?.order?.return_pickup_id || 0)
+    if (source.value === 'replacement' && targetStatus === 'delivered' && linkedPickupId > 0) {
+      router.replace({ name: 'driver.deliveries.view', params: { source: 'return_pickup', orderId: linkedPickupId } })
+      return
+    }
     void load()
   } catch (error: any) {
     toast.add({
@@ -1638,6 +1672,10 @@ const stopPickupTrackingRefresh = () => {
 onMounted(() => {
   void load()
   startPickupTrackingRefresh()
+})
+
+watch(() => [route.name, route.params.source, route.params.orderId, route.params.id], () => {
+  void load()
 })
 
 watch(trackingActive, async (active) => {

@@ -9,6 +9,8 @@ use App\Models\Hr\Employee;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Inventory\StockReturn;
+use App\Models\Inventory\StockReturnItem;
 use App\Models\Finance\FinanceRefund;
 use App\Models\Store\Branch;
 use App\Models\Sales\SalesOrder;
@@ -860,6 +862,34 @@ class ReturnController extends Controller
                     $pickup->save();
                 }
 
+                if ($return->return_type === 'replacement') {
+                    $employeeId = (int) Employee::query()
+                        ->where('store_id', (int) $return->store_id)
+                        ->where('user_id', (int) auth()->id())
+                        ->value('id');
+                    if ($employeeId <= 0) {
+                        throw ValidationException::withMessages([
+                            'return' => 'The CRM approver must have an employee profile to create the linked Inventory Stock Return.',
+                        ]);
+                    }
+
+                    StockReturn::query()->firstOrCreate(
+                        ['ecommerce_return_id' => (int) $return->id],
+                        [
+                            'return_number' => 'SRET-' . $return->return_number,
+                            'store_id' => (int) $return->store_id,
+                            'from_branch_id' => (int) $originBranchId,
+                            'return_type' => 'quality_return',
+                            'status' => 'requested',
+                            'requested_date' => now()->toDateString(),
+                            'requested_by' => $employeeId,
+                            'return_reason' => 'customer_return',
+                            'reason_details' => 'Customer replacement return ' . $return->return_number,
+                            'notes' => 'Pending customer return. Receive and inspect the linked item after the return delivery arrives at this branch.',
+                        ],
+                    );
+                }
+
                 if ($return->return_type === 'refund') {
                     $refundRouting = app(EcommerceRefundRoutingService::class);
                     $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
@@ -1231,6 +1261,39 @@ class ReturnController extends Controller
             $inventory->stock_status = $available <= 0 ? 'out_of_stock' : ($available <= $reorderPoint ? 'low_stock' : 'in_stock');
             $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
+
+            if ($return->return_type === 'replacement') {
+                $stockReturn = StockReturn::query()
+                    ->where('store_id', (int) $return->store_id)
+                    ->where('ecommerce_return_id', (int) $return->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($stockReturn) {
+                    $unitCost = (float) ($inventory->average_cost ?? $inventory->unit_cost ?? $sourceItem?->unit_price ?? 0);
+                    StockReturnItem::query()->firstOrCreate(
+                        ['stock_return_id' => (int) $stockReturn->id],
+                        [
+                            'product_id' => $productId,
+                            'variation_id' => $variationId,
+                            'branch_inventory_id' => (int) $inventory->id,
+                            'quantity_returned' => $receivedQty,
+                            'unit_cost' => $unitCost,
+                            'total_cost' => $unitCost * $receivedQty,
+                            'unit_value' => $unitCost,
+                            'total_value' => $unitCost * $receivedQty,
+                            'condition' => $validated['condition'] === 'bad' ? 'damaged' : 'good',
+                            'return_reason' => 'Customer replacement return ' . $return->return_number,
+                            'notes' => $validated['notes'] ?? 'Received into quarantine for replacement return inspection.',
+                        ],
+                    );
+                    $stockReturn->update([
+                        'status' => 'received',
+                        'received_date' => now()->toDateString(),
+                        'received_by' => $employeeId,
+                        'total_value' => $unitCost * $receivedQty,
+                    ]);
+                }
+            }
 
             if ($return->return_type === 'refund') {
                 $refundRouting = app(EcommerceRefundRoutingService::class);

@@ -148,6 +148,8 @@ class ProductController extends BaseController
                 $pricing = $pricingService->price($product, null, 0, $branchId);
                 $product->setAttribute('effective_price', $pricing['price']);
                 $product->setAttribute('regular_price', $pricing['regular_price']);
+                $product->setAttribute('pricing_source', $pricing['source']);
+                $product->setAttribute('promotion_id', $pricing['promotion_id']);
                 $product->setAttribute('discount_percentage', $pricing['regular_price'] > 0
                     ? (int) round(($pricing['regular_price'] - $pricing['price']) / $pricing['regular_price'] * 100)
                     : 0);

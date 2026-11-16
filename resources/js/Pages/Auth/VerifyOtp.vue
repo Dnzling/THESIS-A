@@ -139,6 +139,19 @@ const focusOtpInput = (index: number) => {
   if (input) input.focus()
 }
 
+const getCurrentLocation = (): Promise<{ latitude: number; longitude: number } | null> => new Promise((resolve) => {
+  if (!navigator.geolocation) {
+    resolve(null)
+    return
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+    () => resolve(null),
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+  )
+})
+
 // Handle OTP input
 const handleOtpInput = (index: number, event: Event) => {
   const target = event.target as HTMLInputElement | null
@@ -208,15 +221,31 @@ const verifyOtp = async () => {
   isLoading.value = true
   errorMessage.value = ''
   successMessage.value = ''
+  let keepOtpForRetry = false
 
   try {
-    const response = await axios.post('/api/auth/verify-otp', {
-      otp: enteredOtp
+    const submitOtp = (location?: { latitude: number; longitude: number }) => axios.post('/api/auth/verify-otp', {
+      otp: enteredOtp,
+      ...(location || {}),
     }, {
-      headers: {
-        'Authorization': `Bearer ${accessToken.value}`
-      }
+      headers: { Authorization: `Bearer ${accessToken.value}` },
     })
+
+    let response
+    try {
+      response = await submitOtp()
+    } catch (initialError: any) {
+      if (initialError?.response?.data?.code !== 'location_required') throw initialError
+
+      const location = await getCurrentLocation()
+      if (!location) {
+        keepOtpForRetry = true
+        errorMessage.value = 'Location access is required to verify and sign in. Enable location services, then try again.'
+        return
+      }
+
+      response = await submitOtp(location)
+    }
     console.log('Verification response:', response.data)
 
     // Check if verification was successful
@@ -300,6 +329,8 @@ const verifyOtp = async () => {
     }
   } catch (error: any) {
     console.error('Verification error:', error)
+    const geofenceCode = error.response?.data?.code
+    keepOtpForRetry = ['location_required', 'outside_geofence', 'geofence_unconfigured'].includes(geofenceCode)
 
     // Handle different error cases
     if (error.response?.status === 422) {
@@ -312,9 +343,12 @@ const verifyOtp = async () => {
       errorMessage.value = 'Verification failed. Please try again.'
     }
 
-    // Clear OTP for retry
-    otpDigits.value = Array(6).fill('')
-    focusOtpInput(0)
+    // Keep the valid code so employees can retry after granting location access
+    // or moving within the allowed radius.
+    if (!keepOtpForRetry) {
+      otpDigits.value = Array(6).fill('')
+      focusOtpInput(0)
+    }
   } finally {
     isLoading.value = false
   }

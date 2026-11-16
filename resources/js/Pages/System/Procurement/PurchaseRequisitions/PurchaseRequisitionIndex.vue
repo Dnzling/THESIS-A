@@ -261,7 +261,6 @@ const dateRange = ref<Date[] | null>(null)
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
-  { label: 'Procurement Pending', value: 'procurement_pending' },
   { label: 'Warehouse Approved', value: 'warehouse_approved' },
   { label: 'Branch Manager Approved', value: 'branch_manager_approved' },
   { label: 'Pending Central Review', value: 'pending_central_review' },
@@ -317,6 +316,7 @@ const statusSeverity = (status: string): string => {
 
 const formatStatus = (status: string): string => {
   if (!status) return '-'
+  if (status === 'procurement_pending') return 'Pending'
   return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 

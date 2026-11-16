@@ -279,7 +279,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issuance Detail');
     $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.edit', 'Edit Stock Issuance');
     $inertia('/inventory/stock-requests', 'System/Inventory/StockRequests/StockRequestIndex', 'inventory.stock-requests', 'Stock Requests');
-    $inertia('/inventory/stock-requests/create', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.create', 'Create Stock Request');
+    $inertia('/inventory/stock-requests/create', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.create', 'Request Stock');
     $inertia('/inventory/stock-requests/purchase/{id}/edit', 'System/Inventory/StockRequests/StockRequestCreate', 'inventory.stock-requests.edit', 'Edit Stock Request');
     $inertia('/inventory/stock-requests/{type}/{id}', 'System/Inventory/StockRequests/StockRequestDetail', 'inventory.stock-requests.detail', 'Stock Request Details');
     Route::redirect('/inventory/requisites', '/inventory/requisitions/view')->name('inventory.requisites.index');

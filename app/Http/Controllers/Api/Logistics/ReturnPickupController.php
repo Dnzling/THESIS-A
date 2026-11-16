@@ -19,7 +19,7 @@ use Illuminate\Validation\Rule;
 
 class ReturnPickupController extends Controller
 {
-    private const STATUSES = ['ready_for_dispatch', 'scheduled', 'assigned', 'picked_up', 'out_for_delivery', 'delivered', 'cancelled'];
+    private const STATUSES = ['ready_for_dispatch', 'scheduled', 'assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'];
 
     public function branches(Request $request): JsonResponse
     {
@@ -217,6 +217,13 @@ class ReturnPickupController extends Controller
         if ($storeId > 0 && (int) $pickup->store_id !== $storeId) {
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
+        $permissions = app(\App\Services\Core\PermissionService::class);
+        $canManageQueue = $permissions->userHasPermission($request->user(), 'logistics.return-pickups.view')
+            || $permissions->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+        if (!$canManageQueue && $permissions->userHasPermission($request->user(), 'logistics.driver.trips')
+            && (int) $pickup->driver_user_id !== (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'This return delivery is not assigned to you.'], 403);
+        }
 
         $pickup->load([
             'driver:id,fname,lname,email,phone_number',
@@ -390,10 +397,16 @@ class ReturnPickupController extends Controller
             $isPairedTrip = $pickup->trip_id
                 && (int) $pickup->trip_id === (int) $pickup->returnRequest->replacement_trip_id
                 && in_array((string) $pickup->returnRequest->replacement_status, ['out_for_delivery', 'delivered'], true);
-            if (!$isPairedTrip || ($request->has('status') && $request->input('status') !== 'delivered')) {
+            $target = (string) $request->input('status', '');
+            $validReturnLegAction = $target === 'picked_up'
+                ? $pickup->status === 'assigned' && $pickup->returnRequest->replacement_status === 'out_for_delivery'
+                : ($target === 'delivered'
+                    ? $pickup->status === 'in_transit' && $pickup->returnRequest->replacement_status === 'delivered'
+                    : $target === '');
+            if (!$isPairedTrip || !$validReturnLegAction) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'This return pickup can only be completed as part of its reserved replacement delivery trip.',
+                    'message' => 'The return leg can only be collected after trip dispatch and delivered to the branch after the replacement handoff.',
                 ], 422);
             }
         }
@@ -426,7 +439,8 @@ class ReturnPickupController extends Controller
         if (isset($validated['status']) && $validated['status'] !== $pickup->status) {
             $allowed = [
                 'ready_for_dispatch' => ['assigned'], 'scheduled' => ['assigned'],
-                'assigned' => ['out_for_delivery'], 'picked_up' => ['out_for_delivery'],
+                'assigned' => ['picked_up'], 'picked_up' => [], 'in_transit' => ['delivered'],
+                // Keep legacy non-replacement pickup records operable.
                 'out_for_delivery' => ['delivered'],
             ];
             $canCancel = $validated['status'] === 'cancelled' && $pickup->status !== 'delivered';
@@ -491,7 +505,7 @@ class ReturnPickupController extends Controller
             }
         }
         $pickup->fill(collect($validated)->except(['latitude', 'longitude', 'location_address', 'photo'])->all());
-        if (in_array(($validated['status'] ?? null), ['picked_up', 'out_for_delivery'], true) && !$pickup->picked_up_at) {
+        if (($validated['status'] ?? null) === 'picked_up' && !$pickup->picked_up_at) {
             $pickup->picked_up_at = now();
         }
         if (($validated['status'] ?? null) === 'out_for_delivery' && !$pickup->out_for_delivery_at) $pickup->out_for_delivery_at = now();
@@ -513,6 +527,19 @@ class ReturnPickupController extends Controller
                 'location_address' => $validated['location_address'] ?? null, 'proof_photo_path' => $photoPath,
                 'notes' => $validated['notes'] ?? null, 'created_by' => $request->user()->id,
             ]);
+
+            if ($validated['status'] === 'picked_up' && $pickup->returnRequest?->return_type !== 'replacement') {
+                $pickup->update(['status' => 'in_transit']);
+                ReturnPickupLog::create([
+                    'return_pickup_id' => $pickup->id,
+                    'event_type' => 'status_updated',
+                    'status_from' => 'picked_up',
+                    'status_to' => 'in_transit',
+                    'message' => 'Return collected with photo proof and is now in transit to the branch.',
+                    'proof_photo_path' => $photoPath,
+                    'created_by' => $request->user()->id,
+                ]);
+            }
         }
 
         // Notify customer when schedule is issued/updated.
@@ -542,7 +569,10 @@ class ReturnPickupController extends Controller
             $returnRequest = $pickup->returnRequest;
             $customerUpdate = match ((string) $pickup->status) {
                 'assigned' => ['Return pickup arranged', 'A driver has been assigned to collect your return.', 'info'],
-                'picked_up' => ['Return item picked up', 'Your item has been picked up and is being returned to the store.', 'info'],
+                'picked_up' => ['Return item picked up', 'Your item has been picked up. The replacement will be delivered before the return is brought to the store.', 'info'],
+                'in_transit' => $returnRequest?->return_type === 'replacement'
+                    ? ['Return is on its way', 'Your replacement was delivered and the returned item is now on its way to the store.', 'info']
+                    : ['Return is on its way', 'Your item has been collected and is now on its way to the store.', 'info'],
                 'out_for_delivery' => ['Return is on its way', 'Your item has been collected and is on its way to the assigned store branch.', 'info'],
                 'delivered' => ['Return delivered to store', 'Your returned item has arrived at the store and is waiting for inspection.', 'success'],
                 'cancelled' => ['Return pickup cancelled', 'The scheduled pickup for your return was cancelled. Contact the store if you need help arranging another pickup.', 'warn'],
@@ -588,7 +618,7 @@ class ReturnPickupController extends Controller
         }
         foreach ($trip->returnPickups as $pickup) {
             $isCurrent = (int) $pickup->id === (int) $currentPickup->id;
-            if (!$isCurrent && !in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)) continue;
+            if (!$isCurrent && !in_array(strtolower((string) $pickup->status), ['picked_up', 'in_transit', 'out_for_delivery'], true)) continue;
             $weight += (float) ($pickup->returnRequest?->orderItem?->product?->weight_kg ?? 0)
                 * (int) ($pickup->returnRequest?->requested_quantity ?? 0);
         }
@@ -599,7 +629,7 @@ class ReturnPickupController extends Controller
     {
         if ((int) $pickup->store_id !== (int) $request->user()->store_id || (int) $pickup->driver_user_id !== (int) $request->user()->id) abort(403);
         $data = $request->validate(['latitude' => 'required|numeric|between:-90,90', 'longitude' => 'required|numeric|between:-180,180', 'location_address' => 'nullable|string|max:2000']);
-        if (!in_array($pickup->status, ['picked_up', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is available after the return pickup has started.'], 422);
+        if (!in_array($pickup->status, ['picked_up', 'in_transit', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is available after the return pickup has started.'], 422);
         $pickup->update(['current_latitude' => $data['latitude'], 'current_longitude' => $data['longitude'], 'current_address' => $data['location_address'] ?? $pickup->current_address]);
         return response()->json(['success' => true, 'data' => $pickup->fresh()]);
     }

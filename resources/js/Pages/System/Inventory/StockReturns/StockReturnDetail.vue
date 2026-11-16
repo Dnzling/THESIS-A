@@ -28,7 +28,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <Tag v-if="stockReturn" :value="humanize(stockReturn.status)" :severity="statusSeverity(stockReturn.status)" />
+        <Tag v-if="stockReturn" :value="stockReturnStatusLabel(stockReturn)" :severity="statusSeverity(stockReturn.status)" />
         <Button label="Print Return Note" icon="pi pi-print" severity="secondary" outlined rounded size="small"
           :disabled="loading || !stockReturn" :loading="printing" @click="printReturn" />
       </div>
@@ -44,9 +44,9 @@
         <template #title><span class="text-base">Return Information</span></template>
         <template #content>
           <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <div><p class="field-label">Type</p><p class="field-value">{{ humanize(stockReturn.return_type) }}</p></div>
+            <div><p class="field-label">Type</p><p class="field-value">{{ stockReturn.ecommerce_return_id ? 'Customer Return' : humanize(stockReturn.return_type) }}</p></div>
             <div><p class="field-label">From Branch</p><p class="field-value">{{ stockReturn.from_branch?.name || '-' }}</p></div>
-            <div><p class="field-label">Destination</p><p class="field-value">{{ stockReturn.supplier?.supplier_name || stockReturn.to_branch?.name || '-' }}</p></div>
+            <div><p class="field-label">Destination</p><p class="field-value">{{ stockReturn.supplier?.supplier_name || stockReturn.to_branch?.name || stockReturn.ecommerce_return?.pickup?.destination_branch?.name || '-' }}</p></div>
             <div><p class="field-label">Requested Date</p><p class="field-value">{{ formatDate(stockReturn.requested_date) }}</p></div>
             <div><p class="field-label">Return Reason</p><p class="field-value">{{ humanize(stockReturn.return_reason) }}</p></div>
             <div><p class="field-label">Total Return Value</p><p class="field-value">{{ money(stockReturn.total_value) }}</p></div>
@@ -57,6 +57,14 @@
           </div>
           <p v-if="stockReturn.reason_details" class="mt-4 whitespace-pre-line text-sm text-slate-700">{{ stockReturn.reason_details }}</p>
           <p v-if="stockReturn.notes" class="mt-3 whitespace-pre-line text-sm text-slate-600">{{ stockReturn.notes }}</p>
+        </template>
+      </Card>
+
+      <Card v-if="stockReturn.ecommerce_return_id" class="border border-orange-200 bg-orange-50/40">
+        <template #title><span class="text-base">Linked CRM Replacement Return</span></template>
+        <template #content>
+          <p class="text-sm text-slate-700">{{ stockReturn.ecommerce_return?.return_number || `Return #${stockReturn.ecommerce_return_id}` }} - {{ stockReturn.ecommerce_return?.order_item?.product?.product_name || stockReturn.ecommerce_return?.sales_order_item?.product?.product_name || 'Returned item' }}</p>
+          <p class="mt-2 text-xs text-slate-600">This Stock Return is informational until the return delivery arrives. Inventory receipt and inspection will complete it; do not approve or dispatch it as a supplier return.</p>
         </template>
       </Card>
 
@@ -217,6 +225,7 @@ const printReturn = async () => {
 }
 
 const humanize = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : '-'
+const stockReturnStatusLabel = (value: any) => value?.ecommerce_return_id && value?.status === 'requested' ? 'Pending' : humanize(value?.status)
 const statusSeverity = (status?: string) => ({
   draft: 'secondary', requested: 'warn', approved: 'info', shipped: 'info', received: 'success',
   rejected: 'danger', cancelled: 'secondary',

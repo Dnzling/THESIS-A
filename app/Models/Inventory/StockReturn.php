@@ -19,6 +19,7 @@ class StockReturn extends Model
     protected $fillable = [
         'return_number',
         'store_id',
+        'ecommerce_return_id',
         'from_branch_id',
         'supplier_id',
         'to_branch_id',
@@ -103,6 +104,11 @@ class StockReturn extends Model
     public function items(): HasMany
     {
         return $this->hasMany(StockReturnItem::class);
+    }
+
+    public function ecommerceReturn(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\CRM\EcommerceOrderReturn::class, 'ecommerce_return_id');
     }
 
     // Scopes

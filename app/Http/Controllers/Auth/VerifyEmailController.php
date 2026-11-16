@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\CustomerOtpVerificationMail;
 use App\Mail\OtpVerificationMail;
+use App\Services\Hr\AttendanceGeofenceService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -81,7 +82,9 @@ class VerifyEmailController extends Controller
     public function verifyOtpApi(Request $request): JsonResponse
     {
         $request->validate([
-            'otp' => 'required|string|size:6'
+            'otp' => 'required|string|size:6',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         // Get user from Bearer token
@@ -97,6 +100,9 @@ class VerifyEmailController extends Controller
         }
 
         if ($user->hasVerifiedEmail()) {
+            if ($geofenceFailure = $this->geofenceFailure($request, $user, $accessToken)) {
+                return $geofenceFailure;
+            }
             $session = $this->createAuthenticatedSession($request, $user, $accessToken);
             return response()->json([
                 'success' => true,
@@ -115,6 +121,14 @@ class VerifyEmailController extends Controller
                 'message' => 'Invalid or expired OTP code.',
                 'errors' => ['otp' => 'Invalid or expired OTP']
             ], 422);
+        }
+
+        // Check attendance location before verifying the account or issuing a
+        // full session token. The temporary OTP token remains valid on failure
+        // so the employee can retry after granting location access or moving
+        // within the branch radius.
+        if ($geofenceFailure = $this->geofenceFailure($request, $user, $accessToken)) {
+            return $geofenceFailure;
         }
 
         // Mark email as verified
@@ -139,6 +153,37 @@ class VerifyEmailController extends Controller
             'role' => $roleName,
             'user' => $session['user'],
         ], 200);
+    }
+
+    private function geofenceFailure(Request $request, $user, ?PersonalAccessToken $accessToken): ?JsonResponse
+    {
+        // Profile email changes use the existing authenticated token. Keep this
+        // location gate limited to the temporary token issued by the login OTP flow.
+        if ($accessToken?->name !== 'otp_verification') {
+            return null;
+        }
+
+        $result = app(AttendanceGeofenceService::class)->check(
+            $user,
+            $request->input('latitude') !== null ? (float) $request->input('latitude') : null,
+            $request->input('longitude') !== null ? (float) $request->input('longitude') : null,
+        );
+
+        if ($result['allowed']) {
+            return null;
+        }
+
+        [$code, $message] = match ($result['reason']) {
+            'location_required' => ['location_required', 'Location access is required to verify and sign in at this branch.'],
+            'geofence_unconfigured' => ['geofence_unconfigured', 'This branch attendance location is not configured. Please contact your store administrator.'],
+            default => ['outside_geofence', 'You are outside the allowed attendance radius. Move within your assigned branch area and try again.'],
+        };
+
+        return response()->json([
+            'success' => false,
+            'code' => $code,
+            'message' => $message,
+        ], 403);
     }
 
     private function createAuthenticatedSession(Request $request, $user, ?PersonalAccessToken $temporaryToken): array

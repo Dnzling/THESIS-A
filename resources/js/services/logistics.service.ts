@@ -330,7 +330,7 @@ class LogisticsService {
   }
 
   async updateReturnPickup(id: string | number, payload: {
-    status?: 'scheduled' | 'assigned' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'cancelled'
+    status?: 'scheduled' | 'assigned' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'cancelled'
     scheduled_at?: string | null
     pickup_name?: string
     pickup_phone?: string

@@ -851,14 +851,15 @@ class DeliveryTripController extends Controller
                     ->each(function (ReturnPickup $pickup) use ($request, $trip, $now): void {
                         $from = (string) $pickup->status;
                         $pickup->update([
-                            'status' => 'out_for_delivery', 'out_for_delivery_at' => $pickup->out_for_delivery_at ?: $now,
-                            'picked_up_at' => $pickup->picked_up_at ?: $now, 'driver_user_id' => $trip->driver_user_id,
+                            // A return pickup is still at the customer when a trip
+                            // leaves. The driver must explicitly confirm collection.
+                            'status' => 'assigned', 'driver_user_id' => $trip->driver_user_id,
                             'vehicle_id' => $trip->vehicle_id, 'updated_by' => $request->user()->id,
                         ]);
                         ReturnPickupLog::query()->create([
                             'return_pickup_id' => $pickup->id, 'event_type' => 'status_updated',
-                            'status_from' => $from, 'status_to' => 'out_for_delivery',
-                            'message' => 'Trip dispatched; return pickup is out for delivery.', 'created_by' => $request->user()->id,
+                            'status_from' => $from, 'status_to' => 'assigned',
+                            'message' => 'Trip dispatched; driver is en route to collect the customer return.', 'created_by' => $request->user()->id,
                         ]);
                     });
                 $trip->stockTransfers()->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])->get()
@@ -1902,7 +1903,7 @@ class DeliveryTripController extends Controller
         }
 
         foreach ($trip->returnPickups as $pickup) {
-            if (!in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)) continue;
+            if (!in_array(strtolower((string) $pickup->status), ['picked_up', 'in_transit', 'out_for_delivery'], true)) continue;
             $pairedReplacement = $pickup->returnRequest
                 && (int) $pickup->returnRequest->replacement_trip_id === (int) $trip->id
                 && !in_array(strtolower((string) $pickup->returnRequest->replacement_status), ['delivered', 'cancelled'], true);
@@ -1919,7 +1920,7 @@ class DeliveryTripController extends Controller
             if (strtolower((string) $replacement->replacement_status) === 'delivered') continue;
             $pickup = $replacement->pickup;
             $replacementWeight = $this->replacementWeight($replacement);
-            $pickupWeight = $pickup && in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)
+            $pickupWeight = $pickup && in_array(strtolower((string) $pickup->status), ['picked_up', 'in_transit', 'out_for_delivery'], true)
                 ? $this->returnPickupWeight($pickup)
                 : 0.0;
             $weight += max($replacementWeight, $pickupWeight);

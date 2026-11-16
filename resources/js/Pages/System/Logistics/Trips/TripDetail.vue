@@ -477,7 +477,7 @@ const vehicleLabel = computed(() => trip.value?.vehicle ? `${trip.value.vehicle.
 const assignedCargoWeight = computed(() => assignedOrders.value.reduce((sum, row) => {
   const status = String(row.status || '').toLowerCase()
   if (['delivered', 'cancelled'].includes(status)) return sum
-  if (row.is_return && !['picked_up', 'out_for_delivery'].includes(status)) return sum
+  if (row.is_return && !['picked_up', 'in_transit', 'out_for_delivery'].includes(status)) return sum
   return sum + Number(row.weight_kg || 0)
 }, 0))
 const tripTotalWeight = computed(() => trip.value?.current_weight_kg !== null && trip.value?.current_weight_kg !== undefined

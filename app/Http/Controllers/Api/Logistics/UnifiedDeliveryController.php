@@ -13,6 +13,7 @@ use App\Models\Inventory\StockTransfer;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Logistics\ReturnPickup;
+use App\Models\Logistics\DeliveryTrip;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
@@ -477,6 +478,7 @@ class UnifiedDeliveryController extends Controller
                     'replacementTrip:id,created_at,status,scheduled_departure_at,driver_user_id,vehicle_id',
                     'replacementTrip.driver:id,fname,lname,email,phone_number',
                     'replacementTrip.vehicle:id,vehicle_name,plate_number,vehicle_type,brand,model',
+                    'pickup:id,return_id,trip_id,status',
                     'user:id,email',
                     'replacementProduct:id,product_name,sku,unit_of_measurement,weight_kg',
                     'replacementVariation:id,variation_name,variation_sku,weight_kg',
@@ -485,9 +487,7 @@ class UnifiedDeliveryController extends Controller
                 ->where('return_type', 'replacement')
                 ->findOrFail($orderId);
 
-            if ($request->user()->hasRole('driver') && (int) $replacement->replacement_driver_id !== (int) $request->user()->id) {
-                return response()->json(['success' => false, 'message' => 'This replacement delivery is not assigned to you.'], 403);
-            }
+            $this->authorizeReplacementDeliveryRead($request, $replacement);
 
             $sourceOrder = $replacement->source_type === 'pos' ? $replacement->salesOrder : $replacement->order;
             $inventory = $replacement->replacementInventory;
@@ -530,6 +530,7 @@ class UnifiedDeliveryController extends Controller
                     default => 'ready_for_dispatch',
                 },
                 'replacement_status' => $rawStatus,
+                'return_pickup_id' => $replacement->pickup?->id,
                 'shipping_name' => $replacement->source_type === 'pos'
                     ? ($sourceOrder?->customer_name ?: $replacement->return_contact_name)
                     : ($sourceOrder?->shipping_name ?: $replacement->return_contact_name),
@@ -1815,9 +1816,7 @@ class UnifiedDeliveryController extends Controller
                 ->where('store_id', $this->resolveStoreId($request))
                 ->where('return_type', 'replacement')
                 ->findOrFail($orderId);
-            if ($request->user()->hasRole('driver') && (int) $replacement->replacement_driver_id !== (int) $request->user()->id) {
-                return response()->json(['success' => false, 'message' => 'This replacement delivery is not assigned to you.'], 403);
-            }
+            $this->authorizeReplacementDeliveryRead($request, $replacement);
 
             return response()->json(['success' => true, 'data' => $this->replacementDeliveryTimeline($replacement)]);
         }
@@ -2136,6 +2135,35 @@ class UnifiedDeliveryController extends Controller
                 'vehicle' => $vehicle,
             ];
         });
+    }
+
+    private function authorizeReplacementDeliveryRead(Request $request, EcommerceOrderReturn $replacement): void
+    {
+        $permissions = app(\App\Services\Core\PermissionService::class);
+        $canViewQueue = $permissions->userHasPermission($request->user(), 'logistics.deliveries.view')
+            || $permissions->userHasPermission($request->user(), 'logistics.deliveries.manage')
+            || $permissions->userHasPermission($request->user(), 'logistics.return-pickups.view')
+            || $permissions->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+        if ($canViewQueue) {
+            return;
+        }
+
+        abort_unless(
+            $permissions->userHasPermission($request->user(), 'logistics.driver.trips')
+                || $permissions->userHasPermission($request->user(), 'logistics.driver.history'),
+            403,
+        );
+
+        $trip = DeliveryTrip::query()
+            ->where('store_id', (int) $replacement->store_id)
+            ->find((int) $replacement->replacement_trip_id);
+        abort_unless(
+            $trip
+                && (int) $replacement->replacement_driver_id === (int) $request->user()->id
+                && (int) $trip->driver_user_id === (int) $request->user()->id,
+            403,
+            'This replacement delivery is not assigned to your trip.',
+        );
     }
 
     private function resolveStoreId(Request $request): ?int

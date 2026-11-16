@@ -735,6 +735,7 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
   const severityMap: Record<string, any> = {
     draft: 'secondary',
     pending: 'info',
+    procurement_pending: 'warn',
     warehouse_approved: 'success',
     branch_manager_approved: 'success',
     pending_central_review: 'warn',
@@ -753,6 +754,7 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
 
 const formatStatus = (status: string): string => {
   if (!status || typeof status !== 'string') return 'Draft'
+  if (status === 'procurement_pending') return 'Pending'
   return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 

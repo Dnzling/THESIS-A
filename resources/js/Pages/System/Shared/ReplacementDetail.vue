@@ -85,7 +85,7 @@
       <Card v-if="item.replacement_status === 'reserved' && canManageTrips" class="border border-slate-200 shadow-sm">
         <template #title><span class="text-base">3. Assign replacement to a trip</span></template>
         <template #content>
-          <p class="mb-3 text-xs text-slate-600">Add this replacement to a planned trip. Its return pickup will be linked automatically, so the driver can exchange both items at the customer in one stop.</p>
+          <p class="mb-3 text-xs text-slate-600">Add the replacement delivery to a planned trip. The customer return is paired as the return leg on that same trip; no separate pickup is created for replacement stock. Reserved stock is issued when the trip is dispatched.</p>
           <Button label="Assign to Trip" icon="pi pi-truck" severity="warn" size="small" :loading="loadingCompatibleTrips" @click="openTripDialog" />
         </template>
       </Card>

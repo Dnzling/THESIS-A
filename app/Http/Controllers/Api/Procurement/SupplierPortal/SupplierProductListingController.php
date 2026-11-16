@@ -424,7 +424,7 @@ class SupplierProductListingController extends Controller
                 'height_cm' => $first->height_cm,
                 'depth_cm' => $first->depth_cm,
                 'weight_kg' => $first->weight_kg,
-                'additional_measurements' => $first->additional_measurements ?: [],
+                'additional_measurements' => $this->measurementsForDisplay($first->additional_measurements),
             ],
             'images' => $product->assets->map(fn ($asset) => ['url' => $asset->thumbnail_url, 'alt_text' => $asset->alt_text ?: $first->product_name])->values(),
             'variants' => $product->variations->map(fn ($variation) => [
@@ -602,6 +602,24 @@ class SupplierProductListingController extends Controller
             }
         }
         return array_values($value);
+    }
+
+    private function measurementsForDisplay($value): array
+    {
+        if (is_string($value)) {
+            $value = json_decode($value, true);
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter($value, fn ($measurement) =>
+            is_array($measurement)
+            && trim((string) ($measurement['label'] ?? '')) !== ''
+            && trim((string) ($measurement['value'] ?? '')) !== ''
+            && trim((string) ($measurement['unit'] ?? '')) !== ''
+        ));
     }
 
     private function validateVariantImages(Request $request, array $variants): void
