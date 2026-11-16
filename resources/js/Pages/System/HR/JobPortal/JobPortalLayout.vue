@@ -13,14 +13,14 @@
         </button>
   
         <div class="flex flex-wrap items-center gap-2">
-          <Button label="Home" icon="pi pi-home" rounded @click="goToHome" />
+          <Button label="Home" icon="pi pi-home" severity="warn" rounded @click="goToHome" />
 
           <Tag v-if="hiredApplication" severity="success"
             :value="`Currently hired: ${hiredApplication.jobPosting?.title || 'Employee'}`" />
   
           <Button v-if="portalAuth.isAuthenticated" severity="contrast" rounded text class="h-10 w-10" @click="toggleProfileMenu">
             <template #icon>
-              <Avatar shape="circle" class="bg-blue-600 text-white" :label="userInitials" />
+              <Avatar shape="circle" class="bg-orange-600 text-white" :label="userInitials" />
             </template>
           </Button>
           <Menu ref="profileMenu" :model="profileItems" popup />

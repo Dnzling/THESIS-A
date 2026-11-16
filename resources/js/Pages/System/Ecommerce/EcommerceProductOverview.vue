@@ -153,6 +153,9 @@
                 <span v-if="!product?.variations?.length && product.assembly_required" class="mx-2 text-slate-300">•</span>
                 <span v-if="product.assembly_required">Assembly required</span>
               </p>
+              <p class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs leading-5 text-orange-900">
+                Delivery timing may vary depending on branch availability. Any temporary service suspension may delay delivery; available dates are confirmed at checkout.
+              </p>
             </div>
   
             <div class="space-y-2">

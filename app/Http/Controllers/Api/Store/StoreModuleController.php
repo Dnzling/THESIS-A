@@ -153,6 +153,13 @@ class StoreModuleController extends Controller
             ->where(fn ($query) => $query->whereNull('end_date')->orWhere('end_date', '>=', $today))
             ->latest('start_date')
             ->first();
+        $nextSuspension = $suspensionToday ? null : BranchServiceSuspension::query()
+            ->where('store_id', $branch->store_id)
+            ->where('branch_id', $branch->id)
+            ->where('start_date', '>', $today)
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->first();
         $verification = BranchVerification::query()->where('store_id', $branch->store_id)->where('branch_id', $branch->id)->first();
         $documents = collect($verification?->documents ?? [])->values()->map(function (array $document, int $index) use ($verification, $request) {
             $canOpenDocuments = $request->user()?->hasRole('owner') || $request->user()?->hasRole('super_admin');
@@ -170,6 +177,7 @@ class StoreModuleController extends Controller
             ...$this->branchPayload($branch),
             'fulfillment_windows' => app(FulfillmentWindowService::class)->settings(Store::query()->findOrFail($branch->store_id)),
             'suspension_today' => $suspensionToday,
+            'next_suspension' => $nextSuspension,
             'verification' => [
                 'status' => $branch->status,
                 'submitted_at' => $verification?->submitted_at,

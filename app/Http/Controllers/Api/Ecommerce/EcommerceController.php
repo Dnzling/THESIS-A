@@ -1663,13 +1663,15 @@ class EcommerceController extends Controller
             'method' => ['required', Rule::in(['pickup', 'delivery'])],
             'item_ids' => ['nullable', 'array'],
             'item_ids.*' => ['integer'],
+            'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
         $store = Store::query()->findOrFail($validated['store_id']);
         if (!app(\App\Services\Store\StoreSalesAccess::class)->canAcceptNewSales($store)) {
             return response()->json(['success' => false, 'message' => 'This store is not accepting new orders right now.'], 403);
         }
         $data = app(\App\Services\Ecommerce\FulfillmentWindowService::class)->availability($store, $validated['method']);
-        if ($validated['method'] === 'pickup' && !empty($validated['item_ids'])) {
+        if (!empty($validated['item_ids'])) {
             $items = EcommerceCartItem::query()
                 ->whereIn('id', $validated['item_ids'])
                 ->whereHas('cart', fn ($query) => $query->where('user_id', $request->user()->id)->where('store_id', $store->id))
@@ -1678,29 +1680,55 @@ class EcommerceController extends Controller
             if ($items->count() !== count(array_unique($validated['item_ids']))) {
                 return response()->json(['success' => false, 'message' => 'Selected cart items are not available for this store.'], 422);
             }
-            $branch = $this->resolveFulfillmentBranch((int) $store->id, $items);
-            if (!$branch) {
-                return response()->json(['success' => false, 'message' => 'No storefront branch can fulfill pickup for these items.'], 422);
+
+            $originalDates = $data['dates'];
+            $availableDates = [];
+            $pickupBranchesByDate = [];
+            foreach ($originalDates as $date) {
+                $branch = $this->resolveFulfillmentBranch(
+                    (int) $store->id,
+                    $items,
+                    $validated['method'] === 'delivery' ? (isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null) : null,
+                    $validated['method'] === 'delivery' ? (isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null) : null,
+                    $date,
+                );
+                if (!$branch) {
+                    continue;
+                }
+                $availableDates[] = $date;
+
+                if ($validated['method'] === 'pickup') {
+                    $this->applyCurrentCartPrices($items, (int) $branch->id);
+                    $branch = Branch::query()->with('store')->findOrFail($branch->id);
+                    $pickupBranchesByDate[$date] = [
+                        'pickup_branch' => [
+                            'id' => (int) $branch->id,
+                            'name' => $branch->name,
+                            'address' => $branch->address ?: $store->address,
+                            'barangay' => $branch->barangay ?: $store->barangay,
+                            'city' => $branch->city ?: $store->city,
+                            'province' => $branch->province ?: $store->province,
+                            'contact_number' => $branch->contact_number ?: $store->phone,
+                        ],
+                        'branch_id' => (int) $branch->id,
+                        'product_subtotal' => round((float) $items->sum(fn ($item) => (float) $item->unit_price * (int) $item->quantity), 2),
+                        'item_prices' => $items->map(fn ($item) => [
+                            'id' => (int) $item->id,
+                            'unit_price' => round((float) $item->unit_price, 2),
+                            'regular_unit_price' => $this->promotionPricing->price($item->product, $item->variation)['regular_price'],
+                            'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
+                        ])->values(),
+                    ];
+                }
             }
-            $this->applyCurrentCartPrices($items, (int) $branch->id);
-            $branch = Branch::query()->with('store')->findOrFail($branch->id);
-            $data['pickup_branch'] = [
-                'id' => $branch->id,
-                'name' => $branch->name,
-                'address' => $branch->address ?: $store->address,
-                'barangay' => $branch->barangay ?: $store->barangay,
-                'city' => $branch->city ?: $store->city,
-                'province' => $branch->province ?: $store->province,
-                'contact_number' => $branch->contact_number ?: $store->phone,
-            ];
-            $data['branch_id'] = (int) $branch->id;
-            $data['product_subtotal'] = round((float) $items->sum(fn ($item) => (float) $item->unit_price * (int) $item->quantity), 2);
-            $data['item_prices'] = $items->map(fn ($item) => [
-                'id' => (int) $item->id,
-                'unit_price' => round((float) $item->unit_price, 2),
-                'regular_unit_price' => $this->promotionPricing->price($item->product, $item->variation)['regular_price'],
-                'line_subtotal' => round((float) $item->unit_price * (int) $item->quantity, 2),
-            ])->values();
+            $data['dates'] = $availableDates;
+            if ($validated['method'] === 'pickup') {
+                $data['pickup_branches_by_date'] = $pickupBranchesByDate;
+                $firstDateDetails = $pickupBranchesByDate[$availableDates[0] ?? ''] ?? null;
+                if ($firstDateDetails) {
+                    $data = [...$data, ...$firstDateDetails];
+                }
+            }
         }
 
         return response()->json(['success' => true, 'data' => $data]);

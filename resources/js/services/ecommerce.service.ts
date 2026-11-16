@@ -240,8 +240,16 @@ const ecommerceService = {
     return ecommerceClient.post('/api/ecommerce/checkout', payload)
   },
 
-  getCheckoutAvailability(storeId: number, method: 'pickup' | 'delivery', itemIds: number[]) {
-    return ecommerceClient.get('/api/ecommerce/checkout/availability', { params: { store_id: storeId, method, item_ids: itemIds } })
+  getCheckoutAvailability(storeId: number, method: 'pickup' | 'delivery', itemIds: number[], customerCoordinates?: { latitude?: number | null; longitude?: number | null }) {
+    return ecommerceClient.get('/api/ecommerce/checkout/availability', {
+      params: {
+        store_id: storeId,
+        method,
+        item_ids: itemIds,
+        customer_latitude: customerCoordinates?.latitude ?? undefined,
+        customer_longitude: customerCoordinates?.longitude ?? undefined,
+      },
+    })
   },
 
   getOrders(params?: any) {

@@ -303,43 +303,42 @@
                     >
                         <div class="flex min-w-0 items-center gap-3">
                             <Tag
-                                :value="
-                                    form.suspension_today
-                                        ? 'Suspended today'
-                                        : 'No suspension today'
-                                "
-                                :severity="
-                                    form.suspension_today ? 'danger' : 'success'
-                                "
+                                :value="form.suspension_today ? 'Suspended today' : form.next_suspension ? 'Scheduled' : 'No upcoming suspension'"
+                                :severity="form.suspension_today ? 'danger' : form.next_suspension ? 'warn' : 'success'"
                             />
                             <div class="min-w-0 text-sm">
                                 <p
-                                    v-if="form.suspension_today"
+                                    v-if="displayedSuspension"
                                     class="truncate font-medium text-slate-900"
                                 >
                                     {{
-                                        form.suspension_today.reason ||
+                                        displayedSuspension.reason ||
                                         'Branch service suspension'
                                     }}
                                     |
                                     {{
                                         formatDocumentDate(
-                                            form.suspension_today.start_date
+                                            displayedSuspension.start_date
                                         )
                                     }}<span
-                                        v-if="form.suspension_today.end_date"
+                                        v-if="displayedSuspension.end_date"
                                     >
                                         to
                                         {{
                                             formatDocumentDate(
-                                                form.suspension_today.end_date
+                                                displayedSuspension.end_date
                                             )
                                         }}</span
                                     >
                                 </p>
+                                <p v-if="form.suspension_today" class="text-xs text-slate-600">
+                                    Pickup and delivery are unavailable from this branch today.
+                                </p>
+                                <p v-else-if="form.next_suspension" class="text-xs text-slate-600">
+                                    Pickup and delivery will be unavailable from this branch during these dates.
+                                </p>
                                 <p v-else class="text-slate-600">
-                                    Pickup and delivery are available for this
-                                    branch today.
+                                    No active or upcoming pickup and delivery suspension.
                                 </p>
                             </div>
                         </div>
@@ -800,8 +799,10 @@ const form = reactive<any>({
     logo_url: '',
     opening_hours: { days: [], schedule: {} },
     suspension_today: null,
+    next_suspension: null,
     verification: { documents: [] }
 })
+const displayedSuspension = computed(() => form.suspension_today || form.next_suspension)
 const storeInfoDialogVisible = ref(false)
 const operatingHoursDialogVisible = ref(false)
 const geolocationDialogVisible = ref(false)

@@ -133,6 +133,7 @@
               <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
               <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
               <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
+              <p v-if="fulfillmentDates.length" class="mt-2 text-xs text-orange-800">Available dates account for branch service suspensions and stock availability.</p>
             </div>
           </template>
         </Card>
@@ -468,6 +469,8 @@
             :label="isEditingAddress ? 'Update Address' : 'Save Address'"
             icon="pi pi-check"
             severity="warn"
+            :loading="savingAddress"
+            :disabled="savingAddress"
             @click="saveNewAddress"
           />
           <Button
@@ -585,6 +588,7 @@ const serviceMethod = ref<'pickup' | 'delivery'>('delivery')
 const branchItemPrices = ref<Record<number, { unit_price: number; regular_unit_price: number; line_subtotal: number }>>({})
 const branchPricedSubtotal = ref<number | null>(null)
 const fulfillmentDates = ref<string[]>([])
+const pickupBranchesByDate = ref<Record<string, any>>({})
 const fulfillmentWindow = ref<{ start: string; end: string } | null>(null)
 const fulfillmentDate = ref<Date | null>(null)
 const availabilityLoading = ref(false)
@@ -622,13 +626,18 @@ async function loadFulfillmentAvailability() {
   const storeId = Number(checkoutItems.value[0]?.store_id || 0)
   fulfillmentDate.value = null
   fulfillmentDates.value = []
+  pickupBranchesByDate.value = {}
   fulfillmentWindow.value = null
   if (!storeId) return
   availabilityLoading.value = true
   availabilityError.value = ''
   try {
-    const response = await ecommerceService.getCheckoutAvailability(storeId, serviceMethod.value, checkoutItemIds.value)
+    const response = await ecommerceService.getCheckoutAvailability(storeId, serviceMethod.value, checkoutItemIds.value, {
+      latitude: serviceMethod.value === 'delivery' ? coordinateValue(customerLatitude.value ?? selectedAddress.value?.latitude) : undefined,
+      longitude: serviceMethod.value === 'delivery' ? coordinateValue(customerLongitude.value ?? selectedAddress.value?.longitude) : undefined,
+    })
     if (requestId !== availabilityRequest) return
+    pickupBranchesByDate.value = response.data?.data?.pickup_branches_by_date || {}
     fulfillmentDates.value = response.data?.data?.dates || []
     fulfillmentWindow.value = response.data?.data?.window || null
     if (fulfillmentDates.value.length) {
@@ -636,16 +645,26 @@ async function loadFulfillmentAvailability() {
       fulfillmentDate.value = new Date(year, month - 1, day)
     }
     if (serviceMethod.value === 'pickup') {
-      pickupBranch.value = response.data?.data?.pickup_branch || null
-      setBranchPricing(response.data?.data)
+      const dateDetails = pickupBranchesByDate.value[fulfillmentDateString.value] || response.data?.data
+      pickupBranch.value = dateDetails?.pickup_branch || null
+      setBranchPricing(dateDetails)
     }
   } catch (error: any) {
     if (requestId !== availabilityRequest) return
-    availabilityError.value = error?.response?.data?.message || 'Available dates could not be loaded. Please try again.'
+    const fieldErrors = Object.values(error?.response?.data?.errors || {}).flat() as string[]
+    availabilityError.value = fieldErrors[0] || error?.response?.data?.message || 'Available dates could not be loaded. Please try again.'
   } finally {
     if (requestId === availabilityRequest) availabilityLoading.value = false
   }
 }
+
+watch(fulfillmentDateString, (date) => {
+  if (serviceMethod.value !== 'pickup' || !date) return
+  const dateDetails = pickupBranchesByDate.value[date]
+  if (!dateDetails) return
+  pickupBranch.value = dateDetails.pickup_branch || null
+  setBranchPricing(dateDetails)
+})
 
 watch([serviceMethod, () => checkoutItems.value[0]?.store_id], () => {
   branchPricedSubtotal.value = null
@@ -660,6 +679,7 @@ const addressDialogVisible = ref(false)
 const showAddAddressForm = ref(false)
 const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
+const savingAddress = ref(false)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
 const pickupOnly = ref(false)
@@ -668,6 +688,11 @@ const pickupBranchAddress = computed(() => {
   if (!pickupBranch.value) return 'Pickup address is not available yet.'
   const branch = pickupBranch.value
   return [branch.address, branch.barangay, branch.city, branch.province].filter(Boolean).join(', ') || 'Contact the store for pickup directions.'
+})
+watch([customerLatitude, customerLongitude], () => {
+  if (checkoutInitializing.value) return
+  void loadFulfillmentAvailability()
+  void estimateShippingFee()
 })
 const useDifferentBillingAddress = ref(false)
 const billingForm = reactive({ name: '', street: '', barangay: '', city: '', province: '', postalCode: '' })
@@ -991,6 +1016,12 @@ function formatNumber(value: unknown, decimals = 0): string {
       })
 }
 
+function coordinateValue(value: unknown): number | undefined {
+  if (value === null || value === undefined || String(value).trim() === '') return undefined
+  const coordinate = Number(value)
+  return Number.isFinite(coordinate) ? coordinate : undefined
+}
+
 function formatServiceTime(value: string): string {
   const [hours, minutes] = value.split(':').map(Number)
   return new Date(2020, 0, 1, hours, minutes).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -1039,6 +1070,7 @@ async function loadAddressTemplates() {
 
 
 async function saveNewAddress() {
+  if (savingAddress.value) return
   addressTouched.name = true
   addressTouched.phone = true
   if (
@@ -1053,6 +1085,7 @@ async function saveNewAddress() {
     return
   }
 
+  savingAddress.value = true
   try {
     const provinceName = provinces.value.find((p: any) => p.province_id === newAddressSelection.provinceId)?.name || ''
     const cityName = cities.value.find((c: any) => c.city_id === newAddressSelection.cityId)?.name || ''
@@ -1070,21 +1103,31 @@ async function saveNewAddress() {
       is_default: addressTemplates.value.length === 0,
     }
 
+    let savedAddressId: number | null = null
     if (isEditingAddress.value && editingAddressId.value) {
-      await ecommerceService.updateAddressTemplate(editingAddressId.value, payload)
-      await loadAddressTemplates()
+      savedAddressId = editingAddressId.value
+      await ecommerceService.updateAddressTemplate(savedAddressId, payload)
       showAlert({ severity: 'success', summary: 'Address Updated', detail: 'Address template updated.' })
     } else {
       const response = await ecommerceService.createAddressTemplate(payload)
-      addressTemplates.value.push(response.data?.data)
-      selectedAddressId.value = response.data?.data?.id || selectedAddressId.value
+      savedAddressId = Number(response.data?.data?.id) || null
       showAlert({ severity: 'success', summary: 'Address Saved', detail: 'New address template has been saved.' })
     }
+
+    // Reload the saved record from the address-template API, then keep the
+    // address just saved selected for this checkout.
+    await loadAddressTemplates()
+    if (savedAddressId) selectedAddressId.value = savedAddressId
+    const savedAddress = addressTemplates.value.find((address) => address.id === savedAddressId)
+    customerLatitude.value = coordinateValue(savedAddress?.latitude) ?? null
+    customerLongitude.value = coordinateValue(savedAddress?.longitude) ?? null
 
     showAddAddressForm.value = false
     resetAddressForm()
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to save address' })
+  } finally {
+    savingAddress.value = false
   }
 }
 
@@ -1181,14 +1224,34 @@ function clearVoucher() {
 async function estimateShippingFee() {
   if (checkoutInitializing.value || !checkoutItems.value.length) return
 
+  // Pickup does not need a distance quote. Avoid sending incomplete delivery
+  // coordinates while the customer is choosing pickup.
+  if (serviceMethod.value === 'pickup') {
+    shippingFeeError.value = null
+    shippingFeeLoading.value = false
+    estimatedShippingFee.value = 0
+    shippingDistanceKm.value = null
+    shippingFeeNotice.value = null
+    shippingFeeBreakdown.value = null
+    return
+  }
+
   const address = selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
     : ''
+  const latitude = coordinateValue(customerLatitude.value ?? selectedAddress.value?.latitude)
+  const longitude = coordinateValue(customerLongitude.value ?? selectedAddress.value?.longitude)
+  if (!address && (latitude === undefined || longitude === undefined)) {
+    shippingFeeError.value = 'Select a delivery address to estimate the fee.'
+    estimatedShippingFee.value = 0
+    shippingDistanceKm.value = null
+    shippingFeeNotice.value = null
+    shippingFeeBreakdown.value = null
+    return
+  }
   shippingFeeLoading.value = true
   shippingFeeError.value = null
   try {
-    const latitude = customerLatitude.value ?? (selectedAddress.value?.latitude ?? undefined)
-    const longitude = customerLongitude.value ?? (selectedAddress.value?.longitude ?? undefined)
     const response = await ecommerceService.estimateShippingFee({
       shipping_address: address || undefined,
       customer_latitude: latitude,
@@ -1227,7 +1290,8 @@ async function estimateShippingFee() {
     shippingDistanceKm.value = null
     shippingFeeNotice.value = null
     shippingFeeBreakdown.value = null
-    shippingFeeError.value = error?.response?.data?.message || 'Delivery fee is unavailable. Please check your address or choose pickup.'
+    const fieldErrors = Object.values(error?.response?.data?.errors || {}).flat() as string[]
+    shippingFeeError.value = fieldErrors[0] || error?.response?.data?.message || 'Delivery fee is unavailable. Please check your address or choose pickup.'
   } finally {
     shippingFeeLoading.value = false
   }
