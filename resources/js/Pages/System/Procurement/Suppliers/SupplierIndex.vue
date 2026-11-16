@@ -74,7 +74,7 @@
             <template #body="{ data }"><span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span></template>
           </Column>
           <Column header="Channel" style="min-width: 130px">
-            <template #body="{ data }"><Tag :value="data.is_external ? 'External' : 'Supplier Portal'" :severity="data.is_external ? 'warn' : 'info'" /></template>
+            <template #body="{ data }"><Tag :value="data.is_external ? 'External' : 'Internal'" :severity="data.is_external ? 'warn' : 'secondary'" /></template>
           </Column>
           <Column field="contract_status" header="Contract Status" style="min-width: 150px">
             <template #body="{ data }">

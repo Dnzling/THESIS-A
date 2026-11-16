@@ -249,22 +249,21 @@
             </div>
           </div>
 
-          <div class="mt-8 border-t pt-8">
-            <h3 class="font-semibold text-gray-900 mb-4">Progress Timeline</h3>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <div class="flex justify-between text-sm text-gray-600 mb-3">
-                <span>Started {{ daysFromStart }} days ago</span>
-                <span>{{ calculateProgressPercentage }}% complete</span>
-              </div>
-              <ProgressBar :value="calculateProgressPercentage" class="w-full" />
-            </div>
+          <div class="mt-6 border-t border-slate-200 pt-5">
+            <div class="mb-4"><h3 class="font-semibold text-slate-900">Contract lifecycle</h3><p class="mt-0.5 text-xs text-slate-500">Current agreement stage</p></div>
+            <ol class="grid gap-3 sm:grid-cols-3">
+              <li v-for="(step, index) in contractLifecycleSteps" :key="step.label" class="relative rounded-xl border p-3" :class="step.state === 'complete' ? 'border-emerald-200 bg-emerald-50/60' : step.state === 'current' ? 'border-orange-200 bg-orange-50/70' : step.state === 'failed' ? 'border-rose-200 bg-rose-50/70' : 'border-slate-200 bg-slate-50'">
+                <div class="flex items-center gap-2"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold" :class="step.state === 'complete' ? 'bg-emerald-600 text-white' : step.state === 'current' ? 'bg-orange-500 text-white' : step.state === 'failed' ? 'bg-rose-600 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'"><i v-if="step.state === 'complete'" class="pi pi-check" /><i v-else-if="step.state === 'failed'" class="pi pi-times" /><template v-else>{{ index + 1 }}</template></span><span class="text-sm font-semibold" :class="step.state === 'upcoming' ? 'text-slate-500' : 'text-slate-900'">{{ step.label }}</span></div>
+                <p class="mt-2 pl-9 text-xs" :class="step.state === 'current' ? 'text-orange-800' : step.state === 'failed' ? 'text-rose-700' : 'text-slate-500'">{{ step.detail }}</p>
+              </li>
+            </ol>
           </div>
         </div>
 
         <!-- Terms & Conditions Section -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
-          <h2 class="mb-5 font-semibold text-slate-900">Terms &amp; conditions</h2>
-          <div class="bg-gray-50 rounded-lg p-6 border border-gray-200 min-h-48 whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6 lg:col-span-2">
+          <div class="mb-4 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><i class="pi pi-list-check" /></span><div><h2 class="font-semibold text-slate-900">Terms &amp; conditions</h2><p class="mt-0.5 text-xs text-slate-500">Written terms included in this supplier agreement</p></div></div>
+          <div class="min-h-40 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-700">
             {{ contract?.terms_conditions || '✓ No additional terms specified' }}
           </div>
         </div>
@@ -647,13 +646,6 @@ const calculateDaysRemaining = (deadline: string | null): string => {
   return `Expires in ${days}d`
 }
 
-const daysFromStart = computed(() => {
-  if (!contract.value?.start_date) return 0
-  const startDate = new Date(contract.value.start_date)
-  const today = new Date()
-  return Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 3600 * 24))
-})
-
 const contractDurationDays = computed(() => {
   if (!contract.value?.start_date || !contract.value?.end_date) return 0
   const start = new Date(contract.value.start_date)
@@ -661,9 +653,41 @@ const contractDurationDays = computed(() => {
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24))
 })
 
-const calculateProgressPercentage = computed(() => {
-  if (contractDurationDays.value === 0) return 0
-  return Math.max(0, Math.min(Math.round((daysFromStart.value / contractDurationDays.value) * 100), 100))
+const contractLifecycleSteps = computed(() => {
+  const status = String(contract.value?.status || 'draft').toLowerCase()
+  const terminal = ['rejected', 'terminated', 'expired'].includes(status)
+  const reviewLabel = isExternalContract.value
+    ? 'Signed copy'
+    : contract.value?.submitted_by_type === 'store'
+      ? 'Supplier decision'
+      : 'Store review'
+  const finalLabel = status === 'active'
+    ? 'Active'
+    : status === 'rejected'
+      ? 'Rejected'
+      : status === 'terminated'
+        ? 'Terminated'
+        : status === 'expired'
+          ? 'Expired'
+          : 'Activation'
+
+  return [
+    {
+      label: 'Created',
+      detail: status === 'draft' ? 'Draft contract recorded' : 'Contract details recorded',
+      state: status === 'draft' ? 'current' : 'complete',
+    },
+    {
+      label: reviewLabel,
+      detail: status === 'pending' ? 'Waiting for the required review or signed copy' : status === 'draft' ? 'Next step after submission' : 'Review stage completed',
+      state: status === 'pending' ? 'current' : status === 'draft' ? 'upcoming' : 'complete',
+    },
+    {
+      label: finalLabel,
+      detail: status === 'active' ? 'Agreement is in effect' : terminal ? 'Agreement ended before activation or was closed' : 'Available after the review is complete',
+      state: status === 'active' ? 'complete' : terminal ? 'failed' : 'upcoming',
+    },
+  ]
 })
 
 const statusSeverity = (status: string): string => {

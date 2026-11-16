@@ -1,27 +1,61 @@
 <template>
   <div class="min-h-screen bg-slate-50/70 px-4 py-6 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-6xl">
-      <header class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <header class="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Procurement / Supplier agreements</p>
           <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Create Supplier Contract</h1>
           <p class="mt-1 max-w-2xl text-sm text-slate-600">Set the agreement period, commercial terms, and conditions before reviewing the generated contract.</p>
         </div>
-        <div class="flex flex-wrap gap-2 text-xs">
-          <span class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600"><i class="pi pi-building mr-1.5 text-slate-400" />{{ selectedStoreName }}</span>
-          <span class="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 font-medium text-orange-800"><i class="pi pi-truck mr-1.5" />{{ selectedSupplierName }}</span>
-        </div>
       </header>
 
+    <form @submit.prevent="submitForm" class="mx-auto max-w-6xl space-y-4">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Contract title</p>
+                <p class="mt-2 break-words text-sm font-semibold text-slate-900">{{ form.contract_title || 'New supplier agreement' }}</p>
+                <p class="mt-1 text-xs text-slate-500">Store: {{ selectedStoreName }}</p>
+              </div>
+              <i class="pi pi-file-edit rounded-full bg-blue-50 p-2 text-sm text-blue-600" />
+            </div>
+          </template>
+        </Card>
 
-    <form @submit.prevent="submitForm" class="mx-auto max-w-5xl space-y-5">
+        <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Agreement terms</p>
+                <p class="mt-2 text-sm font-semibold capitalize text-slate-900">{{ form.contract_type }} agreement</p>
+                <p class="mt-1 text-xs text-slate-500">{{ form.start_date ? reviewDate(form.start_date) : 'Start date not selected' }} <span v-if="form.end_date">to {{ reviewDate(form.end_date) }}</span></p>
+              </div>
+              <i class="pi pi-calendar rounded-full bg-violet-50 p-2 text-sm text-violet-600" />
+            </div>
+          </template>
+        </Card>
+
+        <Card class="overflow-hidden rounded-2xl border-0 bg-blue-700 text-white shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-blue-100">Supplier</p>
+                <p class="mt-2 truncate text-sm font-semibold text-white">{{ selectedSupplierName }}</p>
+                <p class="mt-1 text-xs text-blue-100">{{ isExternalSupplier ? 'External supplier' : 'Supplier agreement' }}</p>
+              </div>
+              <i class="pi pi-users rounded-full bg-white/15 p-2 text-sm text-white" />
+            </div>
+          </template>
+        </Card>
+      </div>
 
       <!-- Section 1: Supplier & Contract Basic Info -->
       <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-start gap-3">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-sm font-bold text-orange-700">01</span>
-            <div><h2 class="text-base font-semibold text-slate-900">Agreement details</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Identify the agreement and set when it takes effect.</p></div>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Contract Details &amp; Term</h2>
           </div>
         </template>
 
@@ -72,9 +106,8 @@
       <!-- Section 3: Financial Terms -->
       <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-start gap-3">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-sm font-bold text-blue-700">02</span>
-            <div><h2 class="text-base font-semibold text-slate-900">Financial terms</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Set the minimum purchase, discount, and tax treatment.</p></div>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Financial Terms</h2>
           </div>
         </template>
 
@@ -118,9 +151,8 @@
       <!-- Section 4: Terms & Conditions -->
       <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-start gap-3">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-sm font-bold text-violet-700">03</span>
-            <div><h2 class="text-base font-semibold text-slate-900">Terms & conditions</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Record the operational details that will appear in the supplier agreement.</p></div>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Terms &amp; Conditions</h2>
           </div>
         </template>
 
@@ -137,9 +169,9 @@
       <!-- Section 5: Document Attachment -->
       <Card v-if="!isExternalSupplier" class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <i class="pi pi-file text-2xl text-red-600"></i>
-            <span>Contract Document (Optional)</span>
+          <div class="-mx-5 -mt-5 flex items-center gap-2 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <i class="pi pi-file text-sm text-slate-500"></i>
+            <span class="text-sm font-semibold text-slate-800">Contract Document (Optional)</span>
           </div>
         </template>
 

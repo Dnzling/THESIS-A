@@ -101,6 +101,11 @@
               <span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span>
             </template>
           </Column>
+          <Column header="Channel" style="min-width: 130px">
+            <template #body="{ data }">
+              <Tag :value="data.is_external ? 'External' : 'Internal'" :severity="data.is_external ? 'warn' : 'secondary'" />
+            </template>
+          </Column>
           <Column field="contract_status" header="Contract Status" style="min-width: 150px">
             <template #body="{ data }">
               <Badge :value="humanize(data.contract_status || 'no_contract')"
@@ -138,6 +143,7 @@ type Supplier = {
   mobile?: string
   email?: string
   supplier_type?: string
+  is_external?: boolean
   rating?: number | string | null
   contract_status?: string | null
   logo_url?: string | null

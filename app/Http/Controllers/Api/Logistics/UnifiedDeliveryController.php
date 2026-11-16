@@ -421,6 +421,8 @@ class UnifiedDeliveryController extends Controller
                     ?: (in_array($transfer->status, ['in_transit', 'out_for_delivery'], true)
                         ? $transfer->status
                         : ($hasDelivery ? 'assigned' : 'ready_for_dispatch'));
+                $readyForDispatch = strtolower((string) $transfer->status) === 'in_transit'
+                    && in_array(strtolower((string) ($transfer->delivery_status ?? 'ready_for_dispatch')), ['', 'ready_for_dispatch'], true);
                 $fromName = $transfer->fromBranch?->name ?: 'Source branch';
                 $toName = $transfer->toBranch?->name ?: 'Destination branch';
 
@@ -445,10 +447,7 @@ class UnifiedDeliveryController extends Controller
                     'delivery_id' => null,
                     'delivery_status' => $deliveryStatus,
                     'tracking_number' => $transfer->tracking_number,
-                    'can_create_delivery' => !$hasDelivery
-                        && !$transfer->trip_id
-                        && strtolower((string) $transfer->status) === 'in_transit'
-                        && strtolower((string) ($transfer->delivery_status ?: 'ready_for_dispatch')) === 'ready_for_dispatch',
+                    'can_create_delivery' => !$transfer->trip_id && $readyForDispatch,
                     'weight_kg' => $this->orderItemsWeight($transfer->items ?? []),
                     'quantity_items' => $this->orderItemsQuantity($transfer->items ?? []),
                     'delivery_date' => $transfer->received_date ?? $transfer->created_at,
