@@ -225,9 +225,9 @@
               <Tag :value="formatStatusLabel(data.order_status)" severity="info" />
             </template>
           </Column>
-          <Column header="Route distance (km)" style="width: 11rem">
+          <Column header="Route distance" style="min-width: 8rem">
             <template #body="{ data }">
-              <InputNumber v-model="data.distance_km" size="small" :min="0" :maxFractionDigits="2" suffix=" km" inputClass="!w-24" />
+              <span class="whitespace-nowrap text-slate-600">{{ Number(data.distance_km || 0).toFixed(2) }} km</span>
             </template>
           </Column>
           <Column header="Weight (kg)" style="width: 7rem">

@@ -228,7 +228,7 @@ class ReturnPickupController extends Controller
         $pickup->load([
             'driver:id,fname,lname,email,phone_number',
             'vehicle:id,vehicle_name,vehicle_type,plate_number,brand,model',
-            'trip:id,created_at',
+            'trip:id,created_at,route_distances',
             'destinationBranch:id,name,address,city,province,latitude,longitude,contact_number,email',
             'logs.creator:id,fname,lname,email',
             'returnRequest:id,return_number,order_id,order_item_id,sales_order_id,sales_order_item_id,source_type,store_id,user_id,requested_quantity,reason,details,evidence_urls,status,return_type,product_condition,inventory_disposition,received_quantity,inspected_by,inspected_at,inspection_notes,replacement_status,created_at,review_notes,reviewed_at,reviewed_by',
@@ -256,6 +256,10 @@ class ReturnPickupController extends Controller
         $data['trip_reference'] = $pickup->trip
             ? sprintf('TRIP-%s-%06d', $pickup->trip->created_at?->format('Y') ?? now()->format('Y'), (int) $pickup->trip->id)
             : null;
+        $tripRouteDistance = (float) ($pickup->trip?->route_distances['return_pickup:' . $pickup->id] ?? 0);
+        if ((float) ($data['distance_km'] ?? 0) <= 0 && $tripRouteDistance > 0) {
+            $data['distance_km'] = round($tripRouteDistance, 2);
+        }
         $data['assistants'] = User::query()
             ->whereIn('id', $pickup->assistant_user_ids ?? [])
             ->get(['id', 'fname', 'lname', 'email'])

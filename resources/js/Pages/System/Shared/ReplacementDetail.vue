@@ -218,6 +218,7 @@ const authStore = useAuthStore()
 const isDriver = window.location.pathname.startsWith('/driver/')
 const isLogistics = window.location.pathname.startsWith('/logistics/') || isDriver
 const isSales = window.location.pathname.startsWith('/sales/replacements/') || window.location.pathname.startsWith('/pos-exchange-orders/')
+const isWarehouse = window.location.pathname.startsWith('/warehouse/')
 const canManageTrips = authStore.hasPermission('logistics.deliveries.manage')
 const item = ref<any>(null)
 const branches = ref<any[]>([])
@@ -324,7 +325,12 @@ const act = async (url: string, payload?: any) => {
     toast.add({ severity: 'error', summary: 'Update failed', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
   } finally { saving.value = false }
 }
-const receive = () => act(`/api/crm/returns/${route.params.id}/receive`, receiveForm)
+const receive = () => {
+  const inspectionUrl = isWarehouse
+    ? `/api/warehouse/returns/${route.params.id}/inspect`
+    : `/api/inventory/returns/customer/${route.params.id}/inspect`
+  return act(inspectionUrl, receiveForm)
+}
 const reserve = () => act(`${endpoint}/reserve`, { branch_id: selectedBranch.value })
 const requestSalesAlternative = () => act(`${endpoint}/sales-request`)
 const checkoutUrl = (query: Record<string, string>) => {

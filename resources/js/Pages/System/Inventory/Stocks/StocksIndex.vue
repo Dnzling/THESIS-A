@@ -136,7 +136,7 @@
             </template>
           </Column>
   
-          <Column field="stock_status" header="Stock Status" style="width: 10%">
+          <Column field="stock_status" header="Stock Status" style="width: 13%">
             <template #body="{ data }">
               <Badge :value="stockStatusLabel(data.stock_status)" :severity="stockStatusSeverity(data.stock_status)"
                 class="text-xs" />

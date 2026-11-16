@@ -113,17 +113,17 @@ class FinanceRefundController extends Controller
             $refund->setRelation('ecommerceReturn', null);
         }
         $originalOrder = $this->ecommerceOrderForRefund($refund);
-        $refundRouting = app(EcommerceRefundRoutingService::class);
         $sandboxRefundSimulationAvailable = $this->canSimulatePaymongoRefund($refund);
         $amountCalculation = null;
         if ($refund->order_type === 'ecommerce_return') {
             $return = EcommerceOrderReturn::query()->where('store_id', $refund->store_id)->find($refund->order_id);
             if ($return) $amountCalculation = app(ReturnRefundAmountService::class)->calculate($return);
         }
+        $originalPaymentMethod = $this->originalPaymongoMethod($refund);
         return response()->json([
             'data' => $refund,
-            'original_payment_method' => $originalOrder ? $refundRouting->originalMethod($originalOrder) : null,
-            'automatic_refund_available' => $originalOrder ? $refundRouting->canRefundToOriginal($originalOrder) : false,
+            'original_payment_method' => $originalPaymentMethod,
+            'automatic_refund_available' => $this->canRefundToPaymongo($refund),
             'paymongo_refunds_available' => str_starts_with((string) config('paymongo.secret'), 'sk_live_'),
             'card_refund_simulation_available' => $sandboxRefundSimulationAvailable,
             'refund_simulation_available' => $sandboxRefundSimulationAvailable,
@@ -203,18 +203,13 @@ class FinanceRefundController extends Controller
                             . trim((string) $data['adjustment_reason']));
                     }
                 }
-                $originalOrder = $this->ecommerceOrderForRefund($refund);
-                $canRefundOriginal = $originalOrder
-                    && app(EcommerceRefundRoutingService::class)->canRefundToOriginal($originalOrder);
-                if ($originalOrder) $this->ensureRefundAmountAvailable($refund, true);
-                if (in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)
-                    && !$canRefundOriginal
-                    && !$this->canSimulatePaymongoRefund($refund)
-                    && (!$refund->refund_method || !$refund->refund_account_name || !$refund->refund_account_number)) {
+                $canRefundOriginal = $this->canRefundToPaymongo($refund);
+                if (!$canRefundOriginal && !$this->canSimulatePaymongoRefund($refund)) {
                     throw ValidationException::withMessages([
-                        'refund_method' => ['The customer must provide GCash or Maya payout details before Finance can approve this refund.'],
+                        'provider' => ['This refund cannot be approved because its original payment has no eligible PayMongo refund transaction.'],
                     ]);
                 }
+                $this->ensureRefundAmountAvailable($refund, true);
             }
             $refund->update(['status' => $data['status'], 'amount' => $refund->amount, 'notes' => $data['notes'] ?? $refund->notes,
                 'processed_by' => $request->user()->id, 'processed_at' => now()]);
@@ -239,7 +234,7 @@ class FinanceRefundController extends Controller
                 ? 'Refund approved. You can record a sandbox simulation; it will not issue a payout.'
                 : ($canRefundApprovedOrderToOriginal
                     ? 'Refund approved. Use Pay Refund via PayMongo to return the approved amount, excluding shipping, to the original payment method.'
-                    : 'Refund approved. Send the payout to the customer, then record its reference.'))
+                    : 'Refund approved for processing through PayMongo.'))
             : 'Refund rejected.', 'data' => $approvedRefund]);
     }
 
@@ -247,127 +242,36 @@ class FinanceRefundController extends Controller
     {
         $this->authorizeStore($request, $refund);
         $data = $request->validate([
-            'payout_reference' => ['nullable', 'string', 'max:190'],
-            'provider' => ['nullable', 'in:paymongo,manual,simulation'],
+            'provider' => ['required', 'in:paymongo,simulation'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        if (($data['provider'] ?? 'manual') === 'paymongo') {
+        if ($data['provider'] === 'paymongo') {
             return $this->sendPaymongoRefund($request, $refund, $cashflow, $paymongo);
         }
 
-        $linkedReturn = null;
-        $cancelledOrder = null;
-        $sandboxSimulation = false;
-        DB::transaction(function () use ($request, $refund, $cashflow, $data, &$linkedReturn, &$cancelledOrder, &$sandboxSimulation): void {
+        DB::transaction(function () use ($request, $refund, $data): void {
             $refund = FinanceRefund::query()->lockForUpdate()->findOrFail($refund->id);
-            $payoutProvider = (string) ($data['provider'] ?? 'manual');
-            $legacyUnpaidRefund = $refund->status === 'sent'
-                && in_array($refund->payout_provider, ['simulation', 'paymongo_wallet_test'], true);
-            if (!in_array($refund->status, ['approved', 'awaiting_payout'], true) && !$legacyUnpaidRefund) {
-                throw ValidationException::withMessages(['status' => ['Only an approved refund awaiting payout can be marked as sent.']]);
+            if (!in_array($refund->status, ['approved', 'awaiting_payout'], true)) {
+                throw ValidationException::withMessages(['status' => ['Only an approved refund can be processed.']]);
             }
-            if ($legacyUnpaidRefund) {
-                $refund->status = 'awaiting_payout';
+            if (!str_starts_with((string) config('paymongo.secret'), 'sk_test_')
+                || !$this->canSimulatePaymongoRefund($refund)) {
+                throw ValidationException::withMessages(['provider' => ['Sandbox simulation is available only for an eligible PayMongo test payment.']]);
             }
-            $this->validatePayoutProvider($refund, $payoutProvider);
-            $this->normalizeCancelledOrderRefundAmount($refund);
-            if (in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)
-                && in_array($payoutProvider, ['manual', 'simulation'], true)) {
-                $this->ensureRefundAmountAvailable($refund, true);
-            }
-            if ($payoutProvider === 'manual'
-                && (!$refund->refund_method || !$refund->refund_account_name || !$refund->refund_account_number)) {
-                throw ValidationException::withMessages([
-                    'refund_method' => ['The customer refund account details are incomplete.'],
-                ]);
-            }
-
-            $payoutReference = trim((string) ($data['payout_reference'] ?? ''));
-            if ($payoutProvider === 'simulation') {
-                if (!str_starts_with((string) config('paymongo.secret'), 'sk_test_')
-                    || !in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)
-                    || !$this->hasSuccessfulPaymongoOrderPayment($refund)) {
-                    throw ValidationException::withMessages(['provider' => ['Sandbox simulation requires an ecommerce order paid successfully through PayMongo test mode.']]);
-                }
-                $this->ensureRefundAmountAvailable($refund, true);
-                $refund->update([
-                    'status' => 'simulated',
-                    'payout_reference' => 'TEST-REFUND-' . $refund->id,
-                    'payout_provider' => 'simulation',
-                    'sent_by' => $request->user()->id,
-                    'sent_at' => now(),
-                    'notes' => trim("PayMongo sandbox simulation only. No funds moved and no refund was issued.\n" . ($data['notes'] ?? $refund->notes ?? '')),
-                ]);
-                $sandboxSimulation = true;
-                return;
-            } elseif ($payoutProvider === 'manual' && $payoutReference === '') {
-                throw ValidationException::withMessages(['payout_reference' => ['Enter the manual payout or transaction reference.']]);
-            }
-
-            try {
-                $cashflow->debit(
-                    (int) $refund->store_id,
-                    (float) $refund->amount,
-                    'finance_refund',
-                    (int) $refund->id,
-                    $request->user()->id,
-                    'Refund sent to ' . $refund->refund_account_name,
-                    $refund->refund_method,
-                    ['payout_reference' => $payoutReference]
-                );
-            } catch (\RuntimeException $e) {
-                throw ValidationException::withMessages(['amount' => [$e->getMessage()]]);
-            }
-
+            $this->ensureRefundAmountAvailable($refund, true);
             $refund->update([
-                'status' => 'sent',
-                'payout_reference' => $payoutReference,
-                'payout_provider' => $payoutProvider,
+                'status' => 'simulated',
+                'payout_reference' => 'TEST-REFUND-' . $refund->id,
+                'payout_provider' => 'simulation',
                 'sent_by' => $request->user()->id,
                 'sent_at' => now(),
-                'notes' => $data['notes'] ?? $refund->notes,
+                'notes' => trim("PayMongo sandbox simulation only. No funds moved and no refund was issued.\n" . ($data['notes'] ?? $refund->notes ?? '')),
             ]);
-
-            if ($refund->order_type === 'ecommerce_return') {
-                $linkedReturn = EcommerceOrderReturn::query()
-                    ->where('store_id', $refund->store_id)
-                    ->lockForUpdate()
-                    ->find($refund->order_id);
-                if ($linkedReturn && in_array($linkedReturn->status, ['received', 'refund_pending'], true)) {
-                    $linkedReturn->update(['status' => 'refunded', 'resolved_at' => now()]);
-                }
-            } elseif ($refund->order_type === 'ecommerce_order') {
-                $cancelledOrder = EcommerceOrder::query()->where('store_id', $refund->store_id)
-                    ->where('status', 'cancelled')->lockForUpdate()->findOrFail($refund->order_id);
-            } elseif ($refund->order_type === 'sales') {
-                $sale = SalesOrder::query()->where('store_id', $refund->store_id)
-                    ->lockForUpdate()->findOrFail($refund->order_id);
-                if ((float) $refund->amount >= (float) $sale->total_amount) {
-                    $sale->update(['status' => 'refunded']);
-                }
-            }
-
-            if (in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)) {
-                $order = $this->ecommerceOrderForRefund($refund);
-                if ($order && $this->totalSentForEcommerceOrder($order) >= $this->refundableOrderTotal($order)) {
-                    $order->update(['payment_status' => 'refunded']);
-                    if ($refund->order_type === 'ecommerce_return') $order->update(['status' => 'refunded']);
-                }
-            }
         });
 
-        if ($sandboxSimulation) {
-            $this->notifyEcommerceRefundStatus($refund->fresh(), 'simulated');
-            return response()->json([
-                'message' => 'Sandbox refund simulation recorded. No funds moved and the order remains paid.',
-                'data' => $refund->fresh(),
-            ]);
-        }
-
-        $this->notifyEcommerceRefundStatus($refund->fresh(), 'sent');
-
-        return response()->json(['message' => 'Refund marked as sent to the customer.', 'data' => $refund->fresh()]);
+        $this->notifyEcommerceRefundStatus($refund->fresh(), 'simulated');
+        return response()->json(['message' => 'Sandbox refund simulation recorded. No funds moved and the order remains paid.', 'data' => $refund->fresh()]);
     }
 
     private function sendPaymongoRefund(Request $request, FinanceRefund $refund, CashflowService $cashflow, PaymongoService $paymongo): JsonResponse
@@ -377,8 +281,7 @@ class FinanceRefundController extends Controller
             throw ValidationException::withMessages(['provider' => ['PayMongo refunds are only issued in live mode. Use the explicit sandbox simulation with test keys.']]);
         }
 
-        $originalOrder = $this->ecommerceOrderForRefund($refund);
-        if (!$originalOrder || !app(EcommerceRefundRoutingService::class)->canRefundToOriginal($originalOrder)) {
+        if (!$this->canRefundToPaymongo($refund)) {
             throw ValidationException::withMessages(['provider' => ['This order is not eligible for a refund to its original PayMongo payment.']]);
         }
         $this->normalizeCancelledOrderRefundAmount($refund);
@@ -408,8 +311,9 @@ class FinanceRefundController extends Controller
             $previousRefundId = (string) $refund->paymongo_refund_id;
         }
 
-        $intent = PaymongoIntent::query()->where('payable_type', 'ecommerce_order')
-            ->where('payable_id', $originalOrder->id)->where('status', 'succeeded')->latest('id')->first();
+        [$payableType, $payableId] = $this->paymongoPayable($refund);
+        $intent = PaymongoIntent::query()->where('payable_type', $payableType)
+            ->where('payable_id', $payableId)->where('status', 'succeeded')->latest('id')->first();
         $intentId = (string) ($intent?->payment_intent_id ?? '');
         $intentPayload = $intentId === '' ? [] : (str_starts_with($intentId, 'cs_')
             ? $paymongo->retrieveCheckoutSession($intentId)
@@ -569,6 +473,10 @@ class FinanceRefundController extends Controller
                     if ($locked->order_type === 'ecommerce_return') $order->update(['status' => 'refunded']);
                 }
             }
+            $sale = $this->salesOrderForRefund($locked);
+            if ($sale && $this->totalSentForSalesOrder($sale) >= (float) $sale->total_amount) {
+                $sale->update(['payment_status' => 'refunded', 'status' => 'refunded']);
+            }
 
             return ['completed' => true, 'refund' => $locked->fresh(), 'return' => $linkedReturn, 'order' => $order];
         });
@@ -584,10 +492,78 @@ class FinanceRefundController extends Controller
     private function hasSuccessfulPaymongoOrderPayment(FinanceRefund $refund): bool
     {
         $order = $this->ecommerceOrderForRefund($refund);
-        return $order !== null && $order->payment_status === 'paid'
-            && in_array($order->payment_method, ['card', 'e_wallet'], true)
-            && PaymongoIntent::query()->where('payable_type', 'ecommerce_order')
-                ->where('payable_id', $order->id)->where('status', 'succeeded')->exists();
+        if ($order) {
+            return $order->payment_status === 'paid'
+                && in_array($order->payment_method, ['card', 'e_wallet'], true)
+                && PaymongoIntent::query()->where('payable_type', 'ecommerce_order')
+                    ->where('payable_id', $order->id)->where('status', 'succeeded')->exists();
+        }
+
+        $sale = $this->salesOrderForRefund($refund);
+        return $sale !== null && $sale->payment_status === 'paid'
+            && PaymongoIntent::query()->where('payable_type', 'sales_order')
+                ->where('payable_id', $sale->id)->where('status', 'succeeded')->exists();
+    }
+
+    private function paymongoPayable(FinanceRefund $refund): array
+    {
+        if ($refund->order_type === 'ecommerce_order') return ['ecommerce_order', (int) $refund->order_id];
+        if ($refund->order_type === 'sales') return ['sales_order', (int) $refund->order_id];
+
+        $return = $refund->order_type === 'ecommerce_return'
+            ? EcommerceOrderReturn::query()->where('store_id', $refund->store_id)->find($refund->order_id)
+            : null;
+        if ($return?->source_type === 'pos' && $return->sales_order_id) {
+            return ['sales_order', (int) $return->sales_order_id];
+        }
+        return ['ecommerce_order', (int) ($return?->order_id ?? $refund->order_id)];
+    }
+
+    private function salesOrderForRefund(FinanceRefund $refund): ?SalesOrder
+    {
+        if ($refund->order_type === 'sales') {
+            return SalesOrder::query()->where('store_id', $refund->store_id)->find($refund->order_id);
+        }
+        if ($refund->order_type === 'ecommerce_return') {
+            $return = EcommerceOrderReturn::query()->where('store_id', $refund->store_id)->find($refund->order_id);
+            if ($return?->source_type === 'pos' && $return->sales_order_id) {
+                return SalesOrder::query()->where('store_id', $refund->store_id)->find($return->sales_order_id);
+            }
+        }
+        return null;
+    }
+
+    private function originalPaymongoMethod(FinanceRefund $refund): ?string
+    {
+        $order = $this->ecommerceOrderForRefund($refund);
+        if ($order) return app(EcommerceRefundRoutingService::class)->originalMethod($order);
+
+        $sale = $this->salesOrderForRefund($refund);
+        if (!$sale) return null;
+        $allowed = PaymongoIntent::query()->where('payable_type', 'sales_order')
+            ->where('payable_id', $sale->id)->where('status', 'succeeded')->latest('id')
+            ->value('payment_method_allowed');
+        $method = strtolower(trim(explode(',', (string) ($allowed ?: $sale->payment_method))[0] ?? ''));
+        return match ($method) {
+            'paymaya', 'maya' => 'maya',
+            'gcash' => 'gcash',
+            'qrph' => 'qrph',
+            'card', 'cards' => 'card',
+            default => null,
+        };
+    }
+
+    private function canRefundToPaymongo(FinanceRefund $refund): bool
+    {
+        if (!str_starts_with((string) config('paymongo.secret'), 'sk_live_')) return false;
+        $order = $this->ecommerceOrderForRefund($refund);
+        if ($order) return app(EcommerceRefundRoutingService::class)->canRefundToOriginal($order);
+
+        $sale = $this->salesOrderForRefund($refund);
+        return $sale !== null && $sale->payment_status === 'paid'
+            && $this->originalPaymongoMethod($refund) !== null
+            && PaymongoIntent::query()->where('payable_type', 'sales_order')
+                ->where('payable_id', $sale->id)->where('status', 'succeeded')->exists();
     }
 
     private function canSimulatePaymongoRefund(FinanceRefund $refund): bool
@@ -611,6 +587,23 @@ class FinanceRefundController extends Controller
             $calculation = app(ReturnRefundAmountService::class)->calculate($return);
             if ((float) $refund->amount > (float) $calculation['available_paid_balance']) {
                 throw ValidationException::withMessages(['amount' => ['Refund amount exceeds the remaining paid order balance of PHP ' . number_format($calculation['available_paid_balance'], 2) . '.']]);
+            }
+            return;
+        }
+
+        if ($refund->order_type === 'sales') {
+            $sale = SalesOrder::query()->where('store_id', $refund->store_id)
+                ->when($lockOrder, fn ($query) => $query->lockForUpdate())
+                ->find($refund->order_id);
+            if (!$sale || $sale->payment_status !== 'paid') {
+                throw ValidationException::withMessages(['order_id' => ['The refund is not linked to a paid POS order.']]);
+            }
+            $reserved = FinanceRefund::query()->where('store_id', $refund->store_id)->where('id', '!=', $refund->id)
+                ->where('order_type', 'sales')->where('order_id', $sale->id)
+                ->whereNotIn('status', ['rejected', 'simulated', 'transfer_failed'])->sum('amount');
+            $available = max(0, (float) $sale->total_amount - (float) $reserved);
+            if ((float) $refund->amount > $available) {
+                throw ValidationException::withMessages(['amount' => ['Refund amount exceeds the remaining paid POS balance of PHP ' . number_format($available, 2) . '.']]);
             }
             return;
         }
@@ -643,6 +636,17 @@ class FinanceRefundController extends Controller
             ->where('status', 'sent')->where(function ($query) use ($order, $returnIds): void {
                 $query->where(fn ($q) => $q->where('order_type', 'ecommerce_order')->where('order_id', $order->id));
                 if ($returnIds->isNotEmpty()) $query->orWhere(fn ($q) => $q->where('order_type', 'ecommerce_return')->whereIn('order_id', $returnIds));
+            })->sum('amount');
+    }
+
+    private function totalSentForSalesOrder(SalesOrder $sale): float
+    {
+        $returnIds = EcommerceOrderReturn::query()->where('store_id', $sale->store_id)
+            ->where('source_type', 'pos')->where('sales_order_id', $sale->id)->pluck('id');
+        return (float) FinanceRefund::query()->where('store_id', $sale->store_id)->where('status', 'sent')
+            ->where(function ($query) use ($sale, $returnIds): void {
+                $query->where(fn ($direct) => $direct->where('order_type', 'sales')->where('order_id', $sale->id));
+                if ($returnIds->isNotEmpty()) $query->orWhere(fn ($returns) => $returns->where('order_type', 'ecommerce_return')->whereIn('order_id', $returnIds));
             })->sum('amount');
     }
 
@@ -770,22 +774,4 @@ class FinanceRefundController extends Controller
         return null;
     }
 
-    private function validatePayoutProvider(FinanceRefund $refund, string $provider): void
-    {
-        if (!in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)) {
-            return;
-        }
-
-        $originalOrder = $refund->order_id ? $this->ecommerceOrderForRefund($refund) : null;
-        $refundRouting = app(EcommerceRefundRoutingService::class);
-        if ($refund->refund_method === 'card' && !in_array($provider, ['paymongo', 'simulation'], true)) {
-            throw ValidationException::withMessages(['provider' => ['Card refunds must return to the original payment method.']]);
-        }
-        if ($provider === 'manual' && $originalOrder && $refundRouting->canRefundToOriginal($originalOrder)) {
-            throw ValidationException::withMessages(['provider' => ['This order must be refunded through its original payment method.']]);
-        }
-        if ($provider === 'paymongo' && (!$originalOrder || !$refundRouting->canRefundToOriginal($originalOrder))) {
-            throw ValidationException::withMessages(['provider' => ['This refund is not eligible for return to its original payment method.']]);
-        }
-    }
 }

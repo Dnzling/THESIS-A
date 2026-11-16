@@ -37,6 +37,7 @@
                 <div class="flex flex-col">
                   <span class="font-semibold text-slate-900">{{ data.name || data.branch_name || 'Branch' }}</span>
                   <span class="text-xs text-slate-500">{{ data.branch_code || data.code || '—' }}</span>
+                  <Tag v-if="data.is_main_branch" value="Main Branch" severity="warn" class="mt-1 w-fit" />
                 </div>
               </template>
             </Column>
@@ -158,6 +159,7 @@ import Dialog from 'primevue/dialog'
 import Dropdown from 'primevue/dropdown'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Select from 'primevue/select'
+import Tag from 'primevue/tag'
 import inventoryService from '@/services/inventory.service'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'

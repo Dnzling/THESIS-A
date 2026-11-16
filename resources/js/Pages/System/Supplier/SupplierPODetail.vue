@@ -178,7 +178,7 @@
                       <td class="px-4 py-3">
                         <div class="font-medium text-gray-900">
                           {{ item.variation?.variation_name
-                            ? `${item.product?.product_name || 'Item'} â€” ${item.variation.variation_name}`
+                            ? `${item.product?.product_name || 'Item'} - ${item.variation.variation_name}`
                             : (item.product?.product_name || 'Item') }}
                         </div>
                         <div class="text-xs text-gray-500 mt-0.5">{{ item.variation?.variation_sku || item.product?.sku || '' }}</div>
@@ -189,8 +189,8 @@
                         <div class="text-xs text-slate-500">{{ formatDecimal(Number(itemWeight(item) || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
                       </td>
                       <td class="px-4 py-3 text-right">{{ formatDimensions(item) }}</td>
-                      <td class="px-4 py-3 text-right">â‚±{{ formatMoney(item.unit_cost) }}</td>
-                      <td class="px-4 py-3 text-right font-semibold text-green-600">â‚±{{ formatMoney(item.line_total) }}</td>
+                      <td class="px-4 py-3 text-right">{{ formatCurrency(item.unit_cost) }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">{{ formatCurrency(item.line_total) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -207,7 +207,7 @@
           <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">All Fees</h3></div></template>
           <template #content>
             <div class="space-y-3 p-6 pt-0 text-sm">
-              <div class="flex justify-between"><span class="text-gray-500">Items subtotal (VAT inclusive)</span><span class="font-medium">â‚±{{ formatMoney(po?.subtotal) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Items subtotal (VAT inclusive)</span><span class="font-medium">{{ formatCurrency(po?.subtotal) }}</span></div>
               <template v-if="po?.fulfillment_method === 'supplier_delivery'">
                 <div class="flex justify-between"><span class="text-gray-500">Shipment weight</span><span class="font-medium">{{ formatDecimal(totalOrderWeight, 3) }} kg</span></div>
                 <div v-if="po?.shipping_fee_breakdown?.distance_km" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
@@ -219,9 +219,9 @@
                 </div>
                 <div class="flex justify-between"><span class="text-gray-500">Supplier delivery fee</span><span class="font-medium">PHP {{ formatMoney(po?.shipping_cost) }}</span></div>
               </template>
-              <div class="flex justify-between"><span class="text-gray-500">Taxable amount (VAT exclusive)</span><span class="font-medium">â‚±{{ formatMoney(taxableAmount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">VAT included ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">â‚±{{ formatMoney(po?.tax_amount) }}</span></div>
-              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">â‚±{{ formatMoney(po?.total_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Taxable amount (VAT exclusive)</span><span class="font-medium">{{ formatCurrency(taxableAmount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">VAT included ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">{{ formatCurrency(po?.tax_amount) }}</span></div>
+              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">{{ formatCurrency(po?.total_amount) }}</span></div>
             </div>
           </template>
         </Card>
@@ -302,7 +302,7 @@
                 </div>
                 <div class="flex items-center justify-between py-2">
                   <span class="text-sm text-gray-500">Cost per KM</span>
-                  <span class="font-medium text-gray-900">â‚±{{ formatMoney(shipment?.cost_per_km) }}</span>
+                  <span class="font-medium text-gray-900">{{ formatCurrency(shipment?.cost_per_km) }}</span>
                 </div>
               </div>
             </div>
@@ -334,7 +334,7 @@
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Shipping Cost</span>
-                  <span class="font-medium text-emerald-600">â‚±{{ formatMoney(shipment?.shipping_cost) }}</span>
+                  <span class="font-medium text-emerald-600">{{ formatCurrency(shipment?.shipping_cost) }}</span>
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Tax Rate</span>
@@ -626,7 +626,7 @@ const timelineItems = computed(() => {
   const items: Array<{ title: string; description?: string; date: string | null }> = []
   if (po.value?.created_at) items.push({ title: 'Purchase order created', date: po.value.created_at })
   for (const approval of po.value?.approvals_received || []) {
-    if (approval.approved_at) items.push({ title: 'Purchase order approval recorded', description: [approval.approver_name, approval.notes].filter(Boolean).join(' â€” '), date: approval.approved_at })
+    if (approval.approved_at) items.push({ title: 'Purchase order approval recorded', description: [approval.approver_name, approval.notes].filter(Boolean).join(' - '), date: approval.approved_at })
   }
   if (supplierFeedback.value?.submitted_at) items.push({ title: supplierFeedback.value.response === 'accepted' ? 'Order approved by supplier' : 'Order rejected by supplier', description: supplierFeedback.value.rejection_reason || supplierFeedback.value.delivery_notes || '', date: supplierFeedback.value.submitted_at })
   for (const update of fulfillmentUpdates.value) items.push({ title: `Supplier fulfillment: ${supplierFulfillmentLabel(update.status)}`, description: update.notes || '', date: update.created_at })
@@ -732,7 +732,7 @@ const goodsReceiptStatusSeverity = (status: string): 'success' | 'warn' | 'dange
 
 const getGoodsReceiptProductName = (item: any): string => {
   const parent = item?.product?.product_name || 'Item'
-  return item?.variation?.variation_name ? `${parent} â€” ${item.variation.variation_name}` : parent
+  return item?.variation?.variation_name ? `${parent} - ${item.variation.variation_name}` : parent
 }
 
 const formatQuantity = (value?: number): string => {
@@ -746,7 +746,7 @@ const formatDimensions = (item: any): string => {
   const width = item?.variation?.width_cm ?? item?.product?.width_cm ?? item?.width_cm
   const height = item?.variation?.height_cm ?? item?.product?.height_cm ?? item?.height_cm
   return length != null && width != null && height != null
-    ? `${formatDecimal(length)} Ã— ${formatDecimal(width)} Ã— ${formatDecimal(height)} cm`
+    ? `${formatDecimal(length)} x ${formatDecimal(width)} x ${formatDecimal(height)} cm`
     : '-'
 }
 
@@ -779,6 +779,8 @@ const formatMoney = (value: number): string => {
     maximumFractionDigits: 2
   }).format(value || 0)
 }
+
+const formatCurrency = (value: number): string => `PHP ${formatMoney(value)}`
 
 const goToInvoice = () => {
   if (!po.value) return

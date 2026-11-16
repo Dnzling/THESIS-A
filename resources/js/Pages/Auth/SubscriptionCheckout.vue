@@ -1,5 +1,16 @@
 <template>
   <div class="min-h-screen bg-[#fffaf5] text-slate-900">
+    <Dialog v-model:visible="showDueDateDialog" modal header="Subscription confirmed" :closable="false" :style="{ width: 'min(92vw, 28rem)' }">
+      <div class="space-y-3 text-center">
+        <i class="pi pi-check-circle text-4xl text-emerald-600" />
+        <p class="text-sm text-slate-600">Your {{ selectedPlan?.name || 'subscription' }} is active.</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Due date</p>
+        <p class="text-2xl font-bold text-slate-900">{{ formattedDueDate }}</p>
+      </div>
+      <template #footer>
+        <Button label="Continue" severity="warn" class="w-full" @click="continueAfterPayment" />
+      </template>
+    </Dialog>
     <div v-if="isPaymentReturn" class="flex min-h-screen items-center justify-center px-4 py-10">
       <div class="w-full max-w-xl rounded-3xl border border-orange-100 bg-white p-8 text-center shadow-xl sm:p-12">
         <div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 text-orange-600">
@@ -161,6 +172,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Skeleton from 'primevue/skeleton'
 import axiosClient from '@/axios'
@@ -177,6 +189,7 @@ const paymentError = ref('')
 const paymentInitializing = ref(false)
 const agreementAccepted = ref(false)
 const hasActiveAgreement = ref(false)
+const activeAgreement = ref<any | null>(null)
 const agreementSaved = ref(false)
 const signatureDrawn = ref(false)
 const signing = ref(false)
@@ -188,6 +201,8 @@ const editingAddress = ref(false)
 const addressMessage = ref('')
 const addressSaved = ref(false)
 const selectedPlan = ref<any | null>(null)
+const showDueDateDialog = ref(false)
+const subscriptionDueDate = ref('')
 const selectedMethod = ref<'card' | 'gcash' | 'paymaya' | 'grab_pay'>('card')
 const billingForm = reactive({ address: '', barangay: '', city: '', province: '', phone_number: '' })
 
@@ -211,11 +226,19 @@ const storeName = computed(() => String((authStore.currentUser as any)?.store?.n
 const billingAddress = computed(() => [billingForm.address, billingForm.barangay, billingForm.city, billingForm.province].filter(Boolean).join(', '))
 
 const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(amount)
+const formattedDueDate = computed(() => subscriptionDueDate.value
+  ? new Date(`${subscriptionDueDate.value}T00:00:00`).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+  : 'Not available')
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const normalizeStatus = (value: unknown) => String(value || '').toLowerCase()
 const refreshAgreementStatus = async () => {
   const response = await axiosClient.get('/api/store/subscription-agreement/status')
-  hasActiveAgreement.value = response.data?.data?.has_active_agreement === true
+  activeAgreement.value = response.data?.data?.agreement || null
+  const store = (authStore.currentUser as any)?.store || authStore.currentUser as any || {}
+  hasActiveAgreement.value = Boolean(activeAgreement.value
+    && String(store.subscription_status || '').toLowerCase() !== 'trial'
+    && String(activeAgreement.value.plan_key || '').toLowerCase() === String(selectedPlan.value?.plan_key || '').toLowerCase()
+    && String(activeAgreement.value.billing_cycle || '').toLowerCase() === billingCycle.value)
 }
 
 const startSignature = (event: PointerEvent) => {
@@ -275,7 +298,6 @@ const goBack = () => router.visit(`/subscription-plans${storeId.value ? `?store_
 const loadCheckout = async () => {
   try {
     await authStore.fetchCurrentUser()
-    await refreshAgreementStatus()
     if (!signerName.value) signerName.value = accountName.value
     const planKey = String(params.get('plan') || '').toLowerCase()
     if (!planKey || !storeId.value) throw new Error('Choose a subscription plan before opening checkout.')
@@ -284,6 +306,7 @@ const loadCheckout = async () => {
     const plans = plansResponse.data?.data || []
     selectedPlan.value = plans.find((plan: any) => String(plan.plan_key).toLowerCase() === planKey && plan.is_active !== false) || null
     if (!selectedPlan.value || planKey === 'free' || (!isTrialCheckout.value && planAmount.value <= 0)) throw new Error('This subscription plan is not available.')
+    await refreshAgreementStatus()
 
     if (isTrialCheckout.value) {
       const store = (authStore.currentUser as any)?.store || authStore.currentUser as any || {}
@@ -408,6 +431,10 @@ const syncSubscriptionFromIntent = async (pendingPlan: any) => {
   return true
 }
 
+const continueAfterPayment = () => {
+  router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
+}
+
 const processPaymentReturn = async () => {
   try {
     await authStore.fetchCurrentUser()
@@ -417,11 +444,23 @@ const processPaymentReturn = async () => {
     return
   }
   const pendingPlan = JSON.parse(localStorage.getItem('pending_subscription_plan') || 'null')
+  try {
+    if (pendingPlan?.plan_key) {
+      const plansResponse = await axiosClient.get('/api/public/subscription-plans')
+      selectedPlan.value = (plansResponse.data?.data || []).find((plan: any) => String(plan.plan_key).toLowerCase() === String(pendingPlan.plan_key).toLowerCase()) || null
+    }
+    await refreshAgreementStatus()
+  } catch {
+    // The payment check below will report if subscription data cannot be synchronized.
+  }
   const startedAt = Date.now()
   while (Date.now() - startedAt < 60000) {
     try {
       if (await syncSubscriptionFromIntent(pendingPlan)) {
-        router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
+        const currentUser: any = authStore.currentUser
+        const store = currentUser?.store || currentUser || {}
+        subscriptionDueDate.value = String(store.subscription_ends_at || '')
+        showDueDateDialog.value = true
         return
       }
     } catch {

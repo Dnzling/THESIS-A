@@ -22,6 +22,7 @@ use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Services\Logistics\DriverPermissionEligibility;
+use App\Services\Logistics\ReturnChargeService;
 use App\Services\Logistics\ReplacementDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1230,7 +1231,7 @@ class DeliveryTripController extends Controller
         return round(6371 * 2 * atan2(sqrt($a), sqrt(1 - $a)), 2);
     }
 
-    public function addOrders(Request $request, int $id): JsonResponse
+    public function addOrders(Request $request, int $id, ReturnChargeService $returnChargeService): JsonResponse
     {
         abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
@@ -1262,7 +1263,7 @@ class DeliveryTripController extends Controller
         $currentWeight = $this->currentTripWeight($trip);
         $maxStops = (int) ($trip->vehicle?->max_orders_per_trip ?? 0);
         $currentStops = $this->tripStopCount($trip);
-        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers, &$customerDeliveryAssignments) {
+        DB::transaction(function () use ($validated, $trip, $request, $courierName, $courierContact, $returnChargeService, &$added, &$skipped, &$overCapacity, $capacityKg, &$currentWeight, $maxStops, &$currentStops, &$addedOrderNumbers, &$customerDeliveryAssignments) {
             if ($validated['source_type'] === 'ecommerce') {
                 $orders = EcommerceOrder::query()
                     ->with(['items.product:id,weight_kg', 'items.branchInventory.variation:id,weight_kg', 'store:id,name'])
@@ -1483,6 +1484,19 @@ class DeliveryTripController extends Controller
                     $pickup->assistant_user_ids = $trip->assistant_user_ids ?? [];
                     $pickup->status = 'assigned';
                     $pickup->updated_by = $request->user()->id;
+                    $routeDistance = (float) ($validated['route_distances']["return_pickup:{$pickup->id}"] ?? 0);
+                    if ($routeDistance > 0) {
+                        $pickup->distance_km = round($routeDistance, 2);
+                        $pickup->loadMissing('returnRequest');
+                        if ($pickup->returnRequest) {
+                            $responsibility = (string) ($pickup->returnRequest->charge_responsibility ?: 'store');
+                            $charge = $returnChargeService->calculate($pickup->returnRequest, $responsibility, $routeDistance);
+                            $pickup->estimated_fee = $charge['fee'];
+                            $pickup->returnRequest->return_fee = $charge['fee'];
+                            $pickup->returnRequest->return_fee_breakdown = $charge['breakdown'];
+                            $pickup->returnRequest->save();
+                        }
+                    }
                     $pickup->save();
                     ReturnPickupLog::query()->create([
                         'return_pickup_id' => $pickup->id, 'event_type' => 'assigned',

@@ -1365,12 +1365,24 @@ class PaymongoController extends Controller
             return;
         }
 
-        $baseDate = $store->subscriptionPlan?->plan_key !== 'free' && $store->subscription_ends_at
-            ? Carbon::parse($store->subscription_ends_at)
-            : now();
-        if ($baseDate->lt(now())) {
-            $baseDate = now();
-        }
+        $currentPlanKey = strtolower(trim((string) $store->subscriptionPlan?->plan_key));
+        $isSamePlanTrialConversion = $store->subscription_status === 'trial'
+            && $currentPlanKey !== ''
+            && $currentPlanKey === $targetPlanKey
+            && $store->trial_ends_at
+            && $store->trial_ends_at->isFuture();
+        $remainingTrialDays = $isSamePlanTrialConversion
+            ? app(\App\Services\Store\StoreTrialService::class)->daysRemaining($store)
+            : 0;
+
+        // Keep unused trial days only when the customer pays for the same plan.
+        // Switching plans starts the purchased billing term from the payment date.
+        $baseDate = $isSamePlanTrialConversion
+            ? now()->addDays($remainingTrialDays)
+            : ($store->subscriptionPlan?->plan_key !== 'free' && $store->subscription_ends_at
+                ? Carbon::parse($store->subscription_ends_at)
+                : now());
+        if ($baseDate->lt(now())) $baseDate = now();
         $newEndsAt = $baseDate->copy()->addMonths($months);
 
         $storeSettings = is_array($store->settings) ? $store->settings : [];

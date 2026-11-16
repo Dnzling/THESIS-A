@@ -146,9 +146,9 @@ class ReorderSuggestionService
             });
         }
 
-        // Order by priority and creation date
-        $query->orderByRaw("FIELD(priority, 'critical', 'high', 'medium', 'low') DESC")
-              ->orderBy('created_at', 'desc');
+        // Keep the newest suggestions first, using priority to break timestamp ties.
+        $query->orderBy('created_at', 'desc')
+              ->orderByRaw("FIELD(priority, 'critical', 'high', 'medium', 'low') DESC");
 
         $suggestions = $query->paginate($perPage);
         $suggestions->getCollection()->each(function (ReorderSuggestion $suggestion): void {

@@ -251,6 +251,7 @@ class BranchController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'branch_type' => 'sometimes|nullable|in:storefront,warehouse,wholesale',
+            'is_main_branch' => 'sometimes|boolean',
             'address' => 'nullable|string|max:255',
             'province' => 'sometimes|nullable|string|max:50',
             'city' => 'nullable|string|max:255',
@@ -266,6 +267,14 @@ class BranchController extends Controller
             && !$this->canCreateWarehouse($request->user())) {
             throw ValidationException::withMessages([
                 'branch_type' => 'Warehouse branches are not enabled for this store plan.',
+            ]);
+        }
+
+        if (($validated['is_main_branch'] ?? false)
+            && Branch::query()->where('store_id', $branch->store_id)
+                ->where('is_main_branch', true)->where('id', '<>', $branch->id)->exists()) {
+            throw ValidationException::withMessages([
+                'is_main_branch' => 'This store already has a main branch. Only one main branch is allowed.',
             ]);
         }
 

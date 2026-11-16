@@ -8,7 +8,8 @@
           <div class="mt-2 flex items-center gap-3"><h1 class="text-2xl font-semibold text-slate-900">{{ transfer.transfer_number }}</h1><Badge :value="transfer.delivery_status === 'ready_for_dispatch' ? 'Ready for Dispatch' : transfer.status === 'sender_approved' ? 'Warehouse Review' : label(transfer.status)" :severity="severity(transfer.status)"/></div>
           <p class="mt-1 text-sm text-slate-500">Requested {{ dateTime(transfer.created_at) }}</p>
         </div>
-        <div v-if="canReject || canDispatch" class="flex gap-2">
+        <div v-if="canReject || canDispatch || canApprove" class="flex gap-2">
+          <Button v-if="canApprove" label="Approve" icon="pi pi-check" severity="warn" size="small" @click="confirmApprove"/>
           <Button v-if="canReject" label="Reject" icon="pi pi-times" severity="danger" outlined size="small" @click="rejectVisible = true"/>
           <Button v-if="canDispatch" label="Ready for Dispatch" icon="pi pi-truck" severity="warn" size="small" @click="confirmDispatch"/>
         </div>
@@ -35,7 +36,6 @@
           <Card class="border border-slate-200 shadow-sm"><template #title><span class="text-base">Request Information</span></template><template #content>
             <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3"><div v-for="field in requestFields" :key="field.label"><p class="text-xs uppercase tracking-wide text-slate-500">{{ field.label }}</p><p class="mt-1 font-medium text-slate-900">{{ field.value || '—' }}</p></div></div>
             <Divider/><p class="text-xs uppercase tracking-wide text-slate-500">Reason</p><p class="mt-2 text-sm text-slate-700">{{ transfer.reason || 'No reason provided.' }}</p>
-            <template v-if="transfer.notes"><p class="mt-4 text-xs uppercase tracking-wide text-slate-500">Notes</p><p class="mt-2 text-sm text-slate-700">{{ transfer.notes }}</p></template>
             <template v-if="transfer.rejection_reason"><Message severity="error" class="mt-5"><strong>Rejection reason:</strong> {{ transfer.rejection_reason }}</Message></template>
           </template></Card>
         </div>
@@ -72,6 +72,7 @@ const canReject = computed(() => transfer.value?.status === 'sender_approved'
   && transfer.value?.delivery_status !== 'ready_for_dispatch'
   && auth.hasPermission('warehouse.transfers.reject'))
 const canDispatch = computed(() => transfer.value?.status === 'sender_approved' && !transfer.value?.delivery_status && auth.hasPermission('warehouse.transfers.approve'))
+const canApprove = computed(() => transfer.value?.status === 'pending' && auth.hasPermission('warehouse.transfers.approve'))
 const label = (value: any) => String(value || '—').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
 const number = (value: any) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
 const money = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))

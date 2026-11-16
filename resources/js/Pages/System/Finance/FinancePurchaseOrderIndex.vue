@@ -197,7 +197,7 @@ const filters = ref({
 // Status options for filter
 const statusOptions = [
   { label: 'All Statuses', value: '' },
-  { label: 'Pending Finance Approval', value: 'pending_finance_approval' },
+  { label: 'Pending', value: 'pending_finance_approval' },
   { label: 'Approved', value: 'approved' },
   { label: 'Sent to Supplier', value: 'sent_to_supplier' },
   { label: 'Supplier Accepted', value: 'supplier_accepted' },
@@ -313,6 +313,7 @@ const formatNumber = (value: number | string): string => {
 
 const formatStatus = (status: string): string => {
   if (!status) return '-'
+  if (status === 'pending_finance_approval') return 'Pending'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 

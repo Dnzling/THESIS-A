@@ -1212,9 +1212,15 @@ class PurchaseOrderController extends Controller
         if (in_array($approvalPermission, $approverPermissions, true)) {
             if ($approvalPermission === 'finance.purchase_orders.approve' && $po->status !== 'approved') {
                 $po->update(['status' => 'approved']);
+                $autoSent = $this->shouldAutoSendAfterFinanceApproval($po);
+                if ($autoSent) {
+                    $this->dispatchApprovedPoToSupplier($po, true);
+                }
                 return response()->json([
                     'success' => true,
-                    'message' => 'Purchase order already approved by finance',
+                    'message' => $autoSent
+                        ? 'Purchase order approved and sent to the supplier.'
+                        : 'Purchase order already approved by finance.',
                     'data' => $po->fresh(),
                 ]);
             }
@@ -2053,15 +2059,6 @@ class PurchaseOrderController extends Controller
     private function shouldAutoSendAfterFinanceApproval(PurchaseOrder $po): bool
     {
         if ($po->status !== 'approved') {
-            return false;
-        }
-
-        $po->loadMissing('supplier');
-        if ($po->supplier?->is_external) {
-            return false;
-        }
-
-        if ($this->normalizePermission((string) $po->status) === 'sent_to_supplier') {
             return false;
         }
 

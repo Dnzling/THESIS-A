@@ -44,16 +44,14 @@
                   </label>
                 </div>
               </div>
-              <Info label="Refund Method" :value="refundMethodLabel(automaticRefundAvailable || refundSimulationAvailable ? originalPaymentMethod : refund.refund_method)" />
-              <Info v-if="!automaticRefundAvailable && !refundSimulationAvailable" label="Account Name" :value="refund.refund_account_name || '-'" />
-              <Info v-if="!automaticRefundAvailable && !refundSimulationAvailable" label="Account / Mobile Number" :value="refund.refund_account_number || '-'" />
+              <Info label="Original Payment Method" :value="refundMethodLabel(originalPaymentMethod)" />
               <Info label="Reason" :value="refund.reason || '-'" class="sm:col-span-2" />
               <Info label="Branch" :value="refund.branch?.name || '-'" />
               <Info label="Requested" :value="dateTime(refund.created_at)" />
               <Info label="Requested By" :value="person(refund.requester)" />
               <Info label="Processed By" :value="person(refund.processor)" />
               <Info label="Processed At" :value="dateTime(refund.processed_at)" />
-              <Info v-if="!isLegacyUnpaid" :label="refund.status === 'simulated' ? 'Sandbox Reference' : 'Payout Reference'" :value="refund.payout_reference || '-'" />
+              <Info v-if="refund.payout_reference" :label="refund.payout_provider === 'simulation' ? 'Simulation Reference' : 'PayMongo Refund Reference'" :value="refund.payout_reference" />
               <Info label="Payout Provider" :value="providerLabel" />
               <Info label="PayMongo Refund ID" :value="refund.paymongo_refund_id || '-'" />
               <Info v-if="refund.paymongo_transfer_id" label="PayMongo Transfer ID" :value="refund.paymongo_transfer_id" />
@@ -68,9 +66,9 @@
               <p v-if="refund.status==='pending_inspection'" class="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">
                 Awaiting return delivery and inventory inspection before Finance can release funds.</p><Textarea
                 v-model="notes" rows="5" fluid placeholder="Finance notes" />
-              <p v-if="refund.status==='pending' && !automaticRefundAvailable && !refundSimulationAvailable && !hasRefundDestination"
+              <p v-if="refund.status==='pending' && !automaticRefundAvailable && !refundSimulationAvailable"
                 class="rounded-xl bg-amber-50 p-3 text-sm text-amber-700">
-                Waiting for the customer to provide a refund payment method in Ecommerce Order Details.
+                This payment cannot be refunded through PayMongo. Finance can approve refunds only when the original payment was successfully processed online through PayMongo.
               </p>
               <div v-if="refund.status==='pending'" class="grid gap-2">
                 <Button label="Approve Refund" icon="pi pi-check" :disabled="!canApprove"
@@ -81,10 +79,6 @@
               <div v-if="refund.status==='approved'" class="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <p class="font-semibold text-emerald-900">Approved refund</p>
                 <p v-if="automaticRefundAvailable" class="text-sm text-emerald-800">{{ currency(refund.amount) }} will be returned to the original {{ refundMethodLabel(originalPaymentMethod) }} payment method.</p>
-                <p v-else-if="hasRefundDestination" class="text-sm text-emerald-800">
-                  Send {{ currency(refund.amount) }} to {{ refund.refund_account_name }} via
-                  {{ refundMethodLabel(refund.refund_method) }} ({{ refund.refund_account_number }}).
-                </p>
                 <p v-if="automaticRefundAvailable" class="text-xs text-emerald-700">The refund returns to the original checkout method.</p>
                 <Button v-if="automaticRefundAvailable" label="Pay Refund via PayMongo" icon="pi pi-send" fluid :loading="sending"
                   :disabled="!canSendPaymongo" @click="markSent('paymongo')" />
@@ -93,11 +87,7 @@
                   <p class="text-xs text-blue-800">Record the refund workflow without creating a charge or moving funds. The order will remain paid.</p>
                   <Button label="Simulate PayMongo Refund" icon="pi pi-play" severity="info" outlined fluid :loading="sending" @click="markSent('simulation')" />
                 </div>
-                <p v-if="!automaticRefundAvailable && !hasRefundDestination" class="text-xs text-amber-800">Waiting for the customer to provide GCash or Maya payout details in Ecommerce Order Details.</p>
-                <label v-if="canEnterManualReference" class="block text-xs font-medium text-emerald-900">Payout transaction reference *</label>
-                <InputText v-if="canEnterManualReference" v-model="payoutReference" fluid placeholder="Enter the reference after sending the payout" />
-                <Button v-if="canEnterManualReference" label="Confirm Payout Sent" icon="pi pi-check" severity="secondary" outlined fluid :loading="sending"
-                  :disabled="!canSendManual" @click="markSent('manual')" />
+                <p v-if="!automaticRefundAvailable && !refundSimulationAvailable" class="text-xs text-amber-800">PayMongo cannot issue a refund for this payment. No manual payout entry is available.</p>
               </div>
               <div v-if="refund.status === 'transfer_failed'" class="space-y-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">
                 <p>{{ refund.payout_provider === 'paymongo' ? 'PayMongo reported that the refund failed:' : 'The payout could not be verified:' }} {{ refund.transfer_error || 'Review the provider status before taking further action.' }}</p>
@@ -113,16 +103,12 @@
                 Sandbox simulation recorded. No refund was issued, no money moved, and the order remains paid.
               </p>
               <div v-if="isAwaitingPayout" class="space-y-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                <p class="font-medium">The refund is awaiting payout. Complete the payout to the customer, then record its transaction reference.</p>
+                <p class="font-medium">The refund is awaiting processing through the original PayMongo payment method.</p>
                 <template v-if="automaticRefundAvailable">
                   <p>The refund will return to the original {{ refundMethodLabel(originalPaymentMethod) }} payment method.</p>
                   <Button label="Pay Refund via PayMongo" icon="pi pi-send" fluid :loading="sending" :disabled="!canSendPaymongo" @click="markSent('paymongo')" />
                 </template>
-                <template v-else-if="canEnterManualReference">
-                  <label class="block text-xs font-medium">Payout transaction reference *</label>
-                  <InputText v-model="payoutReference" fluid placeholder="Enter the reference after sending the payout" />
-                  <Button label="Confirm Payout Sent" icon="pi pi-check" fluid :loading="sending" :disabled="!canSendManual" @click="markSent('manual')" />
-                </template>
+                <p v-else class="text-xs">This refund is not eligible for PayMongo processing. No manual payout entry is available.</p>
               </div>
               <p v-else-if="refund.status==='sent'" class="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
                 Refund paid. Reference: {{ refund.payout_reference || '-' }}
@@ -156,7 +142,6 @@ import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
-import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 
 const Info = defineComponent({
@@ -182,15 +167,11 @@ const automaticRefundAvailable = ref(false)
 const shippingFeeExcluded = ref<number | null>(null)
 const originalPaymentMethod = ref('')
 const notes = ref('')
-const payoutReference = ref('')
 const processing = ref('')
 const sending = ref(false)
 const checkingPaymongo = ref(false)
 const amountAdjusted = computed(() => refundAmount.value !== null
   && Math.abs(Number(refundAmount.value) - Number(amountCalculation.value?.amount ?? refund.value?.amount ?? 0)) >= 0.01)
-const hasRefundDestination = computed(() => Boolean(
-  refund.value?.refund_method && refund.value?.refund_account_name && refund.value?.refund_account_number,
-))
 const isLegacyUnpaid = computed(() => ['simulation', 'paymongo_wallet_test'].includes(refund.value?.payout_provider) && refund.value?.status === 'sent')
 const isAwaitingPayout = computed(() => refund.value?.status === 'awaiting_payout' || isLegacyUnpaid.value)
 const displayRefundAmount = computed(() => amountCalculation.value?.amount ?? refund.value?.payable_refund_amount ?? refund.value?.amount ?? 0)
@@ -205,28 +186,21 @@ const displayRefundNotes = computed(() => {
   }
   return notes
 })
-const canEnterManualReference = computed(() => !automaticRefundAvailable.value && hasRefundDestination.value
-  && refund.value?.refund_method !== 'card'
-  && (refund.value?.status === 'approved' || isAwaitingPayout.value))
 const canApprove = computed(() => auth.hasPermission('finance.refunds.approve')
   && refund.value?.status === 'pending'
   && (!amountCalculation.value || (Number(refundAmount.value) > 0
     && Number(refundAmount.value) <= Number(amountCalculation.value.available_paid_balance)
     && (!amountAdjusted.value || Boolean(adjustmentReason.value.trim()))))
-  && (automaticRefundAvailable.value || refundSimulationAvailable.value || hasRefundDestination.value))
+  && (automaticRefundAvailable.value || refundSimulationAvailable.value))
 const canReject = computed(() => auth.hasPermission('finance.refunds.approve') && refund.value?.status === 'pending')
 const canSendPaymongo = computed(() => auth.hasPermission('finance.refunds.approve')
   && (refund.value?.status === 'approved' || isAwaitingPayout.value || (refund.value?.status === 'transfer_failed' && refund.value?.payout_provider === 'paymongo'))
   && paymongoRefundsAvailable.value
   && automaticRefundAvailable.value)
-const canSendManual = computed(() => auth.hasPermission('finance.refunds.approve')
-  && (refund.value?.status === 'approved' || isAwaitingPayout.value) && !automaticRefundAvailable.value
-  && refund.value?.refund_method !== 'card'
-  && hasRefundDestination.value && Boolean(payoutReference.value.trim()))
 const canSimulatePaymongo = computed(() => auth.hasPermission('finance.refunds.approve')
   && refundSimulationAvailable.value && ['approved', 'awaiting_payout'].includes(refund.value?.status))
 const label = (v: any) => v === 'pending_inspection' ? 'For Inspection' : v === 'awaiting_payout' ? 'Awaiting Payout' : v === 'sent' ? 'Refunded' : v === 'simulated' ? 'Sandbox Simulated' : String(v || '-').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
-const refundMethodLabel = (v: any) => ({ gcash: 'GCash', card: 'Card', maya: 'Maya', grab_pay: 'GrabPay', bank_transfer: 'Bank Transfer' } as any)[String(v || '')] || '-'
+const refundMethodLabel = (v: any) => ({ gcash: 'GCash', card: 'Card', maya: 'Maya', qrph: 'QR Ph', grab_pay: 'GrabPay', bank_transfer: 'Bank Transfer' } as any)[String(v || '')] || '-'
 const severity = (v: string) => v === 'sent' || v === 'approved' ? 'success' : ['rejected', 'transfer_failed'].includes(v) ? 'danger' : ['pending_inspection', 'processing', 'simulated'].includes(v) ? 'info' : 'warn'
 const currency = (v: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 const dateTime = (v: any) => v ? new Date(v).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-'
@@ -249,7 +223,6 @@ const load = async () => {
       : Number(response.shipping_fee_excluded)
     originalPaymentMethod.value = response?.original_payment_method || ''
     notes.value = displayRefundNotes.value === '-' ? '' : displayRefundNotes.value
-    payoutReference.value = refund.value?.payout_reference || ''
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Unable to load refund.', life: 3000 })
   } finally {
@@ -269,7 +242,7 @@ const process = async (status: 'approved' | 'rejected') => {
       } : {}),
     })
     toast.add({ severity: 'success', summary: 'Refund Updated', detail: status === 'approved'
-      ? refundSimulationAvailable.value ? 'Refund approved. You can run a sandbox simulation or continue with payout.' : 'Refund approved. Continue with payout processing.'
+      ? refundSimulationAvailable.value ? 'Refund approved. You can record the test-mode simulation or process it through PayMongo in live mode.' : 'Refund approved. Process it through the original PayMongo payment.'
       : 'Refund rejected.', life: 3000 })
     await load()
   } catch (error: any) {
@@ -279,17 +252,16 @@ const process = async (status: 'approved' | 'rejected') => {
   }
 }
 
-const markSent = async (provider: 'paymongo' | 'manual' | 'simulation') => {
-  if (provider === 'paymongo' ? !canSendPaymongo.value : provider === 'manual' ? !canSendManual.value : !canSimulatePaymongo.value) return
+const markSent = async (provider: 'paymongo' | 'simulation') => {
+  if (provider === 'paymongo' ? !canSendPaymongo.value : !canSimulatePaymongo.value) return
   sending.value = true
   try {
     const response = await financeService.markRefundSent(String(route.params.id), {
       provider,
-      payout_reference: payoutReference.value.trim() || undefined,
       notes: notes.value,
     })
-    toast.add({ severity: 'success', summary: provider === 'simulation' ? 'Sandbox Simulation Recorded' : provider === 'paymongo' ? 'Refund Processing' : 'Payout Recorded',
-      detail: provider === 'simulation' ? 'No funds moved; the order remains paid.' : provider === 'paymongo' ? (response?.message || 'PayMongo is processing the refund.') : 'The refund payout was recorded as sent.', life: 3500 })
+    toast.add({ severity: 'success', summary: provider === 'simulation' ? 'Sandbox Simulation Recorded' : 'Refund Processing',
+      detail: provider === 'simulation' ? 'No funds moved; the order remains paid.' : (response?.message || 'PayMongo is processing the refund.'), life: 3500 })
     await load()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Unable to Mark Sent', detail: error?.response?.data?.message || 'Unable to mark the refund as sent.', life: 3500 })

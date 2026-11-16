@@ -38,10 +38,10 @@
               <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
             </p>
             <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 font-semibold transition"
-              :class="isCurrentPlan(plan) ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-500 shadow-none' : 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:-translate-y-0.5 hover:bg-orange-600'"
-              :disabled="isCurrentPlan(plan)"
+              :class="isCurrentPlan(plan) && !isActiveTrial ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-500 shadow-none' : 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:-translate-y-0.5 hover:bg-orange-600'"
+              :disabled="isCurrentPlan(plan) && !isActiveTrial"
               @click="selectPlan(plan)">
-              {{ isCurrentPlan(plan) ? 'Current Plan' : canStartTrial ? 'Start 1-Month Free Trial' : 'Choose Plan' }}
+              {{ isCurrentPlan(plan) ? (isActiveTrial ? 'Pay for Current Plan' : 'Current Plan') : canStartTrial ? 'Start 1-Month Free Trial' : 'Choose Plan' }}
             </button>
             <div class="mt-6 space-y-3">
               <div v-for="feature in plan.features || []" :key="feature" class="flex items-start gap-3 text-sm text-slate-700">
@@ -130,13 +130,17 @@ const hasStartedSubscription = computed(() => {
   return Boolean(store.trial_started_at)
     || ['trial', 'paid', 'expired', 'cancelled'].includes(String(store.subscription_status || '').toLowerCase())
 })
+const isActiveTrial = computed(() => {
+  const store = subscriptionStore.value
+  return String(store.subscription_status || '').toLowerCase() === 'trial'
+})
 
 const isCurrentPlan = (plan: any) => hasStartedSubscription.value
   && currentPlanKey.value !== ''
   && currentPlanKey.value === String(plan.plan_key || '').toLowerCase()
 
 const selectPlan = async (plan: any) => {
-  if (isCurrentPlan(plan)) return
+  if (isCurrentPlan(plan) && !isActiveTrial.value) return
   const user: any = authStore.currentUser
   const storeId = Number(storeIdFromQuery.value || user?.store_id || user?.store?.id || 0)
   if (!storeId) {

@@ -407,6 +407,7 @@ const loadDetail = async () => {
 
 const formatStatus = (status: string) => {
   if (!status) return 'DRAFT'
+  if (status === 'pending_finance_approval') return 'Pending'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 

@@ -105,6 +105,10 @@
           <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Branch Name *</label><InputText v-model="form.name" placeholder="Branch name" class="w-full" /></div>
           <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Branch Type</label><Select v-if="canCreateWarehouse || form.branch_type !== 'warehouse'" v-model="form.branch_type" :options="branchTypeOptions" optionLabel="label" optionValue="value" class="w-full" /><div v-else class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Warehouse</div></div>
         </div>
+        <div class="flex items-center gap-2">
+          <InputSwitch v-model="form.is_main_branch" />
+          <span class="text-sm text-slate-700">Main Branch</span>
+        </div>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">Province</label><Select v-model="form.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select province" filter :loading="isProvincesLoading" :disabled="form.branch_type !== 'warehouse'" @change="onProvinceChange" /></div>
           <div class="space-y-2"><label class="text-xs font-semibold text-slate-600">City *</label><Select v-model="form.cityId" :options="cityOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select city" :loading="isCitiesLoading" :disabled="!form.provinceId" @change="onCityChange" /></div>
@@ -177,6 +181,7 @@ const branchTypeOptions = computed(() => [
 const form = ref({
   name: '',
   branch_type: 'storefront',
+  is_main_branch: false,
   address: '',
   province: '',
   provinceId: '',
@@ -261,6 +266,7 @@ const loadBranch = async () => {
   canCreateWarehouse.value = Boolean(payload.can_create_warehouse)
   form.value.name = data?.name || ''
   form.value.branch_type = data?.branch_type || 'storefront'
+  form.value.is_main_branch = Boolean(data?.is_main_branch)
   form.value.address = data?.address || ''
   form.value.province = data?.province || ''
   form.value.city = data?.city || ''
@@ -317,6 +323,7 @@ const openEditDialog = async () => {
 
   form.value.name = branch.value.name || ''
   form.value.branch_type = branch.value.branch_type || 'storefront'
+  form.value.is_main_branch = Boolean(branch.value.is_main_branch)
   form.value.address = branch.value.address || ''
   form.value.province = branch.value.province || ''
   form.value.city = branch.value.city || ''
@@ -554,7 +561,7 @@ const saveBranch = async () => {
   if (form.value.latitude && form.value.longitude && !(await validateBranchLocation(Number(form.value.latitude), Number(form.value.longitude)))) { redrawShapes(); return }
   saving.value = true
   try {
-    await axiosClient.put(`/api/branches/${branchId}`, { name: form.value.name.trim(), branch_type: form.value.branch_type, address: form.value.address || null, province: form.value.province || null, city: form.value.city || null, barangay: form.value.barangay || null, latitude: form.value.latitude || null, longitude: form.value.longitude || null, geofence_radius_m: form.value.geofence_radius_m || 0, geofence_enabled: form.value.geofence_enabled })
+    await axiosClient.put(`/api/branches/${branchId}`, { name: form.value.name.trim(), branch_type: form.value.branch_type, is_main_branch: form.value.is_main_branch, address: form.value.address || null, province: form.value.province || null, city: form.value.city || null, barangay: form.value.barangay || null, latitude: form.value.latitude || null, longitude: form.value.longitude || null, geofence_radius_m: form.value.geofence_radius_m || 0, geofence_enabled: form.value.geofence_enabled })
     showEdit.value = false
     await loadBranch()
   } finally { saving.value = false }

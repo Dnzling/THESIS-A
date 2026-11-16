@@ -28,7 +28,10 @@ class StoreSubscriptionAgreementController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => ['has_active_agreement' => (bool) $agreement],
+            'data' => [
+                'has_active_agreement' => (bool) $agreement,
+                'agreement' => $agreement,
+            ],
         ]);
     }
 
