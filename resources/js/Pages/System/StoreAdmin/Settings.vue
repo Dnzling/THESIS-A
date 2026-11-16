@@ -590,6 +590,43 @@
                 </template>
             </Card>
 
+            <Card class="border border-slate-200 shadow-sm">
+                <template #title>Branch service suspensions</template>
+                <template #content>
+                    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div class="w-full sm:max-w-sm">
+                            <label for="suspension-branch" class="mb-1 block text-xs font-medium text-slate-700">Branch</label>
+                            <Select id="suspension-branch" v-model="selectedSuspensionBranchId" :options="branches"
+                                option-label="name" option-value="id" placeholder="Select a branch" size="small" fluid
+                                :disabled="!branches.length || loadingSuspensionOverview" />
+                        </div>
+                        <div class="flex shrink-0 gap-2">
+                            <Button label="View history" icon="pi pi-history" size="small" severity="secondary" outlined
+                                :disabled="!selectedSuspensionBranchId" @click="openSuspensionHistory" />
+                            <Button label="Create suspension" icon="pi pi-plus" size="small" severity="warn"
+                                :disabled="!selectedSuspensionBranchId" @click="openSuspensionDialog" />
+                        </div>
+                    </div>
+                    <div v-if="loadingSuspensionOverview" class="text-sm text-slate-500">Loading branch suspension status...</div>
+                    <div v-else-if="!selectedSuspensionBranchId" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Add a branch before scheduling a service suspension.</div>
+                    <div v-else class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <Tag :value="branchSuspensionToday ? 'Suspended today' : nextBranchSuspension ? 'Scheduled' : 'No upcoming suspension'"
+                                :severity="branchSuspensionToday ? 'danger' : nextBranchSuspension ? 'warn' : 'success'" />
+                            <div class="text-sm">
+                                <p v-if="currentBranchSuspension" class="font-medium text-slate-900">
+                                    {{ currentBranchSuspension.reason || 'Branch service suspension' }} · {{ formatSuspensionDate(currentBranchSuspension.start_date) }}
+                                    <span v-if="currentBranchSuspension.end_date">to {{ formatSuspensionDate(currentBranchSuspension.end_date) }}</span>
+                                </p>
+                                <p v-if="branchSuspensionToday" class="mt-1 text-xs text-slate-600">Pickup and delivery are unavailable from this branch today.</p>
+                                <p v-else-if="nextBranchSuspension" class="mt-1 text-xs text-slate-600">Pickup and delivery will be unavailable from this branch during these dates.</p>
+                                <p v-else class="text-slate-600">No active or upcoming pickup and delivery suspension.</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </Card>
+
             <Dialog v-model:visible="fulfillmentEditorVisible" modal :header="`${fulfillmentEditorMethod === 'pickup' ? 'Pickup' : 'Delivery'} settings`" :style="{ width: 'min(94vw, 44rem)' }">
                 <p class="mb-4 text-xs text-slate-500">Set broad service windows. Customers select a date; your team confirms the exact time after ordering.</p>
                 <div class="mb-4 flex gap-2"><Button label="Pickup" size="small" :severity="fulfillmentEditorMethod === 'pickup' ? 'warn' : 'secondary'" :outlined="fulfillmentEditorMethod !== 'pickup'" @click="fulfillmentEditorMethod = 'pickup'" /><Button label="Delivery" size="small" :severity="fulfillmentEditorMethod === 'delivery' ? 'warn' : 'secondary'" :outlined="fulfillmentEditorMethod !== 'delivery'" @click="fulfillmentEditorMethod = 'delivery'" /></div>
@@ -606,6 +643,29 @@
                     <Button label="Cancel" severity="secondary" outlined size="small" @click="fulfillmentEditorVisible = false" />
                     <Button label="Save windows" icon="pi pi-check" severity="warn" size="small" :loading="savingFulfillmentWindows" :disabled="savingFulfillmentWindows" @click="saveFulfillmentWindows" />
                 </template>
+            </Dialog>
+
+            <Dialog v-model:visible="suspensionDialogVisible" modal header="Create Service Suspension" :style="{ width: 'min(94vw, 38rem)' }">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div><label for="suspension-start" class="mb-1 block text-sm font-medium text-slate-700">Start date <span class="text-red-600">*</span></label><DatePicker id="suspension-start" v-model="suspensionStartModel" dateFormat="dd M yy" showIcon fluid /></div>
+                    <div><label for="suspension-end" class="mb-1 block text-sm font-medium text-slate-700">End date</label><DatePicker id="suspension-end" v-model="suspensionEndModel" dateFormat="dd M yy" showIcon fluid placeholder="No end date" /></div>
+                    <div class="sm:col-span-2"><label for="suspension-reason" class="mb-1 block text-sm font-medium text-slate-700">Reason <span class="text-slate-400">(optional)</span></label><InputText id="suspension-reason" v-model="newSuspension.reason" maxlength="500" class="w-full" placeholder="Typhoon, emergency, maintenance, etc." /></div>
+                </div>
+                <p class="mt-3 text-xs text-slate-500">The selected branch will not be chosen for e-commerce pickup or delivery during these dates.</p>
+                <template #footer>
+                    <Button label="Cancel" severity="secondary" outlined :disabled="savingSuspension" @click="suspensionDialogVisible = false" />
+                    <Button label="Create suspension" icon="pi pi-check" severity="warn" :loading="savingSuspension" :disabled="savingSuspension" @click="confirmCreateSuspension" />
+                </template>
+            </Dialog>
+            <Dialog v-model:visible="suspensionHistoryDialogVisible" modal header="Branch Suspension History" :style="{ width: 'min(94vw, 58rem)' }">
+                <DataTable :value="suspensionHistory" size="small" rowHover :loading="loadingSuspensionHistory" responsiveLayout="scroll">
+                    <template #empty><div class="py-8 text-center text-sm text-slate-500">No suspensions have been recorded for this branch.</div></template>
+                    <Column header="Status"><template #body="{ data }"><Tag :value="suspensionStatus(data)" :severity="suspensionSeverity(data)" /></template></Column>
+                    <Column field="reason" header="Reason"><template #body="{ data }">{{ data.reason || 'No reason provided' }}</template></Column>
+                    <Column header="From"><template #body="{ data }">{{ formatSuspensionDate(data.start_date) }}</template></Column>
+                    <Column header="Until"><template #body="{ data }">{{ data.end_date ? formatSuspensionDate(data.end_date) : 'Until ended' }}</template></Column>
+                    <Column header="Created"><template #body="{ data }">{{ formatSuspensionDate(data.created_at) }}</template></Column>
+                </DataTable>
             </Dialog>
 
             <Card>

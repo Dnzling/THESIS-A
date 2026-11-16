@@ -435,7 +435,16 @@ class RecruitmentController extends Controller
 
             DB::commit();
 
-            Mail::to($user->email)->send(new ApplicantEmployeeCredentialsMail($employee->load('user'), $temporaryPassword));
+            try {
+                Mail::to($user->email)->send(new ApplicantEmployeeCredentialsMail($employee->load('user'), $temporaryPassword));
+            } catch (\Throwable $mailError) {
+                \Log::warning('Failed to send hired employee credentials email.', [
+                    'application_id' => $application->id,
+                    'employee_id' => $employee->id,
+                    'user_id' => $user->id,
+                    'error' => $mailError->getMessage(),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

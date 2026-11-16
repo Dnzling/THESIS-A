@@ -144,7 +144,7 @@ class StoreModuleController extends Controller
 
     public function settings(Request $request): JsonResponse
     {
-        $branch = $this->branchFor($request);
+        $branch = $this->suspensionBranchFor($request);
         $today = now()->toDateString();
         $suspensionToday = BranchServiceSuspension::query()
             ->where('store_id', $branch->store_id)
@@ -227,7 +227,7 @@ class StoreModuleController extends Controller
 
     public function suspensionHistory(Request $request): JsonResponse
     {
-        $branch = $this->branchFor($request);
+        $branch = $this->suspensionBranchFor($request);
         $suspensions = BranchServiceSuspension::query()
             ->where('store_id', $branch->store_id)
             ->where('branch_id', $branch->id)
@@ -240,7 +240,7 @@ class StoreModuleController extends Controller
 
     public function createSuspension(Request $request): JsonResponse
     {
-        $branch = $this->branchFor($request);
+        $branch = $this->suspensionBranchFor($request);
         $validated = $request->validate([
             'reason' => 'nullable|string|max:500',
             'start_date' => 'required|date_format:Y-m-d|after_or_equal:today',
@@ -392,6 +392,31 @@ class StoreModuleController extends Controller
         abort_unless($storeId && $branchId, 422, 'Your account is not assigned to a store branch.');
 
         return StoreBranch::query()->where('store_id', $storeId)->findOrFail($branchId);
+    }
+
+    private function suspensionBranchFor(Request $request): StoreBranch
+    {
+        $user = $request->user()->loadMissing('employee');
+        $storeId = (int) ($user->store_id ?: $user->employee?->store_id);
+        $assignedBranchId = (int) ($user->branch_id ?: $user->employee?->branch_id);
+        $requestedBranchId = (int) $request->input('branch_id', 0);
+
+        abort_unless($storeId > 0, 422, 'Your account is not assigned to a store.');
+        if ($requestedBranchId > 0) {
+            abort_unless(
+                $user->hasRole('owner') || $requestedBranchId === $assignedBranchId,
+                403,
+                'You cannot manage suspensions for this branch.'
+            );
+            $branchId = $requestedBranchId;
+        } else {
+            abort_unless($assignedBranchId > 0, 422, 'Your account is not assigned to a store branch.');
+            $branchId = $assignedBranchId;
+        }
+
+        return StoreBranch::query()
+            ->where('store_id', $storeId)
+            ->findOrFail($branchId);
     }
 
     private function ecommerceQuery(StoreBranch $branch): Builder

@@ -57,9 +57,19 @@
           <Column field="shipping_fee" header="Fee" class="text-right">
             <template #body="{ data }">{{ data.shipping_fee == null ? '-' : money(data.shipping_fee) }}</template>
           </Column>
-          <Column header="Actions" style="width: 7rem">
+          <Column header="Actions" style="width: 15rem">
             <template #body="{ data }">
-              <Button icon="pi pi-eye" label="View" size="small" outlined rounded @click="view(data)" />
+              <div class="flex flex-wrap items-center gap-2">
+                <Button
+                  v-if="canManageSupplierPickups && canAssignDriver(data)"
+                  label="Assign Driver"
+                  icon="pi pi-user-plus"
+                  size="small"
+                  severity="warn"
+                  @click="assignDriver(data)"
+                />
+                <Button icon="pi pi-eye" label="View" size="small" outlined rounded @click="view(data)" />
+              </div>
             </template>
           </Column>
         </DataTable>
@@ -69,8 +79,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Card from 'primevue/card'
@@ -84,6 +95,8 @@ import Skeleton from 'primevue/skeleton'
 import logisticsService from '@/services/logistics.service'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const canManageSupplierPickups = computed(() => authStore.hasPermission('logistics.supplier-pickups.manage'))
 const loading = ref(false)
 const pickups = ref<any[]>([])
 const search = ref('')
@@ -134,6 +147,10 @@ const clearFilters = () => {
   load()
 }
 const view = (pickup: any) => router.push({ name: 'logistics.supplier-pickups.detail', params: { orderId: pickup.order_id } })
+const canAssignDriver = (pickup: any) => ['pending', 'ready_for_dispatch'].includes(String(pickup.delivery_status || '').toLowerCase())
+  && !pickup.driver_user_id
+  && !pickup.trip_id
+const assignDriver = (pickup: any) => router.push({ name: 'logistics.supplier-pickups.assign', params: { id: pickup.order_id } })
 const statusLabel = (value: string) => value === 'ready_for_dispatch' ? 'Ready for Dispatch' : String(value || 'Pending').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const statusSeverity = (value: string) => {
   if (['delivered'].includes(String(value).toLowerCase())) return 'success'

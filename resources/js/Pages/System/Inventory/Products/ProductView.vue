@@ -82,15 +82,6 @@
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
                 <div class="flex items-center gap-2">
                   <p class="text-lg font-semibold text-gray-900">{{ supplierNames || '--' }}</p>
-                  <Button
-                    v-if="canManageStockRequests"
-                    label="Create PR"
-                    icon="pi pi-file-plus"
-                    severity="warn"
-                    size="small"
-                    outlined
-                    @click="goToCreatePR"
-                  />
                 </div>
               </div>
               <div>
@@ -492,7 +483,6 @@ const deleting = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteError = ref('')
 const canManageProducts = computed(() => authStore.hasPermission('inventory.products.manage'))
-const canManageStockRequests = computed(() => authStore.hasPermission('inventory.stock-requests.manage'))
 const view3DModalVisible = ref(false)
 const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)
@@ -660,32 +650,6 @@ const loadProduct = async () => {
   } finally {
     loading.value = false
   }
-}
-
-const goToCreatePR = () => {
-  if (!product.value) return
-  const inventoryId = branchInventory.value?.id
-  const quantity = Math.max(1, Number(branchInventory.value?.reorder_quantity || displayReorderLevel.value || 1))
-  const query = {
-    stock_view_prefill: '1',
-    branch_inventory_id: inventoryId ? String(inventoryId) : undefined,
-    branch_id: branchInventory.value?.branch_id ? String(branchInventory.value.branch_id) : undefined,
-    product_id: String(product.value.id),
-    variation_id: selectedVariation.value?.id ? String(selectedVariation.value.id) : undefined,
-    requested_quantity: String(quantity),
-    notes: `Restock request from ${detailTitle.value}.`,
-  }
-
-  inventoryService.getBranches().then((response: any) => {
-    const payload = response?.data ?? response
-    const warehouseEnabled = Boolean(payload?.warehouse_enabled)
-    router.push({
-      name: 'inventory.stock-requests.create',
-      query: { ...query, type: warehouseEnabled ? 'transfer' : 'purchase' },
-    })
-  }).catch(() => {
-    showActionResponse('error', 'Unable to start stock request', 'Could not check whether warehouse stock requests are enabled for this store.')
-  })
 }
 
 const loadImageWithAuth = async (image: any) => {

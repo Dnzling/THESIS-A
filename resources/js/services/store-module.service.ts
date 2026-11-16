@@ -8,8 +8,8 @@ export const storeModuleService = {
     return response.data
   },
 
-  async getSettings() {
-    const response = await axiosClient.get(`${baseUrl}/settings`)
+  async getSettings(branchId?: number | null) {
+    const response = await axiosClient.get(`${baseUrl}/settings`, { params: branchId ? { branch_id: branchId } : undefined })
     return response.data
   },
 
@@ -26,12 +26,12 @@ export const storeModuleService = {
     return response.data
   },
 
-  async getSuspensionHistory() {
-    const response = await axiosClient.get(`${baseUrl}/settings/suspensions`)
+  async getSuspensionHistory(branchId?: number | null) {
+    const response = await axiosClient.get(`${baseUrl}/settings/suspensions`, { params: branchId ? { branch_id: branchId } : undefined })
     return response.data
   },
 
-  async createSuspension(payload: { reason: string; start_date: string; end_date: string | null }) {
+  async createSuspension(payload: { reason: string; start_date: string; end_date: string | null; branch_id?: number | null }) {
     const response = await axiosClient.post(`${baseUrl}/settings/suspensions`, payload)
     return response.data
   },
