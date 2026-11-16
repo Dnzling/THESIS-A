@@ -251,7 +251,12 @@
       <template #content>
         <p class="mb-3 text-xs text-slate-500">This map follows the current user’s device while the transfer is out for delivery.</p>
         <div ref="liveMapElement" class="h-[360px] w-full overflow-hidden rounded-xl border border-slate-200"></div>
+        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+          <span class="flex items-center gap-1.5"><i class="pi pi-truck text-orange-600"></i>Current device</span>
+          <span class="flex items-center gap-1.5"><i class="pi pi-map-marker text-blue-600"></i>{{ branchName(detail?.to_branch || detail?.toBranch) }}</span>
+        </div>
         <Message v-if="locationError" severity="warn" :closable="false" class="mt-3">{{ locationError }}</Message>
+        <Message v-if="mapError" severity="warn" :closable="false" class="mt-3">{{ mapError }}</Message>
       </template>
     </Card>
 
@@ -440,7 +445,9 @@ const detail = ref<any>(null)
 const liveMapElement = ref<HTMLElement | null>(null)
 const currentLocation = ref<[number, number] | null>(null)
 const locationError = ref('')
+const mapError = ref('')
 let liveMap: MapboxMap | null = null
+let liveMapReady: Promise<void> | null = null
 let liveMapbox: typeof import('mapbox-gl').default | null = null
 let currentMarker: MapboxMarker | null = null
 let destinationMarker: MapboxMarker | null = null
@@ -971,6 +978,7 @@ const syncLiveTracking = () => {
     locationWatcher = null
     liveMap?.remove()
     liveMap = null
+    liveMapReady = null
     currentMarker = null
     destinationMarker = null
     currentLocation.value = null
@@ -1002,35 +1010,69 @@ const renderLiveMap = async () => {
       liveMapbox = (await import('mapbox-gl')).default
       liveMapbox.accessToken = requireMapboxToken()
     }
-    const latitude = Number(detail.value?.to_branch?.latitude)
-    const longitude = Number(detail.value?.to_branch?.longitude)
-    const destination: [number, number] | null = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0
+    const destinationBranch = detail.value?.to_branch || detail.value?.toBranch
+    const latitude = Number(destinationBranch?.latitude)
+    const longitude = Number(destinationBranch?.longitude)
+    const destination: [number, number] | null = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && (latitude !== 0 || longitude !== 0)
       ? [latitude, longitude]
       : null
     const center = currentLocation.value || destination || [14.5995, 120.9842]
+    let createdMap = false
     if (!liveMap) {
-      liveMap = new liveMapbox.Map({ container: liveMapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: [center[1], center[0]], zoom: 12 })
-      await new Promise<void>(resolve => liveMap!.once('load', () => resolve()))
+      const map = new liveMapbox.Map({ container: liveMapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: [center[1], center[0]], zoom: 12 })
+      liveMap = map
+      createdMap = true
+      map.on('error', event => {
+        mapError.value = event.error?.message || 'Map tiles could not be loaded. Check the Mapbox token and network connection.'
+      })
+      liveMapReady = new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('Mapbox timed out while loading the map.')), 15000)
+        map.once('load', () => { window.clearTimeout(timeout); resolve() })
+        map.once('error', event => { window.clearTimeout(timeout); reject(event.error || new Error('Mapbox could not load the map style.')) })
+      })
     }
+    await liveMapReady
+    const map = liveMap
+    if (!map || !liveMapbox) return
+    if (createdMap) mapError.value = ''
     if (currentLocation.value) {
-      if (!currentMarker) currentMarker = new liveMapbox.Marker({ color: '#f97316' }).addTo(liveMap)
+      if (!currentMarker) {
+        const truck = document.createElement('img')
+        truck.src = '/images/truck-map-marker-orange.png'
+        truck.alt = 'Current device location'
+        truck.style.cssText = 'width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 2px 3px #0005);'
+        currentMarker = new liveMapbox.Marker({ element: truck, anchor: 'center' })
+          .setPopup(new liveMapbox.Popup({ offset: 24 }).setText('Current device location'))
+          .addTo(map)
+      }
       currentMarker.setLngLat([currentLocation.value[1], currentLocation.value[0]])
     }
     if (destination) {
-      if (!destinationMarker) destinationMarker = new liveMapbox.Marker({ color: '#2563eb' }).addTo(liveMap)
+      if (!destinationMarker) {
+        destinationMarker = new liveMapbox.Marker({ color: '#2563eb' })
+          .setPopup(new liveMapbox.Popup({ offset: 25 }).setText(branchName(destinationBranch) || 'Destination branch'))
+          .addTo(map)
+      }
       destinationMarker.setLngLat([destination[1], destination[0]])
     }
+    if (!destination) mapError.value = 'The destination branch has no valid map coordinates. Add its latitude and longitude to show the branch pin.'
+    else if (mapError.value.startsWith('The destination branch')) mapError.value = ''
     if (currentLocation.value && destination) {
       const bounds = new liveMapbox.LngLatBounds([currentLocation.value[1], currentLocation.value[0]], [currentLocation.value[1], currentLocation.value[0]])
       bounds.extend([destination[1], destination[0]])
-      liveMap.fitBounds(bounds, { padding: 48, maxZoom: 14 })
+      map.fitBounds(bounds, { padding: 48, maxZoom: 14 })
     } else if (currentLocation.value || destination) {
       const point = currentLocation.value || destination!
-      liveMap.setCenter([point[1], point[0]])
+      map.setCenter([point[1], point[0]])
     }
-    liveMap.resize()
-  } catch {
-    locationError.value = 'Unable to load the live map. Check the Mapbox configuration and connection.'
+    map.resize()
+  } catch (error: any) {
+    liveMap?.remove()
+    liveMap = null
+    liveMapReady = null
+    currentMarker = null
+    destinationMarker = null
+    mapError.value = error?.message || 'Unable to load the live map. Check the Mapbox token and connection.'
   }
 }
 

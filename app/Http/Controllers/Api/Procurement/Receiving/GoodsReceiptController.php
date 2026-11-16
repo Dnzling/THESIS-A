@@ -8,6 +8,8 @@ use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Receiving\GoodsReceiptItem;
 use App\Models\Procurement\Receiving\GoodsReceiptResolution;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Inventory\BranchInventory;
@@ -568,6 +570,10 @@ class GoodsReceiptController extends Controller
                         $po->id
                     );
                 }
+
+                if ($isSimpleInventoryPo) {
+                    $this->syncSimpleInventoryRequisitionStatus($po);
+                }
             } // end not draft
 
             // Link a posted GRN to the supplier's active follow-up delivery.
@@ -794,6 +800,7 @@ class GoodsReceiptController extends Controller
 
         $po = $grn->purchaseOrder()->with('items')->first();
         if (!$po) return;
+        $isSimpleInventoryPo = in_array($po->status, ['pending_receipt', 'partially_received'], true);
 
         foreach ($grn->items as $grnItem) {
             if ($grnItem->quantity_received <= 0) {
@@ -908,6 +915,44 @@ class GoodsReceiptController extends Controller
             } else {
                 $po->markInTransit();
             }
+        }
+
+        if ($isSimpleInventoryPo) {
+            $this->syncSimpleInventoryRequisitionStatus($po);
+        }
+    }
+
+    private function syncSimpleInventoryRequisitionStatus(PurchaseOrder $po): void
+    {
+        if (!$po->purchase_requisition_id) {
+            return;
+        }
+
+        $requisition = PurchaseRequisition::query()
+            ->where('store_id', $po->store_id)
+            ->with('items:id,requisition_id,quantity_requested')
+            ->lockForUpdate()
+            ->find($po->purchase_requisition_id);
+
+        if (!$requisition || $requisition->items->isEmpty()
+            || in_array($requisition->status, ['rejected', 'cancelled'], true)) {
+            return;
+        }
+
+        $allRequestedQuantitiesReceived = $requisition->items->every(function ($requestedItem) use ($requisition) {
+            $receivedQuantity = PurchaseOrderItem::query()
+                ->where('purchase_requisition_item_id', $requestedItem->id)
+                ->whereHas('purchaseOrder', fn ($query) => $query
+                    ->where('store_id', $requisition->store_id)
+                    ->where('purchase_requisition_id', $requisition->id)
+                    ->whereNotIn('status', ['cancelled', 'canceled', 'rejected']))
+                ->sum('quantity_received');
+
+            return (int) $receivedQuantity >= (int) $requestedItem->quantity_requested;
+        });
+
+        if ($allRequestedQuantitiesReceived && $requisition->status !== 'received') {
+            $requisition->update(['status' => 'received']);
         }
     }
 

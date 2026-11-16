@@ -425,7 +425,7 @@ const itemNeedsSetupAttention = (item: any) => {
   if (name.startsWith('store.employees') || name.startsWith('hr.employees') || path.startsWith('/store/employees') || path.startsWith('/hr/employees')) {
     return Boolean(setupAttention.value.employees)
   }
-  if (name === 'inventory.products' || path.startsWith('/inventory/products')) {
+  if (name === 'merchandising.products' || path === '/merchandising/products') {
     return Boolean(setupAttention.value.products)
   }
   return false
