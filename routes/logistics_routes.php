@@ -68,6 +68,8 @@ Route::prefix('logistics')->group(function () {
             Route::post('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'addLog']);
             Route::put('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus']);
             Route::post('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus']);
+            Route::post('/{source}/{orderId}/failed-attempt', [UnifiedDeliveryController::class, 'failedAttempt']);
+            Route::post('/ecommerce/{orderId}/reschedule', [UnifiedDeliveryController::class, 'rescheduleEcommerce'])->whereNumber('orderId')->middleware('can:logistics.deliveries.manage');
             Route::post('/{source}/{orderId}/location', [UnifiedDeliveryController::class, 'updateLocation']);
             Route::post('/{source}/{orderId}/delivered', [UnifiedDeliveryController::class, 'delivered']);
         });

@@ -12,12 +12,12 @@
         />
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-orange-100">FurniSync Order Updates</p>
         <h1 class="mt-2 text-2xl font-bold sm:text-3xl">Track your order</h1>
-        <p class="mt-2 max-w-xl text-sm text-orange-50">Enter the tracking number from your delivery email to view the latest delivery status.</p>
+        <p class="mt-2 max-w-xl text-sm text-orange-50">Enter the Logistics Reference (LGS number) from your delivery update to view its status and location.</p>
       </div>
 
       <form class="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-6" @submit.prevent="submitTracking">
         <div class="min-w-0 flex-1">
-          <label for="tracking-number" class="mb-1.5 block text-sm font-medium text-slate-700">Tracking number</label>
+          <label for="tracking-number" class="mb-1.5 block text-sm font-medium text-slate-700">Logistics Reference / Tracking Number</label>
           <InputText
             id="tracking-number"
             v-model="trackingNumber"
@@ -53,7 +53,7 @@
           <div class="min-w-0">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Order reference</p>
             <h2 class="mt-1 break-all text-xl font-bold text-slate-900">{{ tracking.order_number }}</h2>
-            <p class="mt-1 break-all text-sm text-slate-500">Tracking: {{ tracking.tracking_number }}</p>
+            <p class="mt-1 break-all text-sm text-slate-500">Logistics Reference: {{ tracking.tracking_number }}</p>
           </div>
           <Badge :value="statusLabel(tracking.status)" :severity="statusSeverity(tracking.status)" class="self-start !px-3 !py-1.5" />
         </div>
@@ -81,15 +81,18 @@
             </span>
           </div>
 
-          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+          <div v-if="hasMapLocation" class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
             <div ref="mapElement" class="h-[300px] w-full sm:h-[420px]" />
+          </div>
+          <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+            Map location is not available yet. The delivery status will continue to update here.
           </div>
 
           <div class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
             <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full border-2 border-white bg-blue-600 shadow" /> Delivery destination</span>
             <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-orange-500 shadow" /> Driver's latest location</span>
-            <span v-if="!tracking.live_tracking?.destination" class="text-amber-700">The order has no saved map pin, so its destination cannot be shown.</span>
-            <span v-if="!tracking.live_tracking?.driver" class="text-amber-700">Waiting for the driver to share a GPS location.</span>
+            <span v-if="hasMapLocation && !tracking.live_tracking?.destination" class="text-amber-700">The order has no saved destination pin.</span>
+            <span v-if="hasMapLocation && !tracking.live_tracking?.driver" class="text-amber-700">Waiting for the driver to share a GPS location.</span>
             <span v-if="tracking.live_tracking?.last_updated_at">Location updated {{ formatDateTime(tracking.live_tracking.last_updated_at) }}</span>
           </div>
           <Message v-if="mapError" severity="warn" :closable="false">{{ mapError }}</Message>
@@ -107,7 +110,7 @@
     <div v-if="!tracking && !loading && !errorMessage" class="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
       <i class="pi pi-map-marker text-3xl text-orange-500" />
       <p class="mt-3 font-semibold text-slate-800">Your delivery updates will appear here</p>
-      <p class="mt-1 text-sm text-slate-500">Use the tracking number provided in your delivery email.</p>
+      <p class="mt-1 text-sm text-slate-500">Use the Logistics Reference (LGS number) provided in your delivery update.</p>
     </div>
   </div>
 </template>
@@ -144,8 +147,16 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 let mapboxgl: typeof import('mapbox-gl').default | null = null
 let requestSequence = 0
 
-const isOutForDelivery = computed(() => String(tracking.value?.status || '').toLowerCase() === 'out_for_delivery')
-const isDelivered = computed(() => String(tracking.value?.status || '').toLowerCase() === 'delivered')
+function normalizeStatus(status: unknown) {
+  return String(status || '').trim().toLowerCase().replace(/[ -]+/g, '_')
+}
+
+const isOutForDelivery = computed(() => normalizeStatus(tracking.value?.status) === 'out_for_delivery')
+const isDelivered = computed(() => normalizeStatus(tracking.value?.status) === 'delivered')
+const hasMapLocation = computed(() => Boolean(
+  coordinatePoint(tracking.value?.live_tracking?.destination)
+  || coordinatePoint(tracking.value?.live_tracking?.driver),
+))
 
 async function submitTracking() {
   const value = trackingNumber.value.trim()
@@ -205,7 +216,7 @@ function coordinatePoint(value: any): [number, number] | null {
 }
 
 async function renderMap() {
-  if (!isOutForDelivery.value || !mapElement.value) {
+  if (!isOutForDelivery.value || !hasMapLocation.value || !mapElement.value) {
     disposeMap()
     return
   }

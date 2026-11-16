@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -52,6 +53,159 @@ class UnifiedDeliveryController extends Controller
 
     // Ecommerce orders must be reviewed by Sales before Logistics can dispatch them.
     private const PENDING_ORDER_STATUSES = ['ready_for_dispatch'];
+
+    public function failedAttempt(Request $request, string $source, int $orderId): JsonResponse
+    {
+        $source = strtolower($source);
+        abort_unless(in_array($source, ['ecommerce', 'sales'], true), 422, 'Failed-attempt requeue is available for ecommerce and POS deliveries.');
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+            'details' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $tripId = null;
+        $email = null;
+        $emailData = [];
+        DB::transaction(function () use ($request, $source, $orderId, $validated, &$tripId, &$email, &$emailData): void {
+            if ($source === 'ecommerce') {
+                $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
+                $delivery = $order->delivery;
+                abort_if(!$delivery, 404, 'No delivery found for this order.');
+                $this->authorizeFailedAttempt($request, (int) $delivery->driver_user_id);
+                abort_unless(strtolower((string) $delivery->status) === 'out_for_delivery', 422, 'Only an order out for delivery can be requeued after a failed attempt.');
+
+                $tripId = $delivery->trip_id ? (int) $delivery->trip_id : null;
+                $from = (string) $delivery->status;
+                $message = $this->failedAttemptMessage($validated);
+                $delivery->fill([
+                    'status' => 'ready_for_dispatch',
+                    'failed_reason' => $message,
+                    'notes' => $message,
+                    'trip_id' => null,
+                    'driver_user_id' => null,
+                    'vehicle_id' => null,
+                    'assistant_user_ids' => null,
+                    'updated_by' => $request->user()->id,
+                ])->save();
+                $order->status = 'ready_for_dispatch';
+                $order->save();
+                EcommerceDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'status_updated',
+                    'status_from' => $from,
+                    'status_to' => 'ready_for_dispatch',
+                    'message' => $message,
+                    'meta' => ['failed_attempt' => true, 'reason' => $validated['reason']],
+                    'created_by' => $request->user()->id,
+                ]);
+
+                $email = $order->shipping_email ?: $order->user?->email;
+                $emailData = ['name' => $order->shipping_name ?: 'Customer', 'order_number' => $order->order_number, 'reason' => $message, 'store_name' => $order->store?->store_name ?: 'FurniSync store'];
+            } else {
+                $order = $this->resolveSalesOrder($request, $orderId, withDelivery: true);
+                $delivery = $order->delivery;
+                abort_if(!$delivery, 404, 'No delivery found for this order.');
+                $this->authorizeFailedAttempt($request, (int) $delivery->driver_user_id);
+                abort_unless(strtolower((string) $delivery->status) === 'out_for_delivery', 422, 'Only an order out for delivery can be requeued after a failed attempt.');
+
+                $tripId = $delivery->trip_id ? (int) $delivery->trip_id : null;
+                $from = (string) $delivery->status;
+                $message = $this->failedAttemptMessage($validated);
+                $delivery->fill([
+                    'status' => 'ready_for_dispatch',
+                    'failed_reason' => $message,
+                    'notes' => $message,
+                    'trip_id' => null,
+                    'driver_user_id' => null,
+                    'vehicle_id' => null,
+                    'assistant_user_ids' => null,
+                    'updated_by' => $request->user()->id,
+                ])->save();
+                if ((string) $order->status === 'out_for_delivery') {
+                    $order->status = 'ready_for_dispatch';
+                    $order->save();
+                }
+                SalesOrderDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'sales_order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'status_updated',
+                    'status_from' => $from,
+                    'status_to' => 'ready_for_dispatch',
+                    'message' => $message,
+                    'meta' => ['failed_attempt' => true, 'reason' => $validated['reason']],
+                    'created_by' => $request->user()->id,
+                ]);
+                $email = $order->delivery_email;
+                $emailData = ['name' => $order->customer_name ?: 'Customer', 'order_number' => $order->order_number, 'reason' => $message, 'store_name' => $order->store?->store_name ?: 'FurniSync store'];
+            }
+        });
+
+        if ($source === 'sales' && $email) {
+            try {
+                Mail::to($email)->send(new \App\Mail\CustomerDeliveryAttemptFailedMail($emailData));
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        if ($tripId) {
+            app(\App\Services\Logistics\CompleteDeliveryTrip::class)
+                ->reconcile($tripId, $this->resolveStoreId($request), (int) $request->user()->id);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Delivery attempt recorded. The order is back in Ready for Dispatch.']);
+    }
+
+    public function rescheduleEcommerce(Request $request, int $orderId): JsonResponse
+    {
+        $validated = $request->validate(['delivery_date' => ['required', 'date', 'after_or_equal:today']]);
+        $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
+        $delivery = $order->delivery;
+        abort_if(!$delivery, 404, 'No delivery found for this order.');
+        abort_unless(in_array(strtolower((string) $delivery->status), ['ready_for_dispatch', 'pending'], true), 422, 'Only a requeued order can be rescheduled.');
+
+        DB::transaction(function () use ($order, $delivery, $validated, $request): void {
+            $oldDate = $order->requested_fulfillment_date?->toDateString();
+            $newDate = Carbon::parse($validated['delivery_date'])->toDateString();
+            $order->requested_fulfillment_date = $newDate;
+            $order->save();
+            $delivery->estimated_delivery_at = Carbon::parse($newDate, 'Asia/Manila')->setTime(12, 0);
+            $delivery->updated_by = $request->user()->id;
+            $delivery->save();
+
+            EcommerceDeliveryLog::query()->create([
+                'delivery_id' => $delivery->id,
+                'order_id' => $order->id,
+                'store_id' => $order->store_id,
+                'event_type' => 'status_updated',
+                'status_from' => (string) $delivery->status,
+                'status_to' => (string) $delivery->status,
+                'message' => "Delivery rescheduled from {$oldDate} to {$newDate}.",
+                'meta' => ['rescheduled' => true, 'previous_date' => $oldDate, 'delivery_date' => $newDate],
+                'created_by' => $request->user()->id,
+            ]);
+        });
+
+        return response()->json(['success' => true, 'message' => 'Delivery date updated.', 'data' => $order->fresh(['delivery'])]);
+    }
+
+    private function authorizeFailedAttempt(Request $request, int $assignedDriverId): void
+    {
+        $canManage = app(\App\Services\Core\PermissionService::class)
+            ->userHasPermission($request->user(), 'logistics.deliveries.manage');
+        abort_unless($canManage || $assignedDriverId === (int) $request->user()->id, 403, 'Only the assigned driver or a logistics manager can record a failed attempt.');
+    }
+
+    private function failedAttemptMessage(array $validated): string
+    {
+        $reason = trim((string) $validated['reason']);
+        $details = trim((string) ($validated['details'] ?? ''));
+        return 'Delivery attempt failed: ' . $reason . ($details !== '' ? ' - ' . $details : '');
+    }
+
 
     public function orders(Request $request): JsonResponse
     {
@@ -1905,7 +2059,7 @@ class UnifiedDeliveryController extends Controller
         $add('created', $replacement->created_at, 'replacement_created', 'Replacement case created.');
         $add('assigned', $replacement->replacement_assigned_at, 'trip_assigned', 'Replacement delivery assigned to a trip.');
         $add('dispatched', $replacement->replacement_dispatched_at, 'out_for_delivery', 'Replacement trip dispatched; reserved stock issued.');
-        if ($replacement->replacement_status === 'delivery_failed') {
+        if ($replacement->replacement_failure_reason && in_array($replacement->replacement_status, ['delivery_failed', 'reserved'], true)) {
             $add('failed', $replacement->updated_at, 'failed_delivery', $replacement->replacement_failure_reason ?: 'Delivery attempt failed.');
         }
         $add('delivered', $replacement->replacement_delivered_at, 'delivered', 'Replacement delivered to the customer.', [

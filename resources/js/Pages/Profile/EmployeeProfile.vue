@@ -40,7 +40,6 @@
               <Button label="Request Leave" icon="pi pi-calendar" severity="warn" outlined size="small" @click="showLeaveDialog = true" />
               <Button label="Request Shift Swap" icon="pi pi-share-alt" severity="secondary" outlined size="small" @click="openShiftSwapDialog" />
               <Button label="Request Overtime" icon="pi pi-clock" severity="secondary" outlined size="small" @click="openOvertimeDialog" />
-              <Button label="My Benefits" icon="pi pi-heart" severity="secondary" text size="small" @click="router.visit('/employee-benefits')" />
             </div>
           </section>
         </aside>

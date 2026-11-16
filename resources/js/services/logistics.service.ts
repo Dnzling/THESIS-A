@@ -103,6 +103,21 @@ class LogisticsService {
     return response.data
   }
 
+  async recordFailedDeliveryAttempt(source: 'ecommerce' | 'sales', orderId: string | number, payload: { reason: string; details?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/failed-attempt`, payload)
+    return response.data
+  }
+
+  async rescheduleEcommerceDelivery(orderId: string | number, deliveryDate: string) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/ecommerce/${orderId}/reschedule`, { delivery_date: deliveryDate })
+    return response.data
+  }
+
+  async failReplacementDelivery(returnId: string | number, reason: string) {
+    const response = await axiosClient.post(`${this.baseUrl}/replacements/${returnId}/fail`, { reason })
+    return response.data
+  }
+
   async updatePickupLocation(orderId: string | number, payload: {
     latitude: number
     longitude: number

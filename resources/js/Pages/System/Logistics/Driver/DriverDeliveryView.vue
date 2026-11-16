@@ -1,5 +1,8 @@
 <template>
   <div class="mx-auto space-y-2 px-4 py-6 pb-28 sm:px-6 md:pb-24 lg:px-8">
+    <div v-if="canAssignSupplierPickup" class="flex justify-end">
+      <Button label="Assign Driver" icon="pi pi-user-plus" severity="warn" size="small" @click="router.push({ name: 'logistics.supplier-pickups.assign', params: { id: orderId } })" />
+    </div>
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Delivery Details</template>
 
@@ -507,8 +510,40 @@
       </template>
     </Dialog>
 
-    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn" class="fixed inset-x-0 bottom-0 z-40 flex justify-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+    <Dialog v-model:visible="failedAttemptDialog" modal header="Record Failed Delivery Attempt" :style="{ width: 'min(94vw, 520px)' }">
+      <div class="space-y-4">
+        <Message severity="warn" :closable="false">This does not cancel the order. It returns the delivery to Ready for Dispatch so the store can assign another attempt.</Message>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Reason *</label>
+          <Select v-model="failedAttemptReason" :options="failedAttemptReasons" option-label="label" option-value="value" fluid size="small" placeholder="Select a reason" />
+        </div>
+        <div v-if="failedAttemptReason === 'Other'">
+          <label class="mb-1 block text-sm font-medium text-slate-700">Details *</label>
+          <Textarea v-model="failedAttemptDetails" rows="3" fluid placeholder="Explain why delivery could not be completed" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Keep Delivery" severity="secondary" outlined :disabled="updating" @click="failedAttemptDialog = false" />
+        <Button label="Return to Dispatch" severity="warn" icon="pi pi-replay" :loading="updating" :disabled="!failedAttemptReason || (failedAttemptReason === 'Other' && !failedAttemptDetails.trim())" @click="submitFailedAttempt" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="rescheduleDialog" modal header="Reschedule Delivery" :style="{ width: 'min(94vw, 420px)' }">
+      <div class="space-y-3">
+        <Message severity="info" :closable="false">Choose a new requested delivery date. The order remains Ready for Dispatch.</Message>
+        <label class="block text-sm font-medium text-slate-700">New delivery date *</label>
+        <DatePicker v-model="rescheduleDate" dateFormat="M d, yy" :minDate="new Date()" showIcon fluid />
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined :disabled="updating" @click="rescheduleDialog = false" />
+        <Button label="Save Date" severity="warn" icon="pi pi-calendar" :loading="updating" :disabled="!rescheduleDate" @click="submitReschedule" />
+      </template>
+    </Dialog>
+
+    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn || canRecordFailedAttempt || canRescheduleEcommerce" class="fixed inset-x-0 bottom-0 z-40 flex justify-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
       <Button v-if="canOpenReplacementFromReturn" icon="pi pi-box" label="Replacement" severity="warn" size="large" class="flex-1" @click="openLinkedReplacement" />
+      <Button v-if="canRecordFailedAttempt" icon="pi pi-replay" label="Cancel Attempt" severity="secondary" outlined size="large" class="flex-1" :disabled="updating" @click="openFailedAttempt" />
+      <Button v-if="canRescheduleEcommerce" icon="pi pi-calendar" label="Reschedule" severity="secondary" outlined size="large" class="flex-1" :disabled="updating" @click="openReschedule" />
       <Button
         v-if="canShowDeliveryAction"
         icon="pi pi-check"
@@ -520,8 +555,10 @@
         @click="beginAdvance"
       />
     </div>
-    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn" class="fixed bottom-6 right-8 z-40 hidden gap-2 md:flex">
+    <div v-if="canShowDeliveryAction || canOpenReplacementFromReturn || canRecordFailedAttempt || canRescheduleEcommerce" class="fixed bottom-6 right-8 z-40 hidden gap-2 md:flex">
       <Button v-if="canOpenReplacementFromReturn" icon="pi pi-box" label="Replacement" severity="warn" size="large" @click="openLinkedReplacement" />
+      <Button v-if="canRecordFailedAttempt" icon="pi pi-replay" label="Cancel Delivery Attempt" severity="secondary" outlined size="large" :disabled="updating" @click="openFailedAttempt" />
+      <Button v-if="canRescheduleEcommerce" icon="pi pi-calendar" label="Reschedule" severity="secondary" outlined size="large" :disabled="updating" @click="openReschedule" />
       <Button
         v-if="canShowDeliveryAction"
         icon="pi pi-check"
@@ -548,6 +585,8 @@ import Tag from 'primevue/tag'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -575,6 +614,18 @@ const resolvedCurrentAddress = ref('')
 const resolvedSupplierPoint = ref<[number, number] | null>(null)
 
 const proofDialog = ref(false)
+const failedAttemptDialog = ref(false)
+const failedAttemptReason = ref('')
+const failedAttemptDetails = ref('')
+const rescheduleDialog = ref(false)
+const rescheduleDate = ref<Date | null>(null)
+const failedAttemptReasons = [
+  { label: 'Customer unavailable', value: 'Customer unavailable' },
+  { label: 'Unable to access the delivery location', value: 'Unable to access the delivery location' },
+  { label: 'Customer requested a new delivery date', value: 'Customer requested a new delivery date' },
+  { label: 'Vehicle or route issue', value: 'Vehicle or route issue' },
+  { label: 'Other', value: 'Other' },
+]
 const proofPhoto = ref<File | null>(null)
 const photoPreview = ref('')
 const statusNotes = ref('')
@@ -813,6 +864,16 @@ const vehicleLabel = computed(
 const currentDeliveryStatus = computed(() =>
   String(detail.value?.delivery?.status || '').toLowerCase(),
 )
+const canManageDispatch = computed(() => authStore.hasPermission('logistics.deliveries.manage'))
+const canAssignSupplierPickup = computed(() => source.value === 'pickup'
+  && authStore.hasPermission('logistics.supplier-pickups.manage')
+  && ['pending', 'ready_for_dispatch'].includes(currentDeliveryStatus.value))
+const canRecordFailedAttempt = computed(() => ['ecommerce', 'sales', 'replacement'].includes(source.value)
+  && currentDeliveryStatus.value === 'out_for_delivery'
+  && (isAssignedDriver.value || canManageDispatch.value))
+const canRescheduleEcommerce = computed(() => source.value === 'ecommerce'
+  && currentDeliveryStatus.value === 'ready_for_dispatch'
+  && canManageDispatch.value)
 const isSupplierLeg = computed(() =>
   source.value === 'pickup' && ['pending', 'en_route_to_supplier'].includes(currentDeliveryStatus.value),
 )
@@ -864,6 +925,56 @@ const canShowDeliveryAction = computed(() =>
     || (source.value === 'return_pickup' && ['assigned', 'in_transit'].includes(currentDeliveryStatus.value))
     || currentDeliveryStatus.value === 'out_for_delivery'),
 )
+
+const openFailedAttempt = () => {
+  failedAttemptReason.value = ''
+  failedAttemptDetails.value = ''
+  failedAttemptDialog.value = true
+}
+const openReschedule = () => {
+  rescheduleDate.value = null
+  rescheduleDialog.value = true
+}
+const submitFailedAttempt = async () => {
+  if (!canRecordFailedAttempt.value || !failedAttemptReason.value || updating.value) return
+  updating.value = true
+  try {
+    const reason = failedAttemptReason.value === 'Other'
+      ? failedAttemptDetails.value.trim()
+      : failedAttemptReason.value
+    if (source.value === 'replacement') {
+      await logisticsService.failReplacementDelivery(orderId.value, reason)
+    } else {
+      await logisticsService.recordFailedDeliveryAttempt(source.value as 'ecommerce' | 'sales', orderId.value, {
+        reason,
+        details: failedAttemptReason.value === 'Other' ? undefined : failedAttemptDetails.value.trim() || undefined,
+      })
+    }
+    failedAttemptDialog.value = false
+    toast.add({ severity: 'success', summary: 'Delivery Requeued', detail: 'The attempt was recorded and the order is ready for dispatch.', life: 3000 })
+    await load()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to Requeue', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    updating.value = false
+  }
+}
+const submitReschedule = async () => {
+  if (!canRescheduleEcommerce.value || !rescheduleDate.value || updating.value) return
+  updating.value = true
+  try {
+    const date = rescheduleDate.value
+    const deliveryDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    await logisticsService.rescheduleEcommerceDelivery(orderId.value, deliveryDate)
+    rescheduleDialog.value = false
+    toast.add({ severity: 'success', summary: 'Delivery Rescheduled', detail: 'The new delivery date was saved.', life: 3000 })
+    await load()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to Reschedule', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    updating.value = false
+  }
+}
 
 const returnDeliverySteps = [
   { label: 'Picked Up', value: 'picked_up' },

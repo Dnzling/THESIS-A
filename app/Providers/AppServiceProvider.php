@@ -67,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Models\Sales\SalesOrderDelivery::class,
             \App\Models\Logistics\ReturnPickup::class,
             \App\Models\Inventory\StockTransfer::class,
+            \App\Models\CRM\EcommerceOrderReturn::class,
+            \App\Models\Procurement\Shipping\PurchaseOrderShipment::class,
         ] as $deliveryModel) {
             $deliveryModel::updated(fn ($delivery) => app(\App\Services\Logistics\CompleteDeliveryTrip::class)->afterDeliveryUpdate($delivery));
         }

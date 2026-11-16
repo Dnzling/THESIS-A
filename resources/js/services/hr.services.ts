@@ -352,6 +352,11 @@ const hrService = {
     return response.data
   },
 
+  async updateInterviewSchedule(applicationId: number | string, interviewId: number | string, payload: InterviewSchedulePayload) {
+    const response = await axiosClient.put(`/api/job-portal/recruitment/applications/${applicationId}/interviews/${interviewId}`, payload)
+    return response.data
+  },
+
   async hireApplicant(applicationId: number | string, payload: HireApplicantPayload) {
     const response = await axiosClient.post(`/api/job-portal/recruitment/applications/${applicationId}/hire`, payload)
     return response.data

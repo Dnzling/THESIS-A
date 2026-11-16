@@ -229,6 +229,71 @@ class RecruitmentController extends Controller
         ], 201);
     }
 
+    public function updateInterviewSchedule(Request $request, JobApplication $application, Interview $interview): JsonResponse
+    {
+        $validated = $request->validate([
+            'interview_date' => 'required|date|after:now',
+            'interview_type' => 'required|string|max:100',
+            'notes' => 'nullable|string',
+        ]);
+
+        abort_unless((int) $interview->application_id === (int) $application->id, 404);
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        abort_unless($storeId > 0 && (int) $application->jobPosting?->store_id === $storeId, 404);
+        abort_unless(!in_array(strtolower((string) $application->status), ['hired', 'rejected'], true), 422, 'This application can no longer be rescheduled.');
+
+        $allowedStages = $application->jobPosting?->screeningStages()->pluck('stage_name')->filter()->values()->all() ?? [];
+        if (!in_array($validated['interview_type'], $allowedStages, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid hiring stage selected for this job posting.',
+                'errors' => ['interview_type' => ['Please select a stage configured for this job posting.']],
+            ], 422);
+        }
+
+        $settings = is_array($request->user()?->store?->settings) ? $request->user()->store->settings : [];
+        $dailyLimit = (int) ($settings['hr_interview_daily_limit'] ?? 10);
+        $interviewDate = Carbon::parse($validated['interview_date'])->toDateString();
+        $dailyCount = Interview::query()
+            ->where('id', '!=', $interview->id)
+            ->whereDate('interview_date', $interviewDate)
+            ->whereHas('application.jobPosting', fn ($query) => $query->where('store_id', $storeId))
+            ->count();
+
+        if ($dailyCount >= $dailyLimit) {
+            return response()->json([
+                'success' => false,
+                'message' => "Interview schedule is full for {$interviewDate}. Max {$dailyLimit} applicants per day.",
+            ], 422);
+        }
+
+        DB::transaction(function () use ($interview, $application, $request, $validated): void {
+            $interview->update([
+                'interviewer_id' => $request->user()->id,
+                'interview_date' => $validated['interview_date'],
+                'interview_type' => $validated['interview_type'],
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            ApplicationTimeline::create([
+                'application_id' => $application->id,
+                'status' => 'Interview',
+                'changed_by' => $request->user()->id,
+                'changed_at' => now(),
+                'notes' => 'Interview schedule updated to ' . Carbon::parse($validated['interview_date'])->format('M j, Y g:i A'),
+            ]);
+        });
+
+        $interview->refresh()->load(['application.jobPosting.store', 'interviewer']);
+        Mail::to($application->email)->send(new ApplicantInterviewScheduledMail($interview, updated: true));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Interview schedule updated and applicant notified by email.',
+            'data' => $interview,
+        ]);
+    }
+
     public function hireApplicant(Request $request, JobApplication $application): JsonResponse
     {
         $this->authorizeOnboarding($request, $application);

@@ -50,10 +50,14 @@
               </div>
 
               <div v-else class="space-y-4">
-                <Message v-if="scheduleDateLocked" severity="info" :closable="false">
+                <Message v-if="scheduleDateLocked && !upcomingInterview" severity="info" :closable="false">
                   {{ isInterviewDatePast ? 'The interview date has passed. You can make a hiring decision below.' : `The next interview attempt can be scheduled on ${formatDate(latestInterview?.interview_date)}.` }}
                 </Message>
-                <div v-else class="space-y-3">
+                <div v-if="!upcomingInterview || editingInterviewId" class="space-y-3">
+                  <div v-if="editingInterviewId" class="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                    <span>Updating the scheduled interview. The applicant will receive an email with the revised details.</span>
+                    <Button label="Stop Editing" severity="secondary" text size="small" @click="cancelInterviewEdit" />
+                  </div>
                   <label class="block space-y-1 text-xs font-medium text-slate-600">Interview date and time
                     <DatePicker v-model="interviewForm.interview_date" :minDate="new Date()" showTime hourFormat="12" class="w-full"
                       placeholder="Schedule interview date" showIcon />
@@ -66,7 +70,7 @@
                     <Textarea v-model="interviewForm.notes" rows="3" class="w-full" placeholder="Interview notes" />
                   </label>
                   <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
-                  <Button v-if="canScheduleInterview" :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
+                  <Button v-if="canScheduleInterview" :label="interviewButtonLabel" :icon="editingInterviewId ? 'pi pi-save' : 'pi pi-calendar-plus'" fluid :loading="submitting"
                     @click="scheduleInterview" />
                 </div>
 
@@ -79,6 +83,7 @@
                       </div>
                       <Tag :value="formatDate(interview.interview_date)" severity="contrast" />
                     </div>
+                    <Button v-if="upcomingInterview?.id === interview.id && canScheduleInterview" label="Edit Schedule" icon="pi pi-pencil" severity="warn" outlined size="small" class="mt-3" @click="editInterview(interview)" />
                     <p v-if="interview.notes" class="mt-2 text-xs text-slate-500">{{ interview.notes }}</p>
                   </div>
                 </div>
@@ -154,6 +159,7 @@ const toast = useToast()
 const application = ref<any | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
+const editingInterviewId = ref<number | null>(null)
 const hiring = ref(false)
 const rejecting = ref(false)
 const errorMessage = ref('')
@@ -219,7 +225,7 @@ const upcomingInterview = computed(() => {
 })
 const displayStatusLabel = computed(() => upcomingInterview.value ? 'Upcoming Interview' : (application.value?.status || 'Applied'))
 const canScheduleInterview = computed(() => !['hired', 'rejected'].includes(String(application.value?.status || '').toLowerCase()))
-const interviewButtonLabel = computed(() => (interviewList.value.length ? 'Schedule Another Interview' : 'Schedule Interview'))
+const interviewButtonLabel = computed(() => editingInterviewId.value ? 'Save Schedule Update' : (interviewList.value.length ? 'Schedule Another Interview' : 'Schedule Interview'))
 const isHired = computed(() => String(application.value?.status || '').toLowerCase() === 'hired')
 const isRejected = computed(() => String(application.value?.status || '').toLowerCase() === 'rejected')
 const loadApplication = async () => {
@@ -237,9 +243,27 @@ const toLocalDateTimeString = (value: Date) => {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
 }
 
+const editInterview = (interview: any) => {
+  const date = new Date(interview.interview_date)
+  if (Number.isNaN(date.getTime())) return
+  editingInterviewId.value = Number(interview.id)
+  interviewForm.interview_date = date
+  interviewForm.interview_type = interview.interview_type || ''
+  interviewForm.notes = interview.notes || ''
+  errorMessage.value = ''
+}
+
+const cancelInterviewEdit = () => {
+  editingInterviewId.value = null
+  interviewForm.interview_date = null
+  interviewForm.interview_type = ''
+  interviewForm.notes = ''
+  errorMessage.value = ''
+}
+
 const scheduleInterview = async () => {
   errorMessage.value = ''
-  if (scheduleDateLocked.value) {
+  if (scheduleDateLocked.value && !editingInterviewId.value) {
     errorMessage.value = 'You can schedule another interview only on the recorded interview date.'
     return
   }
@@ -250,12 +274,19 @@ const scheduleInterview = async () => {
 
   submitting.value = true
   try {
-    await hrService.scheduleInterview(route.params.applicationId as string, {
+    const payload = {
       interview_date: toLocalDateTimeString(interviewForm.interview_date),
       interview_type: interviewForm.interview_type,
       notes: interviewForm.notes || undefined,
-    })
-    toast.add({ severity: 'success', summary: 'Interview scheduled', detail: 'Applicant has been notified by email.', life: 2500 })
+    }
+    if (editingInterviewId.value) {
+      await hrService.updateInterviewSchedule(route.params.applicationId as string, editingInterviewId.value, payload)
+      cancelInterviewEdit()
+      toast.add({ severity: 'success', summary: 'Schedule updated', detail: 'The applicant was emailed the revised interview details.', life: 3000 })
+    } else {
+      await hrService.scheduleInterview(route.params.applicationId as string, payload)
+      toast.add({ severity: 'success', summary: 'Interview scheduled', detail: 'Applicant has been notified by email.', life: 2500 })
+    }
     await loadApplication()
   } catch (error: any) {
     const firstError = error?.response?.data?.errors ? Object.values(error.response.data.errors)[0] : null

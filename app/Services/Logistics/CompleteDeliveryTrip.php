@@ -14,15 +14,16 @@ class CompleteDeliveryTrip
             return;
         }
 
-        $status = strtolower((string) ($delivery->replacement_status ?? $delivery->delivery_status ?? $delivery->status));
         $tripId = (int) ($delivery->replacement_trip_id ?? $delivery->trip_id ?? 0);
-        if ($status !== 'delivered' || $tripId === 0) {
-            return;
-        }
+        $this->reconcile($tripId, (int) $delivery->store_id, (int) ($delivery->updated_by ?? 0));
+    }
 
-        DB::transaction(function () use ($delivery, $tripId): void {
+    public function reconcile(int $tripId, int $storeId, int $actorId = 0): void
+    {
+        if ($tripId === 0 || $storeId === 0) return;
+        DB::transaction(function () use ($tripId, $storeId, $actorId): void {
             $trip = DeliveryTrip::query()->whereKey($tripId)->lockForUpdate()->first();
-            if (! $trip || (int) $trip->store_id !== (int) $delivery->store_id
+            if (! $trip || (int) $trip->store_id !== $storeId
                 || ! in_array($trip->status, ['in_transit', 'out_for_delivery'], true)) {
                 return;
             }
@@ -31,24 +32,24 @@ class CompleteDeliveryTrip
                 + $trip->salesDeliveries()->count()
                 + $trip->returnPickups()->count()
                 + $trip->stockTransfers()->count()
-                + $trip->replacementReturns()->count();
+                + $trip->replacementReturns()->count()
+                + $trip->purchaseOrderShipments()->count();
             if ($total === 0) {
                 return;
             }
 
-            $remaining = $trip->ecommerceDeliveries()->where('status', '!=', 'delivered')->exists()
-                || $trip->salesDeliveries()->where('status', '!=', 'delivered')->exists()
-                || $trip->returnPickups()->where('status', '!=', 'delivered')->exists()
-                || $trip->replacementReturns()->where('replacement_status', '!=', 'delivered')->exists()
-                || $trip->stockTransfers()->where(function ($query) {
-                    $query->whereNull('delivery_status')->orWhere('delivery_status', '!=', 'delivered');
-                })->exists();
+            $remaining = $trip->ecommerceDeliveries()->whereNotIn('status', ['delivered', 'cancelled', 'failed_delivery', 'ready_for_dispatch'])->exists()
+                || $trip->salesDeliveries()->whereNotIn('status', ['delivered', 'cancelled', 'failed_delivery', 'ready_for_dispatch'])->exists()
+                || $trip->returnPickups()->whereNotIn('status', ['delivered', 'cancelled', 'failed_delivery', 'ready_for_dispatch'])->exists()
+                || $trip->replacementReturns()->whereNotIn('replacement_status', ['delivered', 'replaced', 'delivery_failed', 'reserved'])->exists()
+                || $trip->stockTransfers()->whereNotIn('delivery_status', ['delivered', 'cancelled', 'failed_delivery', 'ready_for_dispatch'])->exists()
+                || $trip->purchaseOrderShipments()->whereNotIn('status', ['delivered', 'cancelled', 'failed_delivery', 'ready_for_dispatch'])->exists();
             if ($remaining) {
                 return;
             }
 
             $trip->status = 'completed';
-            $trip->updated_by = $delivery->updated_by ?: $trip->updated_by;
+            $trip->updated_by = $actorId ?: $trip->updated_by;
             $trip->save();
         });
     }

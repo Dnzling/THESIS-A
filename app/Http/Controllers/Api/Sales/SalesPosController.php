@@ -101,16 +101,13 @@ class SalesPosController extends Controller
 
         $orders = collect();
 
-        if ($channel === '' || in_array($channel, ['pos', 'in_store', 'in-store', 'wholesale'], true)) {
+        if ($channel === '' || in_array($channel, ['pos', 'in_store', 'in-store'], true)) {
             $posQuery = SalesOrder::query()
                 ->with(['branch:id,name', 'payment:id,sales_order_id,payment_method,status', 'delivery:id,sales_order_id,status,tracking_number'])
                 ->withCount('items');
             $this->applyStoreScope($request, $posQuery);
-            if ($channel === 'wholesale') {
-                $posQuery->where('order_number', 'like', 'WHO-%');
-            } elseif (in_array($channel, ['pos', 'in_store', 'in-store'], true)) {
-                $posQuery->where('order_number', 'not like', 'WHO-%');
-            }
+            $posQuery->where(fn ($query) => $query->whereNull('order_number')
+                ->orWhere('order_number', 'not like', 'WHO-%'));
             $posQuery->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search) {
                 $nested->where('order_number', 'like', "%{$search}%")
                     ->orWhere('customer_name', 'like', "%{$search}%")
@@ -129,7 +126,7 @@ class SalesPosController extends Controller
                 'status' => $this->salesOrderDisplayStatus($order),
                 'total_amount' => (float) $order->total_amount,
                 'created_at' => $order->created_at,
-                'channel' => str_starts_with((string) $order->order_number, 'WHO-') ? 'Wholesale' : 'In-Store',
+                'channel' => 'In-Store',
                 'order_type' => 'pos',
                 'branch_id' => $order->branch_id,
                 'branch_name' => $order->branch?->name,

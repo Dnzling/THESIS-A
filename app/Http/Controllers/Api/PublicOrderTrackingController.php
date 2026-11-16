@@ -19,11 +19,11 @@ class PublicOrderTrackingController extends Controller
         $trackingNumber = trim($validated['tracking_number']);
         $ecommerceDelivery = EcommerceOrderDelivery::query()
             ->with('order:id,order_number,status,requested_fulfillment_date,customer_latitude,customer_longitude')
-            ->where('tracking_number', $trackingNumber)
+            ->whereRaw('LOWER(tracking_number) = ?', [strtolower($trackingNumber)])
             ->first();
         $salesDelivery = $ecommerceDelivery ? null : SalesOrderDelivery::query()
             ->with('order:id,order_number,status,delivery_latitude,delivery_longitude')
-            ->where('tracking_number', $trackingNumber)
+            ->whereRaw('LOWER(tracking_number) = ?', [strtolower($trackingNumber)])
             ->first();
 
         $delivery = $ecommerceDelivery ?? $salesDelivery;
@@ -31,14 +31,15 @@ class PublicOrderTrackingController extends Controller
 
         $orderStatus = strtolower((string) ($order?->status ?? ''));
         if (!$delivery || !$order || in_array(str_replace('-', '_', $orderStatus), ['cancelled', 'canceled'], true)
-            || in_array(strtolower((string) $delivery->status), ['cancelled', 'canceled'], true)) {
+            || in_array($this->normalizeStatus($delivery->status), ['cancelled', 'canceled'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'We could not find an active delivery with that tracking number.',
             ], 404);
         }
 
-        $outForDelivery = strtolower((string) $delivery->status) === 'out_for_delivery'
+        $deliveryStatus = $this->normalizeStatus($delivery->status);
+        $outForDelivery = $deliveryStatus === 'out_for_delivery'
             && !in_array(str_replace('-', '_', $orderStatus), ['cancelled', 'canceled'], true);
         $isEcommerce = $delivery instanceof EcommerceOrderDelivery;
 
@@ -47,7 +48,7 @@ class PublicOrderTrackingController extends Controller
             'data' => [
                 'order_number' => (string) $order->order_number,
                 'tracking_number' => (string) $delivery->tracking_number,
-                'status' => strtolower((string) $delivery->status),
+                'status' => $deliveryStatus,
                 'order_status' => $orderStatus,
                 'expected_delivery_date' => $isEcommerce
                     ? $order->requested_fulfillment_date?->toDateString() ?? $delivery->estimated_delivery_at?->toDateString()
@@ -62,6 +63,11 @@ class PublicOrderTrackingController extends Controller
                 ] : null,
             ],
         ]);
+    }
+
+    private function normalizeStatus(mixed $status): string
+    {
+        return str_replace([' ', '-'], '_', strtolower(trim((string) $status)));
     }
 
     private function coordinates(mixed $latitude, mixed $longitude): ?array

@@ -363,7 +363,7 @@ const availableOrders = ref<any[]>([])
 const loadingAvailable = ref(false)
 const loadingSuggestion = ref(false)
 const selectedOrders = ref<any[]>([])
-type OrderSource = 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement' | 'pickup'
+type OrderSource = 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement'
 const availableSources = ref<OrderSource[]>(['ecommerce'])
 const allAvailableOrders = ref<any[]>([])
 const availablePage = ref(1)
@@ -384,7 +384,6 @@ const sourceOptions: { label: string; value: OrderSource }[] = [
   { label: 'Return Pickup', value: 'return_pickup' },
   { label: 'Stock Transfer', value: 'stock_transfer' },
   { label: 'Replacement Delivery', value: 'replacement' },
-  { label: 'Supplier Pickup', value: 'pickup' },
 ]
 
 const assignedOrders = computed(() => {

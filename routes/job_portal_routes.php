@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->prefix('job-portal')->group(function () {
     Route::post('/profile/email-verify', [ApplicantProfileController::class, 'verifyEmailChange']);
 
     Route::post('/recruitment/applications/{application}/schedule-interview', [RecruitmentController::class, 'scheduleInterview']);
+    Route::put('/recruitment/applications/{application}/interviews/{interview}', [RecruitmentController::class, 'updateInterviewSchedule']);
     Route::post('/recruitment/applications/{application}/reject', [RecruitmentController::class, 'rejectApplicant']);
     Route::post('/recruitment/applications/{application}/hire', [RecruitmentController::class, 'hireApplicant']);
 });

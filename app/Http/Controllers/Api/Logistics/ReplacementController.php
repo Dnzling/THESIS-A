@@ -657,17 +657,55 @@ class ReplacementController extends Controller
         $return = $this->scopedReturn($request, $id);
         $this->authorizeLogistics($request, (int) $return->replacement_driver_id);
         $validated = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
-        DB::transaction(function () use ($return, $validated): void {
+        $tripId = (int) ($return->replacement_trip_id ?: 0);
+        DB::transaction(function () use ($return, $validated, $request, $tripId): void {
             $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
             if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'out_for_delivery') {
                 throw ValidationException::withMessages(['replacement' => 'Only an active delivery can be marked failed.']);
             }
-            $case->replacement_status = 'delivery_failed';
+            $case->replacement_status = 'reserved';
             $case->replacement_failure_reason = $validated['reason'];
+            $case->replacement_trip_id = null;
+            $case->replacement_driver_id = null;
+            $case->replacement_vehicle_id = null;
+            $case->replacement_assigned_at = null;
+            $case->replacement_dispatched_at = null;
             $case->save();
+
+            if ($tripId > 0) {
+                $pickup = \App\Models\Logistics\ReturnPickup::query()
+                    ->where('store_id', $case->store_id)
+                    ->where('return_id', $case->id)
+                    ->where('trip_id', $tripId)
+                    ->where('status', 'assigned')
+                    ->first();
+                if ($pickup) {
+                    \App\Models\Logistics\ReturnPickupLog::query()->create([
+                        'return_pickup_id' => $pickup->id,
+                        'event_type' => 'status_updated',
+                        'status_from' => 'assigned',
+                        'status_to' => 'ready_for_dispatch',
+                        'message' => 'Replacement delivery was requeued; the linked return pickup is waiting for the next successful replacement attempt.',
+                        'created_by' => $request->user()->id,
+                    ]);
+                    $pickup->update([
+                        'trip_id' => null,
+                        'driver_user_id' => null,
+                        'vehicle_id' => null,
+                        'assistant_user_ids' => [],
+                        'status' => 'ready_for_dispatch',
+                        'updated_by' => $request->user()->id,
+                    ]);
+                }
+            }
         });
 
-        return response()->json(['success' => true, 'message' => 'Delivery failed. Replacement remains open for reattempt.']);
+        if ($tripId > 0) {
+            app(\App\Services\Logistics\CompleteDeliveryTrip::class)
+                ->reconcile($tripId, (int) $return->store_id, (int) $request->user()->id);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Delivery attempt recorded. The reserved replacement is back in Ready for Dispatch.']);
     }
 
     public function reattempt(Request $request, int $id): JsonResponse

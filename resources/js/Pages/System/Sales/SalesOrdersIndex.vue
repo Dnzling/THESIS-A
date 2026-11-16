@@ -73,7 +73,7 @@
           </Column>
           <Column field="channel" header="Channel" style="width: 12%;">
             <template #body="{ data }">
-              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Replacement' ? 'warn' : data.channel === 'Wholesale' ? 'warn' : 'success'" />
+              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Replacement' ? 'warn' : 'success'" />
             </template>
           </Column>
           <!-- <Column field="branch_name" header="Branch">
@@ -150,7 +150,7 @@ type UnifiedOrder = {
   status: string
   total_amount: number
   created_at: string
-  channel: 'In-Store' | 'Online' | 'Wholesale' | 'Replacement'
+  channel: 'In-Store' | 'Online' | 'Replacement'
   order_type: 'pos' | 'ecommerce' | 'replacement'
   branch_name?: string
   items_count?: number
@@ -168,7 +168,7 @@ const orders = ref<UnifiedOrder[]>([])
 const filters = reactive({
   search: '',
   status: null as string | null,
-  channel: null as 'In-Store' | 'Online' | 'Wholesale' | 'Replacement' | null,
+  channel: null as 'In-Store' | 'Online' | 'Replacement' | null,
   payment_method: null as string | null,
   payment_status: null as string | null,
   date_range: null as [Date | null, Date | null] | null,
@@ -182,7 +182,6 @@ const hasActiveFilters = computed(() => Boolean(
 const channelOptions = [
   { label: 'In-Store', value: 'In-Store' },
   { label: 'Online', value: 'Online' },
-  { label: 'Wholesale', value: 'Wholesale' },
   { label: 'Replacement', value: 'Replacement' },
 ]
 
@@ -233,10 +232,12 @@ const loadOrders = async () => {
   loading.value = true
   try {
     const response = await salesService.getUnifiedOrders()
-    orders.value = (response?.data || []).map((order: any) => ({
-      ...order,
-      total_amount: Number(order.total_amount || 0),
-    }))
+    orders.value = (response?.data || [])
+      .filter((order: any) => order.channel !== 'Wholesale' && !String(order.order_number || '').toUpperCase().startsWith('WHO-'))
+      .map((order: any) => ({
+        ...order,
+        total_amount: Number(order.total_amount || 0),
+      }))
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load orders', life: 3000 })
   } finally {

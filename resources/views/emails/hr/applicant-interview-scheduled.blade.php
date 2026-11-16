@@ -8,7 +8,7 @@
 </head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#172033;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-        Your interview for {{ $interview->application->jobPosting->title }} has been scheduled.
+        Your interview schedule for {{ $interview->application->jobPosting->title }} has been {{ $updated ? 'updated' : 'scheduled' }}.
     </div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f4f6;">
         <tr>
@@ -22,10 +22,10 @@
                     </tr>
                     <tr>
                         <td style="padding:28px;">
-                            <h1 style="margin:0 0 14px;color:#172033;font-size:23px;line-height:30px;font-weight:700;">Your interview is scheduled</h1>
+                            <h1 style="margin:0 0 14px;color:#172033;font-size:23px;line-height:30px;font-weight:700;">{{ $updated ? 'Your interview schedule was updated' : 'Your interview is scheduled' }}</h1>
                             <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:24px;">
                                 Hello {{ $interview->application->full_name }},<br>
-                                We’re pleased to invite you to interview for <strong style="color:#172033;">{{ $interview->application->jobPosting->title }}</strong>.
+                                {{ $updated ? 'The interview schedule has changed for' : 'We are pleased to invite you to interview for' }} <strong style="color:#172033;">{{ $interview->application->jobPosting->title }}</strong>.
                             </p>
 
                             <p style="margin:0 0 20px;color:#475569;font-size:14px;line-height:22px;">

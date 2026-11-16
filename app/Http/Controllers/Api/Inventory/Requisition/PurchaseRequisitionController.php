@@ -57,7 +57,8 @@ class PurchaseRequisitionController extends Controller
 
         $storeId = is_int($user)
             ? $user
-            : (int) ($authUser->store_id ?? 0);
+            : (int) ($authUser->store_id ?: $authUser->employee?->store_id ?: 0);
+        $permissionService = app(PermissionService::class);
 
         foreach ($permissions as $permission) {
             $normalized = (string) $permission;
@@ -68,13 +69,47 @@ class PurchaseRequisitionController extends Controller
             ]));
 
             foreach ($aliases as $candidate) {
-                if ($candidate && $authUser->hasPermissionTo($candidate, $storeId)) {
+                if ($candidate && $permissionService->userHasPermission($authUser, $candidate, $storeId)) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    private function authorizeRequestView(): void
+    {
+        abort_unless($this->userHasAnyPermission([
+            'inventory.stock-requests.view',
+            'inventory.stock-requests.manage',
+            'inventory.requisites.view',
+            'inventory.requisites.manage',
+            'inventory.requisitions.view',
+            'inventory.requisitions.manage',
+        ]), 403, 'You do not have permission to view inventory stock requests.');
+    }
+
+    private function authorizeRequestManage(): void
+    {
+        abort_unless($this->userHasAnyPermission([
+            'inventory.stock-requests.manage',
+            'inventory.requisites.create',
+            'inventory.requisites.manage',
+            'inventory.requisitions.create',
+            'inventory.requisitions.manage',
+        ]), 403, 'You do not have permission to manage inventory stock requests.');
+    }
+
+    private function authorizeRequestDecision(): void
+    {
+        abort_unless($this->userHasAnyPermission([
+            'inventory.stock-requests.manage',
+            'inventory.requisites.approve',
+            'inventory.requisites.manage',
+            'inventory.requisitions.approve',
+            'inventory.requisitions.manage',
+        ]), 403, 'You do not have permission to review inventory stock requests.');
     }
 
     private function resolveBranchId(): int
@@ -89,6 +124,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $this->authorizeRequestView();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
         $hasEmployeesTable = Schema::hasTable('employees');
@@ -183,6 +219,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function show(int $id): JsonResponse
     {
+        $this->authorizeRequestView();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
         $hasEmployeesTable = Schema::hasTable('employees');
@@ -227,13 +264,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        abort_unless($this->userHasAnyPermission([
-            'inventory.stock-requests.manage',
-            'inventory.requisites.create',
-            'inventory.requisites.manage',
-            'inventory.requisitions.create',
-            'inventory.requisitions.manage',
-        ]), 403);
+        $this->authorizeRequestManage();
 
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
@@ -392,7 +423,7 @@ class PurchaseRequisitionController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        abort_unless($this->userHasAnyPermission(['inventory.requisites.manage', 'inventory.requisitions.manage']), 403);
+        $this->authorizeRequestManage();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
         $pr = PurchaseRequisition::where('store_id', $storeId)
@@ -462,7 +493,7 @@ class PurchaseRequisitionController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
-        abort_unless($this->userHasAnyPermission(['inventory.requisites.manage', 'inventory.requisitions.manage']), 403);
+        $this->authorizeRequestManage();
         $pr = PurchaseRequisition::where('store_id', (int) Auth::user()->store_id)
             ->where('branch_id', $this->resolveBranchId())->findOrFail($id);
         if ($pr->status !== 'draft') {
@@ -477,6 +508,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function submit(int $id): JsonResponse
     {
+        $this->authorizeRequestManage();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
 
@@ -544,6 +576,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function reject(Request $request, int $id): JsonResponse
     {
+        $this->authorizeRequestDecision();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
 
@@ -624,6 +657,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function approve(Request $request, int $id): JsonResponse
     {
+        $this->authorizeRequestDecision();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
 
@@ -721,6 +755,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function cancel(Request $request, int $id): JsonResponse
     {
+        $this->authorizeRequestManage();
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
 
