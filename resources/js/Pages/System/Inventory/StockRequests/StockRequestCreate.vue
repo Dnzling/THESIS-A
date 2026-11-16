@@ -59,8 +59,8 @@ const authStore = useAuthStore()
 const checkingWarehouse = ref(true)
 const hasWarehouseBranch = ref(false)
 const hasWarehousePermission = ref(false)
-const canCreatePurchase = computed(() => !hasWarehousePermission.value && (authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage')))
-const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
+const canCreatePurchase = computed(() => !hasWarehousePermission.value && (authStore.hasPermission('inventory.stock-requests.manage') || authStore.hasPermission('inventory.requisites.create') || authStore.hasPermission('inventory.requisites.manage') || authStore.hasPermission('inventory.requisitions.create') || authStore.hasPermission('inventory.requisitions.manage')))
+const canCreateTransfer = computed(() => hasWarehouseBranch.value && (authStore.hasPermission('inventory.stock-requests.manage') || authStore.hasPermission('inventory.transfers.manage') || authStore.hasPermission('inventory.transfers.create')))
 const isLegacyPrEdit = computed(() => route.name === 'inventory.stock-requests.edit' && Boolean(route.params.id))
 const availableType = (type: unknown) => {
   if (type === 'purchase' && canCreatePurchase.value) return 'purchase'

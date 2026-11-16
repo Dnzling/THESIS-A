@@ -83,6 +83,7 @@
                 <div class="flex items-center gap-2">
                   <p class="text-lg font-semibold text-gray-900">{{ supplierNames || '--' }}</p>
                   <Button
+                    v-if="canManageStockRequests"
                     label="Create PR"
                     icon="pi pi-file-plus"
                     severity="warn"
@@ -491,6 +492,7 @@ const deleting = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteError = ref('')
 const canManageProducts = computed(() => authStore.hasPermission('inventory.products.manage'))
+const canManageStockRequests = computed(() => authStore.hasPermission('inventory.stock-requests.manage'))
 const view3DModalVisible = ref(false)
 const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)

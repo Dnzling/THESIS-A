@@ -363,7 +363,7 @@ class StockTransferController extends Controller
     {
         $user = Auth::user();
         $storeId = (int) ($user?->store_id ?? 0);
-        abort_unless($this->userHasAnyPermission(['inventory.transfers.create', 'inventory.transfers.manage'], $storeId), 403, 'You do not have permission to create stock transfer requests.');
+        abort_unless($this->userHasAnyPermission(['inventory.stock-requests.manage', 'inventory.transfers.create', 'inventory.transfers.manage'], $storeId), 403, 'You do not have permission to create stock transfer requests.');
 
         $validated = $request->validate([
             'from_branch_id' => 'required|exists:branches,id|different:to_branch_id',

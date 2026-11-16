@@ -25,6 +25,18 @@ class StockRequestsNavigationSeeder extends Seeder
                 'created_at' => $now,
             ]
         );
+        DB::table('permissions')->updateOrInsert(
+            ['name' => 'inventory.stock-requests.manage'],
+            [
+                'display_name' => 'Manage Stock Requests',
+                'module' => 'inventory',
+                'description' => 'Create and manage inventory stock requests.',
+                'is_active' => true,
+                'deleted_at' => null,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
         $permissionId = DB::table('permissions')
             ->where('name', 'inventory.stock-requests.view')
             ->value('id');

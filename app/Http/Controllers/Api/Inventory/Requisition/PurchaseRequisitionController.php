@@ -228,6 +228,7 @@ class PurchaseRequisitionController extends Controller
     public function store(Request $request): JsonResponse
     {
         abort_unless($this->userHasAnyPermission([
+            'inventory.stock-requests.manage',
             'inventory.requisites.create',
             'inventory.requisites.manage',
             'inventory.requisitions.create',

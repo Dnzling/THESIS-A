@@ -896,7 +896,7 @@ class DeliveryTripController extends Controller
                         $shipment->dispatched_at = $shipment->dispatched_at ?: $now;
                         $shipment->out_for_delivery_at = $shipment->out_for_delivery_at ?: $now;
                         $shipment->save();
-                        $shipment->purchaseOrder?->update(['status' => 'out_for_delivery']);
+                        $shipment->purchaseOrder?->markOutForDelivery();
                         PurchaseOrderDeliveryLog::query()->create([
                             'shipment_id' => $shipment->id, 'created_by' => $request->user()->id,
                             'event_type' => 'status_updated', 'notes' => 'Trip dispatched; supplier pickup is out for delivery.', 'logged_at' => $now,

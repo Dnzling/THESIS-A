@@ -17,12 +17,14 @@
       <div class="flex items-center gap-2">
         <Button
           v-if="canRespondToPO"
-          label="Review & Respond"
-          icon="pi pi-check-circle"
+          label="Approve"
+          icon="pi pi-check"
           severity="warn"
           size="small"
-          @click="router.push({ name: 'supplier.pos.approve', params: { id: po.id } })"
+          :loading="poApprovalSaving"
+          @click="confirmApprovePO"
         />
+        <Button v-if="canRespondToPO" label="Reject" icon="pi pi-times" severity="secondary" outlined size="small" :disabled="poApprovalSaving" @click="poRejectionDialogVisible = true" />
         <Button v-if="po" label="Timeline" icon="pi pi-history" severity="secondary" outlined size="small" @click="showTimelineDialog = true" />
         <Button
           v-if="existingInvoice"
@@ -552,6 +554,17 @@
         <Button label="Reject" severity="danger" :loading="resolutionSavingId === selectedResolution?.id" @click="confirmRejectResolution" />
       </template>
     </Dialog>
+    <Dialog v-model:visible="poRejectionDialogVisible" modal header="Reject Purchase Order" :style="{ width: 'min(92vw, 480px)' }">
+      <div class="space-y-2">
+        <label for="po-rejection-reason" class="block text-sm font-medium">Reason for rejection</label>
+        <Textarea id="po-rejection-reason" v-model="poRejectionReason" rows="4" fluid autofocus placeholder="Explain why you cannot accept this order" />
+        <small v-if="poRejectionError" class="text-red-600">{{ poRejectionError }}</small>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="poRejectionDialogVisible = false" />
+        <Button label="Confirm Rejection" severity="warn" :loading="poApprovalSaving" @click="rejectPO" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -569,6 +582,10 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
+const poApprovalSaving = ref(false)
+const poRejectionDialogVisible = ref(false)
+const poRejectionReason = ref('')
+const poRejectionError = ref('')
 
 const loading = ref(false)
 const po = ref<any>(null)
@@ -621,6 +638,54 @@ const canRespondToPO = computed(() => {
   return status === 'sent_to_supplier'
     && !['accepted', 'rejected'].includes(String(supplierFeedback.value?.response || '').trim().toLowerCase())
 })
+
+const confirmApprovePO = () => {
+  if (!po.value || !canRespondToPO.value) return
+  confirm.require({
+    header: 'Approve purchase order?',
+    message: `Confirm that ${po.value.po_number} can be fulfilled using the selected delivery arrangement.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Approve',
+    accept: approvePO,
+  })
+}
+
+const approvePO = async () => {
+  if (!po.value || !canRespondToPO.value) return
+  poApprovalSaving.value = true
+  try {
+    await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'accepted' })
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Order approved', detail: 'The order is now being prepared.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to approve order', detail: error.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    poApprovalSaving.value = false
+  }
+}
+
+const rejectPO = async () => {
+  const reason = poRejectionReason.value.trim()
+  poRejectionError.value = ''
+  if (!po.value || !canRespondToPO.value) return
+  if (reason.length < 5) {
+    poRejectionError.value = 'Please provide a reason with at least 5 characters.'
+    return
+  }
+
+  poApprovalSaving.value = true
+  try {
+    await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'rejected', rejection_reason: reason })
+    poRejectionDialogVisible.value = false
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Order rejected', detail: 'The store has been notified.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to reject order', detail: error.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    poApprovalSaving.value = false
+  }
+}
 
 const totalWithDelivery = computed(() => {
   const subtotal = Number(po.value?.subtotal || 0)

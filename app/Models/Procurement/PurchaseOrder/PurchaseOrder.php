@@ -357,8 +357,21 @@ class PurchaseOrder extends Model
             'actual_delivery_date' => now()->toDateString(),
         ]);
 
-        // Shipment delivery is not the same as store receipt. Keep the PR
-        // processing until GRNs settle all POs linked to it.
+        if (!$this->purchase_requisition_id) {
+            return;
+        }
+
+        $hasUndeliveredPurchaseOrder = static::query()
+            ->where('purchase_requisition_id', $this->purchase_requisition_id)
+            ->whereNotIn('status', ['delivered', 'goods_received', 'cancelled', 'canceled'])
+            ->exists();
+
+        if (!$hasUndeliveredPurchaseOrder) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'received'])
+                ->update(['status' => 'delivered']);
+        }
     }
 
     public function markGoodsReceived(): void
@@ -380,7 +393,7 @@ class PurchaseOrder extends Model
         if (!$hasOutstandingPurchaseOrder) {
             PurchaseRequisition::query()
                 ->whereKey($this->purchase_requisition_id)
-                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
+                ->whereNotIn('status', ['rejected', 'cancelled', 'received'])
                 ->update(['status' => 'received']);
         }
     }
