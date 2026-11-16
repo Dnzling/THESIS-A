@@ -36,9 +36,6 @@ class Employee extends Model
         'branch_id',
         'role_id',
         'employee_number',
-        'fname',
-        'lname',
-        'phone',
         'address',
         'province',
         'city',
@@ -57,10 +54,6 @@ class Employee extends Model
         'emergency_contact_phone',
         'emergency_contact_relationship',
         'contract_path',
-        'government_id_type',
-        'government_id_number',
-        'government_id_path',
-        'government_id_status',
         'status',
         'termination_date',
         'termination_reason',
@@ -78,7 +71,6 @@ class Employee extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'date_of_birth' => 'date',
         'hire_date' => 'date',
         'contract_end_date' => 'date',
         'salary' => 'decimal:2',

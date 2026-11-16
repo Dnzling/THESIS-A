@@ -114,13 +114,10 @@ class ProfileController extends Controller
         $employee = Employee::where('user_id', $user->id)->first();
         if ($employee) {
             $employee->fill([
-                'fname' => $validated['fname'] ?? $employee->fname,
-                'lname' => $validated['lname'] ?? $employee->lname,
                 'address' => $validated['address'] ?? $employee->address,
                 'province' => $validated['province'] ?? $employee->province,
                 'city' => $validated['city'] ?? $employee->city,
                 'barangay' => $validated['barangay'] ?? $employee->barangay,
-                'date_of_birth' => $validated['birthday'] ?? $employee->date_of_birth,
                 'gender' => $validated['gender'] ?? $employee->gender,
                 'emergency_contact_name' => $validated['emergency_contact_name'] ?? $employee->emergency_contact_name,
                 'emergency_contact_phone' => $validated['emergency_contact_phone'] ?? $employee->emergency_contact_phone,

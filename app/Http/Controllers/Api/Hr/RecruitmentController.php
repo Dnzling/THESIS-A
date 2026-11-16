@@ -12,6 +12,7 @@ use App\Models\Core\Role;
 use App\Models\Hr\DeductionType;
 use App\Models\Hr\Department;
 use App\Models\Hr\Employee;
+use App\Models\Hr\EmployeeGovernmentId;
 use App\Models\Hr\LeaveBalance;
 use App\Models\Hr\EmployeeDeduction;
 use App\Models\JobApplication;
@@ -361,6 +362,9 @@ class RecruitmentController extends Controller
 
             if ($portalUser) {
                 $portalUser->update([
+                    'fname' => $application->first_name,
+                    'lname' => $application->last_name,
+                    'phone_number' => $validated['phone'] ?? $application->phone,
                     'role_id' => $validated['role_id'],
                     'store_id' => $storeId,
                     'branch_id' => $validated['branch_id'],
@@ -373,6 +377,7 @@ class RecruitmentController extends Controller
                 $user = User::create([
                     'fname' => $application->first_name,
                     'lname' => $application->last_name,
+                    'phone_number' => $validated['phone'] ?? $application->phone,
                     'email' => $application->email,
                     'password' => Hash::make($temporaryPassword),
                     'role_id' => $validated['role_id'],
@@ -389,9 +394,6 @@ class RecruitmentController extends Controller
                 'branch_id' => $validated['branch_id'],
                 'employee_number' => Employee::generateEmployeeNumber($validated['role_id']),
                 'role_id' => $validated['role_id'],
-                'fname' => $application->first_name,
-                'lname' => $application->last_name,
-                'phone' => $validated['phone'] ?? $application->phone,
                 'address' => $validated['address'] ?? null,
                 'province' => $validated['province'] ?? $application->province,
                 'city' => $validated['city'] ?? $application->city,
@@ -403,17 +405,20 @@ class RecruitmentController extends Controller
                 'salary' => $validated['salary'],
                 'pay_type' => $validated['pay_type'] ?? 'monthly',
                 'hourly_rate' => isset($validated['pay_type']) && $validated['pay_type'] === 'hourly' ? $validated['salary'] / 160 : null,
-                'government_id_type' => $validated['government_id_type'] ?? null,
-                'government_id_number' => $validated['government_id_number'] ?? null,
-                'government_id_path' => null,
-                'government_id_status' => 'pending',
                 'status' => 'active',
             ]);
 
-            if ($request->hasFile('id_document')) {
-                $employee->government_id_path = $request->file('id_document')->store("hr/employee-ids/{$employee->id}", 'public');
-                $employee->id_document_path = $employee->government_id_path;
-                $employee->save();
+            $governmentIdPath = $request->hasFile('id_document')
+                ? $request->file('id_document')->store("hr/employee-ids/{$employee->id}", 'public')
+                : null;
+            if ($governmentIdPath || !empty($validated['government_id_type']) || !empty($validated['government_id_number'])) {
+                EmployeeGovernmentId::query()->create([
+                    'employee_id' => $employee->id,
+                    'id_type' => $validated['government_id_type'] ?? 'Government ID',
+                    'id_number' => $validated['government_id_number'] ?? null,
+                    'id_file_path' => $governmentIdPath,
+                    'status' => 'pending',
+                ]);
             }
 
             $this->applyStoreDeductions($employee, $storeId, $hrUser->id);

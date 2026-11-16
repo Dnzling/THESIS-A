@@ -631,8 +631,6 @@ class StoreVerificationController extends Controller
                             'branch_id' => $defaultBranchId,
                             'role_id' => $ownerRoleId,
                             'employee_number' => \App\Models\Hr\Employee::generateEmployeeNumber($ownerRoleId),
-                            'fname' => (string) $storeOwner->fname,
-                            'lname' => (string) $storeOwner->lname,
                             'department' => 'Management',
                             'employment_type' => 'full_time',
                             'status' => 'active',

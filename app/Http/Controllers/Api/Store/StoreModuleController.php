@@ -396,6 +396,10 @@ class StoreModuleController extends Controller
 
     private function suspensionBranchFor(Request $request): StoreBranch
     {
+        if ($request->has('branch_id')) {
+            $request->validate(['branch_id' => ['required', 'integer', 'min:1']]);
+        }
+
         $user = $request->user()->loadMissing('employee');
         $storeId = (int) ($user->store_id ?: $user->employee?->store_id);
         $assignedBranchId = (int) ($user->branch_id ?: $user->employee?->branch_id);

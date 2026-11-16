@@ -230,8 +230,6 @@ class StoreController extends Controller
                         'branch_id' => $branch->id,
                         'role_id' => $ownerRoleId,
                         'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
-                        'fname' => (string) $request->user()->fname,
-                        'lname' => (string) $request->user()->lname,
                         'department' => $managementDepartment->name,
                         'employment_type' => 'full_time',
                         'status' => 'active',

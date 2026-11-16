@@ -844,6 +844,7 @@ import { useToast } from "primevue/usetoast";
 import { usePermissions } from "@/composables/usePermissions";
 import paymongoService from "@/services/paymongo.service";
 import ecommerceService from "@/services/ecommerce.service";
+import { storeModuleService } from "@/services/store-module.service";
 import { forwardGeocodeMapbox, requireMapboxToken, reverseGeocodeMapbox } from "@/utils/mapbox";
 import type {
     GeoJSONSource,
@@ -1387,6 +1388,109 @@ const apiBaseUrl = String(axiosClient.defaults.baseURL || "").replace(
 const branches = ref<any[]>(
     Array.isArray(props.branches) ? props.branches : [],
 );
+const selectedSuspensionBranchId = ref<number | null>(Number(branches.value[0]?.id) || null);
+const branchSuspensionToday = ref<any>(null);
+const nextBranchSuspension = ref<any>(null);
+const currentBranchSuspension = computed(() => branchSuspensionToday.value || nextBranchSuspension.value);
+const loadingSuspensionOverview = ref(false);
+const suspensionDialogVisible = ref(false);
+const suspensionHistoryDialogVisible = ref(false);
+const savingSuspension = ref(false);
+const loadingSuspensionHistory = ref(false);
+const suspensionHistory = ref<any[]>([]);
+const newSuspension = reactive({ reason: '', start_date: '', end_date: null as string | null });
+const suspensionDateValue = (value: string | null) => value ? new Date(`${value}T00:00:00`) : null;
+const suspensionDateString = (value: Date | null) => value instanceof Date && !Number.isNaN(value.getTime())
+    ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+    : null;
+const suspensionStartModel = computed({
+    get: () => suspensionDateValue(newSuspension.start_date),
+    set: (value: Date | null) => { newSuspension.start_date = suspensionDateString(value) || ''; },
+});
+const suspensionEndModel = computed({
+    get: () => suspensionDateValue(newSuspension.end_date),
+    set: (value: Date | null) => { newSuspension.end_date = suspensionDateString(value); },
+});
+const formatSuspensionDate = (value?: string | null) => value
+    ? new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
+const loadSuspensionOverview = async () => {
+    const branchId = selectedSuspensionBranchId.value;
+    if (!branchId) {
+        branchSuspensionToday.value = null;
+        nextBranchSuspension.value = null;
+        return;
+    }
+    loadingSuspensionOverview.value = true;
+    try {
+        const response = await storeModuleService.getSettings(branchId);
+        branchSuspensionToday.value = response?.data?.suspension_today || null;
+        nextBranchSuspension.value = response?.data?.next_suspension || null;
+    } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Unable to load suspension status', detail: error?.response?.data?.message || 'Please try again.', life: 3500 });
+    } finally {
+        loadingSuspensionOverview.value = false;
+    }
+};
+const suspensionStatus = (row: any) => {
+    const today = suspensionDateString(new Date())!;
+    return row.start_date > today ? 'Scheduled' : !row.end_date || row.end_date >= today ? 'Active today' : 'Ended';
+};
+const suspensionSeverity = (row: any) => ({ Scheduled: 'info', 'Active today': 'danger', Ended: 'secondary' } as Record<string, string>)[suspensionStatus(row)] || 'secondary';
+const loadSuspensionHistory = async () => {
+    if (!selectedSuspensionBranchId.value) return;
+    loadingSuspensionHistory.value = true;
+    try {
+        const response = await storeModuleService.getSuspensionHistory(selectedSuspensionBranchId.value);
+        suspensionHistory.value = response?.data || [];
+    } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Unable to load history', detail: error?.response?.data?.message || 'Please try again.', life: 3500 });
+    } finally {
+        loadingSuspensionHistory.value = false;
+    }
+};
+const openSuspensionHistory = () => {
+    suspensionHistoryDialogVisible.value = true;
+    void loadSuspensionHistory();
+};
+const openSuspensionDialog = () => {
+    newSuspension.reason = '';
+    newSuspension.start_date = suspensionDateString(new Date()) || '';
+    newSuspension.end_date = null;
+    suspensionDialogVisible.value = true;
+};
+const confirmCreateSuspension = () => {
+    if (!selectedSuspensionBranchId.value || !newSuspension.start_date || (newSuspension.end_date && newSuspension.end_date < newSuspension.start_date)) {
+        toast.add({ severity: 'warn', summary: 'Check suspension dates', detail: 'Choose a start date and make the end date on or after it.', life: 3500 });
+        return;
+    }
+    confirm.require({
+        header: 'Create branch suspension?',
+        message: 'This branch will not be selected for e-commerce pickup or delivery during these dates.',
+        icon: 'pi pi-exclamation-triangle',
+        rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+        acceptProps: { label: 'Create suspension', severity: 'warn' },
+        accept: createSuspension,
+    });
+};
+const createSuspension = async () => {
+    if (!selectedSuspensionBranchId.value) return;
+    savingSuspension.value = true;
+    try {
+        const response = await storeModuleService.createSuspension({
+            ...newSuspension,
+            reason: newSuspension.reason.trim(),
+            branch_id: selectedSuspensionBranchId.value,
+        });
+        suspensionDialogVisible.value = false;
+        await Promise.all([loadSuspensionOverview(), loadSuspensionHistory()]);
+        toast.add({ severity: 'success', summary: 'Suspension created', detail: response?.message || 'Branch service suspension created.', life: 3000 });
+    } catch (error: any) {
+        toast.add({ severity: 'error', summary: 'Unable to create suspension', detail: error?.response?.data?.message || 'Check the dates and try again.', life: 4000 });
+    } finally {
+        savingSuspension.value = false;
+    }
+};
 
 const onboarding = reactive({
     plan: "simple",
@@ -2758,6 +2862,7 @@ const handleUpgradePrompt = () => {
 
 onMounted(async () => {
     void refreshSetupAttention();
+    void loadSuspensionOverview();
     if (attendance.latitude !== null && attendance.longitude !== null) {
         await resolveAttendanceAddress(attendance.latitude, attendance.longitude);
     }
@@ -2784,6 +2889,10 @@ onMounted(async () => {
     }
     await handleUpgradeReturn();
     handleUpgradePrompt();
+});
+
+watch(selectedSuspensionBranchId, () => {
+    void loadSuspensionOverview();
 });
 
 watch(

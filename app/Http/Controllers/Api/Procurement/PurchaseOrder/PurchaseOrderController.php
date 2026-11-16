@@ -122,7 +122,7 @@ class PurchaseOrderController extends Controller
                 'distance_km' => $distanceKm,
                 'cost_per_km' => $costPerKm,
                 'shipping_cost' => $shippingCost,
-                'status' => 'pending',
+                'status' => 'assigned',
             ]
         );
 

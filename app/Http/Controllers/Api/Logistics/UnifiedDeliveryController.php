@@ -1366,6 +1366,7 @@ class UnifiedDeliveryController extends Controller
             $from = (string) $pickup->status;
             $allowedTransitions = [
                 'pending' => ['en_route_to_supplier', 'cancelled'],
+                'assigned' => ['en_route_to_supplier', 'cancelled'],
                 'en_route_to_supplier' => ['out_for_delivery', 'cancelled'],
                 // Retain the old intermediate state for pickups already underway.
                 'in_transit' => ['out_for_delivery', 'cancelled'],

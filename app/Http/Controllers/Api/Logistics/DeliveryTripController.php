@@ -1591,7 +1591,7 @@ class DeliveryTripController extends Controller
                     $address = collect([$order->branch?->address, $order->branch?->city, $order->branch?->province])->filter()->implode(', ');
                     $shipment = $order->shipment;
                     if ($shipment && $shipment->trip_id && (int) $shipment->trip_id !== (int) $trip->id) { $skipped++; continue; }
-                    if ($shipment && (string) $shipment->status !== 'pending') { $skipped++; continue; }
+                    if ($shipment && !in_array((string) $shipment->status, ['pending', 'assigned'], true)) { $skipped++; continue; }
                     if ($maxStops > 0 && $currentStops >= $maxStops) { $overCapacity++; continue; }
 
                     $weight = $this->purchaseOrderWeight($order->items);
@@ -1616,7 +1616,7 @@ class DeliveryTripController extends Controller
                         'destination_address' => $order->branch?->address,
                         'expected_delivery_date' => $trip->scheduled_departure_at?->toDateString(),
                         'shipping_cost' => (float) ($order->shipping_cost ?? 0),
-                        'status' => 'pending',
+                        'status' => 'assigned',
                     ]);
                     $shipment->save();
                     PurchaseOrderDeliveryLog::query()->create([

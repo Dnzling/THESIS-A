@@ -104,6 +104,7 @@ const status = ref('')
 const pageState = reactive({ page: 1, rows: 10, total: 0 })
 const statusOptions = [
   { label: 'All statuses', value: '' },
+  { label: 'Assigned', value: 'assigned' },
   { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
   { label: 'Pending', value: 'pending' },
   { label: 'En Route to Supplier', value: 'en_route_to_supplier' },
@@ -154,9 +155,9 @@ const assignDriver = (pickup: any) => router.push({ name: 'logistics.supplier-pi
 const statusLabel = (value: string) => value === 'ready_for_dispatch' ? 'Ready for Dispatch' : String(value || 'Pending').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const statusSeverity = (value: string) => {
   if (['delivered'].includes(String(value).toLowerCase())) return 'success'
+  if (['assigned', 'en_route_to_supplier', 'out_for_delivery'].includes(String(value).toLowerCase())) return 'info'
   if (['cancelled', 'canceled'].includes(String(value).toLowerCase())) return 'secondary'
   if (['failed_delivery', 'failed'].includes(String(value).toLowerCase())) return 'danger'
-  if (['en_route_to_supplier', 'out_for_delivery'].includes(String(value).toLowerCase())) return 'info'
   return 'warn'
 }
 const money = (value: string | number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))

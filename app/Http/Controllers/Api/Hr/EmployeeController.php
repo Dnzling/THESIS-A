@@ -394,11 +394,7 @@ class EmployeeController extends Controller
                 'branch_id' => $branchId,
                 'role_id' => $validated['role_id'],
                 'employee_number' => $employeeNumber,
-                'fname' => $validated['fname'],
-                'lname' => $validated['lname'],
-                'date_of_birth' => $validated['date_of_birth'] ?? null,
                 'gender' => $validated['gender'] ?? null,
-                'phone' => $validated['phone_number'] ?? null,
                 'hire_date' => $validated['hire_date'],
                 'contract_end_date' => $validated['contract_end_date'] ?? null,
                 'department' => $validated['department'] ?? null,
@@ -500,6 +496,8 @@ class EmployeeController extends Controller
             if ($request->has('fname')) $user->fname = $validated['fname'];
             if ($request->has('lname')) $user->lname = $validated['lname'];
             if ($request->has('email')) $user->email = $validated['email'];
+            if ($request->has('phone')) $user->phone_number = $validated['phone'];
+            if ($request->has('date_of_birth')) $user->birthday = $validated['date_of_birth'];
             if ($request->has('is_active')) $user->is_active = $validated['is_active'];
             if ($request->has('role_id')) $user->role_id = $validated['role_id'];
             if ($request->has('branch_id')) $user->branch_id = $validated['branch_id'];
@@ -507,6 +505,10 @@ class EmployeeController extends Controller
 
             // Update Employee
             $employeeData = collect($validated)->except([
+                'fname',
+                'lname',
+                'phone',
+                'date_of_birth',
                 'shift_id',
                 'shift_effective_date',
                 'shift_change_reason',

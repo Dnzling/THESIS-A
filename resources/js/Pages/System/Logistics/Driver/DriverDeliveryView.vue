@@ -994,6 +994,7 @@ const nextStatus = computed(() =>
     : source.value === 'pickup'
     ? (
         {
+          assigned: 'en_route_to_supplier',
           pending: 'en_route_to_supplier',
           en_route_to_supplier: 'out_for_delivery',
           in_transit: 'out_for_delivery',
