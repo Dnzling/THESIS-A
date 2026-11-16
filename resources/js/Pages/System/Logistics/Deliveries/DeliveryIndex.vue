@@ -225,7 +225,7 @@ const sourceOptions = [
 
 const statusOptions = [
   { label: 'All Delivery Statuses', value: '' },
-  { label: 'For Dispatch', value: 'ready_for_dispatch' },
+  { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
   { label: 'Assigned', value: 'assigned' },
   { label: 'Packed', value: 'packed' },
   { label: 'In Transit', value: 'in_transit' },
@@ -384,7 +384,7 @@ const deliverySeverity = (status: string) => {
 
 const formatStatus = (status?: string) => {
   if (!status) return '-'
-  if (status === 'ready_for_dispatch') return 'For Dispatch'
+  if (status === 'ready_for_dispatch') return 'Ready for Dispatch'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
 

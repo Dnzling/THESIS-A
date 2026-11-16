@@ -1,29 +1,39 @@
 <template>
-  <div class="p-6 min-h-screen">
-    <div class="mb-6 flex justify-between items-center">
-      <div>
-        <h1 class="text-xl font-bold text-gray-800">Create Supplier Contract</h1>
-      </div>
-    </div>
+  <div class="min-h-screen bg-slate-50/70 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-6xl">
+      <header class="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Procurement / Supplier agreements</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Create Supplier Contract</h1>
+          <p class="mt-1 max-w-2xl text-sm text-slate-600">Set the agreement period, commercial terms, and conditions before reviewing the generated contract.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600"><i class="pi pi-building mr-1.5 text-slate-400" />{{ selectedStoreName }}</span>
+          <span class="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 font-medium text-orange-800"><i class="pi pi-truck mr-1.5" />{{ selectedSupplierName }}</span>
+        </div>
+      </header>
 
-    <form @submit.prevent="submitForm" class="max-w-4xl mx-auto">
+
+    <form @submit.prevent="submitForm" class="mx-auto max-w-5xl space-y-5">
 
       <!-- Section 1: Supplier & Contract Basic Info -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <span>Supplier & Contract Information</span>
+          <div class="flex items-start gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-sm font-bold text-orange-700">01</span>
+            <div><h2 class="text-base font-semibold text-slate-900">Agreement details</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Identify the agreement and set when it takes effect.</p></div>
           </div>
         </template>
 
         <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2 md:col-span-2">
+          <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div class="flex flex-col gap-2 md:col-span-1">
               <label class="text-sm font-semibold text-gray-700">Contract Title</label>
               <InputText v-model="form.contract_title" placeholder="e.g., Annual Furniture Supply Agreement 2026" class="w-full" />
               <small class="text-gray-500">Auto-generated based on supplier and dates. You can edit if needed.</small>
               <small v-if="errors.contract_title" class="text-red-600">{{ errors.contract_title }}</small>
               <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
+              
             </div>
 
             <div class="flex flex-col gap-2">
@@ -39,13 +49,13 @@
               <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div class="flex flex-col gap-2">
                   <label class="text-xs font-medium text-slate-600">Start Date</label>
-                  <DatePicker v-model="form.start_date" date-format="M d, yy" fluid placeholder="Select start date"
+                  <DatePicker v-model="form.start_date" date-format="M d, yy" fluid placeholder="Select start date" showIcon 
                     :min-date="new Date()" @update:model-value="onStartDateChange" />
                   <small v-if="errors.start_date" class="text-red-600">{{ errors.start_date }}</small>
                 </div>
                 <div class="flex flex-col gap-2">
                   <label class="text-xs font-medium text-slate-600">End Date</label>
-                  <DatePicker v-model="form.end_date" date-format="M d, yy" fluid placeholder="Select end date"
+                  <DatePicker v-model="form.end_date" date-format="M d, yy" fluid placeholder="Select end date" showIcon
                     :min-date="form.start_date || new Date()" :disabled="!form.start_date" />
                   <small class="text-xs text-slate-500">Defaults to one year after the start date; you can adjust it.</small>
                   <small v-if="errors.end_date" class="text-red-600">{{ errors.end_date }}</small>
@@ -60,10 +70,11 @@
       </Card>
 
       <!-- Section 3: Financial Terms -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <span>Financial Terms</span>
+          <div class="flex items-start gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-sm font-bold text-blue-700">02</span>
+            <div><h2 class="text-base font-semibold text-slate-900">Financial terms</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Set the minimum purchase, discount, and tax treatment.</p></div>
           </div>
         </template>
 
@@ -84,17 +95,17 @@
               <small v-if="errors.discount_percentage" class="text-red-600">{{ errors.discount_percentage }}</small>
             </div>
 
-            <div class="flex flex-col gap-2">
+            <!-- <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Tax Rate (%)</label>
               <InputNumber v-model="form.tax_rate" :min="12" :max="12" suffix="%" class="w-full" disabled />
               <small class="text-gray-600">Fixed at 12%.</small>
               <small v-if="errors.tax_rate" class="text-red-600">{{ errors.tax_rate }}</small>
-            </div>
+            </div> -->
           </div>
 
           <Divider class="my-6" />
 
-          <div class="p-4 bg-blue-50 border border-blue-200 rounded">
+          <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <p class="text-sm text-blue-900">
               <i class="pi pi-info-circle mr-2"></i>
               <strong>Summary:</strong> {{ form.discount_percentage }}% discount, minimum order
@@ -105,26 +116,26 @@
       </Card>
 
       <!-- Section 4: Terms & Conditions -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <i class="pi pi-file-edit text-2xl text-purple-600"></i>
-            <span>Terms & Conditions</span>
+          <div class="flex items-start gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-sm font-bold text-violet-700">03</span>
+            <div><h2 class="text-base font-semibold text-slate-900">Terms & conditions</h2><p class="mt-0.5 text-xs font-normal text-slate-500">Record the operational details that will appear in the supplier agreement.</p></div>
           </div>
         </template>
 
         <template #content>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Terms & Conditions</label>
-            <Textarea v-model="form.terms_conditions" rows="6" 
-              placeholder="Enter contract terms and conditions here..." class="w-full" />
-            <small class="text-gray-600">{{ form.terms_conditions?.length || 0 }} / 5000 characters</small>
+            <Textarea v-model="form.terms_conditions" rows="7" maxlength="5000"
+              placeholder="Enter delivery, quality, payment, or other agreed terms..." class="w-full" />
+            <div class="flex items-center justify-between gap-3"><small class="text-slate-500">Use clear terms that both parties can review.</small><small class="text-slate-500">{{ form.terms_conditions?.length || 0 }} / 5000</small></div>
           </div>
         </template>
       </Card>
 
       <!-- Section 5: Document Attachment -->
-      <Card v-if="!isExternalSupplier" class="mb-6">
+      <Card v-if="!isExternalSupplier" class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-3">
             <i class="pi pi-file text-2xl text-red-600"></i>
@@ -156,7 +167,7 @@
       </Card>
 
       <!-- Action Buttons -->
-      <div class="flex gap-3 justify-end">
+      <div class="sticky bottom-0 z-10 -mx-1 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 px-1 py-4 backdrop-blur sm:flex-row sm:justify-end">
         <Button 
           :label="route.query.supplier_id ? 'Skip for Now' : 'Cancel'" 
           severity="contrast" outlined rounded
@@ -165,6 +176,7 @@
         <Button label="Review & Create" icon="pi pi-eye" rounded @click="openReviewDialog" :loading="submitting" />
       </div>
     </form>
+    </div>
 
     <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="max-w-[96vw] overflow-hidden" :style="{ width: 'min(72rem, 96vw)', height: 'min(92vh, 900px)' }" :pt="{ root: { class: 'flex flex-col overflow-hidden' }, content: { class: 'flex min-h-0 flex-1 flex-col overflow-hidden p-0' }, footer: { class: 'shrink-0 p-0' } }">
       <div class="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">

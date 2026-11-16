@@ -717,10 +717,24 @@ const submitSelectedOrders = async () => {
     })
     const added = Number(res?.data?.added || 0)
     const overCapacity = Number(res?.data?.over_capacity || 0)
+    const skipped = Number(res?.data?.skipped || 0)
     const message = res?.message || 'Orders added to trip.'
+    if (res?.success === false || added === 0) {
+      toast.add({
+        severity: 'error',
+        summary: 'No Orders Added',
+        detail: message || (availableSource.value === 'stock_transfer'
+          ? 'Transfers must be sent to Logistics and marked Ready for Dispatch before adding them to a trip.'
+          : 'The selected orders are no longer eligible for this trip.'),
+        life: 5000,
+      })
+      selectedOrders.value = []
+      await loadAvailableOrders()
+      return
+    }
     toast.add({
-      severity: overCapacity > 0 ? 'warn' : 'success',
-      summary: overCapacity > 0 ? 'Partially Added' : 'Added',
+      severity: overCapacity > 0 || skipped > 0 ? 'warn' : 'success',
+      summary: overCapacity > 0 || skipped > 0 ? 'Partially Added' : 'Added',
       detail: message,
       life: 3000,
     })
@@ -736,7 +750,7 @@ const removeOrder = async (row: any) => {
   confirm.require({
     message: row.source === 'Replacement Delivery'
       ? 'Remove this replacement from the trip? Its stock reservation will remain in place so it can be assigned to another trip.'
-      : 'Remove this order from the trip? This will delete the delivery assignment and reset the order to For Dispatch.',
+      : 'Remove this order from the trip? This will delete the delivery assignment and reset the order to Ready for Dispatch.',
     header: 'Confirm Removal',
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Remove',
@@ -907,7 +921,7 @@ const goBack = () => {
   else router.push({ name: 'logistics.trips' })
 }
 
-const formatStatus = (value?: string) => value === 'ready_for_dispatch' ? 'For Dispatch' : value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
+const formatStatus = (value?: string) => value === 'ready_for_dispatch' ? 'Ready for Dispatch' : value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
 const formatStatusLabel = (value?: string) => formatStatus(value || 'ready_for_dispatch')
 const statusSeverity = (value?: string) => {
   const status = String(value || '').toLowerCase()

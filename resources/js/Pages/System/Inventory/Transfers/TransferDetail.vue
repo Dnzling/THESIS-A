@@ -195,7 +195,7 @@ const canSendToLogistics = computed(() =>
 const canCreateReceipt = computed(() => detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received')
 const transferStatusLabel = computed(() => {
   if (detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received') return 'Delivered'
-  if (detail.value?.delivery_status === 'ready_for_dispatch') return 'Ready for Dispatch'
+  if (detail.value?.delivery_status === 'ready_for_dispatch' || isLogisticsProcessing.value) return 'Ready for Dispatch'
   return formatStatusLabel(detail.value?.status || 'draft')
 })
 const openReceipt = () => {
@@ -378,7 +378,7 @@ const statusSeverity = (status: string) => {
 
 const formatStatusLabel = (status: string) => {
   const normalized = String(status || '').toLowerCase()
-  if (normalized === 'in_transit' && isLogisticsProcessing.value) return 'Logistics Processing'
+  if (normalized === 'in_transit' && isLogisticsProcessing.value) return 'Ready for Dispatch'
   const map: Record<string, string> = {
     draft: 'Draft',
     requested: 'Pending Approval',

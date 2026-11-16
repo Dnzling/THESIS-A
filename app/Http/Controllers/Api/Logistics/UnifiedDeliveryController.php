@@ -445,7 +445,10 @@ class UnifiedDeliveryController extends Controller
                     'delivery_id' => null,
                     'delivery_status' => $deliveryStatus,
                     'tracking_number' => $transfer->tracking_number,
-                    'can_create_delivery' => !$hasDelivery,
+                    'can_create_delivery' => !$hasDelivery
+                        && !$transfer->trip_id
+                        && strtolower((string) $transfer->status) === 'in_transit'
+                        && strtolower((string) ($transfer->delivery_status ?: 'ready_for_dispatch')) === 'ready_for_dispatch',
                     'weight_kg' => $this->orderItemsWeight($transfer->items ?? []),
                     'quantity_items' => $this->orderItemsQuantity($transfer->items ?? []),
                     'delivery_date' => $transfer->received_date ?? $transfer->created_at,

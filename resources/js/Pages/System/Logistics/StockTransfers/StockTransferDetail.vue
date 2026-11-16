@@ -509,9 +509,9 @@ const statusLabel = computed(() => {
   const notes = String(detail.value?.notes || '').toLowerCase()
   const hasDelivery = !!detail.value?.driver_name || !!detail.value?.vehicle_type || !!detail.value?.tracking_number
   if (deliveryStatus === 'assigned') return 'Assigned to Trip'
-  if (deliveryStatus === 'ready_for_dispatch') return 'For Dispatch'
+  if (deliveryStatus === 'ready_for_dispatch') return 'Ready for Dispatch'
+  if (status === 'in_transit' && notes.includes('sent to logistics') && !hasDelivery) return 'Ready for Dispatch'
   if (deliveryStatus) return label(deliveryStatus)
-  if (status === 'in_transit' && notes.includes('sent to logistics') && !hasDelivery) return 'Logistics Processing'
   if (!status) return '-'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 })
@@ -732,10 +732,12 @@ const addTransferToTrip = async (tripId: number | string) => {
       source_type: 'stock_transfer',
       order_ids: [transferId.value],
     })
-    if (Number(response?.data?.added || 0) !== 1) throw new Error(response?.message || 'The transfer could not be added to this trip.')
+    if (response?.success !== true || Number(response?.data?.added || 0) !== 1) {
+      throw new Error(response?.message || 'The transfer was not added. Confirm it is sent to Logistics and marked Ready for Dispatch.')
+    }
     tripChoiceVisible.value = false
     toast.add({ severity: 'success', summary: 'Added to Trip', detail: 'The stock transfer was added to the selected trip.', life: 3000 })
-    await loadDetail()
+    await router.push({ name: 'logistics.trips.detail', params: { id: tripId } })
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Assignment Failed', detail: error?.response?.data?.message || error?.message || 'Unable to add this transfer to the trip.', life: 4000 })
   } finally {

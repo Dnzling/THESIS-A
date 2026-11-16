@@ -127,7 +127,7 @@ const pageState = reactive({
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
-  { label: 'Ready for Dispatch', value: 'sender_approved' },
+  { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Received', value: 'received' },
 ]
@@ -197,8 +197,10 @@ const statusSeverity = (status?: string) => {
 const formatStatus = (row: any) => {
   const status = String(row?.status || '').toLowerCase()
   const notes = String(row?.notes || '').toLowerCase()
-  if (status === 'in_transit' && notes.includes('sent to logistics')) return 'Logistics Processing'
-  if (status === 'sender_approved' && row?.delivery_status === 'ready_for_dispatch') return 'Ready for Dispatch'
+  const deliveryStatus = String(row?.delivery_status || '').toLowerCase()
+  const hasDelivery = !!row?.driver_user_id || !!row?.driver_name || !!row?.vehicle_type || !!row?.tracking_number
+  if (deliveryStatus === 'ready_for_dispatch') return 'Ready for Dispatch'
+  if (status === 'in_transit' && notes.includes('sent to logistics') && !hasDelivery) return 'Ready for Dispatch'
   if (status === 'sender_approved') return 'Warehouse Review'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || '-'
 }

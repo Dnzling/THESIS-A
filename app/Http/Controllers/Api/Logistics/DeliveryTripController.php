@@ -1664,6 +1664,22 @@ class DeliveryTripController extends Controller
             ], 422);
         }
 
+        if ($added === 0) {
+            $message = $validated['source_type'] === 'stock_transfer'
+                ? 'No transfers were added. A transfer must be sent to Logistics and marked For Dispatch before it can be assigned to a trip.'
+                : 'No selected orders were added. They may already be assigned, no longer be dispatch-ready, or belong to another store.';
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'data' => [
+                    'added' => 0,
+                    'skipped' => $skipped,
+                    'over_capacity' => $overCapacity,
+                ],
+            ], 422);
+        }
+
         if ($added > 0 && in_array($validated['source_type'], ['sales', 'replacement', 'pickup'], true)) {
             $replacementBatch = $validated['source_type'] === 'replacement';
             $supplierPickupBatch = $validated['source_type'] === 'pickup';

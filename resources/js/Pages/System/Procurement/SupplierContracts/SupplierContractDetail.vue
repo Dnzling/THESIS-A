@@ -1,17 +1,21 @@
 <template>
-  <div class="mx-auto min-h-screen max-w-7xl space-y-4 px-4 py-5 text-sm md:px-6">
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="flex flex-wrap justify-between items-start gap-4">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Procurement / Supplier contract</p>
-          <div class="mt-2 flex flex-wrap items-center gap-3">
-            <h1 class="text-xl font-semibold text-slate-900">{{ contract?.contract_title || 'Supplier contract' }}</h1>
+  <div class="mx-auto min-h-screen max-w-7xl space-y-5 px-4 py-5 text-sm md:px-6">
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-5 p-5 md:p-6">
+        <div class="min-w-0">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-600">Procurement <span class="mx-1 text-slate-300">/</span> Supplier contracts</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2.5">
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">{{ contract?.contract_title || 'Supplier contract' }}</h1>
             <Tag :value="contract?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(contract?.status)" />
           </div>
-          <p class="mt-1 text-xs text-slate-500">{{ contract?.contract_number || 'No contract number' }} <span class="mx-1 text-slate-300">/</span> {{ contract?.supplier?.supplier_name || 'Supplier not set' }}</p>
+          <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            <span class="font-mono text-slate-700">{{ contract?.contract_number || 'No contract number' }}</span>
+            <span class="text-slate-300">•</span>
+            <span>{{ contract?.supplier?.supplier_name || 'Supplier not set' }}</span>
+            <template v-if="contract?.store?.name"><span class="text-slate-300">•</span><span>{{ contract.store.name }}</span></template>
+          </div>
         </div>
-        
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <Button
             v-if="contract?.contract_file_path"
             label="View Document"
@@ -43,30 +47,33 @@
     </div>
 
     <div v-else-if="contract">
-      <div v-if="contract.status === 'pending'" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <p class="font-semibold text-amber-900">{{ contract.submitted_by_type === 'store' ? 'Pending activation' : 'Waiting for contract decision' }}</p>
-        <p class="mt-1 text-xs text-amber-800">{{ isExternalContract ? 'Upload the contract signed by both parties to activate this external supplier contract.' : contract.submitted_by_type === 'store' ? 'Activate only after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and document before approving or rejecting.` }}</p>
+      <div v-if="contract.status === 'pending'" class="mb-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 md:p-5">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700"><i class="pi pi-clock" /></span>
+        <div class="min-w-0">
+          <p class="font-semibold text-amber-950">{{ isExternalContract && contract.submitted_by_type === 'store' ? 'Signed contract required' : contract.submitted_by_type === 'store' ? 'Pending supplier agreement' : 'Contract review required' }}</p>
+          <p class="mt-1 text-xs leading-5 text-amber-900">{{ isExternalContract ? 'Upload the contract signed by both parties to activate this external supplier agreement.' : contract.submitted_by_type === 'store' ? 'Activate after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and attached document before approving or rejecting.` }}</p>
+        </div>
       </div>
 
-      <div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p class="text-xs text-slate-500">Supplier</p>
-          <p class="mt-1 truncate font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Supplier</p>
+          <p class="mt-2 truncate font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
           <p class="mt-1 text-xs text-slate-500">{{ contract?.supplier?.supplier_code || 'No supplier code' }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p class="text-xs text-slate-500">Validity</p>
-          <p class="mt-1 font-semibold text-slate-900">{{ calculateDaysRemaining(contract?.end_date) }}</p>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Validity</p>
+          <p class="mt-2 font-semibold text-slate-900">{{ calculateDaysRemaining(contract?.end_date) }}</p>
           <p class="mt-1 text-xs text-slate-500">Ends {{ formatDate(contract?.end_date) }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p class="text-xs text-slate-500">Volume discount</p>
-          <p class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.discount_percentage || 0 }}%</p>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Volume discount</p>
+          <p class="mt-2 text-lg font-semibold text-emerald-700">{{ contract?.discount_percentage || 0 }}%</p>
           <p class="mt-1 text-xs text-slate-500">Applied to PO subtotal</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p class="text-xs text-slate-500">Tax</p>
-          <p class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.is_tax_exempt ? 'Exempt' : `${contract?.tax_rate || 0}%` }}</p>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tax</p>
+          <p class="mt-2 text-lg font-semibold text-orange-700">{{ contract?.is_tax_exempt ? 'Exempt' : `${contract?.tax_rate || 0}%` }}</p>
           <p class="mt-1 text-xs text-slate-500">After discount</p>
         </div>
       </div>
@@ -105,8 +112,8 @@
         <p v-if="contract?.rejected_at" class="text-xs text-rose-700 mt-1">Rejected at: {{ formatDatetime(contract?.rejected_at) }}</p>
       </div>
 
-      <div class="mb-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 class="font-semibold text-slate-900 mb-3">Reported issues</h3>
+      <div class="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-semibold text-slate-900">Reported issues</h3><p class="mt-0.5 text-xs text-slate-500">Questions or problems raised about this agreement.</p></div><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ myReports.length }} {{ myReports.length === 1 ? 'report' : 'reports' }}</span></div>
         <div v-if="myReportsLoading" class="text-sm text-gray-500">Loading reports...</div>
         <div v-else-if="myReports.length === 0" class="text-sm text-gray-500">No submitted reports for this contract yet.</div>
         <div v-else class="space-y-2">
@@ -130,18 +137,18 @@
       </div>
 
       <!-- Content Sections -->
-      <div class="grid items-start gap-4 lg:grid-cols-2">
+      <div class="grid items-start gap-5 lg:grid-cols-2">
         <!-- Supplier Information Section -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="mb-5 font-semibold text-slate-900">Supplier information</h2>
-          <div class="grid gap-5 sm:grid-cols-2">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><i class="pi pi-building" /></span><div><h2 class="font-semibold text-slate-900">Supplier information</h2><p class="mt-0.5 text-xs text-slate-500">The other party to this agreement</p></div></div>
+          <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
             <div>
-              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Supplier Name</p>
-              <p class="text-lg font-semibold text-gray-900">{{ contract?.supplier?.supplier_name }}</p>
+              <p class="text-[11px] font-semibold tracking-wide text-slate-500">SUPPLIER NAME</p>
+              <p class="mt-1 font-medium text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
             </div>
             <div>
-              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Supplier Code</p>
-              <p class="font-mono text-gray-900 bg-gray-50 px-3 py-2 rounded inline-block">{{ contract?.supplier?.supplier_code }}</p>
+              <p class="text-[11px] font-semibold tracking-wide text-slate-500">SUPPLIER CODE</p>
+              <p class="mt-1 inline-block rounded-md bg-slate-50 px-2.5 py-1.5 font-mono text-xs text-slate-800">{{ contract?.supplier?.supplier_code || '-' }}</p>
             </div>
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Contact Person</p>
@@ -165,9 +172,9 @@
         </div>
 
         <!-- Contract Details Section -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="mb-5 font-semibold text-slate-900">Contract details</h2>
-          <div class="grid gap-5 sm:grid-cols-2">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><i class="pi pi-file-edit" /></span><div><h2 class="font-semibold text-slate-900">Contract details</h2><p class="mt-0.5 text-xs text-slate-500">Agreement ownership and record information</p></div></div>
+          <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Contract Number</p>
               <p class="text-lg font-mono text-gray-900 bg-gray-50 px-3 py-2 rounded">{{ contract?.contract_number }}</p>
@@ -193,8 +200,8 @@
         </div>
 
         <!-- Financial Terms Section -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="mb-5 font-semibold text-slate-900">Commercial terms</h2>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><i class="pi pi-wallet" /></span><div><h2 class="font-semibold text-slate-900">Commercial terms</h2><p class="mt-0.5 text-xs text-slate-500">Pricing adjustments applied to purchase orders</p></div></div>
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold text-green-700 uppercase mb-3">Volume Discount</p>
@@ -214,8 +221,8 @@
         </div>
 
         <!-- Duration & Validity Section -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="mb-5 font-semibold text-slate-900">Dates &amp; validity</h2>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><i class="pi pi-calendar" /></span><div><h2 class="font-semibold text-slate-900">Dates &amp; validity</h2><p class="mt-0.5 text-xs text-slate-500">Effective period and agreement lifecycle</p></div></div>
           <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">Start Date</p>
