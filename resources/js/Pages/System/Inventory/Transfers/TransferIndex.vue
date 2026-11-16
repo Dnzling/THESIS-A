@@ -96,9 +96,9 @@
               <template #body="{ data }">
                 <span
                   class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                  :class="statusBadgeClass(data.status)"
+                  :class="statusBadgeClass(transferDisplayStatus(data))"
                 >
-                  {{ formatStatusLabel(data.status) }}
+                  {{ formatStatusLabel(transferDisplayStatus(data)) }}
                 </span>
               </template>
             </Column>
@@ -218,6 +218,8 @@ const statusOptions = [
   { label: 'Submitted', value: 'submitted' },
   { label: 'Approved', value: 'approved' },
   { label: 'Shipped', value: 'shipped' },
+  { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
+  { label: 'Delivered', value: 'delivered' },
   { label: 'Received', value: 'received' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
@@ -246,11 +248,20 @@ const formatStatusLabel = (status: string) => {
     approved: 'Approved',
     shipped: 'Shipped',
     in_transit: 'In Transit',
+    ready_for_dispatch: 'Ready for Dispatch',
+    delivered: 'Delivered',
     received: 'Received',
     completed: 'Completed',
     cancelled: 'Cancelled',
   }
   return map[normalized] || normalized.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+const transferDisplayStatus = (transfer: any) => {
+  if (transfer?.status === 'received') return 'received'
+  if (transfer?.delivery_status === 'delivered') return 'delivered'
+  if (transfer?.delivery_status === 'ready_for_dispatch') return 'ready_for_dispatch'
+  return transfer?.status || 'draft'
 }
 
 const statusBadgeClass = (status: string) => {
@@ -264,6 +275,8 @@ const statusBadgeClass = (status: string) => {
     shipped: 'bg-blue-100 text-blue-700',
     in_transit: 'bg-cyan-100 text-cyan-700',
     received: 'bg-emerald-100 text-emerald-700',
+    ready_for_dispatch: 'bg-orange-100 text-orange-700',
+    delivered: 'bg-emerald-100 text-emerald-700',
     completed: 'bg-green-100 text-green-700',
     cancelled: 'bg-red-100 text-red-700',
   }

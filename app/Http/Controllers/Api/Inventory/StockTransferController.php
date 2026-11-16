@@ -210,7 +210,9 @@ class StockTransferController extends Controller
             $query->where('to_branch_id', $request->to_branch_id);
         }
 
-        if ($request->input('status') === 'ready_for_dispatch') {
+        if ($request->input('status') === 'delivered') {
+            $query->where('delivery_status', 'delivered')->where('status', '!=', 'received');
+        } elseif ($request->input('status') === 'ready_for_dispatch') {
             $query->where('delivery_status', 'ready_for_dispatch');
         } elseif ($request->has('status')) {
             $query->where('status', $request->status);

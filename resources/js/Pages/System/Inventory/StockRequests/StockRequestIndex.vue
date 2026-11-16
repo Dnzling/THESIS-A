@@ -74,7 +74,7 @@
           <Column :field="dateSortField" header="Date" sortable style="min-width: 110px">
             <template #body="{ data }">
               <div class="text-xs font-medium text-slate-800">{{ formatDate(data.date) }}</div>
-              <div class="mt-0.5 text-[11px] text-slate-500">{{ formatTime(data.date) }}</div>
+              <div class="mt-0.5 text-[11px] text-slate-500">{{ formatTime(data.time || data.date) }}</div>
             </template>
           </Column>
           <Column field="reference" :header="activeType === 'purchase' ? 'PR Number' : 'Reference'" style="min-width: 190px">
@@ -241,7 +241,8 @@ const loadRequests = async (targetPage = page.value) => {
         itemCount: Number(row.items?.length || 0),
         amount: Number(row.estimated_amount || 0),
         status: row.status || 'draft',
-        date: row.created_at,
+          date: row.created_at,
+          time: row.created_at,
       }))
       total.value = Number(payload?.total || 0)
     } else {
@@ -265,6 +266,7 @@ const loadRequests = async (targetPage = page.value) => {
               ? 'ready_for_dispatch'
               : row.status || 'draft',
           date: row.requested_date || row.created_at,
+          time: row.created_at,
         }
       })
       total.value = Number(payload?.total || 0)
