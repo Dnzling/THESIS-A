@@ -151,8 +151,11 @@ class DeliveryTripController extends Controller
                 ->with(['items.product:id,weight_kg', 'items.variation:id,weight_kg', 'toBranch:id,address,city,province'])
                 ->where('store_id', $storeId)
                 ->whereNull('trip_id')
-                ->where('status', 'in_transit')
-                ->where(fn ($query) => $query->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch'))
+                ->where(function ($query) {
+                    $query->where(fn ($ready) => $ready->where('status', 'sender_approved')->where('delivery_status', 'ready_for_dispatch'))
+                        ->orWhere(fn ($legacyReady) => $legacyReady->where('status', 'in_transit')
+                            ->where(fn ($delivery) => $delivery->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch')));
+                })
                 ->findOrFail((int) $validated['order_id']);
             $address = (string) collect([
                 $order->toBranch?->address,
@@ -865,12 +868,12 @@ class DeliveryTripController extends Controller
                 $trip->stockTransfers()->whereIn('delivery_status', ['assigned', 'ready_for_dispatch'])->get()
                     ->each(function ($transfer) use ($request, $trip, $now): void {
                         $transfer->delivery_status = 'out_for_delivery';
-                        $transfer->status = 'out_for_delivery';
+                        $transfer->status = 'in_transit';
                         $transfer->out_for_delivery_at = $transfer->out_for_delivery_at ?: $now;
                         $actor = $request->user();
                         $actorName = trim((string) ($actor?->fname.' '.$actor?->lname)) ?: 'Logistics';
                         $reference = $this->tripReference($trip);
-                        $transfer->notes = trim((string) $transfer->notes."\nLOG2|".$now->toDateTimeString()."|".$actorName."|custom_note|Trip {$reference} dispatched; transfer is out for delivery.");
+                        $transfer->notes = trim((string) $transfer->notes."\nLOG2|".$now->toDateTimeString()."|".$actorName."|custom_note|Trip {$reference} dispatched; inventory status remains in transit and delivery is out for delivery.");
                         $transfer->save();
                     });
                 $trip->purchaseOrderShipments()->whereIn('status', ['pending', 'assigned', 'ready_for_dispatch'])->get()
@@ -1095,8 +1098,11 @@ class DeliveryTripController extends Controller
             ->with(['toBranch:id,address,latitude,longitude,city,province', 'fromBranch:id,latitude,longitude', 'items.product:id,weight_kg', 'items.variation:id,weight_kg'])
             ->where('store_id', $trip->store_id)
             ->whereNull('trip_id')
-            ->where('status', 'in_transit')
-            ->where(fn ($query) => $query->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch'))
+            ->where(function ($query) {
+                $query->where(fn ($ready) => $ready->where('status', 'sender_approved')->where('delivery_status', 'ready_for_dispatch'))
+                    ->orWhere(fn ($legacyReady) => $legacyReady->where('status', 'in_transit')
+                        ->where(fn ($delivery) => $delivery->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch')));
+            })
             ->get()->map(function ($transfer) {
                 $address = collect([$transfer->toBranch?->address, $transfer->toBranch?->city, $transfer->toBranch?->province])->filter()->implode(', ');
                 return [
@@ -1106,7 +1112,8 @@ class DeliveryTripController extends Controller
                     'order_number' => $transfer->transfer_number,
                     'customer_name' => ($transfer->fromBranch?->name ?: 'Source branch').' to '.($transfer->toBranch?->name ?: 'Destination branch'),
                     'delivery_address' => $address,
-                    'order_status' => $transfer->status,
+                    'order_status' => $transfer->delivery_status ?: 'ready_for_dispatch',
+                    'delivery_status' => $transfer->delivery_status ?: 'ready_for_dispatch',
                     'distance_km' => $this->haversineDistance($transfer->fromBranch?->latitude, $transfer->fromBranch?->longitude, $transfer->toBranch?->latitude, $transfer->toBranch?->longitude),
                     'origin_latitude' => $transfer->fromBranch?->latitude, 'origin_longitude' => $transfer->fromBranch?->longitude,
                     'destination_latitude' => $transfer->toBranch?->latitude, 'destination_longitude' => $transfer->toBranch?->longitude,
@@ -1604,8 +1611,11 @@ class DeliveryTripController extends Controller
                     ->whereIn('id', $validated['order_ids'])
                     ->where('store_id', $trip->store_id)
                     ->whereNull('trip_id')
-                    ->where('status', 'in_transit')
-                    ->where(fn ($query) => $query->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch'))
+                    ->where(function ($query) {
+                        $query->where(fn ($ready) => $ready->where('status', 'sender_approved')->where('delivery_status', 'ready_for_dispatch'))
+                            ->orWhere(fn ($legacyReady) => $legacyReady->where('status', 'in_transit')
+                                ->where(fn ($delivery) => $delivery->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch')));
+                    })
                     ->get();
 
                 foreach ($transfers as $transfer) {
@@ -1666,7 +1676,7 @@ class DeliveryTripController extends Controller
 
         if ($added === 0) {
             $message = $validated['source_type'] === 'stock_transfer'
-                ? 'No transfers were added. A transfer must be sent to Logistics and marked For Dispatch before it can be assigned to a trip.'
+                ? 'No transfers were added. A transfer must be marked Ready for Dispatch before it can be assigned to a trip.'
                 : 'No selected orders were added. They may already be assigned, no longer be dispatch-ready, or belong to another store.';
 
             return response()->json([

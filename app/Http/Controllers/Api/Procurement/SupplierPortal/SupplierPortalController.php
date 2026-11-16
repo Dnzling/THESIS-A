@@ -753,12 +753,61 @@ class SupplierPortalController extends Controller
             $user = auth()->user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
+            $periodStart = now()->startOfMonth()->subMonths(5);
+            $months = collect(range(0, 5))->mapWithKeys(function (int $offset) use ($periodStart): array {
+                $month = $periodStart->copy()->addMonths($offset);
+                return [$month->format('Y-m') => [
+                    'label' => $month->format('M'),
+                    'rfq_responses' => 0,
+                    'purchase_orders' => 0,
+                ]];
+            })->all();
+
+            $portal->rfqFeedbacks()
+                ->where('created_at', '>=', $periodStart)
+                ->get(['created_at', 'submitted_at'])
+                ->each(function ($feedback) use (&$months): void {
+                    $date = $feedback->submitted_at ?: $feedback->created_at;
+                    if (!$date) return;
+                    $key = \Illuminate\Support\Carbon::parse($date)->format('Y-m');
+                    if (isset($months[$key])) $months[$key]['rfq_responses']++;
+                });
+
+            $portal->poFeedbacks()
+                ->where('created_at', '>=', $periodStart)
+                ->get(['created_at', 'submitted_at'])
+                ->each(function ($feedback) use (&$months): void {
+                    $date = $feedback->submitted_at ?: $feedback->created_at;
+                    if (!$date) return;
+                    $key = \Illuminate\Support\Carbon::parse($date)->format('Y-m');
+                    if (isset($months[$key])) $months[$key]['purchase_orders']++;
+                });
+
+            $linkedSupplierIds = $portal->linkedSupplierIds()->all();
+            $ratingQuery = DB::table('supplier_ratings')
+                ->whereIn('supplier_id', $linkedSupplierIds);
+            $recentReviews = (clone $ratingQuery)
+                ->whereNotNull('comment')
+                ->where('comment', '<>', '')
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get(['id', 'rating', 'category', 'comment', 'created_at']);
+            $ratingBreakdown = (clone $ratingQuery)
+                ->select('rating', DB::raw('COUNT(*) as total'))
+                ->groupBy('rating')
+                ->pluck('total', 'rating');
+
             $stats = [
                 'portal_status' => $portal->status,
                 'is_verified' => $portal->isVerified(),
                 'total_rfqs' => $portal->rfqFeedbacks()->count(),
                 'total_pos' => $portal->poFeedbacks()->count(),
                 'pending_pos' => $portal->poFeedbacks()->where('receipt_status', 'pending')->count(),
+                'activity_months' => array_values($months),
+                'average_rating' => round((float) ((clone $ratingQuery)->avg('rating') ?? 0), 2),
+                'rating_count' => (clone $ratingQuery)->count(),
+                'rating_breakdown' => $ratingBreakdown,
+                'recent_reviews' => $recentReviews,
             ];
 
             return response()->json([

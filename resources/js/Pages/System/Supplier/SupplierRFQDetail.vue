@@ -202,20 +202,56 @@
             <div class="grid grid-cols-2 gap-4 mb-3">
               <div>
                 <p class="text-sm font-semibold">Quantity</p>
-                <p>{{ item.quantity }} {{ item.product?.unit_of_measurement || '-' }}</p>
+                <p>{{ item.quantity }} {{ item.product?.unit_of_measurement || '' }} requested</p>
+                <p v-if="item.supplier_offer?.minimum_order_quantity" class="mt-1 text-xs text-slate-500">
+                  Supplier MOQ: {{ item.supplier_offer.minimum_order_quantity }} {{ item.product?.unit_of_measurement || '' }}
+                </p>
               </div>
               <div>
                 <p class="text-sm font-semibold">Specifications</p>
                 <p class="text-sm">{{ item.specifications || 'N/A' }}</p>
               </div>
             </div>
+
+            <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p class="mb-3 text-sm font-semibold text-slate-800">Supplier product specifications</p>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div v-for="dimension in dimensionFields" :key="dimension.key" class="rounded-lg bg-white p-2">
+                  <p class="text-[11px] text-slate-500">{{ dimension.label }}</p>
+                  <p class="font-medium text-slate-800">{{ formatProductMeasurement(productValue(item, dimension.key), dimension.suffix) }}</p>
+                </div>
+              </div>
+              <div v-if="productAttributes(item).length" class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div v-for="attribute in productAttributes(item)" :key="attribute.key" class="rounded-lg bg-white p-2">
+                  <p class="text-[11px] text-slate-500">{{ attribute.label }}</p>
+                  <p class="font-medium text-slate-800">{{ attribute.value }}</p>
+                </div>
+              </div>
+              <div v-if="productMeasurements(item).length" class="mt-3 border-t border-slate-200 pt-3">
+                <p class="mb-2 text-xs font-medium text-slate-600">Additional measurements</p>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  <div v-for="(measurement, index) in productMeasurements(item)" :key="`${measurement.label}-${index}`" class="rounded-lg bg-white p-2">
+                    <p class="text-[11px] text-slate-500">{{ measurement.label }}</p>
+                    <p class="font-medium text-slate-800">{{ measurement.value }} {{ measurement.unit || '' }}</p>
+                  </div>
+                </div>
+              </div>
+              <p v-if="item.specifications" class="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-600">
+                <span class="font-medium text-slate-800">Requested specifications:</span> {{ item.specifications }}
+              </p>
+              <small v-if="quoteErrors[item.id]?.specifications" class="mt-3 block text-red-600">{{ quoteErrors[item.id].specifications }}</small>
+            </div>
   
             <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium mb-2">Unit Price *</label>
+              <label class="block text-sm font-medium mb-2">Unit Cost (tax inclusive) *</label>
               <InputNumber v-model="quoteData[item.id].quoted_price" mode="currency" :min="0" :currency="rfq?.currency || 'PHP'"
                 class="w-full" :invalid="Boolean(quoteErrors[item.id]?.quoted_price)"
                 @update:modelValue="clearQuoteError(item.id, 'quoted_price')" />
+              <small v-if="item.supplier_offer" class="mt-1 block text-slate-500">
+                Prefilled from your product listing. The contract discount is applied to the quotation total.
+              </small>
+              <small v-else class="mt-1 block text-slate-500">Enter your tax-inclusive unit cost for this quotation.</small>
               <small v-if="quoteErrors[item.id]?.quoted_price" class="mt-1 block text-red-500">{{ quoteErrors[item.id].quoted_price }}</small>
             </div>
             <div>
@@ -227,74 +263,7 @@
             </div>
             </div>
 
-            <div class="mt-4 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
-              <label class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800">
-                <input v-model="quoteData[item.id].has_variant" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-orange-600" />
-                This quote includes a product variant
-              </label>
-              <div v-if="quoteData[item.id].has_variant" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                <div><label class="mb-1 block text-xs font-medium">Variant Name *</label><InputText v-model="quoteData[item.id].variant_name" fluid placeholder="e.g. Oak Finish - Large" /></div>
-                <div><label class="mb-1 block text-xs font-medium">Supplier SKU / Model</label><InputText v-model="quoteData[item.id].supplier_sku" fluid /></div>
-                <div><label class="mb-1 block text-xs font-medium">Unit of Measurement</label><InputText v-model="quoteData[item.id].unit_of_measurement" fluid placeholder="piece, set, box" /></div>
-                <div><label class="mb-1 block text-xs font-medium">Size</label><InputText v-model="quoteData[item.id].variant_size" fluid /></div>
-                <div><label class="mb-1 block text-xs font-medium">Color</label><InputText v-model="quoteData[item.id].variant_color" fluid /></div>
-                <div><label class="mb-1 block text-xs font-medium">Material</label><InputText v-model="quoteData[item.id].variant_material" fluid /></div>
-                <div><label class="mb-1 block text-xs font-medium">Texture</label><InputText v-model="quoteData[item.id].variant_texture" fluid /></div>
-                <div><label class="mb-1 block text-xs font-medium">Finish</label><InputText v-model="quoteData[item.id].variant_finish" fluid /></div>
-                <div class="md:col-span-2 lg:col-span-3"><label class="mb-1 block text-xs font-medium">Variant Images (up to 5)</label><input type="file" accept="image/png,image/jpeg,image/webp" multiple class="w-full text-sm" @change="setVariantImages(item.id, $event)" /></div>
-              </div>
-              <div v-if="quoteData[item.id].has_variant" class="mt-4 space-y-3">
-                <div v-for="(variant, index) in quoteData[item.id].additional_variants" :key="index" class="rounded-xl border border-orange-200 bg-white p-3">
-                  <div class="mb-3 flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-800">Additional variant {{ index + 2 }}</span>
-                    <Button label="Remove" icon="pi pi-trash" severity="danger" text size="small" @click="quoteData[item.id].additional_variants.splice(index, 1)" />
-                  </div>
-                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                    <div><label class="mb-1 block text-xs">Variant Name *</label><InputText v-model="variant.variant_name" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Supplier SKU / Model</label><InputText v-model="variant.supplier_sku" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Unit of Measurement</label><InputText v-model="variant.unit_of_measurement" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Size</label><InputText v-model="variant.variant_size" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Color</label><InputText v-model="variant.variant_color" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Material</label><InputText v-model="variant.variant_material" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Texture</label><InputText v-model="variant.variant_texture" fluid size="small" /></div>
-                    <div><label class="mb-1 block text-xs">Finish</label><InputText v-model="variant.variant_finish" fluid size="small" /></div>
-                  </div>
-                </div>
-                <Button label="Add Variant" icon="pi pi-plus" severity="warn" outlined size="small" :disabled="quoteData[item.id].additional_variants.length >= 20" @click="addVariant(item.id)" />
-                <small v-if="quoteErrors[item.id]?.additional_variants" class="block text-red-500">{{ quoteErrors[item.id].additional_variants }}</small>
-              </div>
-            </div>
-
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 mt-3">
-              <div class="md:col-span-2">
-                <p class="mb-2 text-sm font-semibold text-slate-700">Per-unit shipping specifications</p>
-                <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <div>
-                    <label class="block text-xs font-medium mb-1">Length (cm) *</label>
-                    <InputNumber v-model="quoteData[item.id].length_cm" :min="0.01" :maxFractionDigits="2" fluid
-                      :invalid="Boolean(quoteErrors[item.id]?.length_cm)" @update:modelValue="clearQuoteError(item.id, 'length_cm')" />
-                    <small v-if="quoteErrors[item.id]?.length_cm" class="mt-1 block text-red-500">{{ quoteErrors[item.id].length_cm }}</small>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium mb-1">Width (cm) *</label>
-                    <InputNumber v-model="quoteData[item.id].width_cm" :min="0.01" :maxFractionDigits="2" fluid
-                      :invalid="Boolean(quoteErrors[item.id]?.width_cm)" @update:modelValue="clearQuoteError(item.id, 'width_cm')" />
-                    <small v-if="quoteErrors[item.id]?.width_cm" class="mt-1 block text-red-500">{{ quoteErrors[item.id].width_cm }}</small>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium mb-1">Height (cm) *</label>
-                    <InputNumber v-model="quoteData[item.id].height_cm" :min="0.01" :maxFractionDigits="2" fluid
-                      :invalid="Boolean(quoteErrors[item.id]?.height_cm)" @update:modelValue="clearQuoteError(item.id, 'height_cm')" />
-                    <small v-if="quoteErrors[item.id]?.height_cm" class="mt-1 block text-red-500">{{ quoteErrors[item.id].height_cm }}</small>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium mb-1">Weight (kg) *</label>
-                    <InputNumber v-model="quoteData[item.id].weight_kg" :min="0.001" :maxFractionDigits="3" fluid
-                      :invalid="Boolean(quoteErrors[item.id]?.weight_kg)" @update:modelValue="clearQuoteError(item.id, 'weight_kg')" />
-                    <small v-if="quoteErrors[item.id]?.weight_kg" class="mt-1 block text-red-500">{{ quoteErrors[item.id].weight_kg }}</small>
-                  </div>
-                </div>
-              </div>
               <div>
                 <label class="block text-sm font-medium mb-2">Estimated Delivery *</label>
                 <DatePicker v-model="quoteData[item.id].estimated_delivery_date" dateFormat="M d, yy" showIcon :minDate="today" class="w-full"
@@ -311,15 +280,13 @@
               </div>
               <div>
                 <label class="block text-sm font-medium mb-2">Quotation Attachment</label>
-                <input type="file" class="w-full text-sm" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" @change="setAttachment(item.id, $event)" />
-              </div>
-              <div class="md:col-span-2">
-                <label class="block text-sm font-medium mb-2">Product Specifications</label>
-                <Textarea v-model="quoteData[item.id].product_specifications" rows="2" placeholder="Optional specifications" class="w-full" />
-              </div>
-              <div class="md:col-span-2">
-                <label class="block text-sm font-medium mb-2">Additional Notes</label>
-                <Textarea v-model="quoteData[item.id].additional_notes" rows="2" placeholder="Optional notes" class="w-full" />
+                <FileUpload mode="basic" :auto="false" :customUpload="true" chooseLabel="Choose file" chooseIcon="pi pi-paperclip"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" :maxFileSize="5242880"
+                  @select="setAttachment(item.id, $event)" />
+                <div v-if="quoteData[item.id].attachment" class="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <i class="pi pi-file"></i><span class="truncate">{{ quoteData[item.id].attachment.name }}</span>
+                  <Button icon="pi pi-times" text rounded size="small" aria-label="Remove attachment" @click="quoteData[item.id].attachment = null" />
+                </div>
               </div>
             </div>
           </div>
@@ -348,10 +315,9 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
-import Textarea from 'primevue/textarea'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
+import FileUpload from 'primevue/fileupload'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -379,6 +345,41 @@ const quoteValidationMessage = ref('')
 const canEditQuotes = ref(true)
 const quoteDialogVisible = ref(false)
 const today = new Date()
+const dimensionFields = [
+  { key: 'length_cm', label: 'Length', suffix: 'cm' },
+  { key: 'width_cm', label: 'Width', suffix: 'cm' },
+  { key: 'height_cm', label: 'Height', suffix: 'cm' },
+  { key: 'depth_cm', label: 'Depth', suffix: 'cm' },
+  { key: 'weight_kg', label: 'Weight', suffix: 'kg' },
+] as const
+
+const productValue = (item: any, key: string) => item?.variation?.[key] ?? item?.product?.[key] ?? null
+const formatProductMeasurement = (value: unknown, suffix: string) => value === null || value === undefined || value === ''
+  ? 'Not recorded'
+  : `${Number(value).toLocaleString()} ${suffix}`
+const productMeasurements = (item: any) => {
+  const measurements = item?.variation?.additional_measurements ?? item?.product?.additional_measurements ?? []
+  return Array.isArray(measurements) ? measurements.filter((measurement: any) => measurement?.label && measurement?.value !== null && measurement?.value !== undefined) : []
+}
+const productAttributes = (item: any) => {
+  const variation = item?.variation
+  const attributes = variation
+    ? { color: variation.color, size: variation.size, material: variation.material, texture: variation.texture, finish: variation.finish }
+    : item?.product?.variation_attributes || {}
+  return [
+    { key: 'color', label: 'Color', value: attributes.color },
+    { key: 'size', label: 'Size', value: attributes.size },
+    { key: 'material', label: 'Material', value: attributes.material },
+    { key: 'texture', label: 'Texture', value: attributes.texture },
+    { key: 'finish', label: 'Finish', value: attributes.finish },
+  ].filter(attribute => String(attribute.value || '').trim())
+}
+const catalogSpecifications = (item: any) => {
+  const dimensions = dimensionFields.map(dimension => `${dimension.label}: ${formatProductMeasurement(productValue(item, dimension.key), dimension.suffix)}`)
+  const attributes = productAttributes(item).map(attribute => `${attribute.label}: ${attribute.value}`)
+  const measurements = productMeasurements(item).map((measurement: any) => `${measurement.label}: ${measurement.value} ${measurement.unit || ''}`.trim())
+  return [...dimensions, ...attributes, ...measurements].join('\n')
+}
 
 const getStatusSeverity = (status: string) => {
   const map: { [key: string]: string } = {
@@ -440,12 +441,12 @@ const loadRFQDetail = async () => {
     rfq.value.items?.forEach((item: any) => {
       if (!quoteData.value[item.id]) {
         quoteData.value[item.id] = {
-          quoted_price: null,
+          quoted_price: item.supplier_offer?.unit_cost != null ? Number(item.supplier_offer.unit_cost) : null,
           available_quantity: item.quantity || null,
-          length_cm: null,
-          width_cm: null,
-          height_cm: null,
-          weight_kg: null,
+          length_cm: productValue(item, 'length_cm'),
+          width_cm: productValue(item, 'width_cm'),
+          height_cm: productValue(item, 'height_cm'),
+          weight_kg: productValue(item, 'weight_kg'),
           estimated_delivery_date: null,
           quotation_valid_until: null,
           attachment: null,
@@ -516,8 +517,9 @@ const validateAllQuotes = () => {
       itemErrors.available_quantity = 'Enter the available quantity.'
     }
     for (const field of ['length_cm', 'width_cm', 'height_cm', 'weight_kg']) {
-      if (!quote[field] || Number(quote[field]) <= 0) {
-        itemErrors[field] = `Enter a valid ${field === 'weight_kg' ? 'weight' : field.replace('_cm', '')}.`
+      const catalogValue = productValue(item, field)
+      if (!catalogValue || Number(catalogValue) <= 0) {
+        itemErrors.specifications = 'Complete the product dimensions and weight in your supplier product catalog before submitting this quote.'
       }
     }
     if (!quote.estimated_delivery_date) {
@@ -526,9 +528,6 @@ const validateAllQuotes = () => {
     if (!quote.quotation_valid_until) {
       itemErrors.quotation_valid_until = 'Select the quotation validity date.'
     }
-    if (quote.has_variant && !String(quote.variant_name || '').trim()) itemErrors.variant_name = 'Enter the proposed variant name.'
-    if (quote.has_variant && quote.additional_variants?.some((variant: any) => !String(variant.variant_name || '').trim())) itemErrors.additional_variants = 'Name every additional variant or remove the empty entry.'
-
     if (Object.keys(itemErrors).length > 0) {
       errors[item.id] = itemErrors
     }
@@ -595,27 +594,14 @@ const performQuoteSubmission = async () => {
         rfq_item_id: Number(item.id),
         quoted_price: quote.quoted_price,
         available_quantity: Math.round(Number(quote.available_quantity)),
-        length_cm: quote.length_cm,
-        width_cm: quote.width_cm,
-        height_cm: quote.height_cm,
-        weight_kg: quote.weight_kg,
+        length_cm: productValue(item, 'length_cm'),
+        width_cm: productValue(item, 'width_cm'),
+        height_cm: productValue(item, 'height_cm'),
+        weight_kg: productValue(item, 'weight_kg'),
         estimated_delivery_date: formatDateForApi(quote.estimated_delivery_date),
         quotation_valid_until: formatDateForApi(quote.quotation_valid_until),
         attachment: quote.attachment,
-        product_specifications: quote.product_specifications,
-        additional_notes: quote.additional_notes,
-        description: quote.description,
-        has_variant: quote.has_variant,
-        variant_name: quote.variant_name,
-        supplier_sku: quote.supplier_sku,
-        variant_size: quote.variant_size,
-        variant_color: quote.variant_color,
-        variant_texture: quote.variant_texture,
-        variant_finish: quote.variant_finish,
-        variant_material: quote.variant_material,
-        unit_of_measurement: quote.unit_of_measurement,
-        variant_images: quote.variant_images,
-        additional_variants: quote.has_variant ? quote.additional_variants : [],
+        product_specifications: catalogSpecifications(item),
       })
     }
 
@@ -643,8 +629,8 @@ const performQuoteSubmission = async () => {
   }
 }
 
-const setAttachment = (itemId: number, event: Event) => {
-  quoteData.value[itemId].attachment = (event.target as HTMLInputElement).files?.[0] || null
+const setAttachment = (itemId: number, event: { files?: File[] }) => {
+  quoteData.value[itemId].attachment = event.files?.[0] || null
 }
 
 const formatDateForApi = (value: Date | string | null) => {
@@ -663,17 +649,6 @@ const getAttachmentUrl = (path: string) => path.startsWith('http') ? path : `/st
 const calculateQuoteTotal = (item: any, quote: any) => {
   return (Number(item?.quantity || 0) * Number(quote?.quoted_price || 0)).toFixed(2)
 }
-const setVariantImages = (itemId: number, event: Event) => {
-  quoteData.value[itemId].variant_images = Array.from((event.target as HTMLInputElement).files || []).slice(0, 5)
-}
-
-const addVariant = (itemId: number) => {
-  quoteData.value[itemId].additional_variants.push({
-    variant_name: '', supplier_sku: '', unit_of_measurement: quoteData.value[itemId].unit_of_measurement || '',
-    variant_size: '', variant_color: '', variant_material: '', variant_texture: '', variant_finish: '',
-  })
-}
-
 const quoteDimensions = (quote: any) => {
   if (!quote?.length_cm || !quote?.width_cm || !quote?.height_cm) return '—'
   return `${Number(quote.length_cm).toLocaleString()} × ${Number(quote.width_cm).toLocaleString()} × ${Number(quote.height_cm).toLocaleString()} cm`

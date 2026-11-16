@@ -410,19 +410,27 @@ class UnifiedDeliveryController extends Controller
                 'items.variation:id,weight_kg',
             ])
             ->where('store_id', $storeId)
-            ->whereIn('status', ['sender_approved', 'in_transit', 'out_for_delivery'])
             ->where(function ($query) {
-                $query->whereNotNull('delivery_status')->orWhereIn('status', ['in_transit', 'out_for_delivery']);
+                $query->where(function ($ready) {
+                    $ready->where('status', 'sender_approved')->where('delivery_status', 'ready_for_dispatch');
+                })->orWhere(function ($legacyReady) {
+                    $legacyReady->where('status', 'in_transit')
+                        ->where(fn ($delivery) => $delivery->whereNull('delivery_status')->orWhere('delivery_status', 'ready_for_dispatch'));
+                })->orWhere(function ($active) {
+                    $active->whereIn('status', ['in_transit', 'out_for_delivery'])->whereNotNull('delivery_status');
+                });
             })
             ->get()
             ->map(function (StockTransfer $transfer): array {
                 $hasDelivery = (bool) ($transfer->driver_user_id || $transfer->driver_name || $transfer->vehicle_type || $transfer->tracking_number);
                 $deliveryStatus = $transfer->delivery_status
-                    ?: (in_array($transfer->status, ['in_transit', 'out_for_delivery'], true)
-                        ? $transfer->status
-                        : ($hasDelivery ? 'assigned' : 'ready_for_dispatch'));
-                $readyForDispatch = strtolower((string) $transfer->status) === 'in_transit'
-                    && in_array(strtolower((string) ($transfer->delivery_status ?? 'ready_for_dispatch')), ['', 'ready_for_dispatch'], true);
+                    ?: (strtolower((string) $transfer->status) === 'in_transit'
+                        ? 'ready_for_dispatch'
+                        : (strtolower((string) $transfer->status) === 'out_for_delivery'
+                            ? 'out_for_delivery'
+                            : ($hasDelivery ? 'assigned' : 'ready_for_dispatch')));
+                $readyForDispatch = in_array(strtolower((string) $transfer->status), ['sender_approved', 'in_transit'], true)
+                    && strtolower((string) $deliveryStatus) === 'ready_for_dispatch';
                 $fromName = $transfer->fromBranch?->name ?: 'Source branch';
                 $toName = $transfer->toBranch?->name ?: 'Destination branch';
 
@@ -1370,7 +1378,6 @@ class UnifiedDeliveryController extends Controller
                     $transfer->status = 'in_transit';
                     $transfer->shipped_date = $transfer->shipped_date ?: now()->toDateString();
                 } elseif ($validated['status'] === 'out_for_delivery') {
-                    $transfer->status = 'out_for_delivery';
                     $transfer->out_for_delivery_at = $transfer->out_for_delivery_at ?: now();
                 } elseif ($validated['status'] === 'delivered') {
                     $transfer->delivered_at = $transfer->delivered_at ?: now();

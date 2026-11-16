@@ -130,7 +130,7 @@
         </div>
         <div v-else class="grid gap-3 lg:hidden">
           <article v-for="row in assignedOrders" :key="row.id" class="rounded-xl border border-slate-200 bg-white p-4">
-            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="text-xs font-medium text-slate-500">{{ row.source }}</p><p class="mt-1 truncate font-semibold text-slate-900">{{ row.order_number || '-' }}</p></div><Tag :value="formatStatus(row.status)" :severity="statusSeverity(row.status)" /></div>
+            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="text-xs font-semibold text-violet-700">Stop #{{ row.stop_number }}</p><p class="mt-1 text-xs text-slate-500">{{ row.source }}</p><p class="mt-1 truncate font-semibold text-slate-900">{{ row.order_number || '-' }}</p></div><Tag :value="formatStatus(row.status)" :severity="statusSeverity(row.status)" /></div>
             <p class="mt-3 text-sm font-medium text-slate-800">{{ row.customer_name || '-' }}</p>
             <p class="mt-1 line-clamp-2 text-sm text-slate-500">{{ row.address || '-' }}</p>
             <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -143,7 +143,7 @@
         </div>
         <DataTable v-if="assignedOrders.length" :value="assignedOrders" dataKey="id" rowHover class="hidden lg:block">
           <Column header="Stop / Order" style="min-width: 13rem">
-            <template #body="{ data }"><p class="text-xs text-slate-500">{{ data.source }}</p><p class="mt-0.5 font-medium text-slate-900">{{ data.order_number || '-' }}</p></template>
+            <template #body="{ data }"><p class="text-xs font-semibold text-violet-700">Stop #{{ data.stop_number }}</p><p class="mt-1 text-xs text-slate-500">{{ data.source }}</p><p class="mt-0.5 font-medium text-slate-900">{{ data.order_number || '-' }}</p></template>
           </Column>
           <Column field="customer_name" header="Recipient" style="min-width: 11rem" />
           <Column header="Delivery Date" style="width: 10rem"><template #body="{ data }">{{ formatDateOnly(data.delivery_date) }}</template></Column>
@@ -171,9 +171,11 @@
     <Card v-if="canManage && trip?.status === 'planned'" class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Add Orders to Trip</template>
       <template #content>
-        <div class="flex flex-wrap items-center gap-2 mb-3">
-          <Select v-model="availableSource" :options="sourceOptions" optionLabel="label" optionValue="value" size="small"
-            class="w-40" />
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <Button v-for="option in sourceOptions" :key="option.value" :label="option.label" size="small" rounded
+            :severity="availableSources.includes(option.value) ? 'warn' : 'secondary'"
+            :outlined="!availableSources.includes(option.value)" :aria-pressed="availableSources.includes(option.value)"
+            :disabled="loadingAvailable" @click="toggleAvailableSource(option.value)" />
           <Button :loading="loadingAvailable" label="Load Ready Orders" outlined @click="loadAvailableOrders" rounded severity="contrast" size="small" />
           <Button :loading="loadingSuggestion" :disabled="!canManage" icon="pi pi-sparkles" size="small" rounded
             label="Suggest Batch" severity="help" outlined @click="suggestBatch" />
@@ -188,6 +190,9 @@
           <span v-if="willExceedCapacity" class="ml-2 font-semibold text-rose-600">Over capacity</span>
         </div>
         <p class="mb-3 text-xs text-slate-500">Route km starts with a map-pin estimate and can be adjusted manually. Saved route km are for trip planning and do not change customer shipping fees.</p>
+        <p v-if="availableSources.includes('stock_transfer')" class="mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Transfers appear here when delivery status is <strong>Ready for Dispatch</strong>, the inventory status is <strong>Sender Approved</strong> or <strong>In Transit</strong>, and no trip is assigned.
+        </p>
         <div v-if="selectedOrders.length" class="mb-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-800">
           Suggested route: {{ selectedOrders.length }} stop{{ selectedOrders.length === 1 ? '' : 's' }} ordered from the nearest starting point, then by the nearest next stop. Adjust route distance as needed, then click <strong>Add to Trip</strong>.
         </div>
@@ -201,7 +206,7 @@
               <i v-else class="pi pi-inbox text-2xl text-slate-400" />
               <p class="mt-2 text-sm font-semibold text-slate-700">{{ loadingAvailable ? 'Loading dispatch-ready orders...' : 'No dispatch-ready orders found' }}</p>
               <p v-if="!loadingAvailable" class="mx-auto mt-1 max-w-md text-xs text-slate-500">
-                There are no eligible {{ sourceOptions.find(option => option.value === availableSource)?.label || 'orders' }} orders available for this trip. Refresh to check again.
+                There are no eligible {{ availableSources.length ? availableSources.map(source => sourceOptions.find(option => option.value === source)?.label).filter(Boolean).join(', ') : 'order types' }} orders available for this trip. Choose an order type and refresh to check again.
               </p>
             </div>
           </template>
@@ -355,7 +360,9 @@ const availableOrders = ref<any[]>([])
 const loadingAvailable = ref(false)
 const loadingSuggestion = ref(false)
 const selectedOrders = ref<any[]>([])
-const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement' | 'pickup'>('ecommerce')
+type OrderSource = 'ecommerce' | 'sales' | 'return_pickup' | 'stock_transfer' | 'replacement' | 'pickup'
+const availableSources = ref<OrderSource[]>(['ecommerce'])
+const allAvailableOrders = ref<any[]>([])
 const availablePage = ref(1)
 const availablePerPage = ref(10)
 const availableTotal = ref(0)
@@ -368,7 +375,7 @@ const detailMapError = ref(false)
 let detailMap: any = null
 let detailMapRenderId = 0
 
-const sourceOptions = [
+const sourceOptions: { label: string; value: OrderSource }[] = [
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'Sales', value: 'sales' },
   { label: 'Return Pickup', value: 'return_pickup' },
@@ -468,6 +475,7 @@ const assignedOrders = computed(() => {
     }
   })
   return [...ecommerce, ...sales, ...returns, ...transfers, ...replacements, ...supplierPickups]
+    .map((row, index) => ({ ...row, stop_number: index + 1 }))
 })
 
 const selectedOrderIds = computed(() => selectedOrders.value.map(o => o.order_id))
@@ -490,7 +498,8 @@ const capacityRemaining = computed(() => {
   if (!vehicleCapacity.value) return 0
   return Math.max(0, vehicleCapacity.value - tripTotalWeight.value)
 })
-const willExceedCapacity = computed(() => vehicleCapacity.value > 0 && (availableSource.value === 'return_pickup'
+const selectedOnlyReturnPickups = computed(() => selectedOrders.value.length > 0 && selectedOrders.value.every(row => row.source_type === 'return_pickup'))
+const willExceedCapacity = computed(() => vehicleCapacity.value > 0 && (selectedOnlyReturnPickups.value
   ? selectedWeightKg.value > vehicleCapacity.value
   : (selectedWeightKg.value + tripTotalWeight.value) > vehicleCapacity.value))
 const capacityLabel = computed(() => {
@@ -508,25 +517,49 @@ const batchSuggestion = computed(() => {
     : Number.POSITIVE_INFINITY
   let weight = 0
   const picked: any[] = []
-  for (const row of [...availableOrders.value].sort((a, b) => Number(a.distance_km || 0) - Number(b.distance_km || 0))) {
-    if (picked.length >= remainingStops) break
-    const rowWeight = Number(row.weight_kg || 0)
+  const remaining = [...allAvailableOrders.value]
+  let latitude: number | null = null
+  let longitude: number | null = null
+  while (remaining.length && picked.length < remainingStops) {
+    const ranked = remaining.map((row, index) => ({
+      row,
+      index,
+      distance: latitude === null || longitude === null
+        ? Number(row.distance_km || 0)
+        : estimateDistanceKm(latitude, longitude, row.destination_latitude, row.destination_longitude) || Number(row.distance_km || 0),
+    })).sort((a, b) => a.distance - b.distance)
+    const next = ranked[0]
+    if (!next) break
+    remaining.splice(next.index, 1)
+    const rowWeight = Number(next.row.weight_kg || 0)
     if (weight + rowWeight > remainingWeight) continue
-    picked.push(row)
+    picked.push({ ...next.row, distance_km: next.distance, stop_sequence: picked.length + 1 })
     weight += rowWeight
+    latitude = Number(next.row.destination_latitude) || null
+    longitude = Number(next.row.destination_longitude) || null
   }
   return picked
 })
+
+const applyAvailablePage = () => {
+  const start = (availablePage.value - 1) * availablePerPage.value
+  availableOrders.value = allAvailableOrders.value.slice(start, start + availablePerPage.value)
+}
+
+const toggleAvailableSource = (source: OrderSource) => {
+  availableSources.value = availableSources.value.includes(source)
+    ? availableSources.value.filter(value => value !== source)
+    : [...availableSources.value, source]
+  availablePage.value = 1
+  selectedOrders.value = []
+  void loadAvailableOrders()
+}
 
 const suggestBatch = async () => {
   if (!trip.value) return
   loadingSuggestion.value = true
   try {
-    const res = await logisticsService.getTripSuggestions(trip.value.id, availableSource.value)
-    const rows = res?.data?.orders || []
-    availableOrders.value = rows
-    availableTotal.value = rows.length
-    availablePage.value = 1
+    const rows = batchSuggestion.value
     selectedOrders.value = [...rows]
     toast.add({
       severity: rows.length ? 'info' : 'warn',
@@ -661,22 +694,41 @@ const changeStatus = async (status: 'out_for_delivery' | 'completed' | 'cancelle
 const loadAvailableOrders = async () => {
   loadingAvailable.value = true
   try {
-    const res = await logisticsService.getDeliveryOrders({
-        source: availableSource.value,
-      status: 'ready_for_dispatch',
-      per_page: availablePerPage.value,
-      page: availablePage.value,
-    })
-    const rows = res?.data?.data || []
-    availableTotal.value = Number(res?.data?.total || rows.length)
-    availableOrders.value = rows
+    if (!availableSources.value.length) {
+      allAvailableOrders.value = []
+      availableTotal.value = 0
+      availableOrders.value = []
+      return
+    }
+    const fetchSourceOrders = async (source: OrderSource) => {
+      const rows: any[] = []
+      let page = 1
+      let lastPage = 1
+      do {
+        const response = await logisticsService.getDeliveryOrders({ source, status: 'ready_for_dispatch', per_page: 100, page })
+        rows.push(...(response?.data?.data || []))
+        lastPage = Number(response?.data?.last_page || 1)
+        page++
+      } while (page <= lastPage)
+      return rows
+    }
+    const results = await Promise.allSettled(availableSources.value.map(fetchSourceOrders))
+    const failures = results.filter(result => result.status === 'rejected')
+    const rows = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
+    if (!rows.length && failures.length === results.length) {
+      const firstFailure = failures[0] as PromiseRejectedResult
+      throw firstFailure.reason
+    }
+    allAvailableOrders.value = rows
       .map((row: any) => ({
         ...row,
         weight_kg: Number(row.weight_kg || 0),
         distance_km: estimateDistanceKm(row.origin_latitude, row.origin_longitude, row.destination_latitude, row.destination_longitude),
-        order_status: 'ready_for_dispatch',
+        order_status: row.delivery_status || row.order_status || 'ready_for_dispatch',
       }))
       .sort((a: any, b: any) => Number(a.distance_km || 0) - Number(b.distance_km || 0))
+    availableTotal.value = allAvailableOrders.value.length
+    applyAvailablePage()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load orders.', life: 3000 })
   } finally {
@@ -690,8 +742,9 @@ const addSelected = async () => {
     toast.add({ severity: 'warn', summary: 'Capacity Exceeded', detail: 'Selected orders exceed the vehicle capacity.', life: 3000 })
     return
   }
-  if (availableSource.value === 'ecommerce') {
-    const earlyOrders = ecommerceOrdersBeforePreferredDate(selectedOrders.value, trip.value.scheduled_departure_at)
+  const ecommerceSelections = selectedOrders.value.filter(row => row.source_type === 'ecommerce')
+  if (ecommerceSelections.length) {
+    const earlyOrders = ecommerceOrdersBeforePreferredDate(ecommerceSelections, trip.value.scheduled_departure_at)
     if (earlyOrders.length) {
       confirm.require({
         header: 'Trip departs before preferred delivery date',
@@ -710,32 +763,40 @@ const addSelected = async () => {
 const submitSelectedOrders = async () => {
   if (!trip.value || !selectedOrderIds.value.length) return
   try {
-    const res = await logisticsService.addOrdersToTrip(trip.value.id, {
-      source_type: availableSource.value,
-      order_ids: selectedOrderIds.value,
-      route_distances: Object.fromEntries(selectedOrders.value.map((row: any) => [`${availableSource.value}:${row.order_id}`, Number(row.distance_km || 0)])),
+    const groups = new Map<OrderSource, any[]>()
+    selectedOrders.value.forEach(row => {
+      const source = row.source_type as OrderSource
+      groups.set(source, [...(groups.get(source) || []), row])
     })
-    const added = Number(res?.data?.added || 0)
-    const overCapacity = Number(res?.data?.over_capacity || 0)
-    const skipped = Number(res?.data?.skipped || 0)
-    const message = res?.message || 'Orders added to trip.'
-    if (res?.success === false || added === 0) {
-      toast.add({
-        severity: 'error',
-        summary: 'No Orders Added',
-        detail: message || (availableSource.value === 'stock_transfer'
-          ? 'Transfers must be sent to Logistics and marked Ready for Dispatch before adding them to a trip.'
-          : 'The selected orders are no longer eligible for this trip.'),
-        life: 5000,
-      })
+    let added = 0
+    let overCapacity = 0
+    let skipped = 0
+    const failures: string[] = []
+    for (const [source, rows] of groups) {
+      try {
+        const res = await logisticsService.addOrdersToTrip(trip.value.id, {
+          source_type: source,
+          order_ids: rows.map(row => row.order_id),
+          route_distances: Object.fromEntries(rows.map((row: any) => [`${source}:${row.order_id}`, Number(row.distance_km || 0)])),
+        })
+        added += Number(res?.data?.added || 0)
+        overCapacity += Number(res?.data?.over_capacity || 0)
+        skipped += Number(res?.data?.skipped || 0)
+        if (res?.success === false) failures.push(res?.message || `Some ${sourceOptions.find(option => option.value === source)?.label || 'orders'} were not added.`)
+      } catch (error: any) {
+        failures.push(error.response?.data?.message || `Unable to add ${sourceOptions.find(option => option.value === source)?.label || 'orders'}.`)
+      }
+    }
+    if (added === 0) {
+      toast.add({ severity: 'error', summary: 'No Orders Added', detail: failures[0] || 'The selected orders are no longer eligible for this trip.', life: 5000 })
       selectedOrders.value = []
       await loadAvailableOrders()
       return
     }
     toast.add({
-      severity: overCapacity > 0 || skipped > 0 ? 'warn' : 'success',
-      summary: overCapacity > 0 || skipped > 0 ? 'Partially Added' : 'Added',
-      detail: message,
+      severity: overCapacity > 0 || skipped > 0 || failures.length ? 'warn' : 'success',
+      summary: overCapacity > 0 || skipped > 0 || failures.length ? 'Partially Added' : 'Added',
+      detail: [`${added} order(s) added to the trip.`, ...failures].join(' '),
       life: 3000,
     })
     selectedOrders.value = []
@@ -773,7 +834,7 @@ const removeOrder = async (row: any) => {
 const handleAvailablePage = (event: any) => {
   availablePage.value = Math.floor(event.first / event.rows) + 1
   availablePerPage.value = event.rows
-  loadAvailableOrders()
+  applyAvailablePage()
 }
 
 const manilaDateKey = (value: string | Date | null | undefined): string | null => {
@@ -826,13 +887,13 @@ const confirmCancelTrip = () => confirm.require({
 
 const openOrderDetail = async (row: any) => {
   if (!row?.order_id) return
-  if (availableSource.value === 'replacement') {
+  if (row.source_type === 'replacement') {
     router.push({ name: 'logistics.replacements.detail', params: { id: row.order_id } })
     return
   }
   detailDialog.value = true
   detailLoading.value = true
-  detailSource.value = (availableSource.value === 'return_pickup' ? 'pickup' : availableSource.value) as typeof detailSource.value
+  detailSource.value = (row.source_type === 'return_pickup' || row.source_type === 'pickup' ? 'pickup' : row.source_type) as typeof detailSource.value
   try {
     const res = await logisticsService.getDeliveryOrderDetail(detailSource.value, row.order_id)
     detailOrder.value = res?.data?.order || null
@@ -1054,9 +1115,4 @@ onMounted(async () => {
 
 onBeforeUnmount(destroyDetailMap)
 
-watch(availableSource, () => {
-  availablePage.value = 1
-  selectedOrders.value = []
-  loadAvailableOrders()
-})
 </script>

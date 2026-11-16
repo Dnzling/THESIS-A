@@ -1,232 +1,140 @@
 <template>
-  <div class="min-h-screen">
-    <div class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Supplier Portal</p>
-          <h1 class="mt-1 text-xl font-semibold text-slate-900">{{ isPaymentAccountView ? 'Payment History' : 'Supplier Profile' }}</h1>
-          <p class="mt-1 text-sm text-slate-500">{{ isPaymentAccountView ? 'Review payments recorded by your partner stores.' : 'Manage your verification and supplier details.' }}</p>
-        </div>
-        <div v-if="!isPaymentAccountView" class="flex flex-wrap gap-2">
-          <Button :label="verificationLabel" icon="pi pi-check-circle" severity="success" class="small-pill"
-            :disabled="isVerified" @click="goToVerification" />
-        </div>
+  <div class="min-h-screen bg-slate-50/60 py-6">
+    <div class="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Supplier Portal</p>
+        <h1 class="mt-1 text-2xl font-semibold text-slate-900">{{ isPaymentAccountView ? 'Payment History' : 'Supplier Profile' }}</h1>
+        <p class="mt-1 text-sm text-slate-500">{{ isPaymentAccountView ? 'Review payments recorded by your partner stores.' : 'Manage your company information, delivery settings, and verification.' }}</p>
       </div>
-  
-      <div v-if="loading" class="mt-10 flex items-center justify-center">
+
+      <div v-if="loading" class="flex min-h-72 items-center justify-center rounded-xl border border-slate-200 bg-white">
         <ProgressSpinner />
       </div>
-  
-      <template v-else>
-        <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex min-w-0 items-center gap-4">
-                <div class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <img v-if="companyLogoPreview || supplier?.logo_url" :src="companyLogoPreview || supplier.logo_url" alt="Company logo" class="h-full w-full object-contain" />
-                  <i v-else class="pi pi-building text-2xl text-slate-400" />
-                </div>
-                <div class="min-w-0">
-                  <p class="text-lg font-semibold text-slate-900">{{ supplierName }}</p>
-                  <p class="text-sm text-slate-500">{{ supplierTypeLabel }}</p>
+
+      <div v-else class="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside class="space-y-4">
+          <section class="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+            <div class="relative mx-auto h-24 w-24">
+              <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50">
+                <img v-if="companyLogoPreview || supplier?.logo_url" :src="companyLogoPreview || supplier.logo_url" :alt="`${supplierName} logo`" class="h-full w-full object-contain" />
+                <i v-else class="pi pi-building text-2xl text-slate-400" />
+              </div>
+              <button v-if="!isPaymentAccountView" type="button" class="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload company logo" @click="companyLogoInput?.click()"><i class="pi pi-camera text-xs" /></button>
+            </div>
+            <h2 class="mt-4 break-words text-base font-semibold text-slate-900">{{ supplierName }}</h2>
+            <p class="mt-1 text-xs text-slate-500">{{ supplierTypeLabel }}</p>
+            <p class="mt-1 break-words text-xs text-slate-500">{{ supplier?.city || portal?.city || fullAddress }}</p>
+            <Tag class="mt-3" :value="statusLabel" :severity="statusSeverity" rounded />
+          </section>
+
+          <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="space-y-3 text-xs">
+              <div class="flex items-center justify-between gap-2"><span class="text-slate-500">Contact person</span><span class="max-w-32 truncate font-medium text-slate-800">{{ supplier?.contact_person || portal?.contact_person || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-2"><span class="text-slate-500">Phone</span><span class="max-w-32 truncate font-medium text-slate-800">{{ supplier?.phone || portal?.phone || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-2"><span class="text-slate-500">Email</span><span class="max-w-32 truncate font-medium text-slate-800">{{ supplier?.email || user?.email || '-' }}</span></div>
+            </div>
+          </section>
+
+          <section v-if="!isPaymentAccountView" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Quick Actions</p>
+            <div class="flex flex-col gap-2">
+              <Button :label="verificationLabel" icon="pi pi-check-circle" severity="warn" outlined size="small" :disabled="isVerified" @click="goToVerification" />
+              <Button label="Product Listings" icon="pi pi-box" severity="secondary" outlined size="small" @click="router.visit('/supplier-portal/products')" />
+              <Button label="Payment History" icon="pi pi-receipt" severity="secondary" text size="small" @click="router.visit('/supplier-portal/payment-account')" />
+            </div>
+          </section>
+        </aside>
+
+        <main class="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <Tabs v-model:value="activeProfileTab">
+            <TabList class="mb-5 flex flex-wrap border-b border-slate-200">
+              <Tab v-if="!isPaymentAccountView" value="account">Account Settings</Tab>
+              <Tab v-if="!isPaymentAccountView" value="company">Company Settings</Tab>
+              <Tab v-if="!isPaymentAccountView" value="verification">Verification</Tab>
+              <Tab value="billing">{{ isPaymentAccountView ? 'Payment History' : 'Billing' }}</Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel v-if="!isPaymentAccountView" value="account">
+                <section class="space-y-5">
+                  <div><h2 class="font-semibold text-slate-900">Company Information</h2><p class="text-xs text-slate-500">Contact details and business information for your supplier account.</p></div>
                   <input ref="companyLogoInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onCompanyLogoSelected" />
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <Button label="Choose Company Logo" icon="pi pi-image" severity="secondary" outlined size="small" @click="companyLogoInput?.click()" />
-                    <Button v-if="companyLogoFile" label="Save Logo" icon="pi pi-check" severity="warn" size="small" :loading="savingCompanyLogo" @click="saveCompanyLogo" />
+                  <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                    <div class="min-w-0"><p class="text-sm font-medium text-slate-800">Company logo</p><p class="text-xs text-slate-500">JPG, PNG, or WebP. Maximum 5 MB.</p></div>
+                    <div class="flex gap-2"><Button label="Choose Logo" icon="pi pi-image" severity="secondary" outlined size="small" @click="companyLogoInput?.click()" /><Button v-if="companyLogoFile" label="Save Logo" icon="pi pi-check" severity="warn" size="small" :loading="savingCompanyLogo" @click="saveCompanyLogo" /></div>
                   </div>
-                  <small class="mt-1 block text-xs text-slate-500">JPG, PNG, or WebP. Maximum 5 MB.</small>
-                </div>
-              </div>
-              <Tag :value="statusLabel" :severity="statusSeverity" rounded />
-            </div>
-            <Message v-if="companyLogoError" severity="error" :closable="false" class="mt-3">{{ companyLogoError }}</Message>
-            <Message v-else-if="companyLogoMessage" severity="success" :closable="false" class="mt-3">{{ companyLogoMessage }}</Message>
-  
-            <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-              <table class="min-w-full text-sm">
-                <tbody class="divide-y divide-slate-200">
-                  <tr class="bg-white">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Company Name</th>
-                    <td class="px-4 py-3 text-slate-800">{{ supplier?.company_name || supplier?.supplier_name || '-' }}</td>
-                  </tr>
-                  <tr class="bg-slate-50/70">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Person</th>
-                    <td class="px-4 py-3 text-slate-800">{{ supplier?.contact_person || '-' }}</td>
-                  </tr>
-                  <tr class="bg-white">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
-                    <td class="px-4 py-3 text-slate-800">{{ supplier?.email || user?.email || '-' }}</td>
-                  </tr>
-                  <tr class="bg-slate-50/70">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</th>
-                    <td class="px-4 py-3 text-slate-800">{{ supplier?.phone || '-' }}</td>
-                  </tr>
-                  <tr class="bg-white">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Address</th>
-                    <td class="px-4 py-3 text-slate-800">{{ fullAddress }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-  
-            <div v-if="portal?.rejection_reason"
-              class="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-              <p class="font-semibold">Verification Feedback</p>
-              <p class="mt-1 text-rose-700">{{ portal?.rejection_reason }}</p>
-            </div>
-          </section>
-
-          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div><h2 class="text-sm font-semibold text-slate-900">Supplier delivery rates</h2><p class="mt-1 text-xs text-slate-500">These rates are used to estimate delivery fees on partner stores’ purchase orders.</p></div>
-              <Button label="Save Rates" icon="pi pi-save" size="small" severity="warn" :loading="savingShippingRates" @click="saveShippingRates" />
-            </div>
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="text-xs font-medium text-slate-600">Rate per kilometer
-                <InputNumber v-model="shippingRates.delivery_fee_per_km" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" />
-              </label>
-              <label class="text-xs font-medium text-slate-600">Rate per kilogram
-                <InputNumber v-model="shippingRates.delivery_fee_per_kg" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" />
-              </label>
-            </div>
-            <Message v-if="shippingRatesError" severity="error" :closable="false" class="mt-3">{{ shippingRatesError }}</Message>
-            <Message v-else-if="shippingRatesMessage" severity="success" :closable="false" class="mt-3">{{ shippingRatesMessage }}</Message>
-          </section>
-  
-          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4">
-            <div>
-              <p class="text-sm font-semibold text-slate-800">Verification Status</p>
-              <p class="text-xs text-slate-500">Upload or update documents to verify your account.</p>
-            </div>
-  
-            <div class="overflow-x-auto rounded-xl border border-slate-200">
-              <table class="min-w-full text-sm">
-                <tbody class="divide-y divide-slate-200">
-                  <tr class="bg-white">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Account Status</th>
-                    <td class="px-4 py-3">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-slate-700">{{ statusHint }}</span>
-                        <Tag :value="statusLabel" :severity="statusSeverity" rounded />
-                      </div>
-                    </td>
-                  </tr>
-                  <tr class="bg-slate-50/70">
-                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Verification</th>
-                    <td class="px-4 py-3">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-slate-700">{{ verificationLabel }}</span>
-                        <Button :label="verificationLabel" severity="info" class="small-pill" :disabled="isVerified" @click="goToVerification" />
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm lg:col-span-2">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 class="text-sm font-semibold text-slate-900">Supplier pickup location</h2>
-                <p class="mt-1 text-xs text-slate-500">Set the map pin drivers should use when collecting purchase orders from your business.</p>
-              </div>
-              <Button label="Use Current Location" icon="pi pi-map-marker" size="small" severity="secondary" outlined :loading="locatingCoordinates" @click="useCurrentLocation" />
-            </div>
-
-            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-              <InputText v-model="locationSearch" class="w-full flex-1" placeholder="Search your supplier address or a nearby place" @keyup.enter.prevent="searchLocation" />
-              <Button label="Search" icon="pi pi-search" size="small" severity="warn" :loading="searchingLocation" @click="searchLocation" />
-            </div>
-
-            <div ref="mapContainer" class="mt-3 h-80 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"></div>
-            <p class="mt-2 text-xs text-slate-500">Click the map or drag the pin to set your pickup location.</p>
-
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p v-if="hasSelectedCoordinates" class="text-xs text-slate-600">
-                Pin: {{ Number(locationCoordinates.latitude).toFixed(6) }}, {{ Number(locationCoordinates.longitude).toFixed(6) }}
-                <span v-if="coordinatesSaved" class="ml-2 text-green-700">Saved</span>
-                <span v-else class="ml-2 text-orange-700">Unsaved changes</span>
-              </p>
-              <p v-else class="text-xs text-amber-700">Choose a point on the map to set your supplier coordinates.</p>
-              <Button label="Save Coordinates" icon="pi pi-check" size="small" severity="warn" :disabled="!hasSelectedCoordinates || coordinatesSaved" :loading="savingCoordinates" @click="saveCoordinates" />
-            </div>
-            <Message v-if="locationError" class="mt-3" severity="error" :closable="false">{{ locationError }}</Message>
-            <Message v-else-if="locationMessage" class="mt-3" severity="success" :closable="false">{{ locationMessage }}</Message>
-            <Message v-if="mapError" class="mt-3" severity="error" :closable="false">{{ mapError }}</Message>
-          </section>
-
-          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="space-y-4 lg:col-span-2">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-medium text-slate-500">Supplier Balance</p>
-                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">₱{{ formatMoney(supplier?.current_balance || 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Current balance recorded for your supplier account</p>
+                  <Message v-if="companyLogoError" severity="error" :closable="false">{{ companyLogoError }}</Message>
+                  <Message v-else-if="companyLogoMessage" severity="success" :closable="false">{{ companyLogoMessage }}</Message>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Company Name</p><p class="mt-1 text-sm font-medium text-slate-900">{{ supplier?.company_name || supplier?.supplier_name || '-' }}</p></div>
+                    <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Contact Person</p><p class="mt-1 text-sm font-medium text-slate-900">{{ supplier?.contact_person || portal?.contact_person || '-' }}</p></div>
+                    <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Email Address</p><p class="mt-1 break-words text-sm font-medium text-slate-900">{{ supplier?.email || user?.email || '-' }}</p></div>
+                    <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs text-slate-500">Phone Number</p><p class="mt-1 text-sm font-medium text-slate-900">{{ supplier?.phone || portal?.phone || '-' }}</p></div>
+                    <div class="rounded-lg bg-slate-50 p-3 sm:col-span-2"><p class="text-xs text-slate-500">Business Address</p><p class="mt-1 text-sm font-medium text-slate-900">{{ fullAddress }}</p></div>
                   </div>
-                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
-                    <i class="pi pi-wallet" />
-                  </span>
-                </div>
-              </div>
-              <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-medium text-slate-500">Payment Records</p>
-                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ paymentHistoryRows.length }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Recent payments loaded for this account</p>
-                  </div>
-                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                    <i class="pi pi-receipt" />
-                  </span>
-                </div>
-              </div>
-            </div>
+                </section>
+              </TabPanel>
 
-            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-                <div>
-                  <h2 class="text-sm font-semibold text-slate-900">Payment Records</h2>
-                  <p class="mt-0.5 text-xs text-slate-500">Latest payments received from partner stores.</p>
+              <TabPanel v-if="!isPaymentAccountView" value="company">
+                <div class="space-y-5">
+                  <section class="space-y-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold text-slate-900">Supplier Delivery Rates</h2><p class="text-xs text-slate-500">Rates used to estimate delivery fees on partner-store purchase orders.</p></div><Button label="Save Rates" icon="pi pi-save" size="small" severity="warn" :loading="savingShippingRates" @click="saveShippingRates" /></div>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                      <label class="text-xs font-medium text-slate-600">Rate per kilometer<InputNumber v-model="shippingRates.delivery_fee_per_km" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" /></label>
+                      <label class="text-xs font-medium text-slate-600">Rate per kilogram<InputNumber v-model="shippingRates.delivery_fee_per_kg" class="mt-1 w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" :maxFractionDigits="2" /></label>
+                    </div>
+                    <Message v-if="shippingRatesError" severity="error" :closable="false">{{ shippingRatesError }}</Message><Message v-else-if="shippingRatesMessage" severity="success" :closable="false">{{ shippingRatesMessage }}</Message>
+                  </section>
+                  <section class="space-y-4 border-t border-slate-100 pt-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold text-slate-900">Supplier Pickup Location</h2><p class="text-xs text-slate-500">Set the map pin drivers should use when collecting purchase orders.</p></div><Button label="Use Current Location" icon="pi pi-map-marker" size="small" severity="secondary" outlined :loading="locatingCoordinates" @click="useCurrentLocation" /></div>
+                    <div class="flex flex-col gap-2 sm:flex-row"><InputText v-model="locationSearch" class="w-full flex-1" placeholder="Search your supplier address or a nearby place" @keyup.enter.prevent="searchLocation" /><Button label="Search" icon="pi pi-search" size="small" severity="warn" :loading="searchingLocation" @click="searchLocation" /></div>
+                    <div ref="mapContainer" class="h-80 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"></div>
+                    <p class="text-xs text-slate-500">Click the map or drag the pin to set your supplier coordinates.</p>
+                    <div class="flex flex-wrap items-center justify-between gap-3"><p v-if="hasSelectedCoordinates" class="text-xs text-slate-600">Pin: {{ Number(locationCoordinates.latitude).toFixed(6) }}, {{ Number(locationCoordinates.longitude).toFixed(6) }}<span v-if="coordinatesSaved" class="ml-2 text-green-700">Saved</span><span v-else class="ml-2 text-orange-700">Unsaved changes</span></p><p v-else class="text-xs text-amber-700">Choose a point on the map to set your supplier coordinates.</p><Button label="Save Coordinates" icon="pi pi-check" size="small" severity="warn" :disabled="!hasSelectedCoordinates || coordinatesSaved" :loading="savingCoordinates" @click="saveCoordinates" /></div>
+                    <Message v-if="locationError" severity="error" :closable="false">{{ locationError }}</Message><Message v-else-if="locationMessage" severity="success" :closable="false">{{ locationMessage }}</Message><Message v-if="mapError" severity="error" :closable="false">{{ mapError }}</Message>
+                  </section>
                 </div>
-                <Button label="Refresh" icon="pi pi-refresh" size="small" severity="secondary" outlined rounded
-                  :loading="loadingPaymentHistory" @click="loadPaymentHistory" />
-              </div>
-              <div class="overflow-x-auto">
-                <DataTable :value="paymentHistoryRows" :loading="loadingPaymentHistory" rowHover size="small" class="text-sm">
-                  <Column field="created_at" header="Date" sortable style="min-width: 175px">
-                    <template #body="{ data }"><span class="whitespace-nowrap text-slate-700">{{ formatDateTime(data.created_at) }}</span></template>
-                  </Column>
-                  <Column field="payer" header="Store" style="min-width: 180px">
-                    <template #body="{ data }"><span class="font-medium text-slate-800">{{ data.payer }}</span></template>
-                  </Column>
-                  <Column field="invoice" header="Invoice" style="min-width: 140px">
-                    <template #body="{ data }"><span class="font-mono text-xs text-slate-600">{{ data.invoice }}</span></template>
-                  </Column>
-                  <Column field="method" header="Method" style="min-width: 130px">
-                    <template #body="{ data }"><span class="capitalize text-slate-700">{{ String(data.method || '—').replaceAll('_', ' ') }}</span></template>
-                  </Column>
-                  <Column field="amount" header="Amount" style="min-width: 130px">
-                    <template #body="{ data }"><span class="whitespace-nowrap font-semibold text-slate-900">₱{{ formatMoney(data.amount) }}</span></template>
-                  </Column>
-                  <Column field="status" header="Status" style="min-width: 120px">
-                    <template #body="{ data }"><Badge :value="formatPaymentStatus(data.status)" :severity="paymentStatusSeverity(data.status)" /></template>
-                  </Column>
-                  <template #empty><div class="py-10 text-center text-sm text-slate-500">No payment records yet.</div></template>
-                </DataTable>
-              </div>
-            </div>
-          </section>
-  
-        </div>
-      </template>
+              </TabPanel>
+
+              <TabPanel v-if="!isPaymentAccountView" value="verification">
+                <section class="space-y-4">
+                  <div><h2 class="font-semibold text-slate-900">Verification Status</h2><p class="text-xs text-slate-500">Review your account verification and respond to any requested changes.</p></div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg bg-slate-50 p-4"><p class="text-xs text-slate-500">Account Status</p><div class="mt-2 flex items-center justify-between gap-2"><span class="text-sm text-slate-700">{{ statusHint }}</span><Tag :value="statusLabel" :severity="statusSeverity" rounded /></div></div>
+                    <div class="rounded-lg bg-slate-50 p-4"><p class="text-xs text-slate-500">Verification</p><div class="mt-2 flex items-center justify-between gap-2"><span class="text-sm text-slate-700">{{ verificationLabel }}</span><Button :label="verificationLabel" severity="info" class="small-pill" size="small" :disabled="isVerified" @click="goToVerification" /></div></div>
+                  </div>
+                  <div v-if="portal?.rejection_reason" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p class="font-semibold">Verification Feedback</p><p class="mt-1 text-rose-700">{{ portal.rejection_reason }}</p></div>
+                </section>
+              </TabPanel>
+
+              <TabPanel value="billing">
+                <section ref="paymentAccountSectionEl" class="space-y-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="font-semibold text-slate-900">Payment Records</h2><p class="text-xs text-slate-500">Latest payments recorded from partner stores.</p></div><Button label="Refresh" icon="pi pi-refresh" size="small" severity="secondary" outlined rounded :loading="loadingPaymentHistory" @click="loadPaymentHistory" /></div>
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg border border-slate-200 p-4"><p class="text-xs text-slate-500">Supplier Balance</p><p class="mt-1 text-xl font-semibold text-slate-900">PHP {{ formatMoney(supplier?.current_balance || 0) }}</p><p class="mt-1 text-xs text-slate-500">Current recorded account balance</p></div>
+                    <div class="rounded-lg border border-slate-200 p-4"><p class="text-xs text-slate-500">Payment Records</p><p class="mt-1 text-xl font-semibold text-slate-900">{{ paymentHistoryRows.length }}</p><p class="mt-1 text-xs text-slate-500">Recent payments loaded for this account</p></div>
+                  </div>
+                  <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <DataTable :value="paymentHistoryRows" :loading="loadingPaymentHistory" rowHover size="small" class="text-sm">
+                      <Column field="created_at" header="Date" sortable style="min-width: 175px"><template #body="{ data }"><span class="whitespace-nowrap text-slate-700">{{ formatDateTime(data.created_at) }}</span></template></Column>
+                      <Column field="payer" header="Store" style="min-width: 180px"><template #body="{ data }"><span class="font-medium text-slate-800">{{ data.payer }}</span></template></Column>
+                      <Column field="invoice" header="Invoice" style="min-width: 140px"><template #body="{ data }"><span class="font-mono text-xs text-slate-600">{{ data.invoice }}</span></template></Column>
+                      <Column field="method" header="Method" style="min-width: 130px"><template #body="{ data }"><span class="capitalize text-slate-700">{{ String(data.method || '-').replaceAll('_', ' ') }}</span></template></Column>
+                      <Column field="amount" header="Amount" style="min-width: 130px"><template #body="{ data }"><span class="whitespace-nowrap font-semibold text-slate-900">PHP {{ formatMoney(data.amount) }}</span></template></Column>
+                      <Column field="status" header="Status" style="min-width: 120px"><template #body="{ data }"><Badge :value="formatPaymentStatus(data.status)" :severity="paymentStatusSeverity(data.status)" /></template></Column>
+                      <template #empty><div class="py-10 text-center text-sm text-slate-500">No payment records yet.</div></template>
+                    </DataTable>
+                  </div>
+                </section>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </main>
+      </div>
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
-import { computed, onMounted, ref, nextTick, onBeforeUnmount, reactive } from 'vue'
+import { computed, onMounted, ref, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useAuthStore } from '@/stores/auth'
 import supplierService from '@/services/supplier.service'
@@ -238,6 +146,11 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -293,6 +206,17 @@ const isPaymentAccountView = computed(() => {
   const params = new URLSearchParams(window.location.search || '')
   const section = (params.get('section') || '').toLowerCase()
   return pathname === '/supplier-portal/payment-account' || section === 'payment-account'
+})
+const activeProfileTab = ref(isPaymentAccountView.value ? 'billing' : 'account')
+
+watch(activeProfileTab, async (tab) => {
+  if (tab !== 'company' || isPaymentAccountView.value) return
+  await nextTick()
+  if (map) {
+    map.resize()
+    return
+  }
+  await initializeMap()
 })
 
 const supplierName = computed(() => supplier.value?.company_name || supplier.value?.supplier_name || 'Supplier')
@@ -617,8 +541,6 @@ onMounted(async () => {
         loadPaymentHistory()
       }, 12000)
     }
-  } else {
-    await initializeMap()
   }
 })
 

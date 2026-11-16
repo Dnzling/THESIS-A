@@ -20,12 +20,6 @@
           <span class="text-xs font-medium text-slate-600">Account verification</span>
           <Tag :value="portalStatus" :severity="statusSeverity" />
         </div>
-        <div class="flex min-w-0 items-center gap-3 sm:w-1/2">
-          <div class="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
-            <div class="h-full rounded-full bg-orange-500 transition-all" :style="{ width: `${documentProgress}%` }"></div>
-          </div>
-          <span class="whitespace-nowrap text-xs text-slate-600">{{ submittedDocuments }}/3 documents</span>
-        </div>
       </div>
     </section>
 
@@ -36,10 +30,6 @@
       <span>Verification was rejected.</span>
       <span v-if="portal.rejection_reason" class="ml-1">{{ portal.rejection_reason }}</span>
     </Message>
-    <Message v-else-if="portal?.status === 'approved'" severity="success" :closable="false">
-      Your supplier account is verified and active.
-    </Message>
-
     <div v-if="loading" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Skeleton v-for="item in 4" :key="item" height="6rem" borderRadius="0.75rem" />
     </div>
@@ -54,6 +44,59 @@
             </div>
             <i :class="[card.icon, 'text-lg text-orange-600']"></i>
           </div>
+        </template>
+      </Card>
+    </section>
+
+    <section v-if="portal?.status === 'approved'" class="grid grid-cols-1 gap-4 xl:grid-cols-5">
+      <Card class="border border-slate-200 shadow-none xl:col-span-3">
+        <template #title>
+          <div>
+            <h2 class="text-base font-semibold text-slate-900">Business activity</h2>
+            <p class="mt-0.5 text-xs font-normal text-slate-500">RFQ responses and purchase order activity over the last six months</p>
+          </div>
+        </template>
+        <template #content>
+          <Chart v-if="hasActivity" type="line" :data="activityChart" :options="activityChartOptions" class="h-64" />
+          <div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No activity to chart yet.</div>
+        </template>
+      </Card>
+
+      <Card class="border border-slate-200 shadow-none xl:col-span-2">
+        <template #title>
+          <div>
+            <h2 class="text-base font-semibold text-slate-900">Supplier reviews</h2>
+            <p class="mt-0.5 text-xs font-normal text-slate-500">Feedback from stores you work with</p>
+          </div>
+        </template>
+        <template #content>
+          <div class="mb-4 flex items-center gap-3 rounded-xl bg-amber-50 p-3">
+            <div class="text-3xl font-semibold text-slate-900">{{ Number(stats?.rating_count || 0) ? Number(stats?.average_rating || 0).toFixed(1) : '—' }}</div>
+            <div>
+              <Rating :modelValue="Math.round(Number(stats?.average_rating || 0))" readonly :cancel="false" />
+              <p class="mt-1 text-xs text-slate-600">{{ Number(stats?.rating_count || 0) }} rating{{ Number(stats?.rating_count || 0) === 1 ? '' : 's' }}</p>
+            </div>
+          </div>
+          <div class="mb-4 space-y-1.5">
+            <div v-for="star in ratingStars" :key="star" class="flex items-center gap-2 text-xs">
+              <span class="w-10 text-slate-500">{{ star }} star</span>
+              <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-amber-400" :style="{ width: `${ratingBarWidth(star)}%` }" /></div>
+              <span class="w-5 text-right text-slate-500">{{ ratingCount(star) }}</span>
+            </div>
+          </div>
+          <div v-if="recentReviews.length" class="max-h-64 space-y-3 overflow-y-auto border-t border-slate-100 pt-3">
+            <article v-for="review in recentReviews" :key="review.id" class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <Rating :modelValue="Number(review.rating || 0)" readonly :cancel="false" />
+                  <p class="mt-1 text-[11px] capitalize text-slate-500">{{ formatStatus(review.category) }} · {{ formatDate(review.created_at) }}</p>
+                </div>
+                <Badge :value="`${review.rating}/5`" severity="warn" />
+              </div>
+              <p class="mt-2 whitespace-pre-line text-xs leading-5 text-slate-700">{{ review.comment }}</p>
+            </article>
+          </div>
+          <p v-else class="border-t border-slate-100 py-5 text-center text-xs text-slate-500">No written reviews yet.</p>
         </template>
       </Card>
     </section>
@@ -171,7 +214,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import Message from 'primevue/message'
@@ -179,6 +222,7 @@ import Button from 'primevue/button'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
+import Rating from 'primevue/rating'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
@@ -186,6 +230,8 @@ import InputText from 'primevue/inputtext'
 import InputMask from 'primevue/inputmask'
 import Select from 'primevue/select'
 import supplierService from '../../../services/supplier.service'
+
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
 
 const router = useRouter()
 const loading = ref(false)
@@ -202,16 +248,32 @@ const accountTypes = [
   { label: 'Current', value: 'current' },
   { label: 'Other', value: 'other' },
 ]
-const submittedDocuments = computed(() => portal.value?.verification_documents?.length || portal.value?.verificationDocuments?.length || 0)
-const documentProgress = computed(() => Math.min(100, Math.round((submittedDocuments.value / 3) * 100)))
 const portalStatus = computed(() => formatStatus(portal.value?.status || 'pending'))
 const statusSeverity = computed(() => statusValueSeverity(portal.value?.status))
 const statCards = computed(() => [
-  { label: 'Account status', value: formatStatus(stats.value?.portal_status || portal.value?.status || 'pending'), hint: 'Supplier verification', icon: 'pi pi-shield' },
   { label: 'RFQ responses', value: Number(stats.value?.total_rfqs || 0).toLocaleString(), hint: 'All submitted quotations', icon: 'pi pi-file' },
   { label: 'Purchase orders', value: Number(stats.value?.total_pos || 0).toLocaleString(), hint: 'Orders received', icon: 'pi pi-shopping-cart' },
   { label: 'Awaiting response', value: Number(stats.value?.pending_pos || 0).toLocaleString(), hint: 'Purchase orders requiring action', icon: 'pi pi-inbox' },
+  { label: 'Average rating', value: Number(stats.value?.rating_count || 0) ? `${Number(stats.value?.average_rating || 0).toFixed(1)} / 5` : 'No ratings', hint: `${Number(stats.value?.rating_count || 0)} store reviews`, icon: 'pi pi-star-fill' },
 ])
+const recentReviews = computed(() => Array.isArray(stats.value?.recent_reviews) ? stats.value.recent_reviews : [])
+const ratingStars = [5, 4, 3, 2, 1]
+const ratingCount = (star: number) => Number(stats.value?.rating_breakdown?.[star] || 0)
+const ratingBarWidth = (star: number) => Number(stats.value?.rating_count || 0) ? Math.round(ratingCount(star) / Number(stats.value.rating_count) * 100) : 0
+const hasActivity = computed(() => (stats.value?.activity_months || []).some((month: any) => Number(month.rfq_responses || 0) + Number(month.purchase_orders || 0) > 0))
+const activityChart = computed(() => ({
+  labels: (stats.value?.activity_months || []).map((month: any) => month.label),
+  datasets: [
+    { label: 'RFQ responses', data: (stats.value?.activity_months || []).map((month: any) => Number(month.rfq_responses || 0)), borderColor: '#f97316', backgroundColor: 'rgba(249, 115, 22, 0.12)', tension: 0.35, fill: true },
+    { label: 'Purchase orders', data: (stats.value?.activity_months || []).map((month: any) => Number(month.purchase_orders || 0)), borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.08)', tension: 0.35, fill: true },
+  ],
+}))
+const activityChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { position: 'bottom' as const, labels: { usePointStyle: true, boxWidth: 7, font: { size: 11 } } } },
+  scales: { y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } },
+}
 
 async function fetchPortalData() {
   try {

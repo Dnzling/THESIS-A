@@ -7,6 +7,8 @@ use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
+use App\Models\Procurement\Supplier\SupplierContract;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -165,7 +167,7 @@ class SupplierRFQFeedbackController extends Controller
             // Only expose public variant attributes to suppliers; never serialize cost_price.
             $relations = [
                 'items.product',
-                'items.variation:id,product_id,variation_name,variation_sku,color,size,material,texture,finish',
+                'items.variation:id,product_id,variation_name,variation_sku,color,size,material,texture,finish,length_cm,width_cm,height_cm,depth_cm,weight_kg,additional_measurements',
                 'store',
             ];
             if (Schema::hasTable('rfq_attachments')) {
@@ -228,6 +230,53 @@ class SupplierRFQFeedbackController extends Controller
                     if (isset($att['file_path'])) unset($att['file_path']);
                 }
             }
+
+            // Return only this responding supplier's own listing cost and MOQ.
+            // The listed base cost is converted to a tax-inclusive RFQ unit cost
+            // using the active contract's tax rule, matching quote submission.
+            $contract = SupplierContract::query()
+                ->where('supplier_id', $rfqSupplier->supplier_id)
+                ->where('store_id', $rfq->store_id)
+                ->where('status', 'active')
+                ->whereDate('start_date', '<=', now())
+                ->whereDate('end_date', '>=', now())
+                ->first();
+            $taxRate = ($contract && !$contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? 0) : 0.0;
+            $rfqItems = collect($rfqArr['items'] ?? []);
+            $productIds = $rfqItems->pluck('product_id')->filter()->unique()->values();
+            $listingsByProduct = DB::table('supplier_products')
+                ->where('supplier_id', $rfqSupplier->supplier_id)
+                ->whereIn('product_id', $productIds)
+                ->get()
+                ->keyBy('product_id');
+            $variationCosts = ProductVariation::query()
+                ->where('store_id', $rfq->store_id)
+                ->whereIn('product_id', $productIds)
+                ->whereIn('id', $rfqItems->pluck('variation_id')->filter()->unique())
+                ->get(['id', 'product_id', 'cost_price'])
+                ->keyBy('id');
+
+            foreach ($rfqArr['items'] ?? [] as &$item) {
+                $listing = $listingsByProduct->get($item['product_id'] ?? null);
+                if (!$listing) {
+                    $item['supplier_offer'] = null;
+                    continue;
+                }
+
+                $baseCost = (float) $listing->supplier_price;
+                $variation = !empty($item['variation_id']) ? $variationCosts->get($item['variation_id']) : null;
+                if ($variation && $variation->cost_price !== null) {
+                    $baseCost = (float) $variation->cost_price;
+                }
+
+                $item['supplier_offer'] = [
+                    'base_cost' => round($baseCost, 2),
+                    'tax_rate' => round($taxRate, 2),
+                    'unit_cost' => round($baseCost * (1 + $taxRate / 100), 2),
+                    'minimum_order_quantity' => max(1, (int) ($listing->minimum_order_quantity ?? 1)),
+                ];
+            }
+            unset($item);
 
             return response()->json([
                 'success' => true,

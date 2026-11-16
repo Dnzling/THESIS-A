@@ -20,6 +20,7 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
         // ========== SUPPLIER PORTAL PERMISSION MAPPINGS ==========
         $supplierPortalMappings = [
             'supplier-portal.dashboard' => ['supplier-portal.dashboard.view'],
+            'supplier-portal.products' => ['supplier.dashboard.view'],
             'supplier-portal.registration' => ['supplier-portal.registration.view', 'supplier-portal.registration.submit'],
             'supplier-portal.rfqs' => ['supplier-portal.rfqs.view'],
             'supplier-portal.rfqs.detail' => ['supplier-portal.rfqs.view', 'supplier-portal.rfqs.respond'],

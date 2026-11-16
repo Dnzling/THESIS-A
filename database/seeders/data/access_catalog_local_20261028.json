@@ -2565,6 +2565,20 @@
       "deleted_at": null
     },
     {
+      "name": "supplier-portal.products",
+      "display_name": "Product Listings",
+      "module": "supplier",
+      "section": "portal",
+      "route_name": "supplier.products",
+      "route_path": "/supplier-portal/products",
+      "icon": "pi pi-box",
+      "parent_name": null,
+      "display_order": 3,
+      "is_active": 1,
+      "meta": null,
+      "deleted_at": null
+    },
+    {
       "name": "RFQ",
       "display_name": "RFQ",
       "module": "supplier",
@@ -2573,7 +2587,7 @@
       "route_path": "/supplier-portal/rfqs",
       "icon": "pi pi-file-edit",
       "parent_name": null,
-      "display_order": 3,
+      "display_order": 4,
       "is_active": 1,
       "meta": null,
       "deleted_at": null
@@ -4036,6 +4050,10 @@
     },
     {
       "navigation_name": "supplier-portal.dashboard",
+      "permission_name": "supplier.dashboard.view"
+    },
+    {
+      "navigation_name": "supplier-portal.products",
       "permission_name": "supplier.dashboard.view"
     },
     {

@@ -747,21 +747,6 @@ const groupedNavigation = computed(() => {
   }
 
   if (isSupplierRole) {
-    const supplierProductsItem = {
-      id: -904,
-      name: 'supplier.products',
-      display_name: 'Product Listings',
-      module: 'supplier',
-      route_name: 'supplier.products',
-      route_path: '/supplier-portal/products',
-      icon: 'pi pi-box',
-      parent_id: null,
-      display_order: 20,
-      section: 'General',
-      meta: null,
-      is_active: true,
-      badge_count: 0,
-    }
     const supplierPaymentItem = {
       id: -902,
       name: 'supplier.payment_account',
@@ -779,9 +764,6 @@ const groupedNavigation = computed(() => {
     }
 
     const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-    if (!existingPaths.has(supplierProductsItem.route_path)) {
-      baseNavigation = [...baseNavigation, supplierProductsItem]
-    }
     if (!existingPaths.has(supplierPaymentItem.route_path)) {
       baseNavigation = [...baseNavigation, supplierPaymentItem]
     }

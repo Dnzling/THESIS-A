@@ -30,6 +30,16 @@ class AddMissingNavigationItemsSeeder extends Seeder
                 'display_order' => 1,
             ],
             [
+                'name' => 'supplier-portal.products',
+                'display_name' => 'Product Listings',
+                'module' => 'supplier',
+                'section' => 'portal',
+                'route_name' => 'supplier.products',
+                'route_path' => '/supplier-portal/products',
+                'icon' => 'pi pi-box',
+                'display_order' => 3,
+            ],
+            [
                 'name' => 'supplier-portal.registration',
                 'display_name' => 'Registration',
                 'module' => 'supplier',
@@ -47,7 +57,7 @@ class AddMissingNavigationItemsSeeder extends Seeder
                 'route_name' => 'supplier-portal.rfqs',
                 'route_path' => '/supplier-portal/rfqs',
                 'icon' => 'pi pi-file-edit',
-                'display_order' => 3,
+                'display_order' => 4,
             ],
             [
                 'name' => 'supplier-portal.rfqs.detail',
