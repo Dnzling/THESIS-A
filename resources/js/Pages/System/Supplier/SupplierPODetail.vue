@@ -15,6 +15,14 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <Button
+          v-if="canRespondToPO"
+          label="Review & Respond"
+          icon="pi pi-check-circle"
+          severity="warn"
+          size="small"
+          @click="router.push({ name: 'supplier.pos.approve', params: { id: po.id } })"
+        />
         <Button v-if="po" label="Timeline" icon="pi pi-history" severity="secondary" outlined size="small" @click="showTimelineDialog = true" />
         <Button
           v-if="existingInvoice"
@@ -141,7 +149,7 @@
               <div class="bg-gray-50 rounded-xl p-4">
                 <p class="font-semibold text-gray-900">{{ po?.branch?.name || '-' }}</p>
                 <p class="text-sm text-gray-600 mt-1">{{ po?.branch?.address || '-' }} {{ po?.branch?.city || '' }}</p>
-                <p v-if="po?.branch?.contact_number" class="text-sm text-gray-600 mt-2">ðŸ“ž {{ po?.branch?.contact_number }}</p>
+                <p v-if="po?.branch?.contact_number" class="mt-2 flex items-center gap-2 text-sm text-gray-600"><i class="pi pi-phone" aria-hidden="true"></i><span>{{ po.branch.contact_number }}</span></p>
               </div>
             </div>
           </template>
@@ -606,6 +614,12 @@ const resolutionRejectError = ref('')
 // Computed properties
 const deliveryCharge = computed(() => {
   return Number(shipment.value?.shipping_cost || 0)
+})
+
+const canRespondToPO = computed(() => {
+  const status = String(po.value?.status || '').trim().toLowerCase().replace(/[ -]+/g, '_')
+  return status === 'sent_to_supplier'
+    && !['accepted', 'rejected'].includes(String(supplierFeedback.value?.response || '').trim().toLowerCase())
 })
 
 const totalWithDelivery = computed(() => {
