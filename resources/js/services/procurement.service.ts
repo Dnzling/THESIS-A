@@ -760,9 +760,9 @@ class ProcurementService {
   }
 
   async createSupplierContract(data: FormData | any) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data, {
-      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {}
-    })
+    // Let the browser/Axios generate the multipart boundary so fields and files
+    // are parsed consistently by Laravel.
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data)
     return response.data
   }
 

@@ -167,6 +167,8 @@
             background: #fef9e6;
             border-left: 4px solid #f39c12;
             font-size: 9pt;
+            width: 100%;
+            max-width: 100%;
         }
         
         .terms-title {
@@ -179,6 +181,10 @@
         .terms-content {
             white-space: pre-wrap;
             line-height: 1.5;
+            text-align: left;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            word-break: normal;
         }
         
         .signature-section {
@@ -332,7 +338,7 @@
         <div class="clause-title">Supplier's Terms and Conditions</div>
         <div class="clause-content">
             <div class="terms-section">
-                <div class="terms-title">📋 TERMS & CONDITIONS PROVIDED BY SUPPLIER</div>
+                <div class="terms-title">TERMS &amp; CONDITIONS PROVIDED BY SUPPLIER</div>
                 <div class="terms-content">
                     @if(!empty($termsConditions))
                         {!! nl2br(e($termsConditions)) !!}

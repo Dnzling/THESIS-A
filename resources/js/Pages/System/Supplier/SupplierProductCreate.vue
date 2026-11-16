@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
     <header class="flex items-center gap-3">
       <Button icon="pi pi-chevron-left" rounded outlined severity="secondary" aria-label="Go back" title="Go back" size="small" @click="goBack" />
-      <div><p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Supplier portal</p><h1 class="mt-1 text-xl font-semibold text-slate-900">Create Supplier Product</h1><p class="mt-1 text-sm text-slate-500">Create one supplier catalog item and its store-specific offers.</p></div>
+      <div><p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Supplier portal</p><h1 class="mt-1 text-xl font-semibold text-slate-900">Create Supplier Product</h1><p class="mt-1 text-sm text-slate-500">Add a product to your supplier catalog.</p></div>
     </header>
 
     <Card class="border border-slate-200 shadow-none">
@@ -70,7 +70,7 @@
           </section>
 
           <section class="space-y-4 border-t border-slate-200 pt-5">
-            <div><h2 class="text-sm font-semibold text-slate-900">Store offer defaults</h2><p class="mt-1 text-xs text-slate-500">These defaults create an offer for each store linked to your supplier account. Tax is calculated per store.</p></div>
+            <div><h2 class="text-sm font-semibold text-slate-900">Supplier product details</h2><p class="mt-1 text-xs text-slate-500">These are the supplier’s catalog price and fulfillment details used by Procurement.</p></div>
             <div class="grid gap-4 sm:grid-cols-2">
               <div><label class="mb-1 block text-sm font-medium text-slate-700">Minimum order quantity *</label><InputNumber v-model="form.minimum_order_quantity" :min="1" :maxFractionDigits="0" fluid size="small" /></div>
               <div><label class="mb-1 block text-sm font-medium text-slate-700">Lead time *</label><InputNumber v-model="form.lead_time_days" :min="0" :maxFractionDigits="0" suffix=" days" fluid size="small" /></div>
@@ -79,14 +79,14 @@
             </div>
           </section>
 
-          <Message severity="info" :closable="false">Stock is represented as Available, Limited, or Out of stock. Exact supplier quantities are not required.</Message>
+          <Message severity="info" :closable="false">Creating this item records one product in your supplier catalog. It does not create separate offers for each linked store.</Message>
           <div class="flex justify-end gap-2 border-t border-slate-200 pt-4"><Button type="button" label="Cancel" severity="secondary" outlined size="small" @click="goBack" /><Button type="submit" label="Review and Create" icon="pi pi-arrow-right" iconPos="right" severity="warn" size="small" :disabled="loadingOptions || !categories.length" /></div>
         </form>
       </template>
     </Card>
 
     <Dialog v-model:visible="confirmationVisible" modal header="Confirm Supplier Product" :style="{ width: 'min(94vw, 40rem)' }">
-      <div class="space-y-4 text-sm"><div class="rounded-lg bg-slate-50 p-3"><p class="font-semibold text-slate-900">{{ form.product_name }}</p><p class="mt-1 text-xs text-slate-500">{{ form.category }} · {{ form.unit_of_measurement }} · {{ variants.length }} variant{{ variants.length === 1 ? '' : 's' }}</p></div><div><p class="font-medium text-slate-800">Tax-inclusive store offer cost</p><div class="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200"><div v-for="store in stores" :key="store.id" class="flex items-center justify-between gap-3 px-3 py-2"><div><p class="font-medium text-slate-800">{{ store.name }}</p><p class="text-xs text-slate-500">{{ store.is_tax_exempt ? 'Tax exempt' : `${number(store.tax_rate)}% tax` }}</p></div><p class="font-semibold text-slate-900">{{ money(costWithTax(store.tax_rate)) }}</p></div></div></div></div>
+      <div class="space-y-4 text-sm"><div class="rounded-lg bg-slate-50 p-3"><p class="font-semibold text-slate-900">{{ form.product_name }}</p><p class="mt-1 text-xs text-slate-500">{{ form.category }} · {{ form.unit_of_measurement }} · {{ variants.length }} variant{{ variants.length === 1 ? '' : 's' }}</p></div><div class="grid gap-3 sm:grid-cols-3"><div class="rounded-lg border border-slate-200 p-3"><p class="text-xs text-slate-500">Supplier price</p><p class="mt-1 font-semibold text-slate-900">{{ money(form.base_cost) }}</p></div><div class="rounded-lg border border-slate-200 p-3"><p class="text-xs text-slate-500">Minimum order</p><p class="mt-1 font-semibold text-slate-900">{{ form.minimum_order_quantity }} {{ form.unit_of_measurement }}</p></div><div class="rounded-lg border border-slate-200 p-3"><p class="text-xs text-slate-500">Lead time</p><p class="mt-1 font-semibold text-slate-900">{{ form.lead_time_days }} days</p></div></div><p class="text-xs text-slate-500">One catalog product will be recorded and made available to Procurement.</p></div>
       <template #footer><Button label="Cancel" severity="secondary" outlined size="small" @click="confirmationVisible = false" /><Button label="Confirm and Create" severity="warn" size="small" :loading="submitting" @click="submit" /></template>
     </Dialog>
 
@@ -122,7 +122,6 @@ const categoryDialogVisible = ref(false)
 const categoryError = ref('')
 const newCategoryName = ref('')
 const categories = ref<any[]>([])
-const stores = ref<any[]>([])
 const units = ref<string[]>([])
 const productImages = ref<File[]>([])
 const variants = ref<any[]>([])
@@ -137,7 +136,7 @@ const form = reactive<any>({ product_name: '', product_type: 'finished_good', ca
 const unitOptions = computed(() => units.value.map(value => ({ value, label: unitLabels[value] || value })))
 const subcategoryOptions = computed(() => categories.value.find(category => category.value === form.category)?.subcategories || [])
 
-const loadOptions = async () => { loadingOptions.value = true; try { const response = await supplierService.getProductListingOptions(); categories.value = response.data?.categories || []; stores.value = response.data?.stores || []; units.value = response.data?.units || [] } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load form', detail: error?.response?.data?.message || 'Product options could not be loaded.', life: 3000 }) } finally { loadingOptions.value = false } }
+const loadOptions = async () => { loadingOptions.value = true; try { const response = await supplierService.getProductListingOptions(); categories.value = response.data?.categories || []; units.value = response.data?.units || [] } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load form', detail: error?.response?.data?.message || 'Product options could not be loaded.', life: 3000 }) } finally { loadingOptions.value = false } }
 const addMeasurement = (target: any) => target.additional_measurements.push({ id: `${Date.now()}-${Math.random()}`, label: '', value: null, unit: 'cm' })
 const onCategoryChange = () => { form.subcategory = null }
 const addVariant = () => variants.value.push({ id: `${Date.now()}-${Math.random()}`, variation_name: '', ...Object.fromEntries(attributeFields.map(attribute => [attribute.key, form.variation_attributes[attribute.key] || ''])), base_cost: null, length_cm: null, width_cm: null, height_cm: null, depth_cm: null, weight_kg: null, additional_measurements: [], images: [] as File[] })
@@ -148,7 +147,6 @@ const preview = (file: File) => URL.createObjectURL(file)
 const attributeSignature = (attributes: any) => JSON.stringify(attributeFields.map(attribute => String(attributes?.[attribute.key] || '').trim().toLocaleLowerCase()))
 const validate = () => { errors.value = {}; if (!form.product_name.trim()) errors.value.product_name = 'Product name is required.'; if (!form.product_type) errors.value.product_type = 'Product type is required.'; if (!form.category) errors.value.category = 'Category is required.'; if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit of measurement is required.'; if (!form.base_cost || form.base_cost <= 0) errors.value.base_cost = 'Base cost must be greater than zero.'; if (form.minimum_order_quantity < 1) errors.value.minimum_order_quantity = 'Minimum order quantity must be at least 1.'; if (form.lead_time_days < 0) errors.value.lead_time_days = 'Lead time cannot be negative.'; const seen = new Set([attributeSignature(form.variation_attributes)]); variants.value.forEach((variant, index) => { if (!variant.variation_name.trim()) errors.value[`variants.${index}.variation_name`] = 'Variant name is required.'; const signature = attributeSignature(variant); if (seen.has(signature)) errors.value.variants = `Variant ${index + 1} duplicates the standard product or another variant. Change at least one attribute.`; seen.add(signature) }); return Object.keys(errors.value).length === 0 }
 const prepareConfirmation = () => { if (validate()) confirmationVisible.value = true }
-const costWithTax = (rate: unknown) => Number(form.base_cost || 0) * (1 + Number(rate || 0) / 100)
 const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const number = (value: unknown) => new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(Number(value || 0))
 const goBack = () => window.history.length > 1 ? router.back() : router.push({ name: 'supplier.products' })

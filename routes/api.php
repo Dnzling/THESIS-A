@@ -98,6 +98,7 @@ Route::prefix('ecommerce')->group(function () {
 // Public 3D/image asset serve route (must stay outside auth middleware)
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
+Route::post('/webhooks/brevo/rfq-replies', [\App\Http\Controllers\Api\Procurement\RFQ\BrevoRfqReplyWebhookController::class, '__invoke'])->middleware('throttle:60,1');
 Route::get('/public/subscription-plans', [SubscriptionPlanController::class, 'publicIndex']);
 Route::get('/public/subscription-plans/first-for-permission', [SubscriptionPlanController::class, 'firstPlanForPermission']);
 Route::get('/public/subscription-plans/{planKey}/modules', [SubscriptionPlanController::class, 'publicModules']);

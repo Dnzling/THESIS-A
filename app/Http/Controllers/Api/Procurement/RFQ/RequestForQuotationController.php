@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Procurement\RFQ;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\RFQ\RequestForQuotation;
+use App\Models\Procurement\RFQ\RFQSupplierEmailReply;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\RFQ\SupplierQuotation;
@@ -24,6 +25,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use App\Mail\Procurement\ExternalRFQInvitationMail;
 use Illuminate\Validation\ValidationException;
 
 class RequestForQuotationController extends Controller
@@ -91,6 +95,7 @@ class RequestForQuotationController extends Controller
             'items.product',
             'items.variation',
             'suppliers.supplier',
+            'suppliers.emailReplies',
             'quotations.supplier',
             'supplierPortalFeedbacks.supplierPortal.supplier',
             'supplierPortalFeedbacks.supplier',
@@ -131,6 +136,7 @@ class RequestForQuotationController extends Controller
         abort_if(in_array((string) $rfq->status, ['closed', 'cancelled', 'awarded'], true), 422, 'This RFQ no longer accepts supplier responses.');
 
         $supplier = Supplier::where('store_id', (int) $rfq->store_id)->findOrFail((int) $validated['supplier_id']);
+        abort_unless($supplier->is_external && !$supplier->supplier_portal_id, 422, 'Supplier quotations can only be recorded manually for external suppliers.');
         $invited = $rfq->suppliers()->where('supplier_id', $supplier->id)->exists();
         abort_unless($invited, 422, 'Select a supplier invited to this RFQ.');
 
@@ -1013,9 +1019,12 @@ class RequestForQuotationController extends Controller
      * Send RFQ to suppliers
      * POST /api/procurement/rfqs/{id}/send
      */
-    public function send(int $id): JsonResponse
+    public function send(Request $request, int $id): JsonResponse
     {
-        $rfq = RequestForQuotation::with('suppliers')->findOrFail($id);
+        abort_unless($this->userHasAnyPermission(['procurement.rfq.manage']), 403, 'You are not authorized to send RFQs.');
+        $rfq = RequestForQuotation::where('store_id', (int) $request->user()->store_id)
+            ->with(['suppliers.supplier', 'items.product', 'items.variation', 'store'])
+            ->findOrFail($id);
 
         if ($rfq->status !== 'draft') {
             return response()->json([
@@ -1033,6 +1042,8 @@ class RequestForQuotationController extends Controller
 
         DB::beginTransaction();
         try {
+            $emailFailures = [];
+            $emailJobs = [];
             $rfq->update(['status' => 'pending']);
             $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'rfq_sent');
 
@@ -1040,6 +1051,7 @@ class RequestForQuotationController extends Controller
             $rfq->load(['items']);
             foreach ($rfq->suppliers as $rfqSupplier) {
                 $supplierId = $rfqSupplier->supplier_id;
+                $supplier = $rfqSupplier->supplier;
 
                 // try to find active contract tax rate for this supplier+store
                 $contract = SupplierContract::where('supplier_id', $supplierId)
@@ -1135,16 +1147,57 @@ class RequestForQuotationController extends Controller
                         ]);
                     }
                 }
+
+                if ($supplier?->is_external && !$supplier->supplier_portal_id) {
+                    if (!filter_var($supplier->email, FILTER_VALIDATE_EMAIL)) {
+                        $rfqSupplier->update([
+                            'email_delivery_status' => 'failed',
+                            'email_send_error' => 'Supplier does not have a valid email address.',
+                        ]);
+                        $emailFailures[] = $supplier->supplier_name;
+                        continue;
+                    }
+
+                    $replyDomain = trim((string) config('services.brevo.rfq_reply_domain'));
+                    $replyToken = $replyDomain !== '' ? ($rfqSupplier->email_reply_token ?: Str::random(48)) : null;
+                    $replyAddress = $replyToken ? 'rfq+' . $replyToken . '@' . $replyDomain : null;
+                    $rfqSupplier->update([
+                        'email_reply_token' => $replyToken,
+                        'email_delivery_status' => 'queued',
+                        'email_send_error' => null,
+                    ]);
+                    $emailJobs[] = [$rfqSupplier, $supplier, $replyAddress];
+                }
             }
 
             $this->notifyInvitedSupplierAccounts($rfq);
 
             DB::commit();
 
+            foreach ($emailJobs as [$rfqSupplier, $supplier, $replyAddress]) {
+                try {
+                    Mail::to($supplier->email)->send(new ExternalRFQInvitationMail($rfq, $supplier, $replyAddress));
+                    $rfqSupplier->update([
+                        'email_sent_at' => now(),
+                        'email_delivery_status' => 'sent',
+                        'email_send_error' => null,
+                    ]);
+                } catch (\Throwable $mailError) {
+                    report($mailError);
+                    $rfqSupplier->update([
+                        'email_delivery_status' => 'failed',
+                        'email_send_error' => Str::limit($mailError->getMessage(), 1000),
+                    ]);
+                    $emailFailures[] = $supplier->supplier_name;
+                }
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'RFQ sent to suppliers successfully',
-                'data' => $rfq->fresh()->load(['items', 'suppliers', 'quotations']),
+                'message' => $emailFailures
+                    ? 'RFQ sent. Email delivery failed for: ' . implode(', ', $emailFailures)
+                    : 'RFQ sent to suppliers successfully',
+                'data' => $rfq->fresh()->load(['items', 'suppliers.supplier', 'suppliers.emailReplies', 'quotations']),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

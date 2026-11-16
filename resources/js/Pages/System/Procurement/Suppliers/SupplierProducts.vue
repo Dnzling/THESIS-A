@@ -56,17 +56,17 @@
             <p class="mt-1 text-xs text-slate-500">Base {{ money(product.base_cost) }} · {{ product.is_tax_exempt ? 'Tax exempt' : `${number(product.tax_rate)}% tax` }}</p>
           </div>
           <div class="grid grid-cols-2 gap-2 text-xs text-slate-600"><p class="col-span-2"><span class="text-slate-400">MOQ:</span> {{ product.minimum_order_quantity }}</p><p class="col-span-2"><span class="text-slate-400">Lead time:</span> {{ product.lead_time_days }} day{{ product.lead_time_days === 1 ? '' : 's' }}</p></div>
-          <div v-if="selectedIds.includes(rowKey(product))">
+          <div v-if="hasActiveContract && selectedIds.includes(rowKey(product))">
             <label class="mb-1 block text-xs font-medium text-slate-600">RFQ Quantity</label>
             <InputNumber :modelValue="quantities[rowKey(product)] || 1" @update:modelValue="quantities[rowKey(product)] = Number($event || 0)" :min="product.minimum_order_quantity" :maxFractionDigits="0" fluid size="small" />
             <small v-if="quantityError(product)" class="text-red-600">{{ quantityError(product) }}</small>
           </div>
-          <Button fluid size="small" :label="product.is_acquired ? 'Acquired' : !product.is_active ? 'Unavailable' : selectedIds.includes(rowKey(product)) ? 'Remove' : 'Select Product'" :icon="product.is_acquired ? 'pi pi-check-circle' : !product.is_active ? 'pi pi-ban' : selectedIds.includes(rowKey(product)) ? 'pi pi-times' : 'pi pi-plus'" :severity="product.is_acquired ? 'success' : !product.is_active ? 'secondary' : selectedIds.includes(rowKey(product)) ? 'secondary' : 'warn'" :outlined="product.is_acquired || !product.is_active || selectedIds.includes(rowKey(product))" :disabled="!product.is_active || product.is_acquired" @click="toggleProduct(product)" />
+          <Button v-if="hasActiveContract" fluid size="small" :label="product.is_acquired ? 'Acquired' : !product.is_active ? 'Unavailable' : selectedIds.includes(rowKey(product)) ? 'Remove' : 'Select Product'" :icon="product.is_acquired ? 'pi pi-check-circle' : !product.is_active ? 'pi pi-ban' : selectedIds.includes(rowKey(product)) ? 'pi pi-times' : 'pi pi-plus'" :severity="product.is_acquired ? 'success' : !product.is_active ? 'secondary' : selectedIds.includes(rowKey(product)) ? 'secondary' : 'warn'" :outlined="product.is_acquired || !product.is_active || selectedIds.includes(rowKey(product))" :disabled="!product.is_active || product.is_acquired" @click="toggleProduct(product)" />
         </div>
       </article>
     </div>
 
-    <div v-if="selectedRows.length" class="sticky bottom-4 z-10 flex flex-col gap-3 rounded-xl border border-orange-200 bg-white p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="hasActiveContract && selectedRows.length" class="sticky bottom-4 z-10 flex flex-col gap-3 rounded-xl border border-orange-200 bg-white p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between">
       <div><p class="font-semibold text-slate-900">{{ selectedRows.length }} product{{ selectedRows.length === 1 ? '' : 's' }} selected</p><p class="text-xs text-slate-500">Estimated tax-inclusive value: {{ money(estimatedTotal) }}</p></div>
       <Button label="Create RFQ" icon="pi pi-file-plus" severity="warn" :disabled="!canCreate" @click="openConfirmation" />
     </div>
@@ -103,6 +103,7 @@ import procurementService from '../../../../services/procurement.service'
 
 const route = useRoute(); const router = useRouter(); const toast = useToast(); const supplierId = Number(route.params.id)
 const loading = ref(false); const submitting = ref(false); const products = ref<any[]>([]); const supplier = ref<any>(null); const search = ref(''); const selectedCategoryId = ref<number | null>(null); const quantities = ref<Record<string, number>>({}); const selectedIds = ref<string[]>([]); const confirmationVisible = ref(false); const rfqTitle = ref('')
+const hasActiveContract = computed(() => supplier.value?.contract_status === 'active')
 const categoryOptions = computed(() => {
   const categories = new Map<number, string>()
   products.value.forEach(product => {

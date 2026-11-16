@@ -6,7 +6,6 @@ namespace App\Services\Inventory;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Inventory\ReorderRule;
 use App\Models\Inventory\BranchInventory;
-use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\Config\ProcurementSettings;
@@ -18,9 +17,9 @@ use Exception;
 
 class ReorderSuggestionService
 {
-    public function createGroupedPurchaseRequisitions(array $ids, int $storeId, ?int $branchId, int $employeeId): array
+    public function createGroupedPurchaseRequisitions(array $ids, int $storeId, ?int $branchId, int $employeeId, bool $autoApprove = false, bool $procurementEnabled = true, ?array $approvalChain = null): array
     {
-        return DB::transaction(function () use ($ids, $storeId, $branchId, $employeeId) {
+        return DB::transaction(function () use ($ids, $storeId, $branchId, $employeeId, $autoApprove, $procurementEnabled, $approvalChain) {
             $suggestions = ReorderSuggestion::query()
                 ->whereIn('id', $ids)
                 ->whereHas('branch', fn ($query) => $query->where('store_id', $storeId))
@@ -36,8 +35,11 @@ class ReorderSuggestionService
             }
 
             $settings = ProcurementSettings::where('store_id', $storeId)->first();
-            $groups = $suggestions->groupBy(function ($item) use ($settings) {
-                $amount = (float) $item->suggested_quantity * (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0);
+            $unitCosts = $suggestions->mapWithKeys(fn ($item) => [
+                (int) $item->id => $this->resolveUnitCost((int) $item->product_id, $item->variation_id ? (int) $item->variation_id : null),
+            ]);
+            $groups = $suggestions->groupBy(function ($item) use ($settings, $unitCosts) {
+                $amount = (float) $item->suggested_quantity * (float) ($unitCosts[$item->id] ?? 0);
                 $route = $settings?->shouldRequireRFQ($amount) ? 'rfq_required'
                     : ($settings && $amount >= $settings->procurement_threshold ? 'centralized' : 'branch_direct');
                 return $item->branch_id . ':' . $route;
@@ -46,7 +48,7 @@ class ReorderSuggestionService
             $created = [];
             foreach ($groups as $key => $items) {
                 [$groupBranchId, $route] = explode(':', $key, 2);
-                $amount = $items->sum(fn ($item) => (float) $item->suggested_quantity * (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0));
+                $amount = $items->sum(fn ($item) => (float) $item->suggested_quantity * (float) ($unitCosts[$item->id] ?? 0));
                 $requiredApprovals = ['warehouse_manager'];
                 if ($amount >= 100000) $requiredApprovals[] = 'branch_manager';
                 if ($amount >= 500000) $requiredApprovals[] = 'finance_manager';
@@ -56,7 +58,11 @@ class ReorderSuggestionService
                     'store_id' => $storeId,
                     'branch_id' => (int) $groupBranchId,
                     'requisition_type' => 'regular',
-                    'status' => 'draft',
+                    'status' => $autoApprove
+                        ? ($procurementEnabled ? 'procurement_pending' : 'inventory_po_pending')
+                        : 'pending',
+                    'submitted_at' => now(),
+                    'approval_chain' => $autoApprove ? $approvalChain : null,
                     'estimated_amount' => $amount,
                     'procurement_route' => $route,
                     'required_approvals' => $requiredApprovals,
@@ -66,7 +72,7 @@ class ReorderSuggestionService
                 ]);
 
                 foreach ($items as $item) {
-                    $unitCost = (float) ($item->variation?->cost_price ?? $item->product->cost_price ?? 0);
+                    $unitCost = (float) ($unitCosts[$item->id] ?? 0);
                     PurchaseRequisitionItem::create([
                         'requisition_id' => $pr->id,
                         'product_id' => $item->product_id,
@@ -78,7 +84,7 @@ class ReorderSuggestionService
                     $item->approve($employeeId);
                     $item->setMetadataValue('purchase_requisition_id', $pr->id);
                 }
-                $created[] = ['id' => $pr->id, 'pr_number' => $pr->pr_number, 'items' => $items->count()];
+                $created[] = ['id' => $pr->id, 'pr_number' => $pr->pr_number, 'status' => $pr->status, 'items' => $items->count()];
             }
 
             return $created;
@@ -144,7 +150,18 @@ class ReorderSuggestionService
         $query->orderByRaw("FIELD(priority, 'critical', 'high', 'medium', 'low') DESC")
               ->orderBy('created_at', 'desc');
 
-        return $query->paginate($perPage);
+        $suggestions = $query->paginate($perPage);
+        $suggestions->getCollection()->each(function (ReorderSuggestion $suggestion): void {
+            $unitCost = $this->resolveUnitCost(
+                (int) $suggestion->product_id,
+                $suggestion->variation_id ? (int) $suggestion->variation_id : null,
+            );
+            if ($unitCost > 0) {
+                $suggestion->setAttribute('estimated_cost', round((float) $suggestion->suggested_quantity * $unitCost, 2));
+            }
+        });
+
+        return $suggestions;
     }
 
     /**
@@ -159,10 +176,8 @@ class ReorderSuggestionService
             $data['suggested_at'] = $data['suggested_at'] ?? now();
 
             // Calculate estimated cost if not provided and we have product cost
-            if (!isset($data['estimated_cost']) && isset($data['product_id'])) {
-                $unitCost = !empty($data['variation_id'])
-                    ? (float) (DB::table('product_variations')->where('id', $data['variation_id'])->value('cost_price') ?? 0)
-                    : (float) (Product::find($data['product_id'])?->cost_price ?? 0);
+            if (isset($data['product_id'])) {
+                $unitCost = $this->resolveUnitCost((int) $data['product_id'], !empty($data['variation_id']) ? (int) $data['variation_id'] : null);
                 if ($unitCost > 0) {
                     $data['estimated_cost'] = $data['suggested_quantity'] * $unitCost;
                 }
@@ -189,7 +204,7 @@ class ReorderSuggestionService
             // Recalculate estimated cost if quantity changed
             if (isset($data['suggested_quantity']) &&
                 (!isset($data['estimated_cost']) || $data['estimated_cost'] === null)) {
-                $unitCost = (float) ($suggestion->variation?->cost_price ?? $suggestion->product?->cost_price ?? 0);
+                $unitCost = $this->resolveUnitCost((int) $suggestion->product_id, $suggestion->variation_id ? (int) $suggestion->variation_id : null);
                 if ($unitCost > 0) {
                     $data['estimated_cost'] = $data['suggested_quantity'] * $unitCost;
                 }
@@ -209,19 +224,19 @@ class ReorderSuggestionService
     /**
      * Approve a reorder suggestion
      */
-    public function approveSuggestion(ReorderSuggestion $suggestion, ?int $approvedBy = null, ?string $notes = null): bool
+    public function approveSuggestion(ReorderSuggestion $suggestion, ?int $approvedBy = null, ?string $notes = null, bool $autoApprovePr = false, bool $procurementEnabled = true, ?array $approvalChain = null): bool
     {
         if (!$approvedBy) {
             return false;
         }
 
-        return DB::transaction(function () use ($suggestion, $approvedBy, $notes) {
+        return DB::transaction(function () use ($suggestion, $approvedBy, $notes, $autoApprovePr, $procurementEnabled, $approvalChain) {
             $locked = ReorderSuggestion::query()->lockForUpdate()->find($suggestion->id);
             if (!$locked?->canBeApproved()) {
                 return false;
             }
 
-            $pr = $this->createPurchaseRequisitionFromSuggestion($locked, $approvedBy);
+            $pr = $this->createPurchaseRequisitionFromSuggestion($locked, $approvedBy, $autoApprovePr, $procurementEnabled, $approvalChain);
             if (!$pr) {
                 throw ValidationException::withMessages(['suggestion' => 'Cannot create an Inventory PR for this suggestion. Check its product and branch.']);
             }
@@ -573,7 +588,7 @@ class ReorderSuggestionService
     /**
      * Bulk approve suggestions
      */
-    public function bulkApprove(array $suggestionIds, ?int $approvedBy = null, ?string $notes = null): array
+    public function bulkApprove(array $suggestionIds, ?int $approvedBy = null, ?string $notes = null, bool $autoApprovePr = false, bool $procurementEnabled = true, ?array $approvalChain = null): array
     {
         $suggestions = ReorderSuggestion::whereIn('id', $suggestionIds)->get();
 
@@ -581,7 +596,7 @@ class ReorderSuggestionService
         $failed = [];
 
         foreach ($suggestions as $suggestion) {
-            if ($this->approveSuggestion($suggestion, $approvedBy, $notes)) {
+            if ($this->approveSuggestion($suggestion, $approvedBy, $notes, $autoApprovePr, $procurementEnabled, $approvalChain)) {
                 $approved[] = $suggestion->id;
             } else {
                 $failed[] = $suggestion->id;
@@ -599,7 +614,7 @@ class ReorderSuggestionService
     /**
      * Auto-create Purchase Requisition from an approved suggestion.
      */
-    public function createPurchaseRequisitionFromSuggestion(ReorderSuggestion $suggestion, int $userId): ?PurchaseRequisition
+    public function createPurchaseRequisitionFromSuggestion(ReorderSuggestion $suggestion, int $userId, bool $autoApprove = false, bool $procurementEnabled = true, ?array $approvalChain = null): ?PurchaseRequisition
     {
         $existingId = $suggestion->getMetadataValue('purchase_requisition_id');
         if ($existingId) {
@@ -618,7 +633,7 @@ class ReorderSuggestionService
             return null;
         }
 
-        $unitCost = (float) ($suggestion->variation?->cost_price ?? $product->cost_price ?? 0);
+        $unitCost = $this->resolveUnitCost((int) $suggestion->product_id, $suggestion->variation_id ? (int) $suggestion->variation_id : null);
         $estimatedAmount = ($suggestion->suggested_quantity ?? 0) * $unitCost;
 
         $settings = ProcurementSettings::where('store_id', $storeId)->first();
@@ -649,13 +664,17 @@ class ReorderSuggestionService
 
         $prNumber = 'PR-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
-        return DB::transaction(function () use ($suggestion, $userId, $storeId, $estimatedAmount, $procurementRoute, $requiredApprovals, $priorityMap, $prNumber, $product, $unitCost) {
+        return DB::transaction(function () use ($suggestion, $userId, $storeId, $estimatedAmount, $procurementRoute, $requiredApprovals, $priorityMap, $prNumber, $product, $unitCost, $autoApprove, $procurementEnabled, $approvalChain) {
             $pr = PurchaseRequisition::create([
                 'pr_number' => $prNumber,
                 'store_id' => $storeId,
                 'branch_id' => $suggestion->branch_id,
                 'requisition_type' => 'regular',
-                'status' => 'draft',
+                'status' => $autoApprove
+                    ? ($procurementEnabled ? 'procurement_pending' : 'inventory_po_pending')
+                    : 'pending',
+                'submitted_at' => now(),
+                'approval_chain' => $autoApprove ? $approvalChain : null,
                 'estimated_amount' => $estimatedAmount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => $requiredApprovals,
@@ -677,6 +696,21 @@ class ReorderSuggestionService
 
             return $pr;
         });
+    }
+
+    private function resolveUnitCost(int $productId, ?int $variationId = null): float
+    {
+        if ($variationId) {
+            $variationCost = DB::table('product_variations')
+                ->where('id', $variationId)
+                ->where('product_id', $productId)
+                ->value('cost_price');
+            if ($variationCost !== null) {
+                return (float) $variationCost;
+            }
+        }
+
+        return (float) (DB::table('products')->where('id', $productId)->value('cost_price') ?? 0);
     }
 
     /**

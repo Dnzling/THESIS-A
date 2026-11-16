@@ -99,6 +99,10 @@ class SupplierProductListingController extends Controller
                     'subcategory_name' => $first->subcategory_name,
                     'unit_of_measurement' => $first->unit_of_measurement,
                     'is_active' => $offers->contains(fn ($offer) => (bool) $offer->is_active),
+                    'base_cost' => (float) $first->supplier_price,
+                    'minimum_order_quantity' => (int) $first->minimum_order_quantity,
+                    'lead_time_days' => (int) $first->lead_time_days,
+                    'availability_status' => $first->availability_status ?: 'available',
                     '_offers' => $offers,
                 ];
             })->values();
@@ -249,6 +253,10 @@ class SupplierProductListingController extends Controller
 
         $suppliers = $this->linkedSuppliers($portal);
         abort_if($suppliers->isEmpty(), 422, 'Link at least one store before creating a product.');
+        // A supplier catalog item is created once. It is attached to the supplier
+        // account's primary linked record so it can be surfaced in Procurement;
+        // it does not fan out into a separate store offer for every linked store.
+        $supplier = $suppliers->firstWhere('id', (int) $portal->supplier_id) ?? $suppliers->first();
 
         $sharedSku = 'SUP-' . now()->format('Ymd') . '-' . Str::upper(Str::random(8));
 
@@ -276,8 +284,7 @@ class SupplierProductListingController extends Controller
         $variantImagePaths = collect($variants)->map(fn ($variant, $index) => collect($request->file("variant_images.{$index}", []))
             ->map(fn ($file) => ['file' => $file, 'path' => $file->store("supplier-portals/{$portal->id}/products/variants", 'public')])->all())->all();
 
-        $created = DB::transaction(function () use ($validated, $suppliers, $sharedSku, $portal, $request, $categoryName, $subcategoryName, $additionalMeasurements, $variationAttributes, $variants, $productImagePaths, $variantImagePaths) {
-            return $suppliers->map(function ($supplier) use ($validated, $sharedSku, $portal, $categoryName, $subcategoryName, $additionalMeasurements, $variationAttributes, $variants, $productImagePaths, $variantImagePaths) {
+        $created = DB::transaction(function () use ($validated, $supplier, $sharedSku, $portal, $categoryName, $subcategoryName, $additionalMeasurements, $variationAttributes, $variants, $productImagePaths, $variantImagePaths) {
                 $category = $this->storeCategory((int) $supplier->store_id, $categoryName);
                 $subcategory = $subcategoryName !== '' ? $this->storeSubcategory((int) $supplier->store_id, $category, $subcategoryName) : null;
                 $product = Product::create([
@@ -348,13 +355,12 @@ class SupplierProductListingController extends Controller
                 }
 
                 return ['listing_id' => $listingId, 'product_id' => $product->id, 'store_id' => (int) $supplier->store_id];
-            });
         });
 
         return response()->json([
             'success' => true,
-            'message' => 'Supplier product and store offers created.',
-            'data' => ['id' => $created->first()['listing_id'], 'supplier_sku' => $sharedSku, 'stores' => $created],
+            'message' => 'Supplier product created in your catalog.',
+            'data' => ['id' => $created['listing_id'], 'supplier_sku' => $sharedSku, 'product_id' => $created['product_id']],
         ], 201);
     }
 
@@ -418,6 +424,10 @@ class SupplierProductListingController extends Controller
             'subcategory_name' => $first->subcategory_name,
             'unit_of_measurement' => $first->unit_of_measurement,
             'is_active' => (bool) $first->is_active,
+            'base_cost' => (float) $first->supplier_price,
+            'minimum_order_quantity' => (int) $first->minimum_order_quantity,
+            'lead_time_days' => (int) $first->lead_time_days,
+            'availability_status' => $first->availability_status ?: 'available',
             'dimensions' => [
                 'length_cm' => $first->length_cm,
                 'width_cm' => $first->width_cm,

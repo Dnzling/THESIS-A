@@ -128,6 +128,10 @@ class FinanceRefundController extends Controller
             'card_refund_simulation_available' => $sandboxRefundSimulationAvailable,
             'refund_simulation_available' => $sandboxRefundSimulationAvailable,
             'amount_calculation' => $amountCalculation,
+            'shipping_fee_excluded' => $refund->order_type === 'ecommerce_order' ? (float) ($originalOrder?->shipping_fee ?? 0) : null,
+            'payable_refund_amount' => $refund->order_type === 'ecommerce_order' && $originalOrder
+                ? min((float) $refund->amount, $this->refundableOrderTotal($originalOrder))
+                : (float) $refund->amount,
         ]);
     }
 
@@ -175,6 +179,7 @@ class FinanceRefundController extends Controller
             $refund = FinanceRefund::query()->lockForUpdate()->findOrFail($refund->id);
             if ($refund->status !== 'pending') throw ValidationException::withMessages(['status' => ['Only a pending refund can be processed.']]);
             if ($data['status'] === 'approved') {
+                $this->normalizeCancelledOrderRefundAmount($refund);
                 if ($refund->order_type === 'ecommerce_return') {
                     $return = EcommerceOrderReturn::query()->where('store_id', $refund->store_id)
                         ->lockForUpdate()->findOrFail($refund->order_id);
@@ -226,10 +231,15 @@ class FinanceRefundController extends Controller
 
         $approvedRefund = $refund->fresh();
         $this->notifyEcommerceRefundStatus($approvedRefund, (string) $data['status']);
+        $approvedOrder = $this->ecommerceOrderForRefund($approvedRefund);
+        $canRefundApprovedOrderToOriginal = $approvedOrder
+            && app(EcommerceRefundRoutingService::class)->canRefundToOriginal($approvedOrder);
         return response()->json(['message' => $data['status'] === 'approved'
             ? ($this->canSimulatePaymongoRefund($approvedRefund)
                 ? 'Refund approved. You can record a sandbox simulation; it will not issue a payout.'
-                : 'Refund approved. Send the payout to the customer, then record its reference.')
+                : ($canRefundApprovedOrderToOriginal
+                    ? 'Refund approved. Use Pay Refund via PayMongo to return the approved amount, excluding shipping, to the original payment method.'
+                    : 'Refund approved. Send the payout to the customer, then record its reference.'))
             : 'Refund rejected.', 'data' => $approvedRefund]);
     }
 
@@ -261,6 +271,7 @@ class FinanceRefundController extends Controller
                 $refund->status = 'awaiting_payout';
             }
             $this->validatePayoutProvider($refund, $payoutProvider);
+            $this->normalizeCancelledOrderRefundAmount($refund);
             if (in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)
                 && in_array($payoutProvider, ['manual', 'simulation'], true)) {
                 $this->ensureRefundAmountAvailable($refund, true);
@@ -339,7 +350,7 @@ class FinanceRefundController extends Controller
 
             if (in_array($refund->order_type, ['ecommerce_return', 'ecommerce_order'], true)) {
                 $order = $this->ecommerceOrderForRefund($refund);
-                if ($order && $this->totalSentForEcommerceOrder($order) >= (float) $order->total_amount) {
+                if ($order && $this->totalSentForEcommerceOrder($order) >= $this->refundableOrderTotal($order)) {
                     $order->update(['payment_status' => 'refunded']);
                     if ($refund->order_type === 'ecommerce_return') $order->update(['status' => 'refunded']);
                 }
@@ -370,6 +381,7 @@ class FinanceRefundController extends Controller
         if (!$originalOrder || !app(EcommerceRefundRoutingService::class)->canRefundToOriginal($originalOrder)) {
             throw ValidationException::withMessages(['provider' => ['This order is not eligible for a refund to its original PayMongo payment.']]);
         }
+        $this->normalizeCancelledOrderRefundAmount($refund);
         $this->ensureRefundAmountAvailable($refund);
 
         $previousRefundId = null;
@@ -552,7 +564,7 @@ class FinanceRefundController extends Controller
                 }
             }
             if ($order) {
-                if ($this->totalSentForEcommerceOrder($order) >= (float) $order->total_amount) {
+                if ($this->totalSentForEcommerceOrder($order) >= $this->refundableOrderTotal($order)) {
                     $order->update(['payment_status' => 'refunded']);
                     if ($locked->order_type === 'ecommerce_return') $order->update(['status' => 'refunded']);
                 }
@@ -618,7 +630,7 @@ class FinanceRefundController extends Controller
                 $query->where(fn ($q) => $q->where('order_type', 'ecommerce_order')->where('order_id', $order->id));
                 if ($returnIds->isNotEmpty()) $query->orWhere(fn ($q) => $q->where('order_type', 'ecommerce_return')->whereIn('order_id', $returnIds));
             })->sum('amount');
-        $available = max(0, (float) $order->total_amount - (float) $previouslyReserved);
+        $available = max(0, $this->refundableOrderTotal($order) - (float) $previouslyReserved);
         if ((float) $refund->amount > $available) {
             throw ValidationException::withMessages(['amount' => ['Refund amount exceeds the remaining refundable order balance of PHP ' . number_format($available, 2) . '.']]);
         }
@@ -632,6 +644,33 @@ class FinanceRefundController extends Controller
                 $query->where(fn ($q) => $q->where('order_type', 'ecommerce_order')->where('order_id', $order->id));
                 if ($returnIds->isNotEmpty()) $query->orWhere(fn ($q) => $q->where('order_type', 'ecommerce_return')->whereIn('order_id', $returnIds));
             })->sum('amount');
+    }
+
+    private function refundableOrderTotal(EcommerceOrder $order): float
+    {
+        // Shipping is not refundable when a whole Ecommerce order is cancelled.
+        return max(0, round((float) $order->total_amount - (float) $order->shipping_fee, 2));
+    }
+
+    private function normalizeCancelledOrderRefundAmount(FinanceRefund $refund): void
+    {
+        if ($refund->order_type !== 'ecommerce_order') {
+            return;
+        }
+
+        $order = $this->ecommerceOrderForRefund($refund);
+        if (!$order) {
+            return;
+        }
+
+        $refundableAmount = $this->refundableOrderTotal($order);
+        if ((float) $refund->amount <= $refundableAmount) {
+            return;
+        }
+
+        $refund->amount = $refundableAmount;
+        $refund->notes = trim((string) $refund->notes . "\nShipping fee excluded from the approved refund amount.");
+        $refund->save();
     }
 
     private function notifyEcommerceRefundStatus(FinanceRefund $refund, string $status): void

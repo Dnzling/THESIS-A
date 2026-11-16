@@ -21,7 +21,8 @@
               <Info label="Order Reference" :value="refund.order_number || `Refund #${refund.id}`" />
               <Info label="Customer" :value="refund.customer_name || '-'" />
               <Info label="Source" :value="label(refund.order_type)" />
-              <Info label="Amount" :value="currency(refund.amount)" />
+              <Info label="Amount" :value="currency(displayRefundAmount)" />
+              <Info v-if="shippingFeeExcluded !== null" label="Shipping Fee Excluded" :value="currency(shippingFeeExcluded)" />
               <div v-if="amountCalculation" class="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p class="font-semibold text-slate-800">Refund amount calculation</p>
                 <div class="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
@@ -85,7 +86,7 @@
                   {{ refundMethodLabel(refund.refund_method) }} ({{ refund.refund_account_number }}).
                 </p>
                 <p v-if="automaticRefundAvailable" class="text-xs text-emerald-700">The refund returns to the original checkout method.</p>
-                <Button v-if="automaticRefundAvailable" label="Refund to Original Payment Method" icon="pi pi-send" fluid :loading="sending"
+                <Button v-if="automaticRefundAvailable" label="Pay Refund via PayMongo" icon="pi pi-send" fluid :loading="sending"
                   :disabled="!canSendPaymongo" @click="markSent('paymongo')" />
                 <div v-if="canSimulatePaymongo" class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
                   <p class="text-sm font-medium text-blue-900">Sandbox test only</p>
@@ -115,7 +116,7 @@
                 <p class="font-medium">The refund is awaiting payout. Complete the payout to the customer, then record its transaction reference.</p>
                 <template v-if="automaticRefundAvailable">
                   <p>The refund will return to the original {{ refundMethodLabel(originalPaymentMethod) }} payment method.</p>
-                  <Button label="Refund to Original Payment Method" icon="pi pi-send" fluid :loading="sending" :disabled="!canSendPaymongo" @click="markSent('paymongo')" />
+                  <Button label="Pay Refund via PayMongo" icon="pi pi-send" fluid :loading="sending" :disabled="!canSendPaymongo" @click="markSent('paymongo')" />
                 </template>
                 <template v-else-if="canEnterManualReference">
                   <label class="block text-xs font-medium">Payout transaction reference *</label>
@@ -178,6 +179,7 @@ const adjustmentReason = ref('')
 const paymongoRefundsAvailable = ref(false)
 const refundSimulationAvailable = ref(false)
 const automaticRefundAvailable = ref(false)
+const shippingFeeExcluded = ref<number | null>(null)
 const originalPaymentMethod = ref('')
 const notes = ref('')
 const payoutReference = ref('')
@@ -191,6 +193,7 @@ const hasRefundDestination = computed(() => Boolean(
 ))
 const isLegacyUnpaid = computed(() => ['simulation', 'paymongo_wallet_test'].includes(refund.value?.payout_provider) && refund.value?.status === 'sent')
 const isAwaitingPayout = computed(() => refund.value?.status === 'awaiting_payout' || isLegacyUnpaid.value)
+const displayRefundAmount = computed(() => amountCalculation.value?.amount ?? refund.value?.payable_refund_amount ?? refund.value?.amount ?? 0)
 const displayStatusValue = computed(() => isAwaitingPayout.value ? 'awaiting_payout' : refund.value?.status)
 const displayStatus = computed(() => label(displayStatusValue.value))
 const providerLabel = computed(() => ({ paymongo: 'PayMongo original payment', manual: 'Manual payout', simulation: 'PayMongo sandbox simulation', paymongo_wallet_test: 'Legacy test transfer' } as Record<string, string>)[refund.value?.payout_provider] || refund.value?.payout_provider || '-')
@@ -235,11 +238,15 @@ const load = async () => {
     const response = await financeService.getRefund(String(route.params.id))
     refund.value = response?.data || null
     amountCalculation.value = response?.amount_calculation || null
+    refund.value.payable_refund_amount = response?.payable_refund_amount ?? refund.value.amount
     refundAmount.value = Number(response?.amount_calculation?.amount ?? refund.value?.amount ?? 0)
     adjustmentReason.value = ''
     paymongoRefundsAvailable.value = Boolean(response?.paymongo_refunds_available)
     refundSimulationAvailable.value = Boolean(response?.refund_simulation_available)
     automaticRefundAvailable.value = Boolean(response?.automatic_refund_available)
+    shippingFeeExcluded.value = response?.shipping_fee_excluded === null || response?.shipping_fee_excluded === undefined
+      ? null
+      : Number(response.shipping_fee_excluded)
     originalPaymentMethod.value = response?.original_payment_method || ''
     notes.value = displayRefundNotes.value === '-' ? '' : displayRefundNotes.value
     payoutReference.value = refund.value?.payout_reference || ''

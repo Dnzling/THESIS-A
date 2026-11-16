@@ -276,6 +276,12 @@
         </div>
       </div>
     </div>
+    <div class="justify-end flex gap-4">
+                <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
+            :loading="activating" @click="activateContract" size="small" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
+            @click="openRejectContractDialog" size="small" />
+    </div>
 
     <Dialog v-model:visible="showReportDialog" header="Report Contract Issue" :modal="true" class="w-[36rem]">
       <div class="space-y-3">

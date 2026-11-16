@@ -6,11 +6,15 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
+use App\Models\ProductCatalog\Category;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\ProductCatalog\ProductAsset;
+use App\Models\ProductCatalog\ProductVariation;
+use Illuminate\Support\Str;
 
 class SupplierController extends Controller
 {
@@ -323,6 +327,8 @@ class SupplierController extends Controller
                     $existing->save();
                 }
 
+                $this->syncPortalProductsToStore($portal, $existing);
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Supplier already linked to this store.',
@@ -358,6 +364,8 @@ class SupplierController extends Controller
                 'is_external' => false,
                 'rating' => 5.00,
             ]);
+
+            $this->syncPortalProductsToStore($portal, $supplier);
 
             return response()->json([
                 'success' => true,
@@ -413,6 +421,142 @@ class SupplierController extends Controller
         }
 
         return sprintf('SUP-%s-%03d', $year, $nextNumber);
+    }
+
+    private function syncPortalProductsToStore(SupplierPortal $portal, Supplier $targetSupplier): void
+    {
+        $sourceSupplier = Supplier::query()
+            ->whereKey($portal->supplier_id)
+            ->with(['products.category.parent', 'products.subcategory.parent', 'products.assets', 'products.variations.assets'])
+            ->first();
+
+        if (!$sourceSupplier || (int) $sourceSupplier->store_id === (int) $targetSupplier->store_id) {
+            return;
+        }
+
+        DB::transaction(function () use ($sourceSupplier, $targetSupplier): void {
+          foreach ($sourceSupplier->products as $sourceProduct) {
+            $targetProduct = Product::query()
+                ->where('store_id', $targetSupplier->store_id)
+                ->where('sku', $sourceProduct->sku)
+                ->first();
+
+            if (!$targetProduct) {
+                $category = $this->copySupplierCategory($sourceProduct->category, (int) $targetSupplier->store_id);
+                $subcategory = $this->copySupplierCategory($sourceProduct->subcategory, (int) $targetSupplier->store_id, $category);
+
+                $targetProduct = $sourceProduct->replicate(['store_id', 'category_id', 'subcategory_id']);
+                $targetProduct->store_id = $targetSupplier->store_id;
+                $targetProduct->category_id = $category?->id;
+                $targetProduct->subcategory_id = $subcategory?->id;
+                $targetProduct->save();
+
+                foreach ($sourceProduct->assets->whereNull('variation_id') as $asset) {
+                    $copy = $asset->replicate(['store_id', 'product_id', 'variation_id']);
+                    $copy->store_id = $targetSupplier->store_id;
+                    $copy->product_id = $targetProduct->id;
+                    $copy->variation_id = null;
+                    $copy->save();
+                }
+            }
+
+            foreach ($sourceProduct->variations as $sourceVariation) {
+                $targetVariation = ProductVariation::query()
+                    ->where('store_id', $targetSupplier->store_id)
+                    ->where('product_id', $targetProduct->id)
+                    ->where('variation_sku', $sourceVariation->variation_sku)
+                    ->first();
+
+                if ($targetVariation) {
+                    continue;
+                }
+
+                $targetVariation = $sourceVariation->replicate(['store_id', 'product_id', 'custom_3d_model_id', 'custom_image_id']);
+                $targetVariation->store_id = $targetSupplier->store_id;
+                $targetVariation->product_id = $targetProduct->id;
+                $targetVariation->custom_3d_model_id = null;
+                $targetVariation->custom_image_id = null;
+                $targetVariation->save();
+
+                $assetIdMap = [];
+                foreach ($sourceVariation->assets as $asset) {
+                    $copy = $asset->replicate(['store_id', 'product_id', 'variation_id']);
+                    $copy->store_id = $targetSupplier->store_id;
+                    $copy->product_id = $targetProduct->id;
+                    $copy->variation_id = $targetVariation->id;
+                    $copy->save();
+                    $assetIdMap[(int) $asset->id] = (int) $copy->id;
+                }
+
+                $targetVariation->update([
+                    'custom_3d_model_id' => $assetIdMap[(int) $sourceVariation->custom_3d_model_id] ?? null,
+                    'custom_image_id' => $assetIdMap[(int) $sourceVariation->custom_image_id] ?? null,
+                ]);
+            }
+
+            $hasOffer = DB::table('supplier_products')
+                ->where('supplier_id', $targetSupplier->id)
+                ->where('product_id', $targetProduct->id)
+                ->exists();
+
+            if (!$hasOffer) {
+                DB::table('supplier_products')->insert([
+                    'supplier_id' => $targetSupplier->id,
+                    'product_id' => $targetProduct->id,
+                    'supplier_sku' => $sourceProduct->pivot->supplier_sku,
+                    'supplier_price' => $sourceProduct->pivot->supplier_price,
+                    'minimum_order_quantity' => $sourceProduct->pivot->minimum_order_quantity,
+                    'lead_time_days' => $sourceProduct->pivot->lead_time_days,
+                    'availability_status' => $sourceProduct->pivot->availability_status ?? 'available',
+                    'is_preferred_supplier' => $sourceProduct->pivot->is_preferred_supplier ?? false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+          }
+        });
+    }
+
+    private function copySupplierCategory(?Category $source, int $storeId, ?Category $parentOverride = null): ?Category
+    {
+        if (!$source) {
+            return null;
+        }
+
+        $parent = $parentOverride;
+        if (!$parent && $source->parent) {
+            $parent = $this->copySupplierCategory($source->parent, $storeId);
+        }
+
+        $category = Category::withTrashed()
+            ->where('store_id', $storeId)
+            ->where('parent_category_id', $parent?->id)
+            ->whereRaw('LOWER(category_name) = ?', [Str::lower($source->category_name)])
+            ->first();
+
+        if ($category) {
+            if ($category->trashed()) {
+                $category->restore();
+            }
+            return $category;
+        }
+
+        $baseCode = strtoupper(trim(preg_replace('/[^A-Z0-9]+/i', '-', $source->category_name), '-')) ?: 'SUPPLIER-CATEGORY';
+        $code = substr($baseCode, 0, 45);
+        $suffix = 1;
+        while (Category::withTrashed()->where('store_id', $storeId)->where('category_code', $code)->exists()) {
+            $code = substr($baseCode, 0, 40) . '-' . $suffix++;
+        }
+
+        return Category::create([
+            'store_id' => $storeId,
+            'category_code' => $code,
+            'category_name' => $source->category_name,
+            'description' => $source->description,
+            'parent_category_id' => $parent?->id,
+            'level' => $parent ? 2 : 1,
+            'is_active' => true,
+        ]);
     }
 
     private function ratingsFromOtherStores($portals, int $storeId): array
@@ -758,7 +902,22 @@ class SupplierController extends Controller
     public function availableProducts(int $id, Request $request): JsonResponse
     {
         $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+
+        // Supplier portal listings may be added after this store linked the supplier.
+        // Refresh the store's local product and supplier-offer records before listing them.
+        if ($supplier->supplier_portal_id) {
+            $portal = SupplierPortal::query()->find($supplier->supplier_portal_id);
+            if ($portal) {
+                $this->syncPortalProductsToStore($portal, $supplier);
+            }
+        }
+
         $productModels = $supplier->products()
+            ->where('products.is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('supplier_products.availability_status')
+                    ->orWhereNotIn('supplier_products.availability_status', ['unavailable', 'out_of_stock', 'inactive']);
+            })
             ->with([
                 'category:id,category_name',
                 'subcategory:id,category_name',

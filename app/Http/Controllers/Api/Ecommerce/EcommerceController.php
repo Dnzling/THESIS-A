@@ -2498,11 +2498,13 @@ class EcommerceController extends Controller
                             'order_number' => (string) $fresh->order_number,
                             'customer_name' => (string) $fresh->shipping_name,
                             'reason' => (string) $validated['reason'],
-                            'amount' => (float) $fresh->total_amount,
+                            'amount' => max(0, round((float) $fresh->total_amount - (float) $fresh->shipping_fee, 2)),
                             'status' => 'pending',
                             'requested_by' => $user->id,
                             'refund_method' => $refundMethod,
-                            'notes' => $refundMethod ? 'Refund to the original payment method.' : 'Customer payout destination is required.',
+                            'notes' => $refundMethod
+                                ? 'Refund to the original payment method. Shipping fee excluded.'
+                                : 'Customer payout destination is required. Shipping fee excluded from the refund amount.',
                         ]
                     );
                 }

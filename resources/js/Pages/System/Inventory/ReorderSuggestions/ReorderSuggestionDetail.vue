@@ -85,7 +85,7 @@
       </Card>
       <div class="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
         <Button v-if="suggestion.status === 'pending'" label="Reject" icon="pi pi-times" size="small" severity="danger" outlined @click="openAction('reject')" />
-        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'pr' && canManagePr" label="Approve & Create PR" icon="pi pi-check" size="small" severity="warn" @click="openAction('approve')" />
+        <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'pr' && canManagePr" label="Approve & Submit PR" icon="pi pi-check" size="small" severity="warn" @click="openAction('approve')" />
         <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'po' && canManagePo" label="Approve & Create PO" icon="pi pi-shopping-cart" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/purchase-orders/create?reorder_suggestion_id=${suggestion.id}`)" />
         <Button v-if="suggestion.status === 'pending' && suggestion.reorder_destination === 'warehouse' && canCreateTransfer" label="Request from Warehouse" icon="pi pi-warehouse" size="small" severity="warn" @click="inertiaRouter.visit(`/inventory/stock-requests/create?type=transfer&reorder_suggestion_id=${suggestion.id}`)" />
         <Button v-if="suggestion.metadata?.stock_transfer_id" label="View Warehouse Request" icon="pi pi-arrow-right-arrow-left" size="small" severity="secondary" outlined @click="router.push({ name: 'inventory.stock-requests.detail', params: { type: 'transfer', id: suggestion.metadata.stock_transfer_id } })" />
@@ -313,8 +313,8 @@ const openAction = (type: 'approve' | 'reject') => {
 
   if (type === 'approve') {
     actionDialog.title = 'Approve Suggestion'
-    actionDialog.description = 'Approve this suggestion and create a draft Inventory PR. Submit the PR from Inventory Purchase Requisitions.'
-    actionDialog.confirmLabel = 'Approve'
+    actionDialog.description = 'Approve this suggestion and submit its Purchase Requisition. It will be routed for approval, or sent to Procurement if you have PR approval permission.'
+    actionDialog.confirmLabel = 'Approve and Submit PR'
     actionDialog.severity = 'success'
     return
   }
@@ -332,9 +332,11 @@ const submitAction = async () => {
   if (!actionDialog.type || !suggestionId.value) return
 
   submitting.value = true
+  let successMessage = ''
   try {
     if (actionDialog.type === 'approve') {
       const response = await inventoryService.approveReorderSuggestion(suggestionId.value, actionDialog.notes || undefined)
+      successMessage = response?.message || 'Purchase Requisition submitted.'
       if (response?.action_required === 'create_purchase_order' && response?.url) {
         actionDialog.visible = false
         inertiaRouter.visit(response.url)
@@ -349,7 +351,7 @@ const submitAction = async () => {
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: actionDialog.type === 'approve' ? 'Draft PR created in Inventory Purchase Requisitions.' : 'Suggestion rejected.',
+      detail: actionDialog.type === 'approve' ? successMessage : 'Suggestion rejected.',
       life: 2500,
     })
   } catch (error: any) {

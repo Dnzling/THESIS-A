@@ -156,11 +156,6 @@
             <Button icon="pi pi-times" text rounded severity="danger" @click="contractFile = null" />
           </div>
           <small v-if="isExternalSupplier && errors.signed_copy" class="mt-2 block text-red-600">{{ errors.signed_copy }}</small>
-          <label v-if="isExternalSupplier" class="mt-4 flex items-start gap-2 text-sm text-slate-700">
-            <Checkbox v-model="signedCopyConfirmed" :binary="true" />
-            <span> I confirm this uploaded copy contains the signatures of both the store and the external supplier.</span>
-          </label>
-          <small v-if="isExternalSupplier && errors.signed_copy_confirmed" class="mt-1 block text-red-600">{{ errors.signed_copy_confirmed }}</small>
         </template>
       </Card>
 
@@ -175,8 +170,8 @@
       </div>
     </form>
 
-    <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="w-[72rem] max-w-[96vw]" :pt="{ content: { class: 'p-0' }, footer: { class: 'p-0' } }">
-      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">
+    <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="max-w-[96vw] overflow-hidden" :style="{ width: 'min(72rem, 96vw)', height: 'min(92vh, 900px)' }" :pt="{ root: { class: 'flex flex-col overflow-hidden' }, content: { class: 'flex min-h-0 flex-1 flex-col overflow-hidden p-0' }, footer: { class: 'shrink-0 p-0' } }">
+      <div class="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">
         <div>
           <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Final review</p>
           <h2 class="mt-1 text-xl font-semibold text-slate-900">Review supplier contract</h2>
@@ -185,7 +180,7 @@
         <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close review" @click="showReviewDialog = false" />
       </div>
 
-      <div class="max-h-[76vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+      <div class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 md:px-6">
         <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="sm:col-span-2"><p class="text-xs text-slate-500">Contract title</p><p class="mt-1 font-semibold text-slate-900">{{ form.contract_title }}</p></div>
           <div><p class="text-xs text-slate-500">Type</p><p class="mt-1 font-medium capitalize text-slate-900">{{ form.contract_type }}</p></div>
@@ -203,11 +198,11 @@
 
         <div class="overflow-hidden rounded-xl border border-slate-200">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3"><div><h3 class="font-semibold text-slate-900">Agreement preview</h3><p class="text-xs text-slate-500">Read the generated agreement before submission.</p></div><span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">Draft preview</span></div>
-          <iframe class="h-[min(55vh,620px)] min-h-[360px] w-full bg-white" :srcdoc="reviewHtml" title="Draft store-supplier agreement"></iframe>
+          <iframe class="h-[min(68vh,760px)] min-h-[480px] w-full bg-white" :srcdoc="reviewHtml" title="Draft store-supplier agreement"></iframe>
         </div>
       </div>
       <template #footer>
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
+        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
           <p class="text-xs text-slate-500">{{ isExternalSupplier ? 'The signed copy is stored with this contract and activates it immediately.' : route.query.from_inventory ? 'Manual inventory supplier contracts become active immediately after submission.' : 'Supplier portal contracts remain pending until the supplier agrees to the terms.' }}</p>
           <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button :label="isExternalSupplier ? 'Create and Activate Contract' : 'Create Pending Contract'" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
@@ -255,7 +250,6 @@ const loading = ref(false)
 const submitting = ref(false)
 const suppliers = ref<any[]>([])
 const contractFile = ref<File | null>(null)
-const signedCopyConfirmed = ref(false)
 const selectedSupplierIsExternal = ref(false)
 const isExternalSupplier = computed(() => selectedSupplierIsExternal.value && !route.query.from_inventory && !route.query.from_supplier_portal)
 const selectedSupplierName = ref<string>('Not Selected')
@@ -824,7 +818,6 @@ const validateForm = (): boolean => {
     errors.tax_rate = 'Tax rate is fixed at 12%'
   }
   if (isExternalSupplier.value && !contractFile.value) errors.signed_copy = 'Upload the fully signed contract copy.'
-  if (isExternalSupplier.value && !signedCopyConfirmed.value) errors.signed_copy_confirmed = 'Confirm both parties signed this copy.'
 
   return Object.keys(errors).length === 0
 }
@@ -871,8 +864,6 @@ const createPendingContract = async (mode: 'draft' | 'review') => {
     })
     formData.append('status', 'pending')
     if (contractFile.value) formData.append(isExternalSupplier.value ? 'signed_copy' : 'contract_file', contractFile.value)
-    if (isExternalSupplier.value && signedCopyConfirmed.value) formData.append('signed_copy_confirmed', '1')
-
     if (route.query.from_inventory) {
       await inventoryService.createSupplierContract(formData)
     } else {
@@ -973,7 +964,7 @@ onMounted(async () => {
       if (!route.query.from_inventory && !route.query.from_supplier_portal) {
         const supplierResponse = await procurementService.getSupplier(form.supplier_id)
         const supplierData = supplierResponse?.data?.data || supplierResponse?.data || supplierResponse
-        selectedSupplierIsExternal.value = Boolean(supplierData?.is_external)
+        selectedSupplierIsExternal.value = Boolean(supplierData?.is_external && !supplierData?.supplier_portal_id)
         selectedSupplierName.value = supplierData?.supplier_name || selectedSupplierName.value
       }
       if (!selectedSupplierName.value || selectedSupplierName.value === 'Not Selected') {
@@ -986,8 +977,6 @@ onMounted(async () => {
           selectedSupplierName.value = supplier.supplier_name
         }
       }
-      onSupplierChange()
-
       toast.add({
         severity: 'info',
         summary: 'Create Contract',

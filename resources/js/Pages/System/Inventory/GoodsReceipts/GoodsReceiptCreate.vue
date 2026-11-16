@@ -503,6 +503,16 @@ const submitForm = async () => {
     return
   }
 
+  if (!saveDraft.value && totalReceived.value <= 0) {
+    toast.add({
+      severity: 'error',
+      summary: 'Received quantity required',
+      detail: 'Enter the quantity physically received for at least one item before completing this receipt.',
+      life: 4000
+    })
+    return
+  }
+
   saving.value = true
   try {
       const payload: Record<string, any> = {
@@ -545,11 +555,16 @@ const submitForm = async () => {
     }, 1500)
   } catch (error) {
     console.error('Failed to create goods receipt', error)
+    const responseData = (error as any)?.response?.data
+    const validationDetails = Object.values(responseData?.errors || {})
+      .flatMap((messages: any) => Array.isArray(messages) ? messages : [messages])
+      .filter(Boolean)
+      .join(' ')
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: (error as any)?.response?.data?.message || 'Failed to create goods receipt',
-      life: 3000
+      detail: [responseData?.message, validationDetails].filter(Boolean).join(' ') || 'Failed to create goods receipt',
+      life: 5000
     })
   } finally {
     saving.value = false

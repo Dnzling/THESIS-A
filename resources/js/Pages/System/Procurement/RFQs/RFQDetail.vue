@@ -195,6 +195,21 @@
                   <span class="text-xs text-green-600">Responded: {{ formatDateTime(invitedSupplier.responded_at)
                     }}</span>
                 </div>
+                <div v-if="invitedSupplier.supplier?.is_external" class="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <Tag :value="invitedSupplier.email_delivery_status === 'sent' ? 'RFQ emailed' : invitedSupplier.email_delivery_status === 'failed' ? 'Email failed' : 'Email not sent'" :severity="invitedSupplier.email_delivery_status === 'sent' ? 'success' : invitedSupplier.email_delivery_status === 'failed' ? 'danger' : 'secondary'" />
+                    <span v-if="invitedSupplier.email_sent_at" class="text-xs text-slate-500">{{ formatDateTime(invitedSupplier.email_sent_at) }}</span>
+                  </div>
+                  <div v-if="invitedSupplier.email_replies?.length" class="space-y-2 border-t border-slate-200 pt-2">
+                    <p class="text-xs font-semibold text-slate-700">Email replies ({{ invitedSupplier.email_replies.length }})</p>
+                    <article v-for="reply in invitedSupplier.email_replies" :key="reply.id" class="rounded-md border border-slate-200 bg-white p-2.5">
+                      <p class="text-xs font-medium text-slate-800">{{ reply.subject || 'Supplier email reply' }}</p>
+                      <p class="mt-0.5 text-[11px] text-slate-500">{{ reply.from_name || reply.from_email }} · {{ formatDateTime(reply.received_at) }}</p>
+                      <p v-if="reply.body" class="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-xs text-slate-700">{{ reply.body }}</p>
+                    </article>
+                  </div>
+                  <p v-else-if="invitedSupplier.email_reply_token" class="text-xs text-slate-500">Waiting for the supplier to reply by email.</p>
+                </div>
                 <div v-if="invitedSupplier.decline_reason" class="mt-2 p-2 bg-red-50 rounded-lg">
                   <p class="text-xs text-red-600">Declined: {{ invitedSupplier.decline_reason }}</p>
                 </div>
@@ -391,7 +406,7 @@
   
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3">
-        <button v-if="canManageRfq && ['pending', 'sent', 'receiving', 'quotes_received'].includes(detail.status) && detail.suppliers?.length && detail.items?.length" @click="openOfflineQuoteDialog"
+        <button v-if="canManageRfq && ['pending', 'sent', 'receiving', 'quotes_received'].includes(detail.status) && hasExternalSupplier && detail.items?.length" @click="openOfflineQuoteDialog"
           class="px-4 py-2 rounded-xl border border-orange-200 bg-orange-50 text-orange-700 text-sm font-medium hover:bg-orange-100">
           <i class="pi pi-file-edit mr-2"></i>Record Supplier Quote
         </button>
@@ -648,7 +663,9 @@ const offlineQuoteChannels = [
   { label: 'Paper quotation', value: 'paper' },
   { label: 'In person', value: 'in_person' },
 ]
-const invitedSupplierOptions = computed(() => (detail.value?.suppliers || []).map((entry: any) => ({
+const externalSupplierInvitations = computed(() => (detail.value?.suppliers || []).filter((entry: any) => entry.supplier?.is_external && !entry.supplier?.supplier_portal_id))
+const hasExternalSupplier = computed(() => externalSupplierInvitations.value.length > 0)
+const invitedSupplierOptions = computed(() => externalSupplierInvitations.value.map((entry: any) => ({
   label: entry.supplier?.supplier_name || entry.supplier_name || `Supplier #${entry.supplier_id}`,
   value: String(entry.supplier_id),
 })))

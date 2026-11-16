@@ -28,6 +28,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'brevo' => [
+        'rfq_reply_domain' => env('BREVO_RFQ_REPLY_DOMAIN'),
+        'inbound_webhook_username' => env('BREVO_INBOUND_WEBHOOK_USERNAME'),
+        'inbound_webhook_password' => env('BREVO_INBOUND_WEBHOOK_PASSWORD'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

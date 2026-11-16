@@ -6,7 +6,9 @@
         <p class="text-xs text-gray-500 mt-0.5">
           {{ reorderDestination === 'warehouse'
             ? 'Select pending items for one receiving branch to create a grouped warehouse request. Open View for the full calculation.'
-            : 'Group pending items by supplier and receiving branch to create one purchase order per group. Open View for the full calculation.' }}
+            : reorderDestination === 'pr'
+              ? 'Select pending items to submit Purchase Requisitions by receiving branch. Approval permission routes approved PRs to Procurement.'
+              : 'Select a supplier and branch to create a Purchase Order. Open View for the full calculation.' }}
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -21,7 +23,7 @@
         />
         <Button
           v-else-if="reorderDestination === 'pr' && canManagePr"
-          :label="`Create Grouped PRs (${selectedSuggestions.length})`"
+          :label="`Submit Grouped PRs (${selectedSuggestions.length})`"
           icon="pi pi-file-plus"
           size="small"
           severity="warn"
@@ -469,8 +471,8 @@ const createGroupedPrs = async () => {
     selectedSuggestions.value = []
     toast.add({
       severity: 'success',
-      summary: 'Draft PRs Created',
-      detail: response?.message || `${createdCount} grouped draft purchase requisition(s) created.`,
+      summary: 'PRs Submitted',
+      detail: response?.message || `${createdCount} grouped purchase requisition(s) submitted.`,
       life: 3500,
     })
     await refreshData()

@@ -476,9 +476,7 @@ class InventoryService {
   }
 
   async createSupplierContract(data: FormData) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts`, data)
     return response.data
   }
 

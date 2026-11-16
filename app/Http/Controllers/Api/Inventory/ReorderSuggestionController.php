@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\ReorderSuggestionRequest;
 use App\Models\Hr\Employee;
+use App\Models\Core\User;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Store\Branch;
 use App\Services\Inventory\ReorderSuggestionService;
@@ -39,21 +40,54 @@ class ReorderSuggestionController extends Controller
             return response()->json(['message' => 'A store employee is required to create a requisition.'], 403);
         }
 
+        $storeId = (int) $context['store_id'];
+        $user = $request->user();
+        $approvalPermissions = ['inventory.requisites.approve', 'inventory.requisitions.approve'];
+        $approvedPermission = collect($approvalPermissions)->first(
+            fn (string $permission) => $user?->hasPermissionTo($permission, $storeId)
+        );
+        $autoApprove = $approvedPermission !== null;
+        $approvalChain = $autoApprove ? [[
+            'role' => $user?->role?->name ?? 'approver',
+            'user_id' => (int) $user?->id,
+            'user_name' => $user?->full_name,
+            'action' => 'approved',
+            'notes' => 'Auto-approved on submission because the creator has PR approval permission.',
+            'approved_at' => now()->toDateTimeString(),
+        ]] : null;
+        $procurementEnabled = $this->storeHasProcurementAccess($storeId);
+
         try {
             $prs = $this->suggestionService->createGroupedPurchaseRequisitions(
                 $validated['suggestion_ids'],
                 (int) $context['store_id'],
                 $context['branch_id'] ?: null,
-                (int) EmployeeContext::currentEmployeeId()
+                (int) EmployeeContext::currentEmployeeId(),
+                $autoApprove,
+                $procurementEnabled,
+                $approvalChain,
             );
 
-            return response()->json(['success' => true, 'data' => $prs, 'message' => count($prs) . ' draft PR(s) created.']);
+            return response()->json(['success' => true, 'data' => $prs, 'message' => count($prs) . ' purchase requisition(s) submitted.']);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (Exception $e) {
             report($e);
             return response()->json(['message' => 'Could not create requisitions from these suggestions.'], 500);
         }
+    }
+
+    private function storeHasProcurementAccess(int $storeId): bool
+    {
+        $procurementPermissions = ['procurement.rfq.manage', 'procurement.purchase_orders.manage'];
+
+        return User::query()
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->get()
+            ->contains(fn (User $user) => collect($procurementPermissions)->contains(
+                fn (string $permission) => $user->hasPermissionTo($permission, $storeId)
+            ));
     }
 
     /**
@@ -279,6 +313,15 @@ class ReorderSuggestionController extends Controller
             }
 
             $suggestion->load(['reorderRule', 'product', 'variation', 'branch', 'approver', 'implementer']);
+            $unitCost = $suggestion->variation_id
+                ? DB::table('product_variations')->where('id', $suggestion->variation_id)->where('product_id', $suggestion->product_id)->value('cost_price')
+                : null;
+            if ($unitCost === null) {
+                $unitCost = DB::table('products')->where('id', $suggestion->product_id)->value('cost_price');
+            }
+            if ((float) $unitCost > 0) {
+                $suggestion->setAttribute('estimated_cost', round((float) $suggestion->suggested_quantity * (float) $unitCost, 2));
+            }
             $storeId = (int) ($suggestion->branch?->store_id ?? 0);
             $hasWarehouse = $storeId > 0 && Branch::query()
                 ->where('store_id', $storeId)
@@ -437,7 +480,26 @@ class ReorderSuggestionController extends Controller
             $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
 
-            if (!$this->suggestionService->approveSuggestion($suggestion, $approvedBy, $notes)) {
+            $user = $request->user();
+            $autoApprovePr = $user?->hasPermissionTo('inventory.requisites.approve', $storeId)
+                || $user?->hasPermissionTo('inventory.requisitions.approve', $storeId);
+            $approvalChain = $autoApprovePr ? [[
+                'role' => $user?->role?->name ?? 'approver',
+                'user_id' => (int) $user?->id,
+                'user_name' => $user?->full_name,
+                'action' => 'approved',
+                'notes' => 'Auto-approved on submission because the creator has PR approval permission.',
+                'approved_at' => now()->toDateTimeString(),
+            ]] : null;
+
+            if (!$this->suggestionService->approveSuggestion(
+                $suggestion,
+                $approvedBy,
+                $notes,
+                (bool) $autoApprovePr,
+                $this->storeHasProcurementAccess($storeId),
+                $approvalChain,
+            )) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Suggestion cannot be approved.',
@@ -447,7 +509,9 @@ class ReorderSuggestionController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $suggestion->fresh(['reorderRule', 'product', 'variation', 'branch', 'approver']),
-                'message' => 'Suggestion approved and draft Inventory PR created.',
+                'message' => $autoApprovePr
+                    ? 'Suggestion approved and its purchase requisition was submitted to Procurement.'
+                    : 'Suggestion approved and its purchase requisition was submitted for approval.',
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -751,7 +815,27 @@ class ReorderSuggestionController extends Controller
             $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
 
-            $result = $this->suggestionService->bulkApprove($suggestionIds, $approvedBy, $notes);
+            $storeId = (int) $context['store_id'];
+            $user = $request->user();
+            $autoApprovePr = $user?->hasPermissionTo('inventory.requisites.approve', $storeId)
+                || $user?->hasPermissionTo('inventory.requisitions.approve', $storeId);
+            $approvalChain = $autoApprovePr ? [[
+                'role' => $user?->role?->name ?? 'approver',
+                'user_id' => (int) $user?->id,
+                'user_name' => $user?->full_name,
+                'action' => 'approved',
+                'notes' => 'Auto-approved on submission because the creator has PR approval permission.',
+                'approved_at' => now()->toDateTimeString(),
+            ]] : null;
+
+            $result = $this->suggestionService->bulkApprove(
+                $suggestionIds,
+                $approvedBy,
+                $notes,
+                (bool) $autoApprovePr,
+                $this->storeHasProcurementAccess($storeId),
+                $approvalChain,
+            );
 
             return response()->json([
                 'success' => true,

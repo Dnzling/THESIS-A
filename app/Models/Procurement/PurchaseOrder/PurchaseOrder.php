@@ -388,7 +388,7 @@ class PurchaseOrder extends Model
             PurchaseRequisition::query()
                 ->whereKey($this->purchase_requisition_id)
                 ->whereNotIn('status', ['rejected', 'cancelled'])
-                ->update(['status' => 'received']);
+                ->update(['status' => 'delivered']);
         }
     }
 }

@@ -95,8 +95,6 @@
               <div class="space-y-4 p-4">
                 <div>
                   <h3 class="font-semibold text-slate-900">{{ product.product_name || product.name }}</h3>
-                  <p class="mt-1 text-xs text-slate-500">Supplier SKU: {{ product.supplier_sku || '-' }}</p>
-                  <p class="text-xs text-slate-500">Product SKU: {{ product.sku || '-' }}</p>
                   <p v-if="product.description" class="mt-2 line-clamp-3 whitespace-pre-line text-sm text-slate-600">{{ product.description }}</p>
                 </div>
 
@@ -137,7 +135,7 @@
                       <div v-else class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-slate-50"><i class="pi pi-image text-slate-300" /></div>
                       <div class="min-w-0 flex-1">
                         <div class="flex items-start justify-between gap-2"><p class="font-medium text-slate-900">{{ variant.name || 'Variant' }}</p><Tag :value="variant.is_active ? 'Active' : 'Inactive'" :severity="variant.is_active ? 'success' : 'secondary'" /></div>
-                        <p class="mt-1 text-xs text-slate-500">SKU: {{ variant.sku || '-' }} <span v-if="variant.unit_of_measurement">· {{ variant.unit_of_measurement }}</span></p>
+                        <p v-if="variant.unit_of_measurement" class="mt-1 text-xs text-slate-500">{{ variant.unit_of_measurement }}</p>
                         <p class="mt-1 text-xs text-slate-600">Base cost {{ money(variant.base_cost) }} · Tax {{ money(variant.tax_amount) }}</p>
                         <p class="text-sm font-semibold text-slate-800">{{ money(variant.cost_including_tax) }} <span class="font-normal text-slate-500">incl. tax</span></p>
                       </div>
