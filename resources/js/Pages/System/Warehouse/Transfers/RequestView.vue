@@ -68,7 +68,9 @@ const loading = ref(true), transfer = ref<any>(null), rejectVisible = ref(false)
 const rejectForm = reactive({ reason: '', details: '' })
 const rejectReasons = ['Insufficient stock', 'Product unavailable', 'Quantity cannot be fulfilled', 'Invalid destination', 'Transfer details require correction', 'Other']
 const id = computed(() => String(page.url).match(/transfer-requests\/(\d+)/)?.[1] || '')
-const canReject = computed(() => transfer.value?.status === 'sender_approved' && auth.hasPermission('warehouse.transfers.reject'))
+const canReject = computed(() => transfer.value?.status === 'sender_approved'
+  && transfer.value?.delivery_status !== 'ready_for_dispatch'
+  && auth.hasPermission('warehouse.transfers.reject'))
 const canDispatch = computed(() => transfer.value?.status === 'sender_approved' && !transfer.value?.delivery_status && auth.hasPermission('warehouse.transfers.approve'))
 const label = (value: any) => String(value || '—').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
 const number = (value: any) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })

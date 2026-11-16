@@ -166,9 +166,9 @@
             <div class="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-2">
               <div class="text-sm font-semibold text-slate-800">Delivery Logs</div>
               <Button
-                v-if="canRecordShipmentLog"
-                :icon="canMarkDelivered ? 'pi pi-check-circle' : 'pi pi-plus'"
-                :label="canMarkDelivered ? 'Mark as Delivered' : 'Record a Log'"
+                v-if="canRecordShipmentLog && !canMarkDelivered"
+                icon="pi pi-plus"
+                label="Record a Log"
                 size="small"
                 text
                 @click="onShipmentActionClick"
@@ -238,6 +238,20 @@
           </Column>
           <Column field="notes" header="Notes" />
         </DataTable>
+      </template>
+    </Card>
+
+    <Card v-if="isOutForDelivery" class="rounded-3xl border border-slate-200/80 shadow-sm">
+      <template #title>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="flex items-center gap-2"><i class="pi pi-map-marker text-orange-600"></i>Live Delivery Map</span>
+          <Tag :value="currentLocation ? 'Location updating' : 'Waiting for location permission'" :severity="currentLocation ? 'success' : 'warn'" />
+        </div>
+      </template>
+      <template #content>
+        <p class="mb-3 text-xs text-slate-500">This map follows the current user’s device while the transfer is out for delivery.</p>
+        <div ref="liveMapElement" class="h-[360px] w-full overflow-hidden rounded-xl border border-slate-200"></div>
+        <Message v-if="locationError" severity="warn" :closable="false" class="mt-3">{{ locationError }}</Message>
       </template>
     </Card>
 
@@ -336,16 +350,8 @@
     <Dialog v-model:visible="markDeliveredDialogVisible" modal header="Proof of Delivery" class="w-full max-w-2xl">
       <div class="space-y-3">
         <p class="text-sm text-slate-600">
-          Attach at least one image proof of delivery before confirming. Photos become part of the delivery log.
+          Attach a photo confirming the transfer reached the receiving branch. The branch will record quantities separately when it receives the stock.
         </p>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700">Received By <span class="text-rose-500">*</span></label>
-          <InputText
-            v-model="podReceivedBy"
-            fluid
-            placeholder="Name of person who received"
-          />
-        </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Notes (optional)</label>
           <Textarea
@@ -360,11 +366,10 @@
           <input
             type="file"
             accept="image/*"
-            multiple
             class="block w-full text-sm text-slate-600"
             @change="onPodAttachmentChange"
           />
-          <p class="mt-1 text-xs text-slate-500">Minimum 1 photo, up to 10MB each.</p>
+          <p class="mt-1 text-xs text-slate-500">Attach one image (maximum 8MB).</p>
         </div>
         <p v-if="podAttachmentNames" class="text-xs text-slate-500">{{ podAttachmentNames }}</p>
         <div v-if="podAttachmentPreviews.length" class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -392,11 +397,15 @@
         />
       </template>
     </Dialog>
+
+    <div v-if="canMarkDelivered" class="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:bottom-6 md:left-auto md:right-8 md:block md:rounded-xl md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+      <Button icon="pi pi-check-circle" label="Mark Delivered" severity="warn" size="large" class="w-full shadow-lg md:w-auto" :loading="markingDelivered" :disabled="markingDelivered" @click="markDeliveredDialogVisible = true" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -406,7 +415,6 @@ import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -415,15 +423,29 @@ import Skeleton from 'primevue/skeleton'
 import Message from 'primevue/message'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { requireMapboxToken } from '@/utils/mapbox'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 const canManageTrips = authStore.hasPermission('logistics.deliveries.manage')
+const canAccessTransferDelivery = computed(() => canManageTrips
+  || Number(authStore.currentUser?.id || 0) === Number(detail.value?.driver_user_id || 0))
 
 const loading = ref(false)
 const detail = ref<any>(null)
+const liveMapElement = ref<HTMLElement | null>(null)
+const currentLocation = ref<[number, number] | null>(null)
+const locationError = ref('')
+let liveMap: MapboxMap | null = null
+let liveMapbox: typeof import('mapbox-gl').default | null = null
+let currentMarker: MapboxMarker | null = null
+let destinationMarker: MapboxMarker | null = null
+let locationWatcher: number | null = null
+let lastLocationSentAt = 0
 const transferId = computed(() => Number(route.params.id || 0))
 const tripChoiceVisible = ref(false)
 const compatibleTrips = ref<any[]>([])
@@ -472,7 +494,6 @@ const savingLog = ref(false)
 const markDeliveredDialogVisible = ref(false)
 const markDeliveredNotes = ref('')
 const markingDelivered = ref(false)
-const podReceivedBy = ref('')
 const podAttachments = ref<File[]>([])
 const podAttachmentPreviewUrls = ref<string[]>([])
 const recordLogEventOptions = [
@@ -491,6 +512,8 @@ const loadDetail = async () => {
   try {
     const response = await logisticsService.getStockTransfer(transferId.value)
     detail.value = response?.data || null
+    await nextTick()
+    syncLiveTracking()
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -533,6 +556,7 @@ const showShipmentOverview = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   return !!detail.value?.delivery_status || ['out_for_delivery', 'received'].includes(status)
 })
+const isOutForDelivery = computed(() => String(detail.value?.delivery_status || '').toLowerCase() === 'out_for_delivery')
 const canRecordShipmentLog = computed(() => {
   const status = String(detail.value?.delivery_status || detail.value?.status || '').toLowerCase()
   return ['assigned', 'in_transit', 'out_for_delivery', 'delivered', 'received'].includes(status)
@@ -676,17 +700,9 @@ const parsedDeliveryLogs = computed(() => {
 
 const deliveryLogs = computed(() => parsedDeliveryLogs.value.map(({ label, time, by }) => ({ label, time, by })))
 
-const hasUnloadingCompleted = computed(() =>
-  parsedDeliveryLogs.value.some((log) => {
-    const key = String(log.eventKey || '').toLowerCase()
-    const label = String(log.label || '').toLowerCase()
-    return key === 'unloading_completed' || label.startsWith('unloading completed')
-  })
-)
-
-const canMarkDelivered = computed(() => canRecordShipmentLog.value && hasUnloadingCompleted.value && !isReceived.value)
+const canMarkDelivered = computed(() => canAccessTransferDelivery.value && isOutForDelivery.value && !isReceived.value)
 const podAttachmentNames = computed(() => podAttachments.value.map((file) => file.name).join(', '))
-const canConfirmDelivered = computed(() => podReceivedBy.value.trim().length > 0 && podAttachments.value.length > 0 && !markingDelivered.value)
+const canConfirmDelivered = computed(() => podAttachments.value.length > 0 && !markingDelivered.value)
 const podAttachmentPreviews = computed(() =>
   podAttachments.value.map((file, index) => ({
     name: file.name,
@@ -846,26 +862,6 @@ const openMedia = (url: string) => {
 }
 
 const markAsDelivered = async () => {
-  if (!detail.value?.items?.length) {
-    toast.add({
-      severity: 'error',
-      summary: 'No Items',
-      detail: 'No transfer items found to complete delivery.',
-      life: 2800,
-    })
-    return
-  }
-
-  if (!podReceivedBy.value.trim()) {
-    toast.add({
-      severity: 'error',
-      summary: 'Missing Receiver',
-      detail: 'Please enter who received the stock transfer.',
-      life: 2800,
-    })
-    return
-  }
-
   if (!podAttachments.value.length) {
     toast.add({
       severity: 'error',
@@ -878,26 +874,19 @@ const markAsDelivered = async () => {
 
   markingDelivered.value = true
   try {
-    const items = detail.value.items.map((item: any) => ({
-      id: Number(item.id),
-      received_quantity: Number(item.shipped_quantity ?? item.approved_quantity ?? item.requested_quantity ?? 0),
-      damaged_quantity: 0,
-    }))
-
     const notesParts = [
-      `Received By: ${podReceivedBy.value.trim()}`,
       markDeliveredNotes.value.trim() ? `Notes: ${markDeliveredNotes.value.trim()}` : null,
-      podAttachments.value.length ? `Attachments: ${podAttachments.value.map((file) => file.name).join(', ')}` : null,
     ].filter(Boolean) as string[]
 
     const formData = new FormData()
+    formData.append('status', 'delivered')
     formData.append('notes', notesParts.join('\n'))
-    formData.append('items_json', JSON.stringify(items))
-    podAttachments.value.forEach((file) => {
-      formData.append('photos[]', file)
-    })
-
-    await logisticsService.receiveStockTransfer(transferId.value, formData)
+    if (currentLocation.value) {
+      formData.append('latitude', String(currentLocation.value[0]))
+      formData.append('longitude', String(currentLocation.value[1]))
+    }
+    formData.append('photo', podAttachments.value[0])
+    await logisticsService.updateUnifiedDeliveryStatus('stock_transfer', transferId.value, formData)
 
     toast.add({
       severity: 'success',
@@ -908,7 +897,6 @@ const markAsDelivered = async () => {
 
     markDeliveredDialogVisible.value = false
     markDeliveredNotes.value = ''
-    podReceivedBy.value = ''
     podAttachmentPreviewUrls.value.forEach((url) => URL.revokeObjectURL(url))
     podAttachmentPreviewUrls.value = []
     podAttachments.value = []
@@ -959,7 +947,109 @@ const toDateOnly = (value: Date | string | null) => {
 
 const goBack = () => router.push({ name: 'logistics.stock-transfers' })
 
+const updateCurrentLocation = async (latitude: number, longitude: number) => {
+  currentLocation.value = [latitude, longitude]
+  if (Date.now() - lastLocationSentAt >= 5000) {
+    lastLocationSentAt = Date.now()
+    try {
+      await logisticsService.updateUnifiedDeliveryLocation('stock_transfer', transferId.value, { latitude, longitude })
+      if (detail.value) {
+        detail.value.current_latitude = latitude
+        detail.value.current_longitude = longitude
+      }
+      locationError.value = ''
+    } catch (error: any) {
+      locationError.value = error?.response?.data?.message || 'Unable to share this device location for live tracking.'
+    }
+  }
+  await renderLiveMap()
+}
+
+const syncLiveTracking = () => {
+  if (!isOutForDelivery.value || !canAccessTransferDelivery.value) {
+    if (locationWatcher !== null && navigator.geolocation) navigator.geolocation.clearWatch(locationWatcher)
+    locationWatcher = null
+    liveMap?.remove()
+    liveMap = null
+    currentMarker = null
+    destinationMarker = null
+    currentLocation.value = null
+    return
+  }
+  if (!navigator.geolocation) {
+    locationError.value = 'This device does not support location access.'
+    return
+  }
+  if (locationWatcher !== null) return
+
+  navigator.geolocation.getCurrentPosition(
+    position => { void updateCurrentLocation(position.coords.latitude, position.coords.longitude) },
+    () => { locationError.value = 'Allow location access to show your live position on this map.' },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 },
+  )
+  locationWatcher = navigator.geolocation.watchPosition(
+    position => { void updateCurrentLocation(position.coords.latitude, position.coords.longitude) },
+    () => { locationError.value = 'Allow location access to show your live position on this map.' },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+  )
+  void renderLiveMap()
+}
+
+const renderLiveMap = async () => {
+  if (!liveMapElement.value || !isOutForDelivery.value) return
+  try {
+    if (!liveMapbox) {
+      liveMapbox = (await import('mapbox-gl')).default
+      liveMapbox.accessToken = requireMapboxToken()
+    }
+    const latitude = Number(detail.value?.to_branch?.latitude)
+    const longitude = Number(detail.value?.to_branch?.longitude)
+    const destination: [number, number] | null = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0
+      ? [latitude, longitude]
+      : null
+    const center = currentLocation.value || destination || [14.5995, 120.9842]
+    if (!liveMap) {
+      liveMap = new liveMapbox.Map({ container: liveMapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: [center[1], center[0]], zoom: 12 })
+      await new Promise<void>(resolve => liveMap!.once('load', () => resolve()))
+    }
+    if (currentLocation.value) {
+      if (!currentMarker) currentMarker = new liveMapbox.Marker({ color: '#f97316' }).addTo(liveMap)
+      currentMarker.setLngLat([currentLocation.value[1], currentLocation.value[0]])
+    }
+    if (destination) {
+      if (!destinationMarker) destinationMarker = new liveMapbox.Marker({ color: '#2563eb' }).addTo(liveMap)
+      destinationMarker.setLngLat([destination[1], destination[0]])
+    }
+    if (currentLocation.value && destination) {
+      const bounds = new liveMapbox.LngLatBounds([currentLocation.value[1], currentLocation.value[0]], [currentLocation.value[1], currentLocation.value[0]])
+      bounds.extend([destination[1], destination[0]])
+      liveMap.fitBounds(bounds, { padding: 48, maxZoom: 14 })
+    } else if (currentLocation.value || destination) {
+      const point = currentLocation.value || destination!
+      liveMap.setCenter([point[1], point[0]])
+    }
+    liveMap.resize()
+  } catch {
+    locationError.value = 'Unable to load the live map. Check the Mapbox configuration and connection.'
+  }
+}
+
+watch(isOutForDelivery, async () => {
+  await nextTick()
+  syncLiveTracking()
+  if (isOutForDelivery.value) void renderLiveMap()
+})
+
 onMounted(async () => {
   await loadDetail()
+})
+
+onBeforeUnmount(() => {
+  if (locationWatcher !== null && navigator.geolocation) navigator.geolocation.clearWatch(locationWatcher)
+  liveMap?.remove()
+  liveMap = null
+  currentMarker = null
+  destinationMarker = null
+  podAttachmentPreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
 })
 </script>

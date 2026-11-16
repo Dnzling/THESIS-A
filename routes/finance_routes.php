@@ -63,14 +63,14 @@ Route::prefix('finance')->group(function () {
         Route::post('/bulk-mark-paid', [FinancePayrollController::class, 'bulkMarkPaid'])->middleware('can:finance.payroll.approve');
 
         Route::prefix('basic')->group(function (): void {
-            Route::get('/periods', [SimplePayrollController::class, 'periods'])->middleware('can:finance.payroll.view');
-            Route::get('/periods/{periodId}', [SimplePayrollController::class, 'periodDetail'])->middleware('can:finance.payroll.view');
-            Route::get('/preview', [SimplePayrollController::class, 'preview'])->middleware('can:finance.payroll.view');
-            Route::post('/generate', [SimplePayrollController::class, 'generate'])->middleware('can:finance.payroll.manage');
-            Route::put('/{payrollId}', [SimplePayrollController::class, 'updateDraft'])->middleware('can:finance.payroll.manage');
-            Route::post('/{payrollId}/complete', [SimplePayrollController::class, 'complete'])->middleware('can:finance.payroll.approve');
-            Route::post('/bulk-complete', [SimplePayrollController::class, 'bulkComplete'])->middleware('can:finance.payroll.approve');
-            Route::post('/bulk-pay', [SimplePayrollController::class, 'bulkPay'])->middleware('can:finance.payroll.approve');
+            Route::get('/periods', [SimplePayrollController::class, 'periods'])->middleware('can:finance.basic.payroll');
+            Route::get('/periods/{periodId}', [SimplePayrollController::class, 'periodDetail'])->middleware('can:finance.basic.payroll');
+            Route::get('/preview', [SimplePayrollController::class, 'preview'])->middleware('can:finance.basic.payroll');
+            Route::post('/generate', [SimplePayrollController::class, 'generate'])->middleware('can:finance.basic.payroll');
+            Route::put('/{payrollId}', [SimplePayrollController::class, 'updateDraft'])->middleware('can:finance.basic.payroll');
+            Route::post('/{payrollId}/complete', [SimplePayrollController::class, 'complete'])->middleware('can:finance.basic.payroll');
+            Route::post('/bulk-complete', [SimplePayrollController::class, 'bulkComplete'])->middleware('can:finance.basic.payroll');
+            Route::post('/bulk-pay', [SimplePayrollController::class, 'bulkPay'])->middleware('can:finance.basic.payroll');
         });
     });
 

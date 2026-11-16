@@ -1180,7 +1180,8 @@ class UnifiedDeliveryController extends Controller
         $source = strtolower($source);
         $targetStatus = strtolower((string) $request->input('status'));
         $proofRequired = ($source === 'pickup' && in_array($targetStatus, ['out_for_delivery', 'delivered'], true))
-            || (in_array($source, ['ecommerce', 'sales'], true) && in_array($targetStatus, ['in_transit', 'delivered'], true));
+            || (in_array($source, ['ecommerce', 'sales'], true) && in_array($targetStatus, ['in_transit', 'delivered'], true))
+            || ($source === 'stock_transfer' && $targetStatus === 'delivered');
         // GPS is best-effort for delivery milestones. A driver may submit the
         // required proof even when the device cannot provide a fresh position.
         $locationRequired = false;
@@ -1285,7 +1286,9 @@ class UnifiedDeliveryController extends Controller
             $transfer = StockTransfer::query()
                 ->where('store_id', $this->resolveStoreId($request))
                 ->findOrFail($orderId);
-            if ((int) $transfer->driver_user_id !== (int) $request->user()->id) {
+            $canManageTransferDelivery = app(\App\Services\Core\PermissionService::class)
+                ->userHasPermission($request->user(), 'logistics.deliveries.manage');
+            if ((int) $transfer->driver_user_id !== (int) $request->user()->id && !$canManageTransferDelivery) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
 
@@ -1308,7 +1311,18 @@ class UnifiedDeliveryController extends Controller
                 $locationAddress = $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']) ?: '';
             }
 
-            DB::transaction(function () use ($transfer, $validated, $locationAddress, $request) {
+            $podEntry = null;
+            if ($validated['status'] === 'delivered' && $request->hasFile('photo')) {
+                $photo = $request->file('photo');
+                $path = $photo->store("logistics/stock-transfers/{$transfer->id}/pod", 'public');
+                $podEntry = sprintf(
+                    'POD|%s|%s',
+                    Storage::disk('public')->url($path),
+                    str_replace(['|', "\n", "\r"], ['/', ' ', ' '], (string) $photo->getClientOriginalName()),
+                );
+            }
+
+            DB::transaction(function () use ($transfer, $validated, $locationAddress, $request, $podEntry) {
                 if ($validated['status'] === 'in_transit') {
                     $transfer->loadMissing('items');
                     foreach ($transfer->items as $transferItem) {
@@ -1386,7 +1400,12 @@ class UnifiedDeliveryController extends Controller
                 $actor = $request->user();
                 $actorName = trim((string) ($actor?->fname.' '.$actor?->lname)) ?: 'Driver';
                 $entry = 'LOG2|'.now()->toDateTimeString().'|'.$actorName.'|custom_note|Delivery status updated to '.str_replace('_', ' ', $validated['status']);
-                $transfer->notes = trim((string) $transfer->notes."\n".$entry);
+                $transfer->notes = trim(implode("\n", array_filter([
+                    trim((string) $transfer->notes),
+                    $entry,
+                    $validated['notes'] ?? null,
+                    $podEntry,
+                ])));
 
                 $transfer->save();
             });
@@ -1674,7 +1693,9 @@ class UnifiedDeliveryController extends Controller
             $transfer = StockTransfer::query()
                 ->where('store_id', $this->resolveStoreId($request))
                 ->findOrFail($orderId);
-            if ((int) $transfer->driver_user_id !== (int) $request->user()->id) {
+            $canManageTransferDelivery = app(\App\Services\Core\PermissionService::class)
+                ->userHasPermission($request->user(), 'logistics.deliveries.manage');
+            if ((int) $transfer->driver_user_id !== (int) $request->user()->id && !$canManageTransferDelivery) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
             if (!in_array(strtolower((string) $transfer->delivery_status), ['in_transit', 'out_for_delivery'], true)) {

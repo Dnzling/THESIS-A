@@ -947,7 +947,9 @@ const proofPhotoLabel = computed(() =>
     : nextStatus.value === 'delivered'
     ? source.value === 'pickup'
       ? 'Store handoff photo'
-      : 'Delivered order photo'
+      : source.value === 'stock_transfer'
+        ? 'Transfer delivery photo'
+        : 'Delivered order photo'
     : source.value === 'pickup'
       ? 'Supplier pickup photo'
       : 'Dispatch pickup photo',
@@ -967,7 +969,9 @@ const proofInstruction = computed(() =>
     ? `Attach a photo showing the ${
         source.value === 'pickup'
           ? 'goods handed off at the receiving store'
-          : 'order delivered to the customer'
+          : source.value === 'stock_transfer'
+            ? 'stock transfer delivered to the receiving branch'
+            : 'order delivered to the customer'
       }. Your final GPS location will be captured before tracking stops.`
     : `Attach a photo showing the ${
         source.value === 'pickup'
@@ -1162,6 +1166,7 @@ const beginAdvance = async () => {
       : source.value === 'pickup'
         ? ['out_for_delivery', 'delivered'].includes(nextStatus.value)
         : ['in_transit', 'delivered'].includes(nextStatus.value))
+    || (source.value === 'stock_transfer' && nextStatus.value === 'delivered')
 
   if (needsProof) {
     proofPhoto.value = null
@@ -1278,6 +1283,7 @@ const submitPickupStatus = async () => {
     let hasTrackedLocation = Number.isFinite(latitude) && Number.isFinite(longitude)
 
     const canCaptureActionLocation = source.value === 'replacement'
+      || (source.value === 'stock_transfer' && nextStatus.value === 'delivered')
       || (source.value === 'return_pickup' && currentDeliveryStatus.value !== 'assigned')
     if (canCaptureActionLocation && !hasTrackedLocation) {
       const point = await coordinates()
