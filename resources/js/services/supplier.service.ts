@@ -475,6 +475,13 @@ class SupplierService {
     return response.data
   }
 
+  async respondReceiptResolution(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/respond`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
   async rejectReceiptResolution(id: number, reason: string) {
     const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/reject`, { reason })
     return response.data

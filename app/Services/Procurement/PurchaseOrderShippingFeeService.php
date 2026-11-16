@@ -59,7 +59,7 @@ class PurchaseOrderShippingFeeService
             $quantity = max(0, (float) ($item['quantity_ordered'] ?? 0));
             if (!$product) continue;
             $variation = $variations->get((int) ($item['variation_id'] ?? 0));
-            $weight = (float) ($item['weight_kg'] ?? $variation?->weight_kg ?? $product->weight_kg ?? 0);
+            $weight = (float) ($variation?->weight_kg ?? $product->weight_kg ?? 0);
             $totalWeight += $weight * $quantity;
         }
         $perKm = (float) $portal->delivery_fee_per_km;

@@ -4695,12 +4695,12 @@
     {
       "plan_key": "simple",
       "permission_name": "procurement.suppliers.manage",
-      "included": 0
+      "included": 1
     },
     {
       "plan_key": "simple",
       "permission_name": "procurement.suppliers.view",
-      "included": 0
+      "included": 1
     },
     {
       "plan_key": "simple",

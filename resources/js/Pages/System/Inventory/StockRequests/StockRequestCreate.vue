@@ -3,7 +3,7 @@
     <header class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded aria-label="Go back to stock requests" @click="router.push({ name: 'inventory.stock-requests' })" />
       <div>
-        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Request Stock</h1>
+      <h1 class="text-2xl font-semibold tracking-tight text-slate-900">{{ routeRequestType() === 'purchase' ? 'Request Stock From Supplier' : 'Request Stock' }}</h1>
         <p class="mt-1 text-sm text-slate-500">Choose a supplier request or a warehouse transfer. Each follows its own approval workflow.</p>
       </div>
     </header>

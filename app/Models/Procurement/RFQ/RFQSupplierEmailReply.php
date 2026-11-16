@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RFQSupplierEmailReply extends Model
 {
+    protected $table = 'rfq_supplier_email_replies';
+
     protected $fillable = [
         'rfq_supplier_id',
         'message_id',

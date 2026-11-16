@@ -312,7 +312,8 @@ class PurchaseOrderController extends Controller
             'items.product',
             'items.variation',
             'createdBy.user',
-            'goodsReceipts',
+            'goodsReceipts.items.product',
+            'goodsReceipts.resolution',
             'supplierContract',
             'shipment.driverEmployee.user',
             'shipment.driverEmployee.branch',
@@ -327,6 +328,7 @@ class PurchaseOrderController extends Controller
         $activityLogs = ActivityLog::with('user')
             ->where('entity_type', 'purchase_order')
             ->where('entity_id', $po->id)
+            ->where('store_id', $po->store_id)
             ->orderBy('created_at')
             ->get();
 

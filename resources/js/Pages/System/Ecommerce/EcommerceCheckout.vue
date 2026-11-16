@@ -95,7 +95,12 @@
                   </div>
                   <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
                   <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
+                  <div v-if="selectedAddress" class="mt-2 space-y-1 text-sm leading-5 text-slate-600">
+                    <p><span class="font-medium text-slate-700">Street / building / unit:</span> {{ selectedAddress.address_line }}</p>
+                    <p><span class="font-medium text-slate-700">Barangay:</span> {{ selectedAddress.barangay }}</p>
+                    <p><span class="font-medium text-slate-700">City:</span> {{ selectedAddress.city }}</p>
+                    <p><span class="font-medium text-slate-700">Province:</span> {{ selectedAddress.province }}</p>
+                  </div>
                 </div>
               </div>
           <Button :label="selectedAddress ? 'Change' : 'Add address'" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="openAddressDialog" />
@@ -168,7 +173,12 @@
               <input v-model="useDifferentBillingAddress" type="checkbox" class="h-4 w-4 accent-orange-500" />
               Use a different billing address
             </label>
-            <p v-if="!useDifferentBillingAddress" class="mt-3 text-xs text-slate-500">Same as saved address: {{ selectedAddressSummary }}</p>
+            <div v-if="!useDifferentBillingAddress && selectedAddress" class="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+              <p class="font-semibold text-slate-800">{{ selectedAddress.full_name }} · {{ selectedAddress.contact_number }}</p>
+              <p class="mt-1">{{ selectedAddress.address_line }}</p>
+              <p>{{ selectedAddress.barangay }}, {{ selectedAddress.city }}</p>
+              <p>{{ selectedAddress.province }}</p>
+            </div>
             <div v-if="useDifferentBillingAddress" class="mt-4 grid gap-3 sm:grid-cols-2">
               <div class="sm:col-span-2">
                 <label class="mb-1 block text-xs font-medium text-slate-600">Billing name *</label>
@@ -256,7 +266,12 @@
             <div class="border-t border-slate-200 pt-3">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ serviceMethod === 'pickup' ? 'Pickup details' : 'Delivery details' }}</p>
               <p class="mt-1 text-xs font-semibold text-slate-900">{{ serviceMethod === 'pickup' ? (pickupBranch?.name || 'Store branch') : (selectedAddress?.full_name || 'Choose an address') }}</p>
-              <p class="mt-1 text-xs leading-5 text-slate-600">{{ serviceMethod === 'pickup' ? pickupBranchAddress : selectedAddressSummary }}</p>
+              <div v-if="serviceMethod === 'pickup'" class="mt-1 text-xs leading-5 text-slate-600">{{ pickupBranchAddress }}</div>
+              <div v-else-if="selectedAddress" class="mt-1 space-y-0.5 text-xs leading-5 text-slate-600">
+                <p>{{ selectedAddress.contact_number }}</p>
+                <p>{{ selectedAddress.address_line }}</p>
+                <p>{{ selectedAddress.barangay }}, {{ selectedAddress.city }}, {{ selectedAddress.province }}</p>
+              </div>
               <p v-if="fulfillmentWindow" class="mt-1 text-xs text-slate-500">{{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}</p>
             </div>
             <div class="border-t border-slate-200 pt-3">
@@ -375,9 +390,12 @@
                   <Badge v-if="index === 0" value="Default" severity="success" />
                 </div>
                 <p class="mt-1 text-sm text-slate-600">{{ address.contact_number }}</p>
-                <p class="mt-2 text-sm leading-6 text-slate-600">
-                  {{ address.address_line }}, {{ address.barangay }}, {{ address.city }}, {{ address.province }}
-                </p>
+                <div class="mt-2 space-y-1 text-sm leading-5 text-slate-600">
+                  <p><span class="font-medium text-slate-700">Street / building / unit:</span> {{ address.address_line }}</p>
+                  <p><span class="font-medium text-slate-700">Barangay:</span> {{ address.barangay }}</p>
+                  <p><span class="font-medium text-slate-700">City:</span> {{ address.city }}</p>
+                  <p><span class="font-medium text-slate-700">Province:</span> {{ address.province }}</p>
+                </div>
               </div>
             </div>
             <div class="mt-3 flex justify-end border-t border-slate-200 pt-2">
@@ -885,11 +903,6 @@ const validatedDiscountAmount = ref(0)
 const voucherFeedback = ref<{ success: boolean; message: string } | null>(null)
 
 const selectedAddress = computed(() => addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null)
-const selectedAddressSummary = computed(() =>
-  selectedAddress.value
-    ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
-    : 'No shipping address selected.',
-)
 const voucherLabel = computed(() => {
   if (!appliedVoucher.value) return ''
   return appliedVoucher.value.discount_type === 'percent'

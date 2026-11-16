@@ -1241,7 +1241,8 @@ class UnifiedDeliveryController extends Controller
                 if ($validated['status'] === 'out_for_delivery') {
                     $pickup->purchaseOrder?->markOutForDelivery();
                 } elseif ($validated['status'] === 'delivered') {
-                    // This synchronizes both the PO and its linked PR to delivered.
+                    // This updates the PO shipment milestone; the PR moves to
+                    // received only after the GRN confirms receipt.
                     $pickup->purchaseOrder?->markDelivered();
                 }
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
     <div class="mx-auto space-y-5 px-4 sm:px-6 lg:px-8">
         <ConfirmDialog />
         <div class="flex items-center gap-3 px-5 py-4 shadow-sm">
@@ -58,7 +58,7 @@
                 Forecast restock prefilled for
                 <strong>{{ forecastPrefill.product_name }}</strong>
                 <span v-if="forecastPrefill.variant_name">({{ forecastPrefill.variant_name }})</span>:
-                SKU {{ forecastPrefill.sku || '—' }} · {{ forecastPrefill.suggested_quantity }} suggested units;
+                SKU {{ forecastPrefill.sku || 'â€”' }} Â· {{ forecastPrefill.suggested_quantity }} suggested units;
                 PO quantity prefilled to {{ forecastPrefill.po_quantity }} to meet the current 10-unit minimum.
                 Review the supplier, quantity, and total before submitting.
             </p>
@@ -297,9 +297,9 @@
                                                 <div class="flex min-w-0 flex-col gap-0.5">
                                                     <span class="truncate font-medium">{{ option.name }}</span>
                                                     <small class="truncate text-slate-500">
-                                                        SKU: {{ option.sku || '—' }}
-                                                        <span v-if="option.variant_label"> · Variant: {{ option.variant_label }}</span>
-                                                        · Stock: {{ option.stock }}
+                                                        SKU: {{ option.sku || 'â€”' }}
+                                                        <span v-if="option.variant_label"> Â· Variant: {{ option.variant_label }}</span>
+                                                        Stock: {{ option.stock }} · {{ formatWeight(option.weight_kg) }} kg/unit
                                                     </small>
                                                 </div>
                                             </template>
@@ -307,9 +307,9 @@
                                                 <div v-if="selectedItemOption(item)" class="flex min-w-0 flex-col gap-0.5 py-1">
                                                     <span class="truncate text-sm font-medium">{{ selectedItemOption(item)?.name }}</span>
                                                     <small class="truncate text-xs text-slate-500">
-                                                        SKU: {{ selectedItemOption(item)?.sku || '—' }}
-                                                        <span v-if="selectedItemOption(item)?.variant_label"> · Variant: {{ selectedItemOption(item)?.variant_label }}</span>
-                                                        · Stock: {{ selectedItemOption(item)?.stock }}
+                                                        SKU: {{ selectedItemOption(item)?.sku || 'â€”' }}
+                                                        <span v-if="selectedItemOption(item)?.variant_label"> Â· Variant: {{ selectedItemOption(item)?.variant_label }}</span>
+                                                        Stock: {{ selectedItemOption(item)?.stock }} · {{ formatWeight(selectedItemOption(item)?.weight_kg) }} kg/unit
                                                     </small>
                                                 </div>
                                                 <span v-else class="text-slate-400">{{ selectPlaceholder }}</span>
@@ -374,6 +374,13 @@
                                         >
                                             {{ money(item.unit_cost) }}
                                         </p>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <div class="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Weight</label>
+                                            <p class="text-sm font-semibold text-slate-800">{{ formatWeight(itemWeight(item)) }} kg/unit</p>
+                                            <p class="text-xs text-slate-500">{{ formatWeight(itemWeight(item) * Number(item.quantity_ordered || 0)) }} kg total</p>
+                                        </div>
                                     </div>
                                     <div class="md:col-span-2">
                                         <div
@@ -457,9 +464,14 @@
                                             >{{ money(includedVat) }}</span
                                         >
                                     </div>
-                                    <div
-                                        class="my-4 border-t border-slate-200"
-                                    />
+                                    <div v-if="form.fulfillment_method === 'supplier_delivery'" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                                        <p class="font-semibold text-slate-800">Supplier delivery fee rundown</p>
+                                        <div class="mt-2 flex justify-between gap-3 text-xs text-slate-600"><span>Total shipment weight</span><span>{{ formatWeight(totalWeight) }} kg</span></div>
+                                        <div class="mt-1 flex justify-between gap-3 text-xs text-slate-600"><span>Weight fee ({{ money(selectedSupplierRates?.delivery_fee_per_kg || 0) }}/kg)</span><span>{{ money(weightFeeEstimate) }}</span></div>
+                                        <div class="mt-1 flex justify-between gap-3 text-xs text-slate-600"><span>Road distance rate</span><span>{{ money(distanceFeeRate) }}/km</span></div>
+                                        <p class="mt-2 text-[11px] text-slate-500">The distance fee is calculated from the supplier and destination addresses when the PO is submitted.</p>
+                                    </div>
+                                    <hr class="my-4 border-slate-200" />
                                     <div
                                         class="flex items-center justify-between gap-4 rounded-xl bg-slate-900 px-4 py-3 text-white"
                                     >
@@ -555,6 +567,7 @@ type OrderItem = {
     selection_key: string | null
     quantity_ordered: number
     unit_cost: number
+    weight_kg: number
 }
 const loading = ref(true)
 const saving = ref<'draft' | 'submit' | null>(null)
@@ -674,7 +687,7 @@ function productOptionsFor(item: OrderItem) {
             variation_id: null,
             name: product.name,
             sku: product.sku,
-            variant_label: 'Standard',
+            weight_kg: Number(product.weight_kg || 0),
             stock: stockFor(null),
             product_type: product.product_type
         }
@@ -685,7 +698,7 @@ function productOptionsFor(item: OrderItem) {
             name: product.name,
             sku: variation.sku || product.sku,
             variant_label: variation.name,
-            stock: stockFor(Number(variation.id)),
+            weight_kg: Number(variation.weight_kg ?? product.weight_kg ?? 0),
             product_type: product.product_type
         }))
 
@@ -715,6 +728,15 @@ const taxableAmount = computed(() => {
     return rate > 0 ? subtotal.value / (1 + rate / 100) : subtotal.value
 })
 const includedVat = computed(() => Math.max(0, subtotal.value - taxableAmount.value))
+const itemWeight = (item: OrderItem) => Number(selectedItemOption(item)?.weight_kg ?? productFor(item)?.weight_kg ?? item.weight_kg ?? 0)
+const totalWeight = computed(() => form.items.reduce((sum, item) => sum + itemWeight(item) * Number(item.quantity_ordered || 0), 0))
+const selectedSupplierRates = computed(() => {
+    const productSupplier = form.items.map(item => productFor(item)?.suppliers?.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))).find(Boolean)
+    return productSupplier || selectedSupplier.value || {}
+})
+const weightFeeEstimate = computed(() => Number(selectedSupplierRates.value?.delivery_fee_per_kg || 0) * totalWeight.value)
+const distanceFeeRate = computed(() => Number(selectedSupplierRates.value?.delivery_fee_per_km || 0))
+function formatWeight(value: number | undefined) { return Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 3 }) }
 const total = computed(() => subtotal.value)
 function money(value: any) {
     return new Intl.NumberFormat('en-PH', {
@@ -737,7 +759,8 @@ function addItem() {
         variation_id: null,
         selection_key: null,
         quantity_ordered: 10,
-        unit_cost: 0
+        unit_cost: 0,
+        weight_kg: 0
     })
 }
 function confirmRemoveItem(index: number) {
@@ -835,6 +858,7 @@ function onSupplierChange() {
                 selection_key: `${requested.product_id}:${requested.variation_id || 0}`,
                 quantity_ordered: Math.max(10, Number(requested.quantity_requested || 0)),
                 unit_cost: Number(supplier?.unit_cost || 0),
+                weight_kg: Number((product?.variations || []).find((variation: any) => Number(variation.id) === Number(requested.variation_id || 0))?.weight_kg ?? product?.weight_kg ?? 0),
             }
         })
         form.items.splice(0, form.items.length, ...lines)
@@ -846,6 +870,7 @@ function onSupplierChange() {
         item.selection_key = null
         item.quantity_ordered = 10
         item.unit_cost = 0
+        item.weight_kg = 0
     })
 }
 function onBranchChange() {
@@ -859,6 +884,7 @@ function onItemSelectionChange(item: OrderItem, index: number) {
     const selected = selectedItemOption(item) as any
     item.product_id = selected?.product_id ?? null
     item.variation_id = selected?.variation_id ?? null
+    item.weight_kg = Number(selected?.weight_kg ?? 0)
     item.unit_cost = Number(
         productFor(item)?.suppliers?.find(
             (supplier: any) => supplier.id === form.supplier_id
@@ -959,7 +985,7 @@ async function save(mode: 'draft' | 'submit') {
                 : null,
             submit: mode === 'submit',
             expected_delivery_date: formatDate(form.expected_delivery_date),
-            items: form.items.map(({ key, unit_cost, selection_key, ...item }) => item)
+            items: form.items.map(({ key, unit_cost, selection_key, ...item }) => ({ ...item, weight_kg: itemWeight(item) }))
         }
         const response = await axiosClient.post(
             '/api/inventory/purchase-orders',

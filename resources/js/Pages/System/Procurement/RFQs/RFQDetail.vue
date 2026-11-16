@@ -195,7 +195,7 @@
                   <span class="text-xs text-green-600">Responded: {{ formatDateTime(invitedSupplier.responded_at)
                     }}</span>
                 </div>
-                <div v-if="invitedSupplier.supplier?.is_external" class="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
+                <div v-if="invitedSupplier.email_delivery_status || invitedSupplier.email_replies?.length" class="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="invitedSupplier.email_delivery_status === 'sent' ? 'RFQ emailed' : invitedSupplier.email_delivery_status === 'failed' ? 'Email failed' : 'Email not sent'" :severity="invitedSupplier.email_delivery_status === 'sent' ? 'success' : invitedSupplier.email_delivery_status === 'failed' ? 'danger' : 'secondary'" />
                     <span v-if="invitedSupplier.email_sent_at" class="text-xs text-slate-500">{{ formatDateTime(invitedSupplier.email_sent_at) }}</span>
@@ -208,7 +208,8 @@
                       <p v-if="reply.body" class="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-xs text-slate-700">{{ reply.body }}</p>
                     </article>
                   </div>
-                  <p v-else-if="invitedSupplier.email_reply_token" class="text-xs text-slate-500">Waiting for the supplier to reply by email.</p>
+                  <p v-else-if="invitedSupplier.email_reply_tracking_enabled" class="text-xs text-slate-500">Email reply tracking is active. Waiting for a supplier reply.</p>
+                  <p v-else-if="invitedSupplier.email_delivery_status === 'sent'" class="text-xs text-slate-500">Check the configured reply inbox for the supplier's response, then record the quote on this RFQ.</p>
                 </div>
                 <div v-if="invitedSupplier.decline_reason" class="mt-2 p-2 bg-red-50 rounded-lg">
                   <p class="text-xs text-red-600">Declined: {{ invitedSupplier.decline_reason }}</p>
@@ -450,7 +451,7 @@
   
     <Dialog v-model:visible="offlineQuoteVisible" modal header="Record Supplier Quote" :style="{ width: 'min(58rem, calc(100vw - 2rem))' }" :breakpoints="{ '640px': 'calc(100vw - 2rem)' }">
       <div class="space-y-4">
-        <p class="text-sm text-slate-600">Record a quote received outside the Supplier Portal. It follows the same review and approval workflow.</p>
+        <p class="text-sm text-slate-600">When an external supplier replies to the RFQ email, enter their quoted prices here and attach their quotation. It follows the same review and approval workflow.</p>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div class="space-y-1">
             <label class="text-xs font-medium text-slate-600">Supplier <span class="text-red-500">*</span></label>
@@ -482,7 +483,7 @@
                 <InputNumber v-model="offlineQuote.items[index].available_quantity" :min="0" :minFractionDigits="0" :maxFractionDigits="0" fluid size="small" />
               </div>
               <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-600">Estimated delivery</label>
+                <label class="text-xs font-medium text-slate-600">Estimated delivery <span class="text-red-500">*</span></label>
                 <DatePicker v-model="offlineQuote.items[index].estimated_delivery_date" dateFormat="M d, yy" :minDate="offlineQuote.response_received_at || todayDate" :manualInput="false" showIcon iconDisplay="button" fluid size="small" />
               </div>
             </div>
@@ -504,7 +505,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" outlined size="small" @click="offlineQuoteVisible = false" />
-        <Button :label="processing ? 'Saving...' : 'Save Quote for Review'" icon="pi pi-check" severity="warn" size="small" :loading="processing" :disabled="!offlineQuote.supplier_id || !offlineQuote.response_received_at || !offlineQuote.quotation_valid_until || offlineQuote.items.some((item: any) => item.quoted_price === null || item.quoted_price === undefined || item.available_quantity === null || item.available_quantity === undefined)" @click="submitOfflineQuote" />
+        <Button :label="processing ? 'Saving...' : 'Save Quote for Review'" icon="pi pi-check" severity="warn" size="small" :loading="processing" :disabled="!offlineQuote.supplier_id || !offlineQuote.response_received_at || !offlineQuote.quotation_valid_until || offlineQuote.items.some((item: any) => item.quoted_price === null || item.quoted_price === undefined || item.available_quantity === null || item.available_quantity === undefined || !item.estimated_delivery_date)" @click="submitOfflineQuote" />
       </template>
     </Dialog>
 

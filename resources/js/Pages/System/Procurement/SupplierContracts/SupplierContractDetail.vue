@@ -26,6 +26,7 @@
           </a>
           <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
           <Button v-if="!isSupplierRoute && canApproveSupplierContracts && (contract?.status === 'draft' || (contract?.status === 'pending' && contract?.submitted_by_type === 'supplier'))" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
+          <Button v-if="!isSupplierRoute && canManageSupplierContracts && isExternalContract && contract?.status === 'pending' && contract?.submitted_by_type === 'store'" label="Activate Contract" icon="pi pi-check-circle" severity="warn" size="small" @click="openSignedContractDialog" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
             :loading="activating" @click="activateContract" size="small" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
@@ -44,7 +45,7 @@
     <div v-else-if="contract">
       <div v-if="contract.status === 'pending'" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
         <p class="font-semibold text-amber-900">{{ contract.submitted_by_type === 'store' ? 'Pending activation' : 'Waiting for contract decision' }}</p>
-        <p class="mt-1 text-xs text-amber-800">{{ contract.submitted_by_type === 'store' ? 'Activate only after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and document before approving or rejecting.` }}</p>
+        <p class="mt-1 text-xs text-amber-800">{{ isExternalContract ? 'Upload the contract signed by both parties to activate this external supplier contract.' : contract.submitted_by_type === 'store' ? 'Activate only after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and document before approving or rejecting.` }}</p>
       </div>
 
       <div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -487,6 +488,25 @@
         <Button label="Close" severity="secondary" @click="showDocDialog = false" />
       </template>
     </Dialog>
+    <Dialog v-model:visible="showSignedContractDialog" modal header="Upload Signed Contract" :style="{ width: 'min(34rem, 94vw)' }" :closable="!activating">
+      <div class="space-y-4">
+        <Message severity="info" :closable="false">Review the generated contract document first. Upload the PDF signed by both the store and supplier; the contract becomes active after upload succeeds.</Message>
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-slate-700">Signed contract PDF <span class="text-red-500">*</span></label>
+          <FileUpload mode="basic" name="signed_copy" accept=".pdf,application/pdf" :maxFileSize="10485760" :customUpload="true" :auto="false" chooseLabel="Choose signed PDF" @select="onSignedContractSelected" />
+          <div v-if="signedContractFile" class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <span class="truncate text-sm text-slate-700">{{ signedContractFile.name }}</span>
+            <Button icon="pi pi-times" text rounded severity="danger" size="small" aria-label="Remove signed PDF" @click="signedContractFile = null" />
+          </div>
+          <small v-if="signedContractError" class="text-red-600">{{ signedContractError }}</small>
+          <p class="text-xs text-slate-500">PDF only, maximum 10 MB.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined size="small" :disabled="activating" @click="showSignedContractDialog = false" />
+        <Button label="Upload and Activate" icon="pi pi-check" severity="warn" size="small" :loading="activating" :disabled="!signedContractFile" @click="submitSignedContractActivation" />
+      </template>
+    </Dialog>
     <ConfirmDialog />
   </div>
 </template>
@@ -498,6 +518,8 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Skeleton from 'primevue/skeleton'
+import FileUpload from 'primevue/fileupload'
+import Message from 'primevue/message'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 import axiosClient from '@/axios'
@@ -511,6 +533,9 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 const loading = ref(false)
 const activating = ref(false)
+const showSignedContractDialog = ref(false)
+const signedContractFile = ref<File | null>(null)
+const signedContractError = ref('')
 const showReportDialog = ref(false)
 const reportSubmitting = ref(false)
 const reportReason = ref('')
@@ -572,6 +597,7 @@ const creatorName = computed(() => {
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
+const isExternalContract = computed(() => Boolean(contract.value?.supplier?.is_external && !contract.value?.supplier?.supplier_portal_id))
 const isSupplierRoute = computed(() => String(route.path || '').startsWith('/supplier-portal/'))
 const mySideType = computed(() => (isSupplierRoute.value ? 'supplier' : 'store_user'))
 const canRespondTerminationRequest = computed(() => {
@@ -857,6 +883,50 @@ const activateContract = async () => {
       }
     },
   })
+}
+
+const openSignedContractDialog = () => {
+  signedContractFile.value = null
+  signedContractError.value = ''
+  showSignedContractDialog.value = true
+}
+
+const onSignedContractSelected = (event: { files?: File[] }) => {
+  const file = event.files?.[0] || null
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.pdf') || (file.type && file.type !== 'application/pdf')) {
+    signedContractFile.value = null
+    signedContractError.value = 'Choose a PDF file.'
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    signedContractFile.value = null
+    signedContractError.value = 'The signed PDF must be 10 MB or smaller.'
+    return
+  }
+  signedContractFile.value = file
+  signedContractError.value = ''
+}
+
+const submitSignedContractActivation = async () => {
+  if (!signedContractFile.value || !contract.value?.id) {
+    signedContractError.value = 'Select the signed contract PDF before continuing.'
+    return
+  }
+  activating.value = true
+  try {
+    const formData = new FormData()
+    formData.append('signed_copy', signedContractFile.value)
+    formData.append('supplier_confirmed', '1')
+    await procurementService.activateSupplierContract(contract.value.id, formData)
+    showSignedContractDialog.value = false
+    toast.add({ severity: 'success', summary: 'Contract activated', detail: 'The signed PDF was saved and the contract is active.', life: 3000 })
+    await loadContract()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Activation failed', detail: error?.response?.data?.message || 'Could not upload the signed contract and activate this contract.', life: 4000 })
+  } finally {
+    activating.value = false
+  }
 }
 
 const openReportDialog = () => {

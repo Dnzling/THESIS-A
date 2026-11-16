@@ -1,5 +1,6 @@
 <template>
   <div class="mx-auto max-w-7xl space-y-6 pb-8">
+    <ConfirmDialog />
     <div v-if="loading" class="space-y-6 pb-8" aria-label="Loading goods receipt details">
       <div class="flex items-center gap-3">
         <Skeleton shape="circle" size="2.5rem" />
@@ -105,10 +106,28 @@
                 <Badge :value="formatResolutionStatus(resolution.status)" :severity="resolutionSeverity(resolution.status)" />
               </div>
               <p class="mt-1 text-sm text-gray-600">{{ formatResolutionStatus(resolution.resolution_type) }}</p>
+              <RouterLink v-if="resolution.original_receipt?.id && Number(resolution.original_receipt.id) !== Number(receipt.id)" :to="{ name: isProcurement ? 'procurement.goods-receipts.detail' : 'inventory.goods-receipts.detail', params: { id: resolution.original_receipt.id } }" class="mt-1 inline-block text-sm text-blue-600 underline">Original receipt: {{ resolution.original_receipt.grn_number }}</RouterLink>
               <p v-if="resolution.procurement_notes" class="mt-1 text-sm text-gray-600">{{ resolution.procurement_notes }}</p>
-              <p v-if="resolution.supplier_rejection_reason" class="mt-1 text-sm text-red-600">Supplier reason: {{ resolution.supplier_rejection_reason }}</p>
+              <p v-if="resolution.supplier_action" class="mt-1 text-sm text-gray-700">Supplier response: {{ formatResolutionStatus(resolution.supplier_action) }}</p>
+              <p v-if="resolution.supplier_response_notes || resolution.supplier_rejection_reason" class="mt-1 whitespace-pre-wrap text-sm text-gray-600">{{ resolution.supplier_response_notes || resolution.supplier_rejection_reason }}</p>
+              <p v-if="resolution.supplier_credit_amount" class="mt-1 text-sm font-semibold text-gray-900">Supplier credit: {{ formatMoney(resolution.supplier_credit_amount) }}</p>
+              <a v-if="resolution.proof_path" :href="receipt.resolution_proof_url" target="_blank" rel="noopener" class="mt-2 inline-block text-sm text-blue-600 underline">View supplier evidence</a>
             </div>
-            <p class="text-xs text-gray-500">Follow-up GRN: {{ resolution.follow_up_receipt?.grn_number || 'Pending' }}</p>
+            <div class="space-y-2 text-right">
+              <div class="text-xs text-gray-500">
+                <p v-if="resolution.follow_up_receipts?.length || resolution.follow_up_receipt">Follow-up GRN(s):</p>
+                <RouterLink v-for="followUp in (resolution.follow_up_receipts?.length ? resolution.follow_up_receipts : resolution.follow_up_receipt ? [resolution.follow_up_receipt] : [])" :key="followUp.id" :to="{ name: isProcurement ? 'procurement.goods-receipts.detail' : 'inventory.goods-receipts.detail', params: { id: followUp.id } }" class="mr-2 text-blue-600 underline">{{ followUp.grn_number }}</RouterLink>
+                <p v-if="!resolution.follow_up_receipts?.length && !resolution.follow_up_receipt">{{ resolution.supplier_action === 'issue_credit' ? 'Follow-up GRN: Not applicable' : 'Follow-up GRN: Pending' }}</p>
+              </div>
+              <p class="max-w-xs text-xs text-gray-500">Corrections stay on this PO. No new payment or shipping fee is created.</p>
+              <div v-if="isProcurement && resolution.status === 'credit_submitted'" class="flex justify-end">
+                <Button label="Approve Supplier Credit" icon="pi pi-check" size="small" :loading="resolutionReviewSaving" @click="reviewResolution('approve_credit')" />
+              </div>
+              <div v-if="isProcurement && resolution.status === 'disputed'" class="flex flex-wrap justify-end gap-2">
+                <Button label="Request Delivery" icon="pi pi-truck" severity="secondary" outlined size="small" :loading="resolutionReviewSaving" @click="reviewResolution('request_delivery')" />
+                <Button label="Accept Dispute" icon="pi pi-check" size="small" :loading="resolutionReviewSaving" @click="reviewResolution('accept_dispute')" />
+              </div>
+            </div>
           </div>
         </template>
       </Card>
@@ -493,6 +512,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import procurementService from '../../../../services/procurement.service'
 import axiosClient from '@/axios'
 import InputText from 'primevue/inputtext'
@@ -502,6 +522,7 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 
 // State
@@ -517,12 +538,11 @@ const isProcurement = window.location.pathname.startsWith('/procurement/')
 const resolution = ref<any>(null)
 const resolutionDialog = ref(false)
 const resolutionSaving = ref(false)
+const resolutionReviewSaving = ref(false)
 const resolutionForm = ref({ resolution_type: 'remaining_delivery', procurement_notes: '' })
 const resolutionTypes = [
-  { label: 'Request Remaining Delivery', value: 'remaining_delivery' },
-  { label: 'Request Replacement', value: 'replacement' },
-  { label: 'Accept Partial Delivery', value: 'partial_acceptance' },
-  { label: 'Reject Delivery', value: 'reject_delivery' },
+  { label: 'Request missing items', value: 'remaining_delivery' },
+  { label: 'Request replacement for damaged items', value: 'replacement' },
 ]
 const ratingForm = ref<Record<string, any>>({
   quality_score: 5,
@@ -840,7 +860,7 @@ function goBack() {
 }
 
 const deficientItems = computed(() => (receipt.value?.items || [])
-  .map((item: any) => ({ ...item, quantity_due: Math.max(0, item.po_quantity - item.received_quantity) + item.damaged_quantity }))
+  .map((item: any) => ({ ...item, quantity_due: Math.max(0, item.po_quantity - item.received_quantity + item.damaged_quantity) }))
   .filter((item: any) => item.quantity_due > 0))
 
 function openResolutionDialog() {
@@ -865,8 +885,46 @@ async function submitResolution() {
   }
 }
 
+function reviewResolution(decision: 'approve_credit' | 'accept_dispute' | 'request_delivery') {
+  const messages = {
+    approve_credit: 'Approve the supplier credit and apply it to this PO for Finance matching?',
+    accept_dispute: 'Accept the supplier dispute and treat the reported quantity as settled? Reconcile physical stock separately if needed.',
+    request_delivery: 'Require the supplier to send the missing or replacement items?',
+  }
+  confirm.require({
+    header: 'Confirm discrepancy decision',
+    message: messages[decision],
+    acceptLabel: 'Confirm',
+    rejectLabel: 'Cancel',
+    accept: () => submitResolutionReview(decision),
+  })
+}
+
+async function submitResolutionReview(decision: 'approve_credit' | 'accept_dispute' | 'request_delivery') {
+  if (!resolution.value?.id || resolutionReviewSaving.value) return
+  const notes = decision === 'approve_credit'
+    ? 'Supplier credit amount and discrepancy quantities reviewed and approved.'
+    : decision === 'accept_dispute'
+      ? 'Supplier dispute reviewed and accepted by Procurement; reconcile physical stock separately if needed.'
+      : 'Supplier dispute reviewed; follow-up delivery is required for the outstanding discrepancy.'
+  resolutionReviewSaving.value = true
+  try {
+    await procurementService.reviewGoodsReceiptResolution(resolution.value.id, { decision, notes })
+    toast.add({ severity: 'success', summary: 'Discrepancy updated', detail: 'The decision was recorded on the PO.', life: 3000 })
+    await loadReceipt()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to update discrepancy', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    resolutionReviewSaving.value = false
+  }
+}
+
 function formatResolutionStatus(value: string) {
   return String(value || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function formatMoney(value: any) {
+  return Number(value || 0).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
 }
 
 function resolutionSeverity(status: string) {

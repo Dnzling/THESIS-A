@@ -173,7 +173,7 @@ class SupplierPOFeedbackController extends Controller
             }
 
             foreach ($po->items as $item) {
-                foreach (['length_cm', 'width_cm', 'height_cm'] as $dimension) {
+                foreach (['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'] as $dimension) {
                     $item->setAttribute(
                         $dimension,
                         $item->{$dimension}

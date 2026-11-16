@@ -840,10 +840,15 @@ const canTrackOwnLocation = computed(() => {
   }
   return false
 })
-const canOperateDelivery = computed(() => source.value === 'pickup'
-  ? authStore.hasPermission('logistics.driver.supplier-pickups')
-  : isAssignedDriver.value,
-)
+const canOperateDelivery = computed(() => {
+  if (source.value === 'pickup') {
+    return authStore.hasPermission('logistics.driver.supplier-pickups')
+  }
+  if (source.value === 'stock_transfer') {
+    return isAssignedDriver.value && authStore.hasPermission('logistics.driver.trips')
+  }
+  return isAssignedDriver.value
+})
 const canOpenReplacementFromReturn = computed(() =>
   source.value === 'return_pickup'
   && currentDeliveryStatus.value === 'picked_up'
@@ -855,6 +860,7 @@ const canShowDeliveryAction = computed(() =>
   canOperateDelivery.value
   && !!nextStatus.value
   && (source.value === 'pickup'
+    || (source.value === 'stock_transfer' && ['assigned', 'in_transit', 'out_for_delivery'].includes(currentDeliveryStatus.value))
     || (source.value === 'return_pickup' && ['assigned', 'in_transit'].includes(currentDeliveryStatus.value))
     || currentDeliveryStatus.value === 'out_for_delivery'),
 )

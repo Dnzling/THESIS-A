@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
     <!-- iOS-style Header -->
     <div class="flex items-start justify-between">
@@ -141,7 +141,7 @@
               <div class="bg-gray-50 rounded-xl p-4">
                 <p class="font-semibold text-gray-900">{{ po?.branch?.name || '-' }}</p>
                 <p class="text-sm text-gray-600 mt-1">{{ po?.branch?.address || '-' }} {{ po?.branch?.city || '' }}</p>
-                <p v-if="po?.branch?.contact_number" class="text-sm text-gray-600 mt-2">📞 {{ po?.branch?.contact_number }}</p>
+                <p v-if="po?.branch?.contact_number" class="text-sm text-gray-600 mt-2">ðŸ“ž {{ po?.branch?.contact_number }}</p>
               </div>
             </div>
           </template>
@@ -178,7 +178,7 @@
                       <td class="px-4 py-3">
                         <div class="font-medium text-gray-900">
                           {{ item.variation?.variation_name
-                            ? `${item.product?.product_name || 'Item'} — ${item.variation.variation_name}`
+                            ? `${item.product?.product_name || 'Item'} â€” ${item.variation.variation_name}`
                             : (item.product?.product_name || 'Item') }}
                         </div>
                         <div class="text-xs text-gray-500 mt-0.5">{{ item.variation?.variation_sku || item.product?.sku || '' }}</div>
@@ -189,8 +189,8 @@
                         <div class="text-xs text-slate-500">{{ formatDecimal(Number(itemWeight(item) || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
                       </td>
                       <td class="px-4 py-3 text-right">{{ formatDimensions(item) }}</td>
-                      <td class="px-4 py-3 text-right">₱{{ formatMoney(item.unit_cost) }}</td>
-                      <td class="px-4 py-3 text-right font-semibold text-green-600">₱{{ formatMoney(item.line_total) }}</td>
+                      <td class="px-4 py-3 text-right">â‚±{{ formatMoney(item.unit_cost) }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">â‚±{{ formatMoney(item.line_total) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -207,12 +207,21 @@
           <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">All Fees</h3></div></template>
           <template #content>
             <div class="space-y-3 p-6 pt-0 text-sm">
-              <div class="flex justify-between"><span class="text-gray-500">Items subtotal (VAT inclusive)</span><span class="font-medium">₱{{ formatMoney(po?.subtotal) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">Contract discount ({{ formatDecimal(contractDiscountPercent) }}%)</span><span class="font-medium text-rose-600">− ₱{{ formatMoney(po?.discount_amount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">Taxable amount (VAT exclusive)</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
-              <div class="flex justify-between"><span class="text-gray-500">VAT included ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
-              <div v-if="po?.fulfillment_method === 'supplier_delivery'" class="flex justify-between"><span class="text-gray-500">Supplier delivery fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
-              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">₱{{ formatMoney(po?.total_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Items subtotal (VAT inclusive)</span><span class="font-medium">â‚±{{ formatMoney(po?.subtotal) }}</span></div>
+              <template v-if="po?.fulfillment_method === 'supplier_delivery'">
+                <div class="flex justify-between"><span class="text-gray-500">Shipment weight</span><span class="font-medium">{{ formatDecimal(totalOrderWeight, 3) }} kg</span></div>
+                <div v-if="po?.shipping_fee_breakdown?.distance_km" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                  <p class="mb-2 font-semibold text-slate-800">Delivery fee rundown</p>
+                  <div class="flex justify-between gap-3"><span class="text-slate-500">Road distance</span><span>{{ formatDecimal(po.shipping_fee_breakdown.distance_km) }} km × {{ formatMoney(po.shipping_fee_breakdown.rate_per_km) }}/km</span></div>
+                  <div class="mt-1 flex justify-between gap-3"><span class="text-slate-500">Weight</span><span>{{ formatDecimal(po.shipping_fee_breakdown.total_weight_kg, 3) }} kg × {{ formatMoney(po.shipping_fee_breakdown.rate_per_kg) }}/kg</span></div>
+                  <div class="mt-2 flex justify-between border-t border-slate-200 pt-2"><span>Distance fee</span><span>{{ formatMoney(po.shipping_fee_breakdown.distance_fee) }}</span></div>
+                  <div class="mt-1 flex justify-between"><span>Weight fee</span><span>{{ formatMoney(po.shipping_fee_breakdown.weight_fee) }}</span></div>
+                </div>
+                <div class="flex justify-between"><span class="text-gray-500">Supplier delivery fee</span><span class="font-medium">PHP {{ formatMoney(po?.shipping_cost) }}</span></div>
+              </template>
+              <div class="flex justify-between"><span class="text-gray-500">Taxable amount (VAT exclusive)</span><span class="font-medium">â‚±{{ formatMoney(taxableAmount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">VAT included ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">â‚±{{ formatMoney(po?.tax_amount) }}</span></div>
+              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">â‚±{{ formatMoney(po?.total_amount) }}</span></div>
             </div>
           </template>
         </Card>
@@ -293,7 +302,7 @@
                 </div>
                 <div class="flex items-center justify-between py-2">
                   <span class="text-sm text-gray-500">Cost per KM</span>
-                  <span class="font-medium text-gray-900">₱{{ formatMoney(shipment?.cost_per_km) }}</span>
+                  <span class="font-medium text-gray-900">â‚±{{ formatMoney(shipment?.cost_per_km) }}</span>
                 </div>
               </div>
             </div>
@@ -325,7 +334,7 @@
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Shipping Cost</span>
-                  <span class="font-medium text-emerald-600">₱{{ formatMoney(shipment?.shipping_cost) }}</span>
+                  <span class="font-medium text-emerald-600">â‚±{{ formatMoney(shipment?.shipping_cost) }}</span>
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Tax Rate</span>
@@ -443,17 +452,36 @@
                 <div><p class="text-xs text-gray-500">Required Action</p><p class="font-semibold">{{ formatStatus(resolution.resolution_type) }}</p></div>
               </div>
               <p v-if="resolution.procurement_notes" class="text-gray-600">{{ resolution.procurement_notes }}</p>
+              <p v-if="resolution.supplier_action" class="font-medium text-slate-800">Supplier response: {{ formatStatus(resolution.supplier_action) }}</p>
+              <p v-if="resolution.supplier_responded_at" class="text-xs text-slate-500">Submitted {{ formatDate(resolution.supplier_responded_at, true) }}</p>
               <div class="overflow-hidden rounded-xl border border-gray-200">
                 <table class="w-full text-sm">
                   <thead class="bg-gray-50"><tr><th class="p-3 text-left">Item</th><th class="p-3 text-right">Quantity Due</th></tr></thead>
                   <tbody><tr v-for="item in resolution.items || []" :key="`${resolution.id}-${item.product_id}`" class="border-t"><td class="p-3">{{ resolutionProductName(resolution, item.product_id) }}</td><td class="p-3 text-right font-semibold">{{ item.quantity_due }}</td></tr></tbody>
                 </table>
               </div>
-              <div v-if="resolution.status === 'pending_supplier'" class="flex justify-end gap-2">
-                <Button label="Reject" severity="danger" outlined size="small" @click="openRejectResolution(resolution)" />
-                <Button label="Accept" severity="success" size="small" @click="confirmAcceptResolution(resolution)" />
+              <div v-if="resolution.status === 'pending_supplier'" class="space-y-3 rounded-xl border border-slate-200 p-4">
+                <p class="font-medium text-slate-900">Choose how you will resolve this discrepancy</p>
+                <Select v-model="resolutionResponses[resolution.id].action" :options="supplierResolutionActions" optionLabel="label" optionValue="value" fluid />
+                <div v-if="['issue_credit', 'dispute'].includes(resolutionResponses[resolution.id].action)" class="space-y-2">
+                  <p class="text-xs text-slate-600">Credit for the reported quantity: {{ formatMoney(resolution.estimated_credit_amount) }}. This is recorded against the PO for Finance review; it does not initiate a payment.</p>
+                </div>
+                <Textarea v-model="resolutionResponses[resolution.id].notes" rows="3" fluid placeholder="Explain your response" />
+                <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full rounded-lg border border-gray-200 p-2 text-sm" @change="onResolutionResponseProof($event, resolution.id)" />
+                <div class="flex justify-end"><Button label="Submit Response" icon="pi pi-send" size="small" :loading="resolutionSavingId === resolution.id" @click="submitResolutionResponse(resolution)" /></div>
               </div>
-              <div v-if="['accepted', 'delivery_submitted'].includes(resolution.status)" class="space-y-4 rounded-xl border border-gray-200 p-4">
+              <div v-if="resolution.status === 'credit_submitted'" class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+                Credit of PHP {{ formatMoney(resolution.supplier_credit_amount) }} submitted and awaiting the store's review.
+              </div>
+              <div v-if="resolution.status === 'disputed'" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Your dispute is awaiting Procurement review.</div>
+              <p v-if="resolution.supplier_response_notes" class="whitespace-pre-wrap text-sm text-slate-600">Supplier response: {{ resolution.supplier_response_notes }}</p>
+              <a v-if="resolution.proof_path" :href="`/storage/${resolution.proof_path}`" target="_blank" rel="noopener" class="text-sm text-blue-600 underline">View supplier evidence</a>
+              <div v-if="resolution.follow_up_receipts?.length || resolution.follow_up_receipt" class="flex flex-wrap gap-2 text-xs text-slate-600">
+                <span>Follow-up receipt:</span>
+                <span v-for="receipt in (resolution.follow_up_receipts?.length ? resolution.follow_up_receipts : [resolution.follow_up_receipt])" :key="receipt.id" class="font-semibold">{{ receipt.grn_number || `GRN #${receipt.id}` }}</span>
+              </div>
+              <div v-if="resolution.status === 'accepted' && ['send_missing', 'replace_damaged'].includes(resolution.supplier_action)" class="space-y-4 rounded-xl border border-gray-200 p-4">
+                <p class="text-sm text-slate-600">No new PO, payment, or shipping fee is created for this correction. Submit the follow-up delivery details; the store will record arrival against the original PO.</p>
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div><label class="mb-2 block font-medium">Promised delivery date</label><DatePicker v-model="deliveryForms[resolution.id].promised_delivery_date" :minDate="new Date()" dateFormat="M d, yy" fluid /></div>
                   <div><label class="mb-2 block font-medium">Delivery note number</label><InputText v-model="deliveryForms[resolution.id].delivery_note_number" fluid /></div>
@@ -462,6 +490,7 @@
                 <div><label class="mb-2 block font-medium">Proof attachment</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full rounded-lg border border-gray-200 p-2 text-sm" @change="onResolutionProof($event, resolution.id)" /></div>
                 <div class="flex justify-end"><Button label="Confirm Delivery Details" icon="pi pi-send" size="small" :loading="resolutionSavingId === resolution.id" @click="submitResolutionDelivery(resolution)" /></div>
               </div>
+              <div v-if="resolution.status === 'delivery_submitted'" class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Follow-up delivery details submitted. The store will record the delivery as a new goods receipt under this PO.</div>
               <p v-if="resolution.supplier_rejection_reason" class="rounded-lg bg-red-50 p-3 text-red-700">Rejected: {{ resolution.supplier_rejection_reason }}</p>
             </div>
           </template>
@@ -558,8 +587,16 @@ let trackingRefreshTimer: number | null = null
 let mapboxgl: typeof import('mapbox-gl').default | null = null
 const contractTaxRate = ref(0)
 const contractDiscountPercent = ref(0)
+const totalOrderWeight = computed(() => (po.value?.items || []).reduce((sum: number, item: any) => sum + itemWeight(item) * Number(item.quantity_ordered || 0), 0))
 const receiptResolutions = ref<any[]>([])
 const deliveryForms = ref<Record<number, any>>({})
+const resolutionResponses = ref<Record<number, any>>({})
+const supplierResolutionActions = [
+  { label: 'Send missing items', value: 'send_missing' },
+  { label: 'Replace damaged items', value: 'replace_damaged' },
+  { label: 'Issue a credit', value: 'issue_credit' },
+  { label: 'Dispute the discrepancy', value: 'dispute' },
+]
 const resolutionSavingId = ref<number | null>(null)
 const rejectResolutionVisible = ref(false)
 const selectedResolution = ref<any>(null)
@@ -589,11 +626,17 @@ const timelineItems = computed(() => {
   const items: Array<{ title: string; description?: string; date: string | null }> = []
   if (po.value?.created_at) items.push({ title: 'Purchase order created', date: po.value.created_at })
   for (const approval of po.value?.approvals_received || []) {
-    if (approval.approved_at) items.push({ title: 'Purchase order approval recorded', description: [approval.approver_name, approval.notes].filter(Boolean).join(' — '), date: approval.approved_at })
+    if (approval.approved_at) items.push({ title: 'Purchase order approval recorded', description: [approval.approver_name, approval.notes].filter(Boolean).join(' â€” '), date: approval.approved_at })
   }
   if (supplierFeedback.value?.submitted_at) items.push({ title: supplierFeedback.value.response === 'accepted' ? 'Order approved by supplier' : 'Order rejected by supplier', description: supplierFeedback.value.rejection_reason || supplierFeedback.value.delivery_notes || '', date: supplierFeedback.value.submitted_at })
   for (const update of fulfillmentUpdates.value) items.push({ title: `Supplier fulfillment: ${supplierFulfillmentLabel(update.status)}`, description: update.notes || '', date: update.created_at })
   for (const log of deliveryLogs.value) items.push({ title: deliveryLogLabel(log.event_type), description: [log.notes, log.location_address, log.receiver_name ? `Receiver: ${log.receiver_name}` : ''].filter(Boolean).join('\n'), date: log.logged_at || log.created_at })
+  for (const resolution of receiptResolutions.value) {
+    if (resolution.created_at) items.push({ title: `Receipt discrepancy sent: ${formatStatus(resolution.resolution_type)}`, description: resolution.procurement_notes || '', date: resolution.created_at })
+    if (resolution.supplier_responded_at) items.push({ title: `Supplier response: ${formatStatus(resolution.supplier_action || resolution.status)}`, description: resolution.supplier_response_notes || '', date: resolution.supplier_responded_at })
+    if (resolution.credit_reviewed_at) items.push({ title: 'Procurement reviewed discrepancy', description: resolution.procurement_notes || '', date: resolution.credit_reviewed_at })
+    for (const receipt of resolution.follow_up_receipts || []) items.push({ title: `Follow-up receipt recorded: ${receipt.grn_number || 'Goods receipt'}`, date: receipt.created_at })
+  }
   return items.filter(item => item.date).sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
 })
 const fulfillmentLabel = computed(() => po.value?.fulfillment_method === 'supplier_delivery' ? 'Supplier Delivery' : po.value?.fulfillment_method === 'store_pickup' ? 'Store Pickup' : 'Not selected')
@@ -689,7 +732,7 @@ const goodsReceiptStatusSeverity = (status: string): 'success' | 'warn' | 'dange
 
 const getGoodsReceiptProductName = (item: any): string => {
   const parent = item?.product?.product_name || 'Item'
-  return item?.variation?.variation_name ? `${parent} — ${item.variation.variation_name}` : parent
+  return item?.variation?.variation_name ? `${parent} â€” ${item.variation.variation_name}` : parent
 }
 
 const formatQuantity = (value?: number): string => {
@@ -703,7 +746,7 @@ const formatDimensions = (item: any): string => {
   const width = item?.variation?.width_cm ?? item?.product?.width_cm ?? item?.width_cm
   const height = item?.variation?.height_cm ?? item?.product?.height_cm ?? item?.height_cm
   return length != null && width != null && height != null
-    ? `${formatDecimal(length)} × ${formatDecimal(width)} × ${formatDecimal(height)} cm`
+    ? `${formatDecimal(length)} Ã— ${formatDecimal(width)} Ã— ${formatDecimal(height)} cm`
     : '-'
 }
 
@@ -769,6 +812,12 @@ const goToInvoice = () => {
           promised_delivery_date: resolution.promised_delivery_date ? new Date(resolution.promised_delivery_date) : null,
           delivery_note_number: resolution.delivery_note_number || '',
           supplier_delivery_notes: resolution.supplier_delivery_notes || '',
+          proof: null,
+        }
+        resolutionResponses.value[resolution.id] = {
+          action: resolution.resolution_type === 'replacement' ? 'replace_damaged' : 'send_missing',
+          notes: '',
+          credit_amount: null,
           proof: null,
         }
       })
@@ -955,6 +1004,31 @@ const confirmAcceptResolution = (resolution: any) => confirm.require({
     } finally { resolutionSavingId.value = null }
   },
 })
+
+const onResolutionResponseProof = (event: Event, resolutionId: number) => {
+  resolutionResponses.value[resolutionId].proof = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+const submitResolutionResponse = async (resolution: any) => {
+  const form = resolutionResponses.value[resolution.id]
+  if (!form?.notes?.trim()) {
+    toast.add({ severity: 'warn', summary: 'Response required', detail: 'Add a note explaining your response.', life: 3000 })
+    return
+  }
+  const payload = new FormData()
+  payload.append('action', form.action)
+  payload.append('notes', form.notes.trim())
+  if (['issue_credit', 'dispute'].includes(form.action)) payload.append('credit_amount', String(resolution.estimated_credit_amount))
+  if (form.proof) payload.append('proof', form.proof)
+  resolutionSavingId.value = resolution.id
+  try {
+    await supplierService.respondReceiptResolution(resolution.id, payload)
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Response submitted', detail: 'Your response was added to this PO.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to respond', detail: error.response?.data?.message || 'Unable to submit supplier response.', life: 4000 })
+  } finally { resolutionSavingId.value = null }
+}
 
 const openRejectResolution = (resolution: any) => {
   selectedResolution.value = resolution

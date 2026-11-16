@@ -10,8 +10,6 @@ use App\Models\Procurement\Receiving\GoodsReceiptResolution;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Invoice\Invoice;
-use App\Models\Procurement\Invoice\InvoiceItem;
-use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\ProductCatalog\Product;
@@ -19,12 +17,10 @@ use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Core\ActivityLog;
 use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Hr\Employee;
-use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class GoodsReceiptController extends Controller
 {
@@ -448,153 +444,133 @@ class GoodsReceiptController extends Controller
                 // Update PO item
                 $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
                 if (!$poItem) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Invalid PO item selected for PO #{$po->id}.",
-                    ], 422);
+                    throw new \RuntimeException("Invalid PO item selected for PO #{$po->id}.");
                 }
                 if (!$isDraft) {
-                    $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
-                }
+                    // PO received quantity means usable units. Damaged units stay
+                    // outstanding until replaced or settled by an approved credit.
+                    $poItem->updateReceived(max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0)));
 
-                if (!$isDraft) {
                     // Update branch inventory
                     $inventory = BranchInventory::firstOrCreate(
-                    [
-                        'branch_id' => $po->branch_id,
-                        'product_id' => $itemData['product_id'],
-                        'variation_id' => $itemData['variation_id'] ?? null,
-                    ],
-                    [
-                        'store_id' => $po->store_id,
-                        'quantity_on_hand' => 0,
-                        'quantity_available' => 0,
-                        'reorder_point' => 10,
-                        'reorder_quantity' => 20,
-                        'safety_stock' => 5,
-                        'stock_status' => 'out_of_stock',
-                    ]
-                );
+                        [
+                            'branch_id' => $po->branch_id,
+                            'product_id' => $itemData['product_id'],
+                            'variation_id' => $itemData['variation_id'] ?? null,
+                        ],
+                        [
+                            'store_id' => $po->store_id,
+                            'quantity_on_hand' => 0,
+                            'quantity_available' => 0,
+                            'reorder_point' => 10,
+                            'reorder_quantity' => 20,
+                            'safety_stock' => 5,
+                            'stock_status' => 'out_of_stock',
+                        ]
+                    );
 
-                $quantityBefore = $inventory->quantity_on_hand;
+                    $quantityBefore = $inventory->quantity_on_hand;
+                    $inventory->quantity_on_hand += $itemData['quantity_received'];
+                    $inventory->quantity_available += max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0));
+                    if (($itemData['quantity_damaged'] ?? 0) > 0) {
+                        $inventory->quantity_damaged += $itemData['quantity_damaged'];
+                    }
 
-                // Add received stock
-                $inventory->quantity_on_hand += $itemData['quantity_received'];
-                $inventory->quantity_available += $itemData['quantity_received'];
-                
-                // Add damaged stock
-                if (($itemData['quantity_damaged'] ?? 0) > 0) {
-                    $inventory->quantity_damaged += $itemData['quantity_damaged'];
-                }
-
-                $newCost = $poItem->unit_cost;
-                $inventory->suppressAutomaticTransactionLog();
-                $inventory->save();
-
+                    $newCost = $poItem->unit_cost;
+                    $inventory->suppressAutomaticTransactionLog();
+                    $inventory->save();
                     $inventory->updateStockStatus();
 
-                    // Create inventory transaction with unique datetime-based number
-                $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
-
-                InventoryTransaction::create([
-                    'transaction_number' => $transactionNumber,
-                    'store_id' => $po->store_id,
-                    'branch_id' => $po->branch_id,
-                    'product_id' => $itemData['product_id'],
-                    'variation_id' => $itemData['variation_id'] ?? null,
-                    'transaction_type' => 'purchase',
-                    'quantity_before' => $quantityBefore,
-                    'quantity_change' => $itemData['quantity_received'],
-                    'quantity_after' => $inventory->quantity_on_hand,
-                    'reference_type' => 'goods_receipt',
-                    'reference_id' => $grn->id,
-                    'notes' => "Received from PO {$po->po_number}",
-                    'unit_cost' => $newCost,
-                    'total_value' => $newCost * $itemData['quantity_received'],
-                    'created_by' => $actorEmployeeId,
-                    'transaction_date' => now(),
-                ]);
-
-                    // If damaged, create damage transaction with unique datetime-based number
-                    if (($itemData['quantity_damaged'] ?? 0) > 0) {
-                    $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
-
+                    $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
                     InventoryTransaction::create([
-                        'transaction_number' => $damageTransactionNumber,
+                        'transaction_number' => $transactionNumber,
                         'store_id' => $po->store_id,
                         'branch_id' => $po->branch_id,
                         'product_id' => $itemData['product_id'],
                         'variation_id' => $itemData['variation_id'] ?? null,
-                        'transaction_type' => 'damage',
-                        'quantity_before' => $inventory->quantity_on_hand,
-                        'quantity_change' => $itemData['quantity_damaged'],
+                        'transaction_type' => 'purchase',
+                        'quantity_before' => $quantityBefore,
+                        'quantity_change' => $itemData['quantity_received'],
                         'quantity_after' => $inventory->quantity_on_hand,
                         'reference_type' => 'goods_receipt',
                         'reference_id' => $grn->id,
-                        'notes' => "Damaged items received from PO {$po->po_number}",
+                        'notes' => "Received from PO {$po->po_number}",
                         'unit_cost' => $newCost,
-                        'total_value' => $newCost * $itemData['quantity_damaged'],
+                        'total_value' => $newCost * $itemData['quantity_received'],
                         'created_by' => $actorEmployeeId,
                         'transaction_date' => now(),
                     ]);
+
+                    if (($itemData['quantity_damaged'] ?? 0) > 0) {
+                        $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+                        InventoryTransaction::create([
+                            'transaction_number' => $damageTransactionNumber,
+                            'store_id' => $po->store_id,
+                            'branch_id' => $po->branch_id,
+                            'product_id' => $itemData['product_id'],
+                            'variation_id' => $itemData['variation_id'] ?? null,
+                            'transaction_type' => 'damage',
+                            'quantity_before' => $inventory->quantity_on_hand,
+                            'quantity_change' => $itemData['quantity_damaged'],
+                            'quantity_after' => $inventory->quantity_on_hand,
+                            'reference_type' => 'goods_receipt',
+                            'reference_id' => $grn->id,
+                            'notes' => "Damaged items received from PO {$po->po_number}",
+                            'unit_cost' => $newCost,
+                            'total_value' => $newCost * $itemData['quantity_damaged'],
+                            'created_by' => $actorEmployeeId,
+                            'transaction_date' => now(),
+                        ]);
+                    }
                 }
-                } // end not draft
             }
 
             // Update PO status (only when not draft)
             if (!$isDraft) {
-            $allItemsReceived = $po->items->every(function ($item) {
-                return $item->isFullyReceived();
-            });
-            if ($allItemsReceived) {
-                $po->markGoodsReceived();
-                $po->update([
-                    'actual_delivery_date' => $receiptDate,
-                ]);
+                $allItemsReceived = $po->items->every(function ($item) {
+                    return $item->isFullyReceived();
+                });
+                if ($allItemsReceived) {
+                    $po->markGoodsReceived();
+                    $po->update([
+                        'actual_delivery_date' => $receiptDate,
+                    ]);
 
-                // Update supplier performance
-                $expectedDate = $po->expected_delivery_date;
-                $actualDate = $receiptDate;
-                $onTime = $actualDate <= $expectedDate;
+                    // Update supplier performance
+                    $expectedDate = $po->expected_delivery_date;
+                    $actualDate = $receiptDate;
+                    $onTime = $actualDate <= $expectedDate;
 
-                if ($po->supplier) {
-                    $po->supplier->recordDelivery($onTime);
-                }
+                    if ($po->supplier) {
+                        $po->supplier->recordDelivery($onTime);
+                    }
 
-                ActivityLog::record(
-                    'po_delivered',
-                    "PO {$po->po_number} marked delivered.",
-                    ['po_number' => $po->po_number, 'receipt_date' => $receiptDate],
-                    'purchase_order',
-                    $po->id
-                );
+                    ActivityLog::record(
+                        'po_delivered',
+                        "PO {$po->po_number} marked delivered.",
+                        ['po_number' => $po->po_number, 'receipt_date' => $receiptDate],
+                        'purchase_order',
+                        $po->id
+                    );
 
-                // Finance should receive a payable as soon as Inventory confirms
-                // that the entire PO has been received. The PO-level lookup makes
-                // this idempotent even if a GRN is retried or a follow-up GRN closes
-                // a deficiency.
-                if (!$isSimpleInventoryPo) {
-                    $autoCreatedInvoice = $this->createFinanceInvoiceForCompletedReceipt($po, $grn);
-                }
-            } else {
-                if ($isSimpleInventoryPo) {
-                    $po->markPartiallyReceived();
                 } else {
-                    $po->markInTransit();
-                }
+                    if ($isSimpleInventoryPo) {
+                        $po->markPartiallyReceived();
+                    } else {
+                        $po->markInTransit();
+                    }
 
-                ActivityLog::record(
-                    'po_partial_received',
-                    "PO {$po->po_number} partially received.",
-                    ['po_number' => $po->po_number],
-                    'purchase_order',
-                    $po->id
-                );
-            }
+                    ActivityLog::record(
+                        'po_partial_received',
+                        "PO {$po->po_number} partially received.",
+                        ['po_number' => $po->po_number],
+                        'purchase_order',
+                        $po->id
+                    );
+                }
             } // end not draft
 
-            // A posted GRN for the same PO completes the active supplier
-            // deficiency resolution once the PO quantities are fully received.
+            // Link a posted GRN to the supplier's active follow-up delivery.
             if (!$isDraft) {
                 $activeResolution = GoodsReceiptResolution::query()
                     ->where('purchase_order_id', $po->id)
@@ -604,13 +580,31 @@ class GoodsReceiptController extends Controller
                     ->first();
 
                 $po->load('items');
-                if ($activeResolution && $po->items->every(fn ($item) => $item->isFullyReceived())) {
+                if ($activeResolution) {
+                    $activeResolution->followUpReceipts()->syncWithoutDetaching([$grn->id]);
                     $activeResolution->update([
-                        'follow_up_goods_receipt_id' => $grn->id,
-                        'status' => 'resolved',
-                        'resolved_at' => now(),
+                        'follow_up_goods_receipt_id' => $activeResolution->follow_up_goods_receipt_id ?: $grn->id,
+                        'status' => $po->items->every(fn ($item) => $item->isFullyReceived()) ? 'resolved' : 'delivery_submitted',
+                        'resolved_at' => $po->items->every(fn ($item) => $item->isFullyReceived()) ? now() : null,
                     ]);
+                    ActivityLog::record(
+                        'po_follow_up_goods_receipt_recorded',
+                        "Follow-up goods receipt {$grn->grn_number} recorded for PO {$po->po_number}.",
+                        ['resolution_id' => $activeResolution->id, 'goods_receipt_id' => $grn->id, 'grn_number' => $grn->grn_number],
+                        'purchase_order',
+                        $po->id
+                    );
                 }
+
+                // Create or refresh the single Finance invoice after every posted
+                // receipt. The match remains an exception until quantities and any
+                // supplier resolution are settled.
+                if (!$isSimpleInventoryPo) {
+                    $autoCreatedInvoice = $this->createFinanceInvoiceForCompletedReceipt($po, $grn);
+                    $invoice = $autoCreatedInvoice ?: Invoice::where('purchase_order_id', $po->id)->first();
+                    $invoice?->load(['purchaseOrder.items', 'items'])->performThreeWayMatch();
+                }
+
             }
 
             DB::commit();
@@ -670,109 +664,14 @@ class GoodsReceiptController extends Controller
     }
 
     /**
-     * Create the Finance payable for a fully received PO once only.
+     * Create the Finance invoice from posted receipt quantities once per PO.
      *
-     * The invoice uses the complete PO quantity, rather than only the closing
-     * GRN, because a deficient delivery may be completed by a later GRN.
+     * Any discrepancy remains subject to the three-way-match exception until resolved.
      */
     private function createFinanceInvoiceForCompletedReceipt(PurchaseOrder $po, GoodsReceipt $grn): ?Invoice
     {
-        if (Invoice::query()->where('purchase_order_id', $po->id)->lockForUpdate()->exists()) {
-            return null;
-        }
-
-        $po->loadMissing('items');
-        $items = [];
-        $invoiceAmount = 0.0;
-
-        foreach ($po->items as $poItem) {
-            $quantity = (int) ($poItem->quantity_ordered ?? 0);
-            if ($quantity <= 0) {
-                continue;
-            }
-
-            $unitPrice = (float) ($poItem->unit_cost ?? 0);
-            $lineAmount = round($unitPrice * $quantity, 2);
-            $items[] = [
-                'product_id' => $poItem->product_id,
-                'quantity_invoiced' => $quantity,
-                'unit_price' => $unitPrice,
-                'line_amount' => $lineAmount,
-            ];
-            $invoiceAmount += $lineAmount;
-        }
-
-        if (empty($items)) {
-            Log::warning('Skipped automatic invoice because PO has no invoiceable items.', [
-                'purchase_order_id' => $po->id,
-                'goods_receipt_id' => $grn->id,
-            ]);
-            return null;
-        }
-
-        $contract = SupplierContract::query()
-            ->where('store_id', $po->store_id)
-            ->where('supplier_id', $po->supplier_id)
-            ->active()
-            ->latest('end_date')
-            ->first();
-
-        $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
-        $discountRate = (float) ($contract->discount_percentage ?? 0);
-        $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-        $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
-        $shippingCost = $po->fulfillment_method === 'supplier_delivery'
-            ? (float) ($po->shipping_cost ?? 0)
-            : 0.0;
-
-        $invoice = Invoice::create([
-            'store_id' => $po->store_id,
-            'invoice_number' => 'INV-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
-            'supplier_id' => $po->supplier_id,
-            'purchase_order_id' => $po->id,
-            'goods_receipt_id' => $grn->id,
-            'invoice_date' => now()->toDateString(),
-            'due_date' => now()->addDays($this->paymentDaysFor($po->payment_terms))->toDateString(),
-            'invoice_amount' => $invoiceAmount,
-            'tax_amount' => $taxAmount,
-            'shipping_cost' => $shippingCost,
-            'discount_amount' => $discountAmount,
-            'net_amount' => max(0, $invoiceAmount - $discountAmount) + $shippingCost,
-            'currency' => $po->currency ?? 'PHP',
-            'status' => 'pending_approval',
-            'match_status' => 'pending',
-            'payment_status' => 'pending',
-            'remarks' => "Auto-created from completed GRN {$grn->grn_number}",
-        ]);
-
-        foreach ($items as $item) {
-            InvoiceItem::create(array_merge($item, ['invoice_id' => $invoice->id]));
-        }
-
-        $invoice->load(['purchaseOrder.items', 'items']);
-        $invoice->performThreeWayMatch();
-
-        ActivityLog::record(
-            'invoice_auto_created_from_goods_receipt',
-            "Invoice {$invoice->invoice_number} automatically sent to Finance for PO {$po->po_number}.",
-            ['invoice_id' => $invoice->id, 'goods_receipt_id' => $grn->id, 'po_number' => $po->po_number],
-            'invoice',
-            $invoice->id
-        );
-
-        return $invoice;
-    }
-
-    private function paymentDaysFor(?string $term): int
-    {
-        return match ($term) {
-            'net_7' => 7,
-            'net_15' => 15,
-            'net_30' => 30,
-            'net_60' => 60,
-            'advance_payment', 'cash_on_delivery' => 0,
-            default => 30,
-        };
+        return app(\App\Services\Procurement\PurchaseOrderInvoiceService::class)
+            ->createForCompletedReceipt($po, $grn);
     }
 
     public function updateDraft(Request $request, int $id): JsonResponse
@@ -910,7 +809,7 @@ class GoodsReceiptController extends Controller
 
             $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
             if ($poItem) {
-                $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
+                $poItem->updateReceived(max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0)));
             }
 
             $inventory = BranchInventory::firstOrCreate(
@@ -932,7 +831,7 @@ class GoodsReceiptController extends Controller
 
             $quantityBefore = $inventory->quantity_on_hand;
             $inventory->quantity_on_hand += $itemData['quantity_received'];
-            $inventory->quantity_available += $itemData['quantity_received'];
+            $inventory->quantity_available += max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0));
 
             if (($itemData['quantity_damaged'] ?? 0) > 0) {
                 $inventory->quantity_damaged += $itemData['quantity_damaged'];

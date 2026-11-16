@@ -76,6 +76,13 @@
                     {{ getInventoryById(slotProps.data.branch_inventory_id)?.product?.unit_of_measurement || '-' }}
                   </template>
                 </Column>
+
+                <Column header="Weight" style="width: 150px">
+                  <template #body="slotProps">
+                    <div>{{ formatWeight(itemWeight(getInventoryById(slotProps.data.branch_inventory_id))) }} kg/unit</div>
+                    <small class="text-slate-500">{{ formatWeight(itemWeight(getInventoryById(slotProps.data.branch_inventory_id)) * Number(slotProps.data.requested_quantity || 0)) }} kg total</small>
+                  </template>
+                </Column>
   
                 <Column header="Unit Cost" style="width: 140px">
                   <template #body="slotProps">
@@ -100,7 +107,7 @@
               </DataTable>
   
               <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
-              <div v-if="validItems.length" class="mt-4 grid gap-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3 sm:grid-cols-3">
+              <div v-if="validItems.length" class="mt-4 grid gap-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3 sm:grid-cols-4">
                 <div>
                   <p class="text-xs text-slate-500">Line Items</p>
                   <p class="mt-1 text-sm font-semibold text-slate-900">{{ validItems.length }}</p>
@@ -108,6 +115,10 @@
                 <div>
                   <p class="text-xs text-slate-500">Total Requested Quantity</p>
                   <p class="mt-1 text-sm font-semibold text-slate-900">{{ totalRequestedQuantity.toLocaleString('en-PH') }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-slate-500">Total Requested Weight</p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ formatWeight(totalRequestedWeight) }} kg</p>
                 </div>
                 <div>
                   <p class="text-xs text-slate-500">Estimated Request Amount</p>
@@ -204,6 +215,9 @@ const prTypeOptions = [
 
 const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
 const totalRequestedQuantity = computed(() => validItems.value.reduce((total, item) => total + Number(item.requested_quantity || 0), 0))
+const totalRequestedWeight = computed(() => validItems.value.reduce((total, item) => total + itemWeight(getInventoryById(item.branch_inventory_id)) * Number(item.requested_quantity || 0), 0))
+const itemWeight = (row: any) => Number(row?.variation?.weight_kg ?? row?.product?.weight_kg ?? 0)
+const formatWeight = (value: number) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 3 })
 const estimatedRequestAmount = computed(() => validItems.value.reduce((total, item) => {
   return total + Number(item.requested_quantity || 0) * resolveUnitCost(getInventoryById(item.branch_inventory_id))
 }, 0))
@@ -460,13 +474,25 @@ onMounted(async () => {
     return
   }
 
-  // Auto-fill when coming from Branch Inventory "Create PR"
+  // Auto-fill from Inventory product or stock detail.
   const q = route.query || {}
   const biRaw = Array.isArray(q.branch_inventory_id) ? q.branch_inventory_id[0] : q.branch_inventory_id
   const qtyRaw = Array.isArray(q.requested_quantity) ? q.requested_quantity[0] : q.requested_quantity
   const notesRaw = Array.isArray(q.notes) ? q.notes[0] : q.notes
 
   const biId = biRaw ? Number(biRaw) : 0
+  const productId = Number(Array.isArray(q.product_id) ? q.product_id[0] : q.product_id || 0)
+  const variationId = Number(Array.isArray(q.variation_id) ? q.variation_id[0] : q.variation_id || 0)
+  if (String(Array.isArray(q.stock_view_prefill) ? q.stock_view_prefill[0] : q.stock_view_prefill || '') === '1' && productId) {
+    const response = biId ? await inventoryService.getInventoryItem(biId) : null
+    const row = response?.data?.id ? response.data : inventoryRows.value.find((item: any) => Number(item.product_id) === productId && Number(item.variation_id || 0) === variationId)
+    if (row?.id) {
+      await hydrateInventoryById(Number(row.id))
+      form.items = [{ branch_inventory_id: Number(row.id), requested_quantity: Math.max(1, Math.ceil(Number(qtyRaw || row.reorder_quantity || 1))) }]
+      if (typeof notesRaw === 'string' && notesRaw.trim()) form.notes = notesRaw
+      return
+    }
+  }
   if (biId) {
     form.items = [buildEmptyItem()]
     form.items[0].branch_inventory_id = biId

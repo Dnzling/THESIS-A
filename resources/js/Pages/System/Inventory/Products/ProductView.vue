@@ -82,15 +82,14 @@
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
                 <div class="flex items-center gap-2">
                   <p class="text-lg font-semibold text-gray-900">{{ supplierNames || '--' }}</p>
-                  <!-- <Button
-                    v-if="!hasSupplier"
+                  <Button
                     label="Create PR"
                     icon="pi pi-file-plus"
                     severity="warn"
                     size="small"
                     outlined
                     @click="goToCreatePR"
-                  /> -->
+                  />
                 </div>
               </div>
               <div>
@@ -662,14 +661,28 @@ const loadProduct = async () => {
 }
 
 const goToCreatePR = () => {
+  if (!product.value) return
   const inventoryId = branchInventory.value?.id
-  router.push({
-    name: 'inventory.requisites.create',
-    query: {
-      branch_inventory_id: inventoryId || undefined,
-      requested_quantity: branchInventory.value?.reorder_quantity || undefined,
-      notes: `Auto-generated from ${product.value?.product_name || 'product'}`
-    }
+  const quantity = Math.max(1, Number(branchInventory.value?.reorder_quantity || displayReorderLevel.value || 1))
+  const query = {
+    stock_view_prefill: '1',
+    branch_inventory_id: inventoryId ? String(inventoryId) : undefined,
+    branch_id: branchInventory.value?.branch_id ? String(branchInventory.value.branch_id) : undefined,
+    product_id: String(product.value.id),
+    variation_id: selectedVariation.value?.id ? String(selectedVariation.value.id) : undefined,
+    requested_quantity: String(quantity),
+    notes: `Restock request from ${detailTitle.value}.`,
+  }
+
+  inventoryService.getBranches().then((response: any) => {
+    const payload = response?.data ?? response
+    const warehouseEnabled = Boolean(payload?.warehouse_enabled)
+    router.push({
+      name: 'inventory.stock-requests.create',
+      query: { ...query, type: warehouseEnabled ? 'transfer' : 'purchase' },
+    })
+  }).catch(() => {
+    showActionResponse('error', 'Unable to start stock request', 'Could not check whether warehouse stock requests are enabled for this store.')
   })
 }
 

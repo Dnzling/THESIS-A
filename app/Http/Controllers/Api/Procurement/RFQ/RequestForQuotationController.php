@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Procurement\RFQ;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQSupplierEmailReply;
+use App\Models\Procurement\RFQ\RFQSupplier;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\RFQ\SupplierQuotation;
@@ -90,12 +91,11 @@ class RequestForQuotationController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $rfq = RequestForQuotation::with([
+        $relations = [
             'purchaseRequisition',
             'items.product',
             'items.variation',
             'suppliers.supplier',
-            'suppliers.emailReplies',
             'quotations.supplier',
             'supplierPortalFeedbacks.supplierPortal.supplier',
             'supplierPortalFeedbacks.supplier',
@@ -105,7 +105,12 @@ class RequestForQuotationController extends Controller
             'supplierPortalFeedbacks.negotiations',
             'createdBy.user',
             'awardedToSupplier'
-        ])->findOrFail($id);
+        ];
+        if (Schema::hasTable('rfq_supplier_email_replies')) {
+            $relations[] = 'suppliers.emailReplies';
+        }
+
+        $rfq = RequestForQuotation::with($relations)->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -1040,6 +1045,13 @@ class RequestForQuotationController extends Controller
             ], 422);
         }
 
+        $rfqSupplierColumns = Schema::hasTable('rfq_suppliers') ? Schema::getColumnListing('rfq_suppliers') : [];
+        $replyTableAvailable = Schema::hasTable('rfq_supplier_email_replies');
+        $replyTrackingAvailable = $replyTableAvailable
+            && in_array('email_reply_token', $rfqSupplierColumns, true)
+            && in_array('email_delivery_status', $rfqSupplierColumns, true)
+            && in_array('email_sent_at', $rfqSupplierColumns, true);
+
         DB::beginTransaction();
         try {
             $emailFailures = [];
@@ -1148,25 +1160,29 @@ class RequestForQuotationController extends Controller
                     }
                 }
 
-                if ($supplier?->is_external && !$supplier->supplier_portal_id) {
+                if ($supplier) {
                     if (!filter_var($supplier->email, FILTER_VALIDATE_EMAIL)) {
-                        $rfqSupplier->update([
+                        $this->updateRfqSupplierEmailFields($rfqSupplier, [
                             'email_delivery_status' => 'failed',
                             'email_send_error' => 'Supplier does not have a valid email address.',
-                        ]);
+                        ], $rfqSupplierColumns);
                         $emailFailures[] = $supplier->supplier_name;
                         continue;
                     }
 
                     $replyDomain = trim((string) config('services.brevo.rfq_reply_domain'));
-                    $replyToken = $replyDomain !== '' ? ($rfqSupplier->email_reply_token ?: Str::random(48)) : null;
-                    $replyAddress = $replyToken ? 'rfq+' . $replyToken . '@' . $replyDomain : null;
-                    $rfqSupplier->update([
+                    $replyToken = $replyDomain !== '' && $replyTrackingAvailable
+                        ? ($rfqSupplier->email_reply_token ?: Str::random(48))
+                        : null;
+                    $replyAddress = $replyToken
+                        ? 'rfq+' . $replyToken . '@' . $replyDomain
+                        : (config('mail.reply_to.address') ?: config('mail.from.address'));
+                    $this->updateRfqSupplierEmailFields($rfqSupplier, [
                         'email_reply_token' => $replyToken,
                         'email_delivery_status' => 'queued',
                         'email_send_error' => null,
-                    ]);
-                    $emailJobs[] = [$rfqSupplier, $supplier, $replyAddress];
+                    ], $rfqSupplierColumns);
+                    $emailJobs[] = [$rfqSupplier, $supplier, $replyAddress, (bool) ($supplier->is_external && !$supplier->supplier_portal_id)];
                 }
             }
 
@@ -1174,22 +1190,30 @@ class RequestForQuotationController extends Controller
 
             DB::commit();
 
-            foreach ($emailJobs as [$rfqSupplier, $supplier, $replyAddress]) {
+            foreach ($emailJobs as [$rfqSupplier, $supplier, $replyAddress, $isExternalSupplier]) {
                 try {
-                    Mail::to($supplier->email)->send(new ExternalRFQInvitationMail($rfq, $supplier, $replyAddress));
-                    $rfqSupplier->update([
+                    $mail = $isExternalSupplier
+                        ? new ExternalRFQInvitationMail($rfq, $supplier, $replyAddress)
+                        : new \App\Mail\Procurement\RFQInvitationMail($rfq, $supplier, config('app.url') . '/supplier-portal/rfqs/' . $rfq->id, $replyAddress);
+                    Mail::to($supplier->email)->send($mail);
+                    $this->updateRfqSupplierEmailFields($rfqSupplier, [
                         'email_sent_at' => now(),
                         'email_delivery_status' => 'sent',
                         'email_send_error' => null,
-                    ]);
+                    ], $rfqSupplierColumns);
                 } catch (\Throwable $mailError) {
                     report($mailError);
-                    $rfqSupplier->update([
+                    $this->updateRfqSupplierEmailFields($rfqSupplier, [
                         'email_delivery_status' => 'failed',
                         'email_send_error' => Str::limit($mailError->getMessage(), 1000),
-                    ]);
+                    ], $rfqSupplierColumns);
                     $emailFailures[] = $supplier->supplier_name;
                 }
+            }
+
+            $sendRelations = ['items', 'suppliers.supplier', 'quotations'];
+            if ($replyTableAvailable) {
+                $sendRelations[] = 'suppliers.emailReplies';
             }
 
             return response()->json([
@@ -1197,7 +1221,7 @@ class RequestForQuotationController extends Controller
                 'message' => $emailFailures
                     ? 'RFQ sent. Email delivery failed for: ' . implode(', ', $emailFailures)
                     : 'RFQ sent to suppliers successfully',
-                'data' => $rfq->fresh()->load(['items', 'suppliers.supplier', 'suppliers.emailReplies', 'quotations']),
+                'data' => $rfq->fresh()->load($sendRelations),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1453,6 +1477,14 @@ class RequestForQuotationController extends Controller
                 'severity' => 'info',
                 'link' => "/supplier-portal/rfqs/{$rfq->id}",
             ]);
+        }
+    }
+
+    private function updateRfqSupplierEmailFields(RFQSupplier $invitation, array $values, array $columns): void
+    {
+        $safeValues = array_intersect_key($values, array_flip($columns));
+        if ($safeValues !== []) {
+            $invitation->update($safeValues);
         }
     }
 

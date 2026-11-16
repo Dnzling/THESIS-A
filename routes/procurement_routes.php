@@ -37,6 +37,8 @@ Route::prefix('procurement')->group(function () {
     Route::get('/goods-receipts/{id}', [GoodsReceiptController::class, 'show']);
     Route::put('/goods-receipts/{id}/quality-check', [GoodsReceiptController::class, 'saveQualityCheck']);
     Route::get('/goods-receipts/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);
+    Route::post('/goods-receipts/{id}/resolution', [GoodsReceiptResolutionController::class, 'store']);
+    Route::post('/goods-receipt-resolutions/{id}/review', [GoodsReceiptResolutionController::class, 'review']);
     // Analytics
     Route::prefix('analytics')->group(function () {
         Route::get('/dashboard', [AnalyticsController::class, 'getDashboard']);
@@ -56,21 +58,36 @@ Route::prefix('procurement')->group(function () {
 
     // Suppliers
     Route::prefix('suppliers')->group(function () {
-        Route::get('/stats', [ProcurementDashboardController::class, 'getStats']);
-        Route::get('/summary-cards', [ProcurementDashboardController::class, 'getSummaryCards']);
-        Route::get('/verified-directory', [SupplierController::class, 'verifiedDirectory']);
-        Route::get('/verified-directory/{portalId}', [SupplierController::class, 'verifiedDirectoryShow']);
-        Route::get('/', [SupplierController::class, 'index']);
-        Route::get('/{id}', [SupplierController::class, 'show']);
-        Route::post('/', [SupplierController::class, 'store']);
-        Route::put('/{id}', [SupplierController::class, 'update']);
-        Route::delete('/{id}', [SupplierController::class, 'destroy']);
-        Route::get('/{id}/products', [SupplierController::class, 'products']);
-        Route::get('/{id}/available-products', [SupplierController::class, 'availableProducts']);
-        Route::post('/{id}/products', [SupplierController::class, 'attachProducts']);
-        Route::get('/{id}/performance', [SupplierController::class, 'performance']);
-        Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory']);
-        Route::post('/{id}/update-rating', [SupplierController::class, 'updateRating']);
+        Route::get('/stats', [ProcurementDashboardController::class, 'getStats'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/summary-cards', [ProcurementDashboardController::class, 'getSummaryCards'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/verified-directory', [SupplierController::class, 'verifiedDirectory'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/verified-directory/{portalId}', [SupplierController::class, 'verifiedDirectoryShow'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/', [SupplierController::class, 'index'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/{id}', [SupplierController::class, 'show'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::post('/', [SupplierController::class, 'store'])
+            ->middleware('can:procurement.suppliers.manage');
+        Route::put('/{id}', [SupplierController::class, 'update'])
+            ->middleware('can:procurement.suppliers.manage');
+        Route::delete('/{id}', [SupplierController::class, 'destroy'])
+            ->middleware('can:procurement.suppliers.manage');
+        Route::get('/{id}/products', [SupplierController::class, 'products'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/{id}/available-products', [SupplierController::class, 'availableProducts'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::post('/{id}/products', [SupplierController::class, 'attachProducts'])
+            ->middleware('can:procurement.suppliers.manage');
+        Route::get('/{id}/performance', [SupplierController::class, 'performance'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory'])
+            ->middleware('can:procurement.suppliers.view');
+        Route::post('/{id}/update-rating', [SupplierController::class, 'updateRating'])
+            ->middleware('can:procurement.suppliers.manage');
     });
 
     // Supplier Contracts

@@ -291,8 +291,6 @@ class SupplierShipmentController extends Controller
 
         $shipment->purchaseOrder?->markDelivered();
 
-        $this->updatePurchaseRequisitionStatus($shipment->purchaseOrder?->purchase_requisition_id, 'delivered');
-
         $createdInvoice = $this->autoCreateInvoiceForDeliveredPurchaseOrder($shipment);
 
         ActivityLog::record(
@@ -335,7 +333,7 @@ class SupplierShipmentController extends Controller
             return;
         }
 
-        $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
+        $terminalStatuses = ['rejected', 'cancelled', 'delivered', 'received'];
         if (in_array($pr->status, $terminalStatuses, true)) {
             return;
         }
@@ -347,7 +345,7 @@ class SupplierShipmentController extends Controller
         $previousStatus = (string) $pr->status;
         $pr->update(['status' => $status]);
 
-        if ($status === 'delivered') {
+        if ($status === 'received') {
             $pr->loadMissing(['requestedBy']);
             $requesterUserId = (int) ($pr->requestedBy?->user_id ?? 0);
             $notificationPayload = [
@@ -356,16 +354,16 @@ class SupplierShipmentController extends Controller
                 'module' => 'inventory',
                 'entity_type' => 'purchase_requisition',
                 'entity_id' => (int) $pr->id,
-                'action' => 'delivered',
-                'title' => 'Purchase Requisition Delivered',
-                'message' => "PR {$pr->pr_number} has been marked as delivered.",
+                'action' => 'received',
+                'title' => 'Purchase Requisition Received',
+                'message' => "PR {$pr->pr_number} has been marked as received.",
                 'severity' => 'success',
                 'link' => "/inventory/requisites/{$pr->id}",
                 'data' => [
                     'pr_id' => (int) $pr->id,
                     'pr_number' => (string) $pr->pr_number,
                     'status_from' => $previousStatus,
-                    'status_to' => 'delivered',
+                    'status_to' => 'received',
                 ],
             ];
 

@@ -75,7 +75,7 @@ class PurchaseOrderItem extends Model
     // Accessors
     public function getQuantityPendingAttribute(): int
     {
-        return $this->quantity_ordered - $this->quantity_received - $this->quantity_rejected;
+        return max(0, $this->quantity_ordered - $this->quantity_received - $this->quantity_rejected);
     }
 
     public function getReceivalPercentageAttribute(): float

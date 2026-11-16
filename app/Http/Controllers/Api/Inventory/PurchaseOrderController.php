@@ -60,7 +60,7 @@ class PurchaseOrderController extends Controller
 
         $products = Product::query()
             ->with([
-                'variations' => fn ($query) => $query->select('id', 'product_id', 'variation_name', 'variation_sku')->where('is_active', true),
+                'variations' => fn ($query) => $query->select('id', 'product_id', 'variation_name', 'variation_sku', 'weight_kg')->where('is_active', true),
                 'suppliers' => fn ($query) => $query
                     ->where('suppliers.store_id', $storeId)
                     ->where('suppliers.status', 'active')
@@ -73,7 +73,12 @@ class PurchaseOrderController extends Controller
                 ->where('suppliers.status', 'active')
                 ->where($hasActiveStoreContract))
             ->orderBy('product_name')
-            ->get(['id', 'product_name', 'sku', 'product_type', 'unit_of_measurement']);
+            ->get(['id', 'product_name', 'sku', 'product_type', 'unit_of_measurement', 'weight_kg']);
+
+        $supplierPortalRates = \App\Models\Procurement\SupplierPortal\SupplierPortal::query()
+            ->whereIn('id', $products->flatMap(fn (Product $product) => $product->suppliers->pluck('supplier_portal_id'))->filter()->unique())
+            ->get(['id', 'delivery_fee_per_km', 'delivery_fee_per_kg'])
+            ->keyBy('id');
 
         $productIds = $products->pluck('id');
         $inventoryPoints = DB::table('branch_inventory')
@@ -94,16 +99,20 @@ class PurchaseOrderController extends Controller
                 'sku' => $product->sku,
                 'product_type' => $product->product_type,
                 'unit' => $product->unit_of_measurement,
+                'weight_kg' => $product->weight_kg === null ? null : (float) $product->weight_kg,
                 'inventory_points' => $inventoryPoints->get($product->id, collect())->values(),
                 'reorder_rules' => $reorderRules->get($product->id, collect())->values(),
                 'suppliers' => $product->suppliers->map(fn ($supplier) => [
                     'id' => $supplier->id,
                     'unit_cost' => (float) $supplier->pivot->supplier_price,
+                    'delivery_fee_per_km' => $supplierPortalRates->get($supplier->supplier_portal_id)?->delivery_fee_per_km,
+                    'delivery_fee_per_kg' => $supplierPortalRates->get($supplier->supplier_portal_id)?->delivery_fee_per_kg,
                 ])->values(),
                 'variations' => $product->variations->map(fn ($variation) => [
                     'id' => $variation->id,
                     'name' => $variation->variation_name,
                     'sku' => $variation->variation_sku,
+                    'weight_kg' => $variation->weight_kg === null ? null : (float) $variation->weight_kg,
                 ])->values(),
             ]);
 
@@ -120,7 +129,19 @@ class PurchaseOrderController extends Controller
                 ->where('status', 'active')
                 ->where($hasActiveStoreContract)
                 ->orderBy('supplier_name')
-                ->get(['id', 'supplier_name', 'contact_person', 'phone', 'email', 'default_tax_rate', 'is_tax_exempt']),
+            ->with('supplierPortal:id,delivery_fee_per_km,delivery_fee_per_kg')
+                ->get(['id', 'supplier_name', 'contact_person', 'phone', 'email', 'default_tax_rate', 'is_tax_exempt', 'supplier_portal_id'])
+                ->map(fn (Supplier $supplier) => [
+                    'id' => $supplier->id,
+                    'supplier_name' => $supplier->supplier_name,
+                    'contact_person' => $supplier->contact_person,
+                    'phone' => $supplier->phone,
+                    'email' => $supplier->email,
+                    'default_tax_rate' => $supplier->default_tax_rate,
+                    'is_tax_exempt' => $supplier->is_tax_exempt,
+                    'delivery_fee_per_km' => $supplier->supplierPortal?->delivery_fee_per_km,
+                    'delivery_fee_per_kg' => $supplier->supplierPortal?->delivery_fee_per_kg,
+                ])->values(),
             'branches' => $branches,
             'assigned_branch_id' => $assignedBranchId ?: null,
             'products' => $products,

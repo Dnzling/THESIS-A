@@ -59,11 +59,19 @@ Route::prefix('inventory')->group(function () {
 
     // Shared supplier directory exposed in the Inventory context. These are
     // the same store-scoped supplier records used by Procurement.
-    Route::get('/suppliers', [InventorySupplierController::class, 'index']);
-    Route::post('/suppliers', [QuickSupplierController::class, 'store']);
-    Route::put('/suppliers/{id}', [QuickSupplierController::class, 'store'])->whereNumber('id');
-    Route::get('/suppliers/{id}/edit', [QuickSupplierController::class, 'edit'])->whereNumber('id');
-    Route::get('/suppliers/{id}', [QuickSupplierController::class, 'show'])->whereNumber('id');
+    Route::get('/suppliers', [InventorySupplierController::class, 'index'])
+        ->middleware('can:inventory.suppliers.view');
+    Route::post('/suppliers', [QuickSupplierController::class, 'store'])
+        ->middleware('can:inventory.products.manage');
+    Route::put('/suppliers/{id}', [QuickSupplierController::class, 'store'])
+        ->whereNumber('id')
+        ->middleware('can:inventory.products.manage');
+    Route::get('/suppliers/{id}/edit', [QuickSupplierController::class, 'edit'])
+        ->whereNumber('id')
+        ->middleware('can:inventory.suppliers.view');
+    Route::get('/suppliers/{id}', [QuickSupplierController::class, 'show'])
+        ->whereNumber('id')
+        ->middleware('can:inventory.suppliers.view');
 
     // Supplier contract workflow exposed through Inventory endpoints.
     Route::prefix('supplier-contracts')->group(function () {

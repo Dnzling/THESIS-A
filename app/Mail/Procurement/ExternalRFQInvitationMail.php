@@ -25,7 +25,7 @@ class ExternalRFQInvitationMail extends Mailable
     {
         return new Envelope(
             subject: "RFQ Invitation - {$this->rfq->rfq_number}: {$this->rfq->title}",
-            replyTo: $this->replyAddress ? [new Address($this->replyAddress, 'FurniSync RFQ Replies')] : [],
+            replyTo: $this->replyAddress ? [new Address($this->replyAddress, 'FurniSync RFQ Replies')] : null,
         );
     }
 

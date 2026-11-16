@@ -339,14 +339,6 @@ class SupplierContractController extends Controller
             && empty($supplier->supplier_portal_id)
             && !$isSupplierPortal
             && !$isInventoryRequest;
-        if ($isExternalSupplier) {
-            $request->validate([
-                'signed_copy' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
-            ], [
-                'signed_copy.required' => 'Upload the fully signed contract before activating an external supplier contract.',
-            ]);
-        }
-
         $hasActiveContract = SupplierContract::query()
             ->where('store_id', $storeId)
             ->where('supplier_id', (int) $validated['supplier_id'])
@@ -366,7 +358,7 @@ class SupplierContractController extends Controller
         // Inventory records are manual external-supplier contracts, so the store's
         // authenticated user confirms the terms at creation time. Procurement
         // contracts remain pending until the supplier approves them in the portal.
-        $validated['status'] = ($isInventoryRequest || $isExternalSupplier) ? 'active' : 'pending';
+        $validated['status'] = $isInventoryRequest ? 'active' : 'pending';
         $validated['submitted_by_type'] = $isSupplierPortal ? 'supplier' : 'store';
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
@@ -375,12 +367,6 @@ class SupplierContractController extends Controller
         } else {
             // Generate a PDF (or printable HTML fallback) from our standard template.
             $validated['contract_file_path'] = $this->generateContractPdf($validated, $contractNumber, $storeId, $employeeId);
-        }
-
-        if ($isExternalSupplier) {
-            $validated['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
-            $validated['signed_copy_uploaded_by'] = (int) auth()->id();
-            $validated['signed_copy_uploaded_at'] = now();
         }
 
         $contract = SupplierContract::create($validated);
@@ -398,7 +384,7 @@ class SupplierContractController extends Controller
         if ($isExternalSupplier) {
             return response()->json([
                 'success' => true,
-                'message' => 'Signed contract recorded and activated successfully.',
+                'message' => 'External supplier contract created with pending status. Upload the signed PDF to activate it.',
                 'data' => $contract->load('supplier'),
             ], 201);
         }
@@ -541,20 +527,28 @@ class SupplierContractController extends Controller
                 'message' => 'Only draft or pending contracts can be activated',
             ], 422);
         }
+        $isExternalSupplier = (bool) $contract->supplier?->is_external
+            && empty($contract->supplier?->supplier_portal_id);
+        $rules = [];
         if ($contract->submitted_by_type === 'store') {
-            $request->validate([
-                'supplier_confirmed' => ['required', 'accepted'],
-            ]);
+            $rules['supplier_confirmed'] = ['required', 'accepted'];
         }
-
-        if ($contract->supplier?->is_external && !$contract->signed_copy_path) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Upload the fully signed contract before activating this external supplier contract.',
-            ], 422);
+        if ($isExternalSupplier) {
+            $rules['signed_copy'] = [$contract->signed_copy_path ? 'nullable' : 'required', 'file', 'mimes:pdf', 'max:10240'];
         }
+        $validated = $request->validate($rules, [
+            'supplier_confirmed.required' => 'Confirm that the supplier has agreed to the contract.',
+            'signed_copy.required' => 'Upload the signed contract PDF before activating this external supplier contract.',
+            'signed_copy.mimes' => 'The signed contract must be a PDF file.',
+        ]);
 
-        $contract->update(['status' => 'active']);
+        $updates = ['status' => 'active'];
+        if ($isExternalSupplier && $request->hasFile('signed_copy')) {
+            $updates['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
+            $updates['signed_copy_uploaded_by'] = (int) $user->id;
+            $updates['signed_copy_uploaded_at'] = now();
+        }
+        $contract->update($updates);
 
         $this->notifySupplierUsers(
             $contract,

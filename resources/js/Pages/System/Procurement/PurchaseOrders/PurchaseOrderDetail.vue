@@ -322,6 +322,7 @@
                 <th class="px-6 py-3 text-left">GR Number</th>
                 <th class="px-6 py-3 text-left">Received Date</th>
                 <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Discrepancy</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
@@ -336,11 +337,37 @@
                 <td class="px-6 py-4">
                   <Tag :value="formatStatus(receipt.receipt_status)" :severity="receipt.receipt_status === 'full' ? 'success' : 'warning'" />
                 </td>
+                <td class="px-6 py-4">
+                  <div v-if="['partial', 'damaged', 'rejected'].includes(String(receipt.receipt_status))" class="flex flex-wrap items-center gap-2">
+                    <Tag :value="receipt.resolution ? formatStatus(receipt.resolution.status) : 'Needs review'" :severity="receipt.resolution?.status === 'resolved' ? 'success' : 'warn'" />
+                    <Button v-if="!receipt.resolution && canManagePurchaseOrders" label="Flag & contact supplier" icon="pi pi-flag" size="small" severity="warn" outlined @click="openReceiptDiscrepancy(receipt)" />
+                    <Button v-else label="View details" icon="pi pi-eye" size="small" text @click="router.push({ name: 'procurement.goods-receipts.detail', params: { id: receipt.id } })" />
+                  </div>
+                  <span v-else class="text-slate-400">-</span>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+
+      <Dialog v-model:visible="receiptDiscrepancyDialog" modal header="Send discrepancy to supplier" :style="{ width: 'min(92vw, 680px)' }">
+        <div class="space-y-4">
+          <p class="text-sm text-slate-600">The receipt remains recorded as received. This sends the verified variance to the supplier on this PO; it does not create a payment or a new shipping fee.</p>
+          <div>
+            <label class="mb-2 block text-sm font-medium">Requested resolution</label>
+            <Select v-model="receiptDiscrepancyForm.resolution_type" :options="receiptResolutionTypes" optionLabel="label" optionValue="value" fluid />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium">Instructions for supplier</label>
+            <Textarea v-model="receiptDiscrepancyForm.procurement_notes" rows="4" fluid placeholder="Add any context for the supplier." />
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text size="small" @click="receiptDiscrepancyDialog = false" />
+          <Button label="Send to Supplier" icon="pi pi-send" size="small" :loading="receiptDiscrepancySaving" @click="submitReceiptDiscrepancy" />
+        </template>
+      </Dialog>
 
       <!-- Workflow Actions -->
       <div
@@ -480,6 +507,48 @@ const supplierResponseForm = ref<any>({ response: 'accepted', response_channel: 
 const manualSendVisible = ref(false)
 const manualSendSaving = ref(false)
 const manualSendForm = ref({ response_channel: 'phone', sent_at: todayDate, notes: '' })
+const receiptDiscrepancyDialog = ref(false)
+const receiptDiscrepancySaving = ref(false)
+const selectedReceiptForDiscrepancy = ref<any>(null)
+const receiptDiscrepancyForm = ref({ resolution_type: 'remaining_delivery', procurement_notes: '' })
+const receiptResolutionTypes = [
+  { label: 'Request missing items', value: 'remaining_delivery' },
+  { label: 'Request replacement for damaged items', value: 'replacement' },
+]
+
+const openReceiptDiscrepancy = (receipt: any) => {
+  selectedReceiptForDiscrepancy.value = receipt
+  receiptDiscrepancyForm.value = { resolution_type: 'remaining_delivery', procurement_notes: '' }
+  receiptDiscrepancyDialog.value = true
+}
+
+const submitReceiptDiscrepancy = async () => {
+  const receipt = selectedReceiptForDiscrepancy.value
+  if (!receipt?.id) return
+  const items = (receipt.items || []).map((item: any) => ({
+    goods_receipt_item_id: item.id,
+    product_id: item.product_id,
+    quantity_due: Math.max(0, Number(item.quantity_expected || 0) - Number(item.quantity_received || 0)) + Number(item.quantity_damaged || 0),
+  })).filter((item: any) => item.quantity_due > 0)
+  if (!items.length) {
+    toast.add({ severity: 'warn', summary: 'No discrepancy found', detail: 'The receipt has no outstanding or damaged quantity to send.', life: 3500 })
+    return
+  }
+  receiptDiscrepancySaving.value = true
+  try {
+    await procurementService.sendPurchaseOrderReceiptResolution(receipt.id, {
+      ...receiptDiscrepancyForm.value,
+      items,
+    })
+    receiptDiscrepancyDialog.value = false
+    toast.add({ severity: 'success', summary: 'Supplier notified', detail: 'The discrepancy is recorded on this PO. No new payment or shipping fee was created.', life: 3500 })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to notify supplier', detail: error?.response?.data?.message || 'Please review the receipt discrepancy.', life: 4000 })
+  } finally {
+    receiptDiscrepancySaving.value = false
+  }
+}
 const completedStage = computed(() => {
   if (!detail.value) return 0
   const status = String(detail.value.status || '')
@@ -750,6 +819,11 @@ const timelineItems = computed(() => {
       po_supplier_delivered: 'Delivered to Store',
       po_shipment_created: 'Delivery Form Created',
       po_invoice_created: 'Invoice Created',
+      po_receipt_discrepancy_sent: 'Receipt Discrepancy Sent to Supplier',
+      po_receipt_discrepancy_supplier_response: 'Supplier Responded to Receipt Discrepancy',
+      po_receipt_discrepancy_reviewed: 'Procurement Reviewed Receipt Discrepancy',
+      po_receipt_follow_up_delivery_submitted: 'Supplier Submitted Follow-up Delivery Details',
+      po_follow_up_goods_receipt_recorded: 'Follow-up Goods Receipt Recorded',
       po_rejected: 'Rejected by Finance',
       po_cancelled: 'Cancelled',
     }

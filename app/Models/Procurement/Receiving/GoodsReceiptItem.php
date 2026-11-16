@@ -53,7 +53,9 @@ class GoodsReceiptItem extends Model
     // Accessors
     public function getQuantityDiscrepancyAttribute(): int
     {
-        return $this->quantity_expected - $this->quantity_received - $this->quantity_damaged;
+        // quantity_damaged is a subset of the physically received quantity,
+        // so it increases the quantity still due for replacement/credit.
+        return $this->quantity_expected - $this->quantity_received + $this->quantity_damaged;
     }
 
     public function hasDiscrepancy(): bool

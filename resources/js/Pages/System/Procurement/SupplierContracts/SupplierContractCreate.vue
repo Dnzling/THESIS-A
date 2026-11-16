@@ -124,25 +124,22 @@
       </Card>
 
       <!-- Section 5: Document Attachment -->
-      <Card class="mb-6">
+      <Card v-if="!isExternalSupplier" class="mb-6">
         <template #title>
           <div class="flex items-center gap-3">
             <i class="pi pi-file text-2xl text-red-600"></i>
-            <span>Contract Document{{ isExternalSupplier ? '' : ' (Optional)' }}</span>
+            <span>Contract Document (Optional)</span>
           </div>
         </template>
 
         <template #content>
-          <div v-if="isExternalSupplier" class="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
-            External suppliers require a copy signed by both parties. The signed copy is saved as contract evidence, and submitting it activates the contract.
-          </div>
           <FileUpload v-if="!contractFile" name="contract_file" 
             @select="onFileSelect" 
             :multiple="false" 
-            :accept="isExternalSupplier ? '.pdf,.jpg,.jpeg,.png,.webp' : '.pdf,.doc,.docx'"
+            accept=".pdf,.doc,.docx"
             :showUploadButton="false"
             :showCancelButton="false"
-            :chooseLabel="isExternalSupplier ? 'Select signed contract (PDF or image)' : 'Select PDF or Document'"
+            chooseLabel="Select PDF or Document"
             class="w-full" />
           
           <div v-else class="p-4 bg-green-50 border border-green-200 rounded flex items-center justify-between">
@@ -155,7 +152,6 @@
             </div>
             <Button icon="pi pi-times" text rounded severity="danger" @click="contractFile = null" />
           </div>
-          <small v-if="isExternalSupplier && errors.signed_copy" class="mt-2 block text-red-600">{{ errors.signed_copy }}</small>
         </template>
       </Card>
 
@@ -163,10 +159,10 @@
       <div class="flex gap-3 justify-end">
         <Button 
           :label="route.query.supplier_id ? 'Skip for Now' : 'Cancel'" 
-          severity="secondary" 
+          severity="contrast" outlined rounded
           @click="skipOrCancel()" />
-        <Button v-if="!isExternalSupplier" label="Save as Pending" severity="warning" icon="pi pi-save" @click="saveDraft" :loading="submitting" />
-        <Button :label="isExternalSupplier ? 'Review & Activate' : 'Review & Create'" severity="success" icon="pi pi-eye" @click="openReviewDialog" :loading="submitting" />
+        <Button v-if="!isExternalSupplier" label="Save as Pending" severity="info" rounded outlined icon="pi pi-save" @click="saveDraft" :loading="submitting" />
+        <Button label="Review & Create" icon="pi pi-eye" rounded @click="openReviewDialog" :loading="submitting" />
       </div>
     </form>
 
@@ -175,7 +171,7 @@
         <div>
           <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Final review</p>
           <h2 class="mt-1 text-xl font-semibold text-slate-900">Review supplier contract</h2>
-          <p class="mt-1 text-xs text-slate-500">{{ isExternalSupplier ? 'Review the terms and confirm the uploaded signed copy before activating this contract.' : 'Confirm the details below before submitting this agreement to the supplier.' }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ isExternalSupplier ? 'Review the generated contract document before creating it. Upload the signed copy when you are ready to activate.' : 'Confirm the details below before submitting this agreement to the supplier.' }}</p>
         </div>
         <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close review" @click="showReviewDialog = false" />
       </div>
@@ -193,7 +189,7 @@
         <div class="grid gap-3 sm:grid-cols-3">
           <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.discount_percentage || 0 }}%</p></div>
           <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Tax rate</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.tax_rate || 0 }}%</p></div>
-          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">{{ isExternalSupplier ? 'Signed copy' : 'Attachment' }}</p><p class="mt-1 truncate font-semibold text-slate-900">{{ contractFile?.name || 'No file attached' }}</p><p v-if="contractFile" class="mt-1 text-xs text-slate-500">{{ formatFileSize(contractFile.size) }}</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">{{ isExternalSupplier ? 'Contract document' : 'Attachment' }}</p><p class="mt-1 truncate font-semibold text-slate-900">{{ isExternalSupplier ? 'PDF generated on creation' : contractFile?.name || 'No file attached' }}</p><p v-if="contractFile && !isExternalSupplier" class="mt-1 text-xs text-slate-500">{{ formatFileSize(contractFile.size) }}</p></div>
         </div>
 
         <div class="overflow-hidden rounded-xl border border-slate-200">
@@ -203,8 +199,8 @@
       </div>
       <template #footer>
         <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
-          <p class="text-xs text-slate-500">{{ isExternalSupplier ? 'The signed copy is stored with this contract and activates it immediately.' : route.query.from_inventory ? 'Manual inventory supplier contracts become active immediately after submission.' : 'Supplier portal contracts remain pending until the supplier agrees to the terms.' }}</p>
-          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button :label="isExternalSupplier ? 'Create and Activate Contract' : 'Create Pending Contract'" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
+          <p class="text-xs text-slate-500">{{ isExternalSupplier ? 'The contract will remain pending until you upload the signed PDF during activation.' : route.query.from_inventory ? 'Manual inventory supplier contracts become active immediately after submission.' : 'Supplier portal contracts remain pending until the supplier agrees to the terms.' }}</p>
+          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Create Pending Contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
       </template>
     </Dialog>
@@ -817,8 +813,6 @@ const validateForm = (): boolean => {
   if (Number(form.tax_rate) !== 12) {
     errors.tax_rate = 'Tax rate is fixed at 12%'
   }
-  if (isExternalSupplier.value && !contractFile.value) errors.signed_copy = 'Upload the fully signed contract copy.'
-
   return Object.keys(errors).length === 0
 }
 
@@ -863,23 +857,26 @@ const createPendingContract = async (mode: 'draft' | 'review') => {
       }
     })
     formData.append('status', 'pending')
-    if (contractFile.value) formData.append(isExternalSupplier.value ? 'signed_copy' : 'contract_file', contractFile.value)
+    if (contractFile.value && !isExternalSupplier.value) formData.append('contract_file', contractFile.value)
+    let response: any
     if (route.query.from_inventory) {
-      await inventoryService.createSupplierContract(formData)
+      response = await inventoryService.createSupplierContract(formData)
     } else {
-      await procurementService.createSupplierContract(formData)
+      response = await procurementService.createSupplierContract(formData)
     }
     showReviewDialog.value = false
     showDraftConfirmation.value = false
-    responseDestination.value = getContractDestination
-    responseActionLabel.value = 'View Contracts'
+    responseDestination.value = isExternalSupplier.value && response?.data?.id
+      ? () => router.push({ name: 'procurement.supplier-contracts.detail', params: { id: response.data.id } })
+      : getContractDestination
+    responseActionLabel.value = isExternalSupplier.value ? 'Upload Signed Copy Later' : 'View Contracts'
     const inventoryCreated = Boolean(route.query.from_inventory)
     showResponse(
       'success',
-      inventoryCreated || isExternalSupplier.value ? 'Contract created and activated' : mode === 'draft' ? 'Contract saved as pending' : 'Contract submitted',
+      inventoryCreated ? 'Contract created and activated' : isExternalSupplier.value || mode === 'draft' ? 'Contract created as pending' : 'Contract submitted',
       inventoryCreated
         ? 'The manual supplier contract is now active and ready for inventory purchase orders.'
-        : isExternalSupplier.value ? 'The signed contract copy was recorded and the contract is active.' : 'The contract was created with Pending status and will become active after supplier approval.'
+        : isExternalSupplier.value ? 'The generated contract PDF is available on the contract details page. Upload the signed PDF when you are ready to activate it.' : 'The contract was created with Pending status and will become active after supplier approval.'
     )
   } catch (error: any) {
     const serverErrors = error?.response?.data?.errors || {}

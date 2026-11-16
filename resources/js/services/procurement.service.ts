@@ -676,6 +676,16 @@ class ProcurementService {
     return response.data
   }
 
+  async sendPurchaseOrderReceiptResolution(id: number, data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/goods-receipts/${id}/resolution`, data)
+    return response.data
+  }
+
+  async reviewGoodsReceiptResolution(id: number, data: { decision: string; notes: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/goods-receipt-resolutions/${id}/review`, data)
+    return response.data
+  }
+
   async createGoodsReceipt(data: GoodsReceipt) {
     const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts`, data)
     return response.data
@@ -778,8 +788,10 @@ class ProcurementService {
     return response.data
   }
 
-  async activateSupplierContract(id: string | number) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`, { supplier_confirmed: true })
+  async activateSupplierContract(id: string | number, data: FormData | Record<string, any> = { supplier_confirmed: true }) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/activate`, data, {
+      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
+    })
     return response.data
   }
 

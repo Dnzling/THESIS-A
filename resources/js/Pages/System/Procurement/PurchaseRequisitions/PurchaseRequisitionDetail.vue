@@ -417,7 +417,7 @@
         />
 
         <Button
-          v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
+          v-if="canManageReceiving && detail.status !== 'received' && deliveredPO"
           size="medium"
           severity="secondary"
           icon="pi pi-archive"
@@ -743,6 +743,7 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
     rfq_sent: 'info',
     quotes_received: 'warn',
     delivered: 'success',
+    received: 'success',
     in_transit: 'info',
     supplier_selected: 'contrast',
     po_created: 'success',
@@ -755,6 +756,7 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
 const formatStatus = (status: string): string => {
   if (!status || typeof status !== 'string') return 'Draft'
   if (status === 'procurement_pending') return 'Pending'
+  if (status === 'received') return 'Received'
   return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
@@ -963,7 +965,7 @@ onMounted(() => {
 
 const deliveredPO = computed(() => {
   if (!detail.value?.purchase_orders) return null
-  return detail.value.purchase_orders.find((po: any) => po.status === 'delivered')
+  return detail.value.purchase_orders.find((po: any) => ['delivered', 'out_for_delivery', 'in_transit'].includes(po.status))
 })
 
 const createGoodsReceipt = (po: any) => {

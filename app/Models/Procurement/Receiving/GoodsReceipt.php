@@ -66,6 +66,11 @@ class GoodsReceipt extends Model
         return $this->hasOne(SupplierPerformanceEvaluation::class);
     }
 
+    public function resolution(): HasOne
+    {
+        return $this->hasOne(GoodsReceiptResolution::class, 'original_goods_receipt_id')->latestOfMany();
+    }
+
     // Scopes
     public function scopeByDateRange($query, $start, $end)
     {
@@ -80,7 +85,8 @@ class GoodsReceipt extends Model
     // Helper Methods
     public function hasDiscrepancies(): bool
     {
-        return in_array($this->receipt_status, ['partial', 'damaged', 'rejected']);
+        return in_array($this->receipt_status, ['partial', 'damaged', 'rejected'], true)
+            || $this->items->contains(fn (GoodsReceiptItem $item) => $item->hasDiscrepancy());
     }
 
     public function getTotalItemsReceivedAttribute(): int

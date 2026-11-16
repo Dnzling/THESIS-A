@@ -10,7 +10,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <Button v-if="!loading && supplier" label="Get Products" icon="pi pi-shopping-cart" severity="warn" size="small" @click="openSupplierProducts" />
+        <Button v-if="!loading && supplier && !supplier.is_external" label="Get Products" icon="pi pi-shopping-cart" severity="warn" size="small" @click="openSupplierProducts" />
         <Button v-if="!loading && supplier && activeContractsCount === 0" label="Create Contract" icon="pi pi-plus"
           severity="warn" size="small" @click="createContract" />
         <Tag :value="humanize(supplier?.contract_status || 'no_contract')"
@@ -84,7 +84,7 @@
               <h3 class="text-sm font-semibold text-slate-900">Connected Products</h3>
               <p class="mt-1 text-xs text-slate-500">Products this supplier currently offers to your store.</p>
             </div>
-            <Button label="Get Products" icon="pi pi-arrow-right" iconPos="right" text size="small" @click="openSupplierProducts" />
+            <Button v-if="!supplier.is_external" label="Get Products" icon="pi pi-arrow-right" iconPos="right" text size="small" @click="openSupplierProducts" />
           </div>
         </template>
         <template #content>

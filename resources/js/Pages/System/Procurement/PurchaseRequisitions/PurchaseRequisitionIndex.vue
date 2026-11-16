@@ -305,6 +305,7 @@ const statusSeverity = (status: string): string => {
     procurement_processing: 'info',
     rfq_sent: 'info',
     delivered: 'success',
+    received: 'success',
     quotes_received: 'warning',
     supplier_selected: 'contrast',
     po_created: 'success',
@@ -317,6 +318,7 @@ const statusSeverity = (status: string): string => {
 const formatStatus = (status: string): string => {
   if (!status) return '-'
   if (status === 'procurement_pending') return 'Pending'
+  if (status === 'received') return 'Received'
   return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 

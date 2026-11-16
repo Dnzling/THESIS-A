@@ -2,7 +2,7 @@
 <x-mail::message>
 # RFQ Invitation: {{ $rfq->rfq_number }}
 
-Dear {{ $supplier->contact_name ?? $supplier->name }},
+Dear {{ $supplier->contact_person ?: $supplier->supplier_name }},
 
 You have been invited to submit a quotation for our Request for Quotation (RFQ): **{{ $rfq->title }}**
 
@@ -12,10 +12,10 @@ You have been invited to submit a quotation for our Request for Quotation (RFQ):
 - **Currency**: {{ $rfq->currency }}
 
 ## Items Requested
-| Item | Quantity | Unit | Target Price |
-|------|----------|------|--------------|
+| Item | Quantity | Unit |
+|------|----------|------|
 @foreach($rfq->items as $item)
-| {{ $item->product?->name ?? 'Product' }} | {{ $item->quantity }} | {{ $item->unit }} | {{ $rfq->currency }} {{ number_format($item->target_price ?? 0, 2) }} |
+| {{ $item->product?->product_name ?? 'Product' }}{{ $item->variation?->variation_name ? ' - ' . $item->variation->variation_name : '' }} | {{ $item->quantity }} | {{ $item->variation?->unit_of_measurement ?: $item->product?->unit_of_measurement ?: '-' }} |
 @endforeach
 
 ## Requirements

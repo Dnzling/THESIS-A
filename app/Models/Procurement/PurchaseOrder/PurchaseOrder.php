@@ -325,7 +325,7 @@ class PurchaseOrder extends Model
         if ($this->purchase_requisition_id) {
             PurchaseRequisition::query()
                 ->whereKey($this->purchase_requisition_id)
-                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
                 ->update(['status' => 'in_transit']);
         }
     }
@@ -342,7 +342,7 @@ class PurchaseOrder extends Model
         if ($this->purchase_requisition_id) {
             PurchaseRequisition::query()
                 ->whereKey($this->purchase_requisition_id)
-                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
                 ->update(['status' => 'out_for_delivery']);
         }
     }
@@ -357,15 +357,8 @@ class PurchaseOrder extends Model
             'actual_delivery_date' => now()->toDateString(),
         ]);
 
-        // Keep the procurement request in sync with the delivery milestone.
-        // A PR can be linked to one or more POs, but once this PO is delivered
-        // it must no longer remain in an earlier procurement status.
-        if ($this->purchase_requisition_id) {
-            PurchaseRequisition::query()
-                ->whereKey($this->purchase_requisition_id)
-                ->whereNotIn('status', ['rejected', 'cancelled'])
-                ->update(['status' => 'delivered']);
-        }
+        // Shipment delivery is not the same as store receipt. Keep the PR
+        // processing until GRNs settle all POs linked to it.
     }
 
     public function markGoodsReceived(): void
@@ -381,14 +374,14 @@ class PurchaseOrder extends Model
 
         $hasOutstandingPurchaseOrder = static::query()
             ->where('purchase_requisition_id', $this->purchase_requisition_id)
-            ->where('status', '!=', 'goods_received')
+            ->whereNotIn('status', ['goods_received', 'cancelled', 'canceled', 'rejected'])
             ->exists();
 
         if (!$hasOutstandingPurchaseOrder) {
             PurchaseRequisition::query()
                 ->whereKey($this->purchase_requisition_id)
-                ->whereNotIn('status', ['rejected', 'cancelled'])
-                ->update(['status' => 'delivered']);
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
+                ->update(['status' => 'received']);
         }
     }
 }
