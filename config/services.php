@@ -28,11 +28,41 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'brevo' => [
+        'rfq_reply_domain' => env('BREVO_RFQ_REPLY_DOMAIN'),
+        'inbound_webhook_username' => env('BREVO_INBOUND_WEBHOOK_USERNAME'),
+        'inbound_webhook_password' => env('BREVO_INBOUND_WEBHOOK_PASSWORD'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
+
+    'mapbox' => [
+        // The same public Mapbox token can be used by the browser and by the
+        // server-side geocoding/directions requests. Prefer a dedicated
+        // server variable, while keeping existing installations functional.
+        'access_token' => env('MAPBOX_ACCESS_TOKEN', env('VITE_MAPBOX_ACCESS_TOKEN')),
+    ],
+
+    'ocr_space' => [
+        'key' => env('OCR_SPACE_API_KEY'),
+        'endpoint' => env('OCR_SPACE_ENDPOINT', 'https://api.ocr.space/parse/image'),
+        'engine' => (int) env('OCR_SPACE_ENGINE', 2),
+        'language' => env('OCR_SPACE_LANGUAGE', 'auto'),
+        'timeout' => (int) env('OCR_SPACE_TIMEOUT', 45),
+    ],
+
+    'lalamove' => [
+        'base_url' => env('LALAMOVE_BASE_URL', 'https://rest.sandbox.lalamove.com'),
+        'api_key' => env('LALAMOVE_API_KEY'),
+        'api_secret' => env('LALAMOVE_API_SECRET'),
+        'market' => env('LALAMOVE_MARKET', 'PH'),
+        'language' => env('LALAMOVE_LANGUAGE', 'en_PH'),
+        'timeout' => (int) env('LALAMOVE_TIMEOUT', 20),
     ],
 
 ];

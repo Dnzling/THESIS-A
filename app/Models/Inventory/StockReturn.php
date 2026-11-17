@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
-use App\Models\Procurement\Supplier;
+use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Hr\Employee;
 
 class StockReturn extends Model
@@ -19,6 +19,7 @@ class StockReturn extends Model
     protected $fillable = [
         'return_number',
         'store_id',
+        'ecommerce_return_id',
         'from_branch_id',
         'supplier_id',
         'to_branch_id',
@@ -45,6 +46,8 @@ class StockReturn extends Model
         'reason_details',
         'notes',
         'rejection_reason',
+        'supplier_resolution',
+        'supplier_resolution_notes',
     ];
 
     protected $casts = [
@@ -101,6 +104,11 @@ class StockReturn extends Model
     public function items(): HasMany
     {
         return $this->hasMany(StockReturnItem::class);
+    }
+
+    public function ecommerceReturn(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\CRM\EcommerceOrderReturn::class, 'ecommerce_return_id');
     }
 
     // Scopes

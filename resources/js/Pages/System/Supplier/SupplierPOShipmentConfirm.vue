@@ -275,13 +275,13 @@ const discountAmount = computed(() => Number(po.value?.discount_amount ?? 0))
 const totalAmount = computed(() => subtotalAmount.value - discountAmount.value + taxVat.value + deliveryCharge.value)
 
 const statusSeverity = (status: string) => {
-  if (status === 'sent_to_supplier') return 'info'
+  if (status === 'sent_to_supplier') return 'warn'
   if (status === 'supplier_accepted') return 'success'
   if (status === 'declined_supplier') return 'danger'
   return 'secondary'
 }
 
-const formatStatus = (status: string) => status?.split('_').map(word => word[0]?.toUpperCase() + word.slice(1)).join(' ') || '-'
+const formatStatus = (status: string) => status === 'sent_to_supplier' ? 'Pending' : status?.split('_').map(word => word[0]?.toUpperCase() + word.slice(1)).join(' ') || '-'
 
 const loadPO = async () => {
   loading.value = true

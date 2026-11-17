@@ -109,9 +109,6 @@ class ReorderRuleRequest extends FormRequest
                 'string',
                 Rule::in(['low', 'medium', 'high', 'critical']),
             ],
-            'auto_generate_po' => [
-                'boolean',
-            ],
             'supplier_preferences' => [
                 'nullable',
                 'array',
@@ -169,7 +166,6 @@ class ReorderRuleRequest extends FormRequest
             'maximum_stock' => 'maximum stock',
             'economic_order_quantity' => 'economic order quantity',
             'avg_daily_demand' => 'average daily demand',
-            'auto_generate_po' => 'auto generate PO',
             'supplier_preferences' => 'supplier preferences',
             'seasonal_adjustments' => 'seasonal adjustments',
             'is_active' => 'active status',

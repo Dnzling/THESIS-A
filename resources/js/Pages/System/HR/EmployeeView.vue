@@ -4,8 +4,21 @@
     <ConfirmDialog />
     <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center items-center h-96">
-      <ProgressSpinner />
+    <div v-if="loading" class="space-y-6 animate-pulse">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3"><Skeleton shape="circle" size="2.5rem" /><div class="space-y-2"><Skeleton width="13rem" height="1.5rem" /><Skeleton width="18rem" height="0.75rem" /></div></div>
+        <div class="flex gap-2"><Skeleton width="8rem" height="2.25rem" borderRadius="0.75rem" /><Skeleton width="8rem" height="2.25rem" borderRadius="0.75rem" /></div>
+      </div>
+      <div class="grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <Skeleton height="6rem" borderRadius="0" />
+          <div class="space-y-4 p-4"><div class="flex items-center gap-3"><Skeleton shape="circle" size="5rem" /><Skeleton width="5rem" height="1.5rem" borderRadius="1rem" /></div><Skeleton width="10rem" height="1rem" /><Skeleton width="8rem" height="0.75rem" /><Skeleton width="100%" height="0.75rem" /><Skeleton width="90%" height="0.75rem" /><Skeleton width="95%" height="0.75rem" /></div>
+        </div>
+        <div class="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+          <div class="flex gap-4 border-b border-slate-100 pb-3"><Skeleton v-for="index in 5" :key="index" width="6rem" height="1.25rem" /></div>
+          <div class="space-y-4"><Skeleton width="11rem" height="1.25rem" /><Skeleton v-for="index in 6" :key="`line-${index}`" width="100%" height="1rem" /></div>
+        </div>
+      </div>
     </div>
   
     <!-- Error State -->
@@ -22,119 +35,88 @@
         <div class="flex items-center gap-3">
           <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="goBack" />
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Employee Profile</p>
             <h1 class="text-2xl font-semibold text-slate-900">Employee Information</h1>
             <p class="text-sm text-slate-500">Complete record, activity, and payroll summary in one view.</p>
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button label="Update Role & Salary" icon="pi pi-id-card" severity="warning" outlined @click="openEditDialog" />
+                    <Button v-if="!employeeInfo.employment_details?.resignation_date"  label="Record Resignation" severity="danger" rounded size="small" @click="showResignationDialog = true" />
+          <Button label="Change Role & Salary" rounded size="small" icon="pi pi-id-card" @click="openEditDialog" />
+
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
       </div>
   
-      <!-- Employee Profile Summary Card -->
-      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
-        <div class="flex flex-wrap items-start gap-6">
-          <div class="relative">
-            <Avatar :label="getInitials(employeeInfo.basic_info?.name)" size="xlarge"
-              class="bg-blue-100 text-blue-600 text-2xl font-semibold" />
-            <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"></div>
+      <div class="mt-6 grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <aside class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div class="relative h-24 bg-gradient-to-br from-orange-100 via-orange-50 to-slate-100">
+            <div class="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white/70 to-transparent"></div>
           </div>
-
-          <div class="flex-1">
-            <div class="flex flex-wrap items-center gap-3">
-              <h2 class="text-2xl font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
-              <Tag :value="employeeInfo.employment_details?.status || 'Active'"
-                :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
+          <div class="px-4 pb-5">
+            <div class="-mt-10 flex items-end justify-between">
+              <div class="relative rounded-full border-4 border-white bg-white shadow-sm">
+                <img v-if="employeeInfo.basic_info?.avatar_url" :src="employeeInfo.basic_info.avatar_url" :alt="`${employeeInfo.basic_info?.name} photo`" class="h-20 w-20 rounded-full object-cover" />
+                <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-orange-100 text-2xl font-semibold text-orange-700">{{ getInitials(employeeInfo.basic_info?.name) }}</div>
+                <label class="absolute bottom-0 right-0 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload employee photo">
+                  <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadEmployeePhoto" />
+                </label>
+              </div>
+              <Badge class="mb-1 capitalize" :value="employeeInfo.employment_details?.status || 'Active'" :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
             </div>
-            <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-              <span>{{ formatLabel(employeeInfo.employment_details?.role) }}</span>
-              <span class="text-slate-300">|</span>
-              <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
-              <span class="text-slate-300">|</span>
-              <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
+            <h2 class="mt-3 text-base font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
+            <p class="mt-0.5 text-xs text-slate-500">{{ employeeInfo.basic_info?.employee_number || '-' }}</p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <Tag :value="formatLabel(employeeInfo.employment_details?.role)" severity="warn" />
+              <Tag :value="formatLabel(employeeInfo.employment_details?.department)" severity="secondary" />
             </div>
 
-            <!-- <div class="mt-5 grid gap-3 md:grid-cols-5">
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Join Date</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
+            <div class="mt-5 border-t border-slate-100 pt-4">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Basic Information</p>
+              <div class="space-y-3 text-xs">
+                <div class="flex gap-2.5"><i class="pi pi-envelope mt-0.5 w-4 text-center text-slate-400"></i><span class="min-w-0 break-all text-slate-700">{{ employeeInfo.contact_info?.email || employeeInfo.basic_info?.email || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-phone mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.contact_info?.phone || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-calendar mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">Birthday: {{ formatDate(employeeInfo.basic_info?.birthday) }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-user mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ formatLabel(employeeInfo.basic_info?.gender) }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-map-marker mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.contact_info?.address || '-' }}</span></div>
+                <div class="flex gap-2.5"><i class="pi pi-briefcase mt-0.5 w-4 text-center text-slate-400"></i><span class="text-slate-700">{{ employeeInfo.employment_details?.branch || '-' }}</span></div>
               </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Employment</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatLabel(employeeInfo.employment_details?.type) }}</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Leave Balance</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ leaveBalance }} days</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Attendance Rate</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ attendanceRate }}%</div>
-              </div>
-              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                <div class="text-xs text-slate-500">Current Shift</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ employeeInfo.current_shift?.shift_name || '-' }}</div>
-                <div v-if="employeeInfo.current_shift?.time_range" class="text-xs text-slate-500">
-                  {{ employeeInfo.current_shift.time_range }}
-                </div>
-                <div v-if="employeeInfo.current_shift?.covers_days_label" class="text-xs text-slate-500">
-                  {{ employeeInfo.current_shift.covers_days_label }}
-                </div>
-              </div>
-            </div> -->
+            </div>
+
+            <div v-if="employeeInfo.employment_details?.resignation_date" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <p class="font-semibold">Resignation notice · {{ formatDate(employeeInfo.employment_details.resignation_date) }}</p>
+              <p class="mt-1">Last working day: {{ formatDate(employeeInfo.employment_details.last_working_day) }}</p>
+              <p>Handover: {{ formatLabel(employeeInfo.employment_details.handover_status) }}</p>
+              <p>Reason: {{ formatLabel(employeeInfo.employment_details.resignation_reason) }}</p>
+              <a v-if="employeeInfo.employment_details.resignation_letter_url" :href="employeeInfo.employment_details.resignation_letter_url" target="_blank" rel="noopener" class="mt-1 inline-block font-semibold underline">View letter</a>
+              <p v-if="employeeInfo.employment_details.resignation_notes" class="mt-1">{{ employeeInfo.employment_details.resignation_notes }}</p>
+            </div>
           </div>
-        </div>
-      </div>
+        </aside>
 
       <!-- Main Tabs -->
-      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 shadow-sm">
+      <div class="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <Tabs v-model:value="activeTab">
-          <TabList class="px-6 pt-3">
-            <Tab value="info">
-              <div class="flex items-center gap-2">
-                <span>Full Information</span>
-              </div>
-            </Tab>
-            <Tab value="attendance">
-              <div class="flex items-center gap-2">
-                <span>Attendance History</span>
-              </div>
-            </Tab>
-            <Tab value="overtime">
-              <div class="flex items-center gap-2">
-                <span>Overtime History</span>
-              </div>
-            </Tab>
-            <Tab value="leave">
-              <div class="flex items-center gap-2">
-                <span>Leave History</span>
-              </div>
-            </Tab>
-            <Tab value="payslip">
-              <div class="flex items-center gap-2">
-                <span>Payslip History</span>
-              </div>
-            </Tab>
-            <Tab value="deductions">
-              <div class="flex items-center gap-2">
-                <span>Contributions</span>
-              </div>
-            </Tab>
+          <TabList class="overflow-x-auto px-4 pt-3">
+            <Tab value="info">Information</Tab>
+            <Tab value="attendance">Attendance</Tab>
+            <Tab value="overtime">Overtime</Tab>
+            <Tab value="leave">Leave</Tab>
+            <Tab value="payslip">Payslips</Tab>
           </TabList>
   
           <TabPanels class="p-6">
-            <!-- FULL INFORMATION TAB -->
             <TabPanel value="info">
               <EmployeeInfoTab
                 :employee-info="employeeInfo"
+                @edit-personal="openPersonalInfoDialog"
                 @updated="fetchEmployeeData"
                 @edit-id="openGovernmentIdDialog"
                 @edit-card="openCreditCardDialog"
                 @verify-id="verifyGovernmentIdRecord"
               />
+              <Divider align="left"><span class="text-sm font-semibold text-slate-800">Contributions</span></Divider>
+              <EmployeeDeductionsTab :contributions="employeeInfo.payroll" />
             </TabPanel>
   
             <!-- ATTENDANCE HISTORY TAB -->
@@ -178,11 +160,9 @@
               />
             </TabPanel>
 
-            <TabPanel value="deductions">
-              <EmployeeDeductionsTab :contributions="employeeInfo.payroll" />
-            </TabPanel>
           </TabPanels>
         </Tabs>
+      </div>
       </div>
 
       <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '760px' }" modal>
@@ -242,6 +222,44 @@
           <Button label="Close" text @click="showPayslipDialog = false" />
           <Button label="Download PDF" icon="pi pi-download" severity="secondary" @click="handleDownloadPayslip(selectedPayslip)" />
           <Button label="Print" icon="pi pi-print" severity="info" @click="handlePrintPayslip(selectedPayslip)" />
+        </template>
+      </Dialog>
+
+      <Dialog v-model:visible="showResignationDialog" header="Record Resignation" modal :style="{ width: 'min(34rem, 95vw)' }">
+        <div class="space-y-4 text-sm">
+          <p class="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">The employee remains active during notice. The last working day must be at least 7 days after the notice date.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block font-medium">Resignation Date *</label>
+              <DatePicker v-model="resignationForm.resignationDate" :minDate="new Date()" dateFormat="M d, yy" showIcon fluid />
+            </div>
+            <div>
+              <label class="mb-1 block font-medium">Last Working Day *</label>
+              <DatePicker v-model="resignationForm.lastWorkingDay" :minDate="minimumLastWorkingDay" dateFormat="M d, yy" showIcon fluid />
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Reason *</label>
+            <Select v-model="resignationForm.reason" :options="resignationReasons" optionLabel="label" optionValue="value" placeholder="Select reason" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Handover Status *</label>
+            <Select v-model="resignationForm.handoverStatus" :options="handoverStatuses" optionLabel="label" optionValue="value" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Notes</label>
+            <Textarea v-model="resignationForm.notes" rows="3" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Resignation Letter (optional, max 10 MB)</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="w-full text-xs" @change="onResignationLetterChange" />
+          </div>
+          <p v-if="resignationForm.lastWorkingDay && resignationForm.lastWorkingDay < minimumLastWorkingDay" class="text-xs text-red-600">Choose a last working day at least 7 days after the notice date.</p>
+          <p v-if="resignationError" class="text-xs text-red-600">{{ resignationError }}</p>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text @click="showResignationDialog = false" />
+          <Button label="Record Resignation" severity="warn" :loading="savingResignation" :disabled="!canSubmitResignation || savingResignation" @click="submitResignation" />
         </template>
       </Dialog>
 
@@ -305,10 +323,13 @@
           </div>
 
           <div v-else-if="activeEditStep === 1">
+            <div class="mb-4 flex justify-end">
+              <Button label="Choose shift template" icon="pi pi-calendar-plus" severity="secondary" outlined size="small" @click="openScheduleTemplateDialog" />
+            </div>
             <div class="mb-4 grid gap-4 lg:grid-cols-2">
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
-                <DatePicker v-model="editWeekStart" class="w-full" fluid />
+                <DatePicker v-model="editWeekStart" class="w-full" fluid @update:model-value="setEditScheduleWeek" />
               </div>
               <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 Fill each day manually. Use 12-hour time like <code>08:00 AM</code>. Start time will auto-calculate a 9-hour shift, and the end time stays editable.
@@ -386,8 +407,78 @@
         <template #footer>
           <Button label="Cancel" text @click="showEditDialog = false" />
           <Button v-if="activeEditStep > 0" label="Back" severity="secondary" text @click="activeEditStep -= 1" />
-          <Button v-if="activeEditStep === 0" label="Next" severity="info" @click="activeEditStep = 1" />
-          <Button v-else label="Save Changes" icon="pi pi-save" severity="info" :loading="savingEdit" @click="submitEditEmployee" />
+          <Button v-if="activeEditStep === 0" label="Next" @click="activeEditStep = 1" />
+          <Button v-else label="Save Changes" :loading="savingEdit" @click="submitEditEmployee" />
+        </template>
+      </Dialog>
+
+      <Dialog v-model:visible="showScheduleTemplateDialog" header="Choose a Shift Template" :style="{ width: 'min(36rem, 95vw)' }" modal>
+        <div class="space-y-3">
+          <p class="text-sm text-slate-600">Select a saved schedule or shift template to fill this employee's weekly schedule. You can still edit each day afterward.</p>
+          <Select v-model="selectedScheduleTemplateId" :options="scheduleTemplateOptions" optionLabel="label" optionValue="value" placeholder="Select a template" filter showClear class="w-full" :loading="loadingScheduleTemplates" :disabled="!scheduleTemplateOptions.length" />
+          <div v-if="selectedScheduleTemplate" class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Full Weekly Schedule</p>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <div v-for="day in selectedSchedulePreview" :key="day.day" class="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm">
+                <span class="font-medium text-slate-700">{{ day.label }}</span>
+                <span :class="day.isWorking ? 'text-slate-700' : 'text-slate-400'">{{ day.time }}</span>
+              </div>
+            </div>
+          </div>
+          <p v-if="!scheduleTemplateOptions.length && !loadingScheduleTemplates" class="text-sm text-amber-700">No active templates are available. You can continue entering the schedule manually.</p>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" outlined @click="showScheduleTemplateDialog = false" />
+          <Button label="Apply Template" icon="pi pi-check" severity="warn" :disabled="!selectedScheduleTemplateId" @click="applyScheduleTemplate" />
+        </template>
+      </Dialog>
+
+      <Dialog v-model:visible="showPersonalInfoDialog" header="Edit Personal Information" :style="{ width: 'min(38rem, 95vw)' }" modal>
+        <div class="space-y-4">
+          <Message v-if="personalInfoError" severity="error" :closable="false">{{ personalInfoError }}</Message>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">First Name *</label>
+              <InputText v-model="personalInfoForm.fname" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Last Name *</label>
+              <InputText v-model="personalInfoForm.lname" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Birthday</label>
+              <DatePicker v-model="personalInfoForm.birthday" dateFormat="M d, yy" showIcon fluid />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Gender</label>
+              <Select v-model="personalInfoForm.gender" :options="genderOptions" optionLabel="label" optionValue="value" placeholder="Select gender" showClear class="w-full" />
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Phone Number</label>
+              <InputMask v-model="personalInfoForm.phone" mask="0999-999-9999" placeholder="09XX-XXX-XXXX" class="w-full" />
+              <small v-if="personalInfoForm.phone && !personalPhoneIsValid" class="text-red-600">Enter a complete Philippine mobile number.</small>
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Street Address</label>
+              <InputText v-model="personalInfoForm.address" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">Barangay</label>
+              <InputText v-model="personalInfoForm.barangay" class="w-full" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-slate-700">City</label>
+              <InputText v-model="personalInfoForm.city" class="w-full" />
+            </div>
+            <div class="space-y-1.5 sm:col-span-2">
+              <label class="text-xs font-medium text-slate-700">Province</label>
+              <InputText v-model="personalInfoForm.province" class="w-full" />
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" outlined @click="showPersonalInfoDialog = false" />
+          <Button label="Save Information" icon="pi pi-check" severity="warn" :loading="savingPersonalInfo" :disabled="!personalInfoForm.fname.trim() || !personalInfoForm.lname.trim() || !personalPhoneIsValid" @click="savePersonalInfo" />
         </template>
       </Dialog>
 
@@ -433,7 +524,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showGovernmentIdDialog = false" />
-          <Button label="Save ID" icon="pi pi-save" severity="info" :loading="savingGovernmentId" @click="submitGovernmentId" />
+          <Button label="Save ID" icon="pi pi-save"  :loading="savingGovernmentId" @click="submitGovernmentId" />
         </template>
       </Dialog>
 
@@ -475,7 +566,7 @@
         </div>
         <template #footer>
           <Button label="Cancel" text @click="showCreditCardDialog = false" />
-          <Button label="Save Card" icon="pi pi-save" severity="info" :loading="savingCreditCard" @click="submitCreditCard" />
+          <Button label="Save Card" icon="pi pi-save"  :loading="savingCreditCard" @click="submitCreditCard" />
         </template>
       </Dialog>
     </template>
@@ -495,6 +586,9 @@ import InputNumber from 'primevue/inputnumber'
 import InputMask from 'primevue/inputmask'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import Skeleton from 'primevue/skeleton'
+import Textarea from 'primevue/textarea'
 
 // Import tab components
 import EmployeeInfoTab from './components/tabs/EmployeeInfoTab.vue'
@@ -525,10 +619,121 @@ const roleOptions = ref<{ label: string; value: number; department?: string }[]>
 const departmentOptions = ref<{ label: string; value: number; name?: string }[]>([])
 const branchOptions = ref<{ id: number; name: string }[]>([])
 const showEditDialog = ref(false)
+const showResignationDialog = ref(false)
+const savingResignation = ref(false)
+const resignationError = ref('')
+const resignationReasons = [
+  { label: 'Personal', value: 'personal' },
+  { label: 'Better Opportunity', value: 'better_opportunity' },
+  { label: 'Relocation', value: 'relocation' },
+  { label: 'Health', value: 'health' },
+  { label: 'End of Contract', value: 'end_of_contract' },
+  { label: 'Other', value: 'other' },
+]
+const handoverStatuses = [
+  { label: 'Not Started', value: 'not_started' },
+  { label: 'In Progress', value: 'in_progress' },
+  { label: 'Complete', value: 'complete' },
+]
+const resignationForm = ref({
+  resignationDate: new Date(),
+  lastWorkingDay: new Date(Date.now() + 7 * 86400000),
+  reason: null as string | null,
+  handoverStatus: 'not_started',
+  notes: '',
+  letter: null as File | null,
+})
+const minimumLastWorkingDay = computed(() => {
+  const date = new Date(resignationForm.value.resignationDate)
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + 7)
+  return date
+})
+const canSubmitResignation = computed(() => Boolean(
+  resignationForm.value.resignationDate && resignationForm.value.lastWorkingDay
+  && resignationForm.value.lastWorkingDay >= minimumLastWorkingDay.value
+  && resignationForm.value.reason && resignationForm.value.handoverStatus
+  && (!resignationForm.value.letter || resignationForm.value.letter.size <= 10 * 1024 * 1024)
+))
+const resignationDateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const onResignationLetterChange = (event: Event) => {
+  resignationForm.value.letter = (event.target as HTMLInputElement).files?.[0] || null
+  resignationError.value = resignationForm.value.letter && resignationForm.value.letter.size > 10 * 1024 * 1024
+    ? 'The resignation letter must be 10 MB or smaller.' : ''
+}
+const submitResignation = async () => {
+  if (!canSubmitResignation.value) return
+  resignationError.value = ''
+  savingResignation.value = true
+  try {
+    const payload = new FormData()
+    payload.append('resignation_date', resignationDateString(resignationForm.value.resignationDate))
+    payload.append('last_working_day', resignationDateString(resignationForm.value.lastWorkingDay))
+    payload.append('resignation_reason', resignationForm.value.reason || '')
+    payload.append('handover_status', resignationForm.value.handoverStatus)
+    if (resignationForm.value.notes) payload.append('resignation_notes', resignationForm.value.notes)
+    if (resignationForm.value.letter) payload.append('resignation_letter', resignationForm.value.letter)
+    await hrService.api.post(`/api/employees/${employeeId}/resignation`, payload)
+    showResignationDialog.value = false
+    await fetchEmployeeData()
+    toast.add({ severity: 'success', summary: 'Resignation Recorded', detail: 'Notice and handover details have been saved.', life: 3500 })
+  } catch (error: any) {
+    const errors = error?.response?.data?.errors
+    resignationError.value = Object.values(errors || {}).flat()[0] as string || error?.response?.data?.message || 'Unable to record resignation.'
+  } finally {
+    savingResignation.value = false
+  }
+}
 const savingEdit = ref(false)
+const showPersonalInfoDialog = ref(false)
+const savingPersonalInfo = ref(false)
+const personalInfoError = ref('')
+const personalInfoForm = ref({
+  fname: '',
+  lname: '',
+  birthday: null as Date | null,
+  gender: '',
+  phone: '',
+  address: '',
+  barangay: '',
+  city: '',
+  province: '',
+})
+const genderOptions = [
+  { label: 'Male', value: 'male' },
+  { label: 'Female', value: 'female' },
+  { label: 'Other', value: 'other' },
+]
+const personalPhoneIsValid = computed(() => !personalInfoForm.value.phone || /^09\d{2}-\d{3}-\d{4}$/.test(personalInfoForm.value.phone))
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
+const showScheduleTemplateDialog = ref(false)
+const loadingScheduleTemplates = ref(false)
+const selectedScheduleTemplateId = ref<number | string | null>(null)
+const scheduleTemplateOptions = ref<Array<{ label: string; value: number | string; pattern: any }>>([])
+const scheduleWeekDays = [
+  { key: 'monday', label: 'Monday' }, { key: 'tuesday', label: 'Tuesday' }, { key: 'wednesday', label: 'Wednesday' },
+  { key: 'thursday', label: 'Thursday' }, { key: 'friday', label: 'Friday' }, { key: 'saturday', label: 'Saturday' }, { key: 'sunday', label: 'Sunday' },
+]
+const selectedScheduleTemplate = computed(() => scheduleTemplateOptions.value.find((option) => String(option.value) === String(selectedScheduleTemplateId.value)) || null)
+const selectedSchedulePreview = computed(() => {
+  const template = selectedScheduleTemplate.value
+  if (!template) return []
+  const entries = Array.isArray(template.pattern)
+    ? template.pattern
+    : Object.entries(template.pattern || {}).map(([day, entry]: [string, any]) => ({ day, ...entry }))
+  const byDay = new Map(entries.map((entry: any) => [String(entry.day || '').toLowerCase(), entry]))
+  return scheduleWeekDays.map((day) => {
+    const entry: any = byDay.get(day.key)
+    const isWorking = Boolean(entry?.is_working)
+    const start = formatShiftTime(entry?.start_time || '')
+    const end = formatShiftTime(entry?.end_time || '')
+    return { ...day, isWorking, time: isWorking ? (start !== '-' && end !== '-' ? `${start} - ${end}` : 'Time not set') : 'Off' }
+  })
+})
+const payrollScheduleDefaults = ref({ workStart: '08:00', workEnd: '17:00', lunchBreak: 60, paidHours: 8 })
+const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
 const showCreditCardDialog = ref(false)
 const savingGovernmentId = ref(false)
@@ -558,7 +763,7 @@ const requiredGovernmentIdLabels = computed(() => governmentIdTypeOptions.value.
 const selectedGovernmentIdOption = computed(() => governmentIdTypeOptions.value.find((item) => String(item.value) === String(governmentIdForm.value.deduction_type_id || '')) || null)
 
 // State
-const activeTab = ref('info')
+const activeTab = ref(route.query.tab === 'overtime' ? 'overtime' : 'info')
 const employeeInfo = ref<EmployeeDetails | any>({
   basic_info: {},
   employment_details: {},
@@ -573,10 +778,10 @@ const employeeInfo = ref<EmployeeDetails | any>({
 const editForm = ref({
   fname: '',
   lname: '',
-  phone: '',
   address: '',
   branch_id: null as number | null,
   department_id: null as number | null,
+  role_id: null as number | null,
   pay_type: 'monthly',
   salary: 0,
   shift_id: null as number | null,
@@ -599,14 +804,11 @@ const weeklyScheduleForm = ref<Array<{
 const payTypeOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Hourly', value: 'hourly' },
+  { label: 'Daily', value: 'daily' },
   { label: 'Hybrid', value: 'hybrid' },
 ]
 const filteredRoleOptions = computed(() => {
-  if (!editForm.value.department_id) return roleOptions.value
-  return roleOptions.value.filter((role) => {
-    const departmentName = (role.department || '').toLowerCase()
-    return departmentName && departmentName === String(selectedDepartmentName.value || '').toLowerCase()
-  })
+  return roleOptions.value
 })
 const selectedDepartmentName = computed(() => {
   const selected = departmentOptions.value.find((department) => Number(department.value) === Number(editForm.value.department_id || 0))
@@ -653,6 +855,25 @@ const detectMatchingShift = (start?: string, end?: string) => {
 }
 
 // API Functions
+const uploadingPhoto = ref(false)
+const uploadEmployeePhoto = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('avatar', file)
+  uploadingPhoto.value = true
+  try {
+    const response = await hrService.api.post(`/api/employees/${employeeId}/avatar`, body)
+    employeeInfo.value.basic_info.avatar_url = response.data.data.avatar_url
+    toast.add({ severity: 'success', summary: 'Employee photo updated', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Photo upload failed', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    uploadingPhoto.value = false
+    input.value = ''
+  }
+}
 const fetchEmployeeData = async () => {
   loading.value = true
   error.value = ''
@@ -678,7 +899,7 @@ const fetchEmployeeData = async () => {
 
 const loadRoles = async () => {
   try {
-    const response = await hrService.api.get('/api/store/roles/store-specific')
+    const response = await hrService.api.get('/api/hr/roles/store-specific')
     const roles = response?.data?.data || response?.data || response || []
     roleOptions.value = roles.map((role: any) => ({
       label: role.display_name || role.name || `Role ${role.id}`,
@@ -697,6 +918,22 @@ const loadBranches = async () => {
     branchOptions.value = Array.isArray(raw) ? raw : []
   } catch (err) {
     console.error('Failed to load branches', err)
+  }
+}
+
+const loadPayrollScheduleDefaults = async () => {
+  try {
+    const response = await hrService.getHrSettings()
+    const configuration = response?.data?.payroll_configuration || {}
+    const lunchBreak = configuration.lunchBreak ?? configuration.lunchDuration ?? 60
+    payrollScheduleDefaults.value = {
+      workStart: configuration.workStart || '08:00',
+      workEnd: configuration.workEnd || '17:00',
+      lunchBreak: Math.max(0, Number(lunchBreak) || 0),
+      paidHours: Number(configuration.paidHours) || 8,
+    }
+  } catch (err) {
+    console.error('Failed to load payroll schedule defaults', err)
   }
 }
 
@@ -721,7 +958,7 @@ const loadRolesByDepartment = async () => {
     if (editForm.value.department_id) {
       params.department_id = editForm.value.department_id
     }
-    const response = await hrService.api.get('/api/store/roles/scoped-by-department', { params })
+    const response = await hrService.api.get('/api/hr/roles/scoped-by-department', { params })
     const roles = response?.data?.data || response?.data || response || []
     const items = Array.isArray(roles) ? roles : []
     roleOptions.value = items.map((role: any) => ({
@@ -762,6 +999,83 @@ const loadShifts = async () => {
   } catch (err) {
     console.error('Failed to load shifts', err)
   }
+}
+
+const extractTemplateRows = (payload: any): any[] => {
+  let current = payload
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (Array.isArray(current)) return current
+    if (Array.isArray(current?.data)) return current.data
+    current = current?.data ?? current?.payload ?? current?.result
+  }
+  return []
+}
+
+const loadScheduleTemplates = async () => {
+  loadingScheduleTemplates.value = true
+  try {
+    const [savedSchedules, savedShifts] = await Promise.all([
+      hrService.getScheduleTemplates({ is_active: 1, per_page: 100 }),
+      hrService.getShiftManagementTemplates({ is_active: 1, per_page: 100 }),
+    ])
+    const scheduleOptions = extractTemplateRows(savedSchedules)
+      .filter((template: any) => template?.id && template?.name)
+      .map((template: any) => ({
+        label: `${template.name} - Schedule`,
+        value: template.id,
+        pattern: template.pattern || [],
+      }))
+    const shiftOptions = extractTemplateRows(savedShifts)
+      .filter((shift: any) => shift?.id && shift?.name)
+      .map((shift: any) => {
+        let days = shift.week_days || []
+        if (typeof days === 'string') {
+          try { days = JSON.parse(days) } catch { days = [] }
+        }
+        const pattern = (Array.isArray(days) ? days : []).map((day: string) => ({
+          day: String(day).toLowerCase(),
+          is_working: true,
+          shift_id: Number(shift.id),
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+        }))
+        return { label: `${shift.name} - Shift`, value: `shift-${shift.id}`, pattern }
+      })
+    scheduleTemplateOptions.value = [...scheduleOptions, ...shiftOptions]
+  } catch (error) {
+    console.error('Failed to load schedule templates', error)
+  } finally {
+    loadingScheduleTemplates.value = false
+  }
+}
+
+const openScheduleTemplateDialog = async () => {
+  selectedScheduleTemplateId.value = null
+  showScheduleTemplateDialog.value = true
+  await loadScheduleTemplates()
+}
+
+const applyScheduleTemplate = () => {
+  const template = scheduleTemplateOptions.value.find((option) => String(option.value) === String(selectedScheduleTemplateId.value))
+  if (!template) return
+  let patternEntries: any[] = []
+  if (Array.isArray(template.pattern)) {
+    patternEntries = template.pattern
+  } else if (template.pattern && typeof template.pattern === 'object') {
+    patternEntries = Object.entries(template.pattern).map(([day, entry]: [string, any]) => ({ day, ...entry }))
+  }
+  const byDay = new Map(patternEntries.map((entry: any) => [String(entry.day || '').toLowerCase(), entry]))
+  weeklyScheduleForm.value.forEach((row, index) => {
+    const entry: any = byDay.get(row.day_of_week)
+    row.is_off = !Boolean(entry?.is_working)
+    row.shift_id = row.is_off ? null : (Number(entry?.shift_id) || null)
+    row.start_time = row.is_off ? '' : formatShiftTime(entry?.start_time || '')
+    row.end_time = row.is_off ? '' : formatShiftTime(entry?.end_time || '')
+    row.hours = row.is_off ? 0 : calculateHours(row.start_time, row.end_time)
+    row.effective_from = toIsoDate(addDays(editWeekStart.value || mondayOfWeek(new Date()), index))
+    row.notes = `Applied template: ${template.label.split(' - ')[0]}`
+  })
+  showScheduleTemplateDialog.value = false
 }
 
 // Helper functions
@@ -875,13 +1189,28 @@ const toIsoDate = (value: Date | string) => {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const addDays = (value: Date | string, days: number) => {
   const date = value instanceof Date ? new Date(value) : new Date(value)
   date.setDate(date.getDate() + days)
   return date
+}
+
+const mondayOfWeek = (value: Date) => {
+  const date = new Date(value)
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  return date
+}
+
+const setEditScheduleWeek = (value: Date | null) => {
+  if (!value) return
+  editWeekStart.value = mondayOfWeek(value)
+  weeklyScheduleForm.value.forEach((row, index) => {
+    row.effective_from = toIsoDate(addDays(editWeekStart.value!, index))
+  })
 }
 
 const calculateGrossPay = (payslip: any) => {
@@ -920,16 +1249,64 @@ const goBack = () => {
   router.push('/hr/employees')
 }
 
-const openEditDialog = () => {
+const openPersonalInfoDialog = () => {
+  const birthdayValue = employeeInfo.value?.basic_info?.birthday
+  const parsedBirthday = birthdayValue ? new Date(birthdayValue) : null
+  personalInfoError.value = ''
+  personalInfoForm.value = {
+    fname: employeeInfo.value?.basic_info?.first_name || '',
+    lname: employeeInfo.value?.basic_info?.last_name || '',
+    birthday: parsedBirthday && !Number.isNaN(parsedBirthday.getTime()) ? parsedBirthday : null,
+    gender: employeeInfo.value?.basic_info?.gender || '',
+    phone: employeeInfo.value?.contact_info?.phone || '',
+    address: employeeInfo.value?.contact_info?.street_address || '',
+    barangay: employeeInfo.value?.contact_info?.barangay || '',
+    city: employeeInfo.value?.contact_info?.city || '',
+    province: employeeInfo.value?.contact_info?.province || '',
+  }
+  showPersonalInfoDialog.value = true
+}
+
+const savePersonalInfo = async () => {
+  if (!personalPhoneIsValid.value) return
+  savingPersonalInfo.value = true
+  personalInfoError.value = ''
+  const payload: Record<string, any> = {
+    fname: personalInfoForm.value.fname.trim(),
+    lname: personalInfoForm.value.lname.trim(),
+    phone: personalInfoForm.value.phone || null,
+    address: personalInfoForm.value.address || null,
+    barangay: personalInfoForm.value.barangay || null,
+    city: personalInfoForm.value.city || null,
+    province: personalInfoForm.value.province || null,
+  }
+  if (personalInfoForm.value.gender) payload.gender = personalInfoForm.value.gender
+  if (personalInfoForm.value.birthday) payload.date_of_birth = toIsoDate(personalInfoForm.value.birthday)
+
+  try {
+    const response = await hrService.api.put(`/api/employees/${employeeId}`, payload)
+    if (response?.data?.success === false) throw new Error(response?.data?.message || 'Unable to save personal information.')
+    showPersonalInfoDialog.value = false
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Personal information updated.', life: 2800 })
+    await fetchEmployeeData()
+  } catch (error: any) {
+    personalInfoError.value = formatValidationError(error, 'Unable to save personal information.')
+  } finally {
+    savingPersonalInfo.value = false
+  }
+}
+
+const openEditDialog = async () => {
+  await loadPayrollScheduleDefaults()
   activeEditStep.value = 0
-  editWeekStart.value = new Date()
+  editWeekStart.value = mondayOfWeek(new Date())
   editForm.value = {
     fname: employeeInfo.value?.basic_info?.first_name || '',
     lname: employeeInfo.value?.basic_info?.last_name || '',
-    phone: employeeInfo.value?.contact_info?.phone || '',
     address: employeeInfo.value?.contact_info?.address || '',
     branch_id: employeeInfo.value?.employment_details?.branch_id || null,
     department_id: departmentOptions.value.find((department) => department.name === employeeInfo.value?.employment_details?.department)?.value || null,
+    role_id: null,
     pay_type: employeeInfo.value?.employment_details?.pay_type || 'monthly',
     salary: Number(employeeInfo.value?.employment_details?.monthly_salary || 0),
     shift_id: employeeInfo.value?.current_shift?.shift_id || null,
@@ -964,8 +1341,7 @@ const openEditDialog = () => {
     } : row
   })
   weeklyScheduleForm.value.forEach((row, index) => {
-    const effectiveDate = addDays(editWeekStart.value || new Date(), index)
-    row.effective_from = row.effective_from || toIsoDate(effectiveDate)
+    row.effective_from = toIsoDate(addDays(editWeekStart.value || mondayOfWeek(new Date()), index))
     row.effective_to = row.effective_to || ''
   })
   showEditDialog.value = true
@@ -1011,7 +1387,8 @@ const calculateHours = (start?: string, end?: string) => {
   const endMinutes = parseTimeToMinutes(end)
   if (startMinutes === null || endMinutes === null) return 0
   const diff = endMinutes - startMinutes
-  return diff > 0 ? diff / 60 : 0
+  if (diff <= 0) return 0
+  return Math.max(0, (diff - Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)) / 60)
 }
 
 const onEditStartTimeChange = (row: any, value: string) => {
@@ -1025,8 +1402,9 @@ const onEditStartTimeChange = (row: any, value: string) => {
   }
 
   row.is_off = false
-  row.end_time = formatMinutesToTime12h(startMinutes + 9 * 60)
-  row.hours = 9
+  const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+  row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
+  row.hours = maximumDailyShiftHours.value
 }
 
 const onEditEndTimeChange = (row: any, value: string) => {
@@ -1038,11 +1416,19 @@ const onEditEndTimeChange = (row: any, value: string) => {
 const onEditWorkingToggle = (row: any, checked: boolean) => {
   row.is_off = !checked
   if (checked) {
-    const defaultStart = formatShiftTime(row.start_time || '09:00 AM')
+    const existingStartIsValid = parseTimeToMinutes(row.start_time) !== null
+    const existingEndIsValid = parseTimeToMinutes(row.end_time) !== null
+    const defaultStart = formatShiftTime(existingStartIsValid ? row.start_time : payrollScheduleDefaults.value.workStart)
     row.start_time = defaultStart
     const startMinutes = parseTimeToMinutes(defaultStart)
-    row.end_time = startMinutes === null ? '06:00 PM' : formatMinutesToTime12h(startMinutes + 9 * 60)
-    row.hours = calculateHours(row.start_time, row.end_time) || 9
+    row.end_time = existingEndIsValid
+      ? formatShiftTime(row.end_time)
+      : formatShiftTime(payrollScheduleDefaults.value.workEnd)
+    if (startMinutes !== null && parseTimeToMinutes(row.end_time) === null) {
+      const unpaidBreakMinutes = Math.max(0, Number(payrollScheduleDefaults.value.lunchBreak) || 0)
+      row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60 + unpaidBreakMinutes)
+    }
+    row.hours = calculateHours(row.start_time, row.end_time) || maximumDailyShiftHours.value
     return
   }
 
@@ -1246,7 +1632,6 @@ const submitEditEmployee = async () => {
     const payload: any = {
       fname: editForm.value.fname,
       lname: editForm.value.lname,
-      phone: editForm.value.phone || null,
       address: editForm.value.address || null,
       branch_id: editForm.value.branch_id || null,
       role_id: editForm.value.role_id,
@@ -1281,7 +1666,6 @@ const submitEditEmployee = async () => {
     savingEdit.value = false
   }
 }
-
 const validateEditWeeklySchedule = () => {
   if (!editForm.value.role_id) {
     editDialogError.value = 'Please select a role before saving changes.'
@@ -1307,8 +1691,8 @@ const validateEditWeeklySchedule = () => {
       return false
     }
 
-    if (hours > 9) {
-      editDialogError.value = `${row.day_label} cannot exceed 9 hours.`
+    if (hours > maximumDailyShiftHours.value) {
+      editDialogError.value = `${row.day_label} cannot exceed ${maximumDailyShiftHours.value} paid hours.`
       return false
     }
   }
@@ -1490,6 +1874,7 @@ onMounted(() => {
   fetchEmployeeData()
   loadDepartments().then(() => loadRoles())
   loadBranches()
+  loadPayrollScheduleDefaults()
   loadShifts()
   loadGovernmentIdTypes()
 })

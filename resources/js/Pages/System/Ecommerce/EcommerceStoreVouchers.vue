@@ -2,9 +2,9 @@
   <div class="space-y-6 pb-8">
     <div class="rounded-2xl border border-slate-200 bg-white">
       <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 md:px-6">
-        <Button icon="pi pi-chevron-left" severity="secondary" text rounded aria-label="Back" @click="goStoreProfile" />
+        <Button icon="pi pi-chevron-left" severity="secondary" text rounded aria-label="Back to shop" @click="router.push({ name: 'ecommerce.home' })" />
         <div class="ml-auto flex items-center gap-2">
-          <InputText v-model="search" placeholder="Search voucher" class="w-[16rem]" />
+          <InputText v-model="search" placeholder="Search code or store" class="w-[16rem]" />
         </div>
       </div>
 
@@ -23,8 +23,8 @@
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Vouchers</p>
-              <h1 class="mt-1 text-2xl font-bold text-slate-900">{{ storeDisplayName }}</h1>
-              <p class="mt-1 text-sm text-slate-500">Tap a voucher to see details.</p>
+              <h1 class="mt-1 text-2xl font-bold text-slate-900">Available Vouchers</h1>
+              <p class="mt-1 text-sm text-slate-500">Use a code at checkout for the store shown on each offer.</p>
             </div>
             <Tag v-if="filteredVouchers.length" :value="`${filteredVouchers.length} available`" severity="success" />
           </div>
@@ -40,7 +40,8 @@
               <template #content>
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <p class="truncate text-lg font-semibold text-slate-900">{{ voucher.code }}</p>
+                    <p class="truncate text-lg font-semibold text-slate-900">{{ voucher.voucher_name || voucher.code }}</p>
+                    <p class="mt-1 text-xs font-semibold uppercase tracking-wide text-orange-700">{{ voucher.store_name }} · {{ voucher.code }}</p>
                     <p class="mt-1 text-sm text-slate-600">
                       {{
                         voucher.discount_type === 'percent'
@@ -51,6 +52,7 @@
                     <p v-if="Number(voucher.min_order_amount || 0) > 0" class="mt-1 text-xs text-slate-500">
                       Min order: PHP {{ Number(voucher.min_order_amount).toFixed(2) }}
                     </p>
+                    <p v-if="voucher.ends_at" class="mt-1 text-xs text-slate-500">Valid until {{ new Date(voucher.ends_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) }}</p>
                   </div>
                   <i class="pi pi-chevron-right mt-1 text-slate-400" />
                 </div>
@@ -108,7 +110,7 @@
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import { showAlert } from '@/utils/swal'
 import InputText from 'primevue/inputtext'
@@ -118,11 +120,9 @@ defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
-const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
-const store = ref<any>(null)
 const vouchers = ref<any[]>([])
 const search = ref('')
 
@@ -132,19 +132,15 @@ const selectedVoucher = ref<any | null>(null)
 const filteredVouchers = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return vouchers.value
-  return vouchers.value.filter((v) => String(v.code || '').toLowerCase().includes(q))
-})
-
-const storeDisplayName = computed(() => {
-  const name = String(store.value?.store_name || store.value?.name || '').trim()
-  return name !== '' ? name : 'Store'
+  return vouchers.value.filter((v) => `${v.code || ''} ${v.store_name || ''} ${v.voucher_name || ''}`.toLowerCase().includes(q))
 })
 
 function formatValidity(startsAt: any, endsAt: any) {
   const start = startsAt ? new Date(startsAt) : null
   const end = endsAt ? new Date(endsAt) : null
-  const startText = start ? start.toLocaleDateString() : 'Now'
-  const endText = end ? end.toLocaleDateString() : 'No expiry'
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }
+  const startText = start ? start.toLocaleString('en-PH', options) : 'Now'
+  const endText = end ? end.toLocaleString('en-PH', options) : 'No expiry'
   return `${startText} - ${endText}`
 }
 
@@ -153,19 +149,13 @@ function openVoucher(voucher: any) {
   voucherDialog.value = true
 }
 
-function goStoreProfile() {
-  router.push({ name: 'ecommerce.store-profile', params: { storeId: route.params.storeId } })
-}
-
 async function loadStore() {
   loading.value = true
   try {
-    const response = await ecommerceService.getStore(route.params.storeId as string)
-    store.value = response.data?.data || null
-    vouchers.value = store.value?.vouchers || []
+    const response = await ecommerceService.getAvailableVouchers()
+    vouchers.value = response.data?.data || []
   } catch {
     showAlert({ severity: 'error', summary: 'Vouchers', detail: 'Failed to load store vouchers.' })
-    goStoreProfile()
   } finally {
     loading.value = false
   }

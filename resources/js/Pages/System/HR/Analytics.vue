@@ -150,6 +150,50 @@
         </template>
       </Card>
     </div>
+
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
+      <template #title>
+        <div>
+          <span class="text-sm font-semibold text-slate-700">Employee Attendance Performance</span>
+          <p class="mt-1 text-xs font-normal text-slate-500">Use these trends to recognize consistency and identify employees who may need a check-in. This reflects attendance only, not overall job quality.</p>
+        </div>
+      </template>
+      <template #content>
+        <DataTable :value="overview.breakdowns.employee_performance" dataKey="employee_id" size="small" rowHover responsiveLayout="scroll" class="text-xs">
+          <template #empty>
+            <div class="py-8 text-center text-xs text-slate-500">No completed schedules with attendance data in the selected period.</div>
+          </template>
+          <Column header="Employee" style="min-width: 170px">
+            <template #body="{ data }">
+              <p class="font-semibold text-slate-900">{{ data.name || 'Unknown Employee' }}</p>
+              <p class="mt-0.5 text-[11px] text-slate-500">{{ data.department }}</p>
+            </template>
+          </Column>
+          <Column header="Attendance reliability" style="min-width: 165px">
+            <template #body="{ data }">
+              <span v-if="data.reliability_rate !== null">{{ data.reliability_rate }}%</span>
+              <span v-else class="text-slate-400">No eligible shifts</span>
+            </template>
+          </Column>
+          <Column header="On-time rate" style="min-width: 120px">
+            <template #body="{ data }">{{ data.punctuality_rate === null ? '—' : `${data.punctuality_rate}%` }}</template>
+          </Column>
+          <Column header="Attended / scheduled" style="min-width: 150px">
+            <template #body="{ data }">{{ data.attended_shifts }} / {{ data.scheduled_shifts }}</template>
+          </Column>
+          <Column header="Late shifts / minutes" style="min-width: 150px">
+            <template #body="{ data }">{{ data.late_shifts }} / {{ data.late_minutes }} min</template>
+          </Column>
+          <Column header="Worked hours" style="min-width: 105px">
+            <template #body="{ data }">{{ data.worked_hours }}</template>
+          </Column>
+          <Column header="Absent / unrecorded" style="min-width: 145px">
+            <template #body="{ data }">{{ data.missed_or_unrecorded_shifts }}</template>
+          </Column>
+        </DataTable>
+        <p class="mt-3 text-[11px] leading-5 text-slate-500">Attendance reliability excludes recorded leave and holidays. “Absent / unrecorded” includes scheduled shifts with no attendance record yet; review the attendance log before taking action.</p>
+      </template>
+    </Card>
   </div>
 </template>
 
@@ -162,10 +206,15 @@ import Chart from 'primevue/chart'
 import ProgressBar from 'primevue/progressbar'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
+import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
 import hrService from '../../../services/hr.services'
+import { useAuthStore } from '../../../stores/auth'
+
+const authStore = useAuthStore()
 
 interface HrAnalyticsOverview {
-  period: { start_date: string; end_date: string }
+  period: { start_date: string; end_date: string; branch_id?: number | null }
   workforce: {
     total_employees: number
     active_employees: number
@@ -178,6 +227,8 @@ interface HrAnalyticsOverview {
     late: number
     absent: number
     on_leave: number
+    half_day: number
+    holiday: number
     attendance_rate: number
     late_rate: number
   }
@@ -191,6 +242,19 @@ interface HrAnalyticsOverview {
     department_distribution: Array<{ name: string; total: number }>
     employment_distribution: Array<{ name: string; total: number }>
     top_absences: Array<{ employee_id: number; name: string; department: string | null; total_absent_days: number }>
+    employee_performance: Array<{
+      employee_id: number
+      name: string
+      department: string | null
+      scheduled_shifts: number
+      attended_shifts: number
+      reliability_rate: number | null
+      punctuality_rate: number | null
+      late_shifts: number
+      missed_or_unrecorded_shifts: number
+      late_minutes: number
+      worked_hours: number
+    }>
   }
 }
 
@@ -218,6 +282,8 @@ const overview = ref<HrAnalyticsOverview>({
     late: 0,
     absent: 0,
     on_leave: 0,
+    half_day: 0,
+    holiday: 0,
     attendance_rate: 0,
     late_rate: 0,
   },
@@ -231,12 +297,13 @@ const overview = ref<HrAnalyticsOverview>({
     department_distribution: [],
     employment_distribution: [],
     top_absences: [],
+    employee_performance: [],
   },
 })
 
 const formatDate = (value?: Date | null): string | undefined => {
   if (!value) return undefined
-  return value.toISOString().slice(0, 10)
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 }
 
 const loadDashboard = async () => {
@@ -252,6 +319,9 @@ const loadDashboard = async () => {
     })
 
     overview.value = response?.data || overview.value
+    if (!selectedBranchId.value && overview.value.period.branch_id) {
+      selectedBranchId.value = Number(overview.value.period.branch_id)
+    }
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Unable to load HR analytics right now.'
   } finally {
@@ -263,10 +333,13 @@ const loadBranches = async () => {
   try {
     const response = await hrService.getBranches()
     const raw = response?.data || response || []
-    branchOptions.value = (Array.isArray(raw) ? raw : []).map((branch: any) => ({
+    const branches = (Array.isArray(raw) ? raw : []).map((branch: any) => ({
       id: Number(branch.id),
       name: String(branch.name || branch.branch_name || `Branch ${branch.id}`),
     }))
+    const assignedBranchId = Number(authStore.user?.branch_id || 0)
+    branchOptions.value = assignedBranchId > 0 ? branches.filter((branch) => branch.id === assignedBranchId) : branches
+    if (assignedBranchId > 0) selectedBranchId.value = assignedBranchId
   } catch {
     branchOptions.value = []
   }
@@ -313,16 +386,16 @@ const distributionPercent = (count: number, total: number) => {
 
 const attendanceChartData = computed(() => {
   const attendance = overview.value.attendance
-  const values = [attendance.present, attendance.late, attendance.on_leave, attendance.absent]
+  const values = [attendance.present, attendance.late, attendance.half_day, attendance.on_leave, attendance.holiday, attendance.absent]
   const hasData = values.some((v) => Number(v || 0) > 0)
   if (!hasData) return null
 
   return {
-    labels: ['Present', 'Late', 'On Leave', 'Absent'],
+    labels: ['Present', 'Late', 'Half Day', 'On Leave', 'Holiday', 'Absent'],
     datasets: [
       {
         data: values,
-        backgroundColor: ['#10b981', '#f97316', '#f59e0b', '#ef4444'],
+        backgroundColor: ['#10b981', '#f97316', '#fb923c', '#f59e0b', '#94a3b8', '#ef4444'],
         borderWidth: 0,
       },
     ],

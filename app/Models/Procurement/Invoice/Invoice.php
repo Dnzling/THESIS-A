@@ -140,8 +140,32 @@ class Invoice extends Model
             return $result;
         }
 
-        // Check quantity match between PO and Invoice
-        $poQuantity = $this->purchaseOrder->items->sum('quantity_ordered');
+        $resolutions = \App\Models\Procurement\Receiving\GoodsReceiptResolution::query()
+            ->where('purchase_order_id', $this->purchase_order_id)
+            ->get(['status', 'supplier_action', 'supplier_credit_amount', 'items']);
+        $unresolvedDiscrepancy = $resolutions->contains(fn ($resolution) => in_array(
+            $resolution->status,
+            ['pending_supplier', 'accepted', 'delivery_submitted', 'credit_submitted', 'disputed', 'rejected'],
+            true
+        ));
+        if ($unresolvedDiscrepancy) {
+            $result['issues'][] = 'Goods receipt discrepancy is awaiting supplier or procurement resolution';
+        }
+
+        $creditedUnits = $resolutions
+            ->where('status', 'resolved')
+            ->whereIn('supplier_action', ['issue_credit', 'dispute'])
+            ->flatMap(fn ($resolution) => $resolution->items ?? [])
+            ->sum('quantity_due');
+        $unresolvedUnits = $resolutions
+            ->whereIn('status', ['pending_supplier', 'accepted', 'delivery_submitted', 'credit_submitted', 'disputed', 'rejected'])
+            ->whereNotIn('supplier_action', ['issue_credit', 'dispute'])
+            ->flatMap(fn ($resolution) => $resolution->items ?? [])
+            ->sum('quantity_due');
+
+        // Invoice quantity must match accepted usable units plus quantities
+        // formally settled by supplier credit or Procurement's accepted dispute.
+        $poQuantity = max(0, (int) $this->purchaseOrder->items->sum('quantity_received') + (int) $creditedUnits - (int) $unresolvedUnits);
         $invoiceQuantity = $this->items->sum('quantity_invoiced');
 
         if ($poQuantity != $invoiceQuantity) {
@@ -151,8 +175,16 @@ class Invoice extends Model
         }
 
         // Check quantity match between GRN and Invoice
-        if ($this->goodsReceipt) {
-            $grnQuantity = $this->goodsReceipt->items->sum('quantity_received');
+        if ($this->goodsReceipt || $this->purchase_order_id) {
+            // A deficient delivery can be completed by one or more immutable
+            // follow-up GRNs. Finance matches the cumulative accepted quantity.
+            $grnQuantity = \App\Models\Procurement\Receiving\GoodsReceiptItem::query()
+                ->whereHas('goodsReceipt', fn ($query) => $query
+                    ->where('purchase_order_id', $this->purchase_order_id)
+                    ->where('receipt_status', '!=', 'draft'))
+                ->selectRaw('COALESCE(SUM(quantity_received - quantity_damaged), 0) as accepted_quantity')
+                ->value('accepted_quantity');
+            $grnQuantity = max(0, (int) $grnQuantity + (int) $creditedUnits - (int) $unresolvedUnits);
             if ($grnQuantity != $invoiceQuantity) {
                 $result['issues'][] = "GRN quantity mismatch: GRN={$grnQuantity}, Invoice={$invoiceQuantity}";
             } else {
@@ -162,7 +194,22 @@ class Invoice extends Model
 
         // 3-way amount comparison should use product subtotal only.
         // Taxes/freight/discounts are invoice-level charges and are tracked separately.
-        $poAmount = (float) ($this->purchaseOrder->subtotal ?? 0);
+        $approvedCredits = (float) $resolutions
+            ->where('status', 'resolved')
+            ->whereIn('supplier_action', ['issue_credit', 'dispute'])
+            ->sum('supplier_credit_amount');
+        $unresolvedAmount = (float) $resolutions
+            ->whereIn('status', ['pending_supplier', 'accepted', 'delivery_submitted', 'credit_submitted', 'disputed', 'rejected'])
+            ->whereNotIn('supplier_action', ['issue_credit', 'dispute'])
+            ->sum(function ($resolution) {
+                $items = collect($resolution->items ?? []);
+                $poItems = $this->purchaseOrder->items->keyBy('id');
+                return $items->sum(function (array $item) use ($poItems) {
+                    $poItem = $poItems->get((int) ($item['purchase_order_item_id'] ?? 0));
+                    return (int) ($item['quantity_due'] ?? 0) * (float) ($poItem?->unit_cost ?? 0);
+                });
+            });
+        $poAmount = max(0, (float) ($this->purchaseOrder->subtotal ?? 0) - $approvedCredits - $unresolvedAmount);
         $invoiceAmount = (float) ($this->invoice_amount ?? 0);
         $tolerance = max($poAmount * 0.02, 0.01); // 2% tolerance, minimum 0.01
         $base = $poAmount > 0 ? $poAmount : 1;

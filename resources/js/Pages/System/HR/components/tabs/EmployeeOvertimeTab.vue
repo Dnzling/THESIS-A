@@ -1,13 +1,14 @@
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+  <div class="space-y-3 text-xs">
+    <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
       <div>
-        <p class="text-sm font-semibold text-slate-800">Overtime History</p>
+        <p class="text-xs font-semibold text-slate-800">Overtime History</p>
         <p class="text-xs text-slate-500">All overtime requests filed for this employee.</p>
       </div>
       <Button icon="pi pi-refresh" text rounded severity="secondary" @click="refresh" />
     </div>
 
+    <div class="overflow-x-auto rounded-xl border border-slate-200">
     <DataTable
       :value="records"
       :loading="loading"
@@ -16,7 +17,7 @@
       paginator
       :rows="10"
       dataKey="id"
-      class="p-datatable-sm"
+      class="p-datatable-sm text-xs"
     >
       <Column field="created_at" header="Filed On" style="width: 140px">
         <template #body="{ data }">{{ formatDate(data.created_at) }}</template>
@@ -40,16 +41,25 @@
       <Column field="reason" header="Reason" style="min-width: 260px">
         <template #body="{ data }">{{ data.reason || '-' }}</template>
       </Column>
+      <template #loading>
+        <div class="space-y-2 p-3">
+          <Skeleton v-for="row in 5" :key="row" height="1.75rem" />
+        </div>
+      </template>
+      <template #empty>
+        <div class="py-8 text-center text-xs text-slate-500">
+          <i class="pi pi-clock mb-2 block text-xl text-slate-300"></i>
+          <p class="font-medium text-slate-600">No overtime records yet</p>
+        </div>
+      </template>
     </DataTable>
-
-    <div v-if="!loading && !records.length" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-      No overtime records yet.
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import Skeleton from 'primevue/skeleton'
 import hrService from '../../../../../services/hr.services'
 
 const props = defineProps<{
@@ -128,3 +138,16 @@ onMounted(() => {
   refresh()
 })
 </script>
+
+<style scoped>
+.p-datatable-sm :deep(.p-datatable-thead > tr > th),
+.p-datatable-sm :deep(.p-datatable-tbody > tr > td) {
+  padding: 0.5rem;
+  font-size: 0.75rem;
+}
+
+:deep(.p-tag) {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+</style>

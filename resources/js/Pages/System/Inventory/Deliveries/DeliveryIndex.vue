@@ -8,7 +8,6 @@
             <p class="text-sm text-gray-500">Track active deliveries and update milestones.</p>
           </div>
           <div class="flex gap-2">
-            <Button severity="info" outlined label="Vehicles" icon="pi pi-truck" @click="openVehicles" />
             <Button severity="info" outlined label="Refresh" icon="pi pi-refresh" @click="loadDeliveries" />
           </div>
         </div>

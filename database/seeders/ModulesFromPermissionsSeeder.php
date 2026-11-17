@@ -24,10 +24,15 @@ class ModulesFromPermissionsSeeder extends Seeder
         // Seed modules table from distinct module values
         $modules = $permissions->pluck('module')->unique()->filter()->values();
         foreach ($modules as $moduleKey) {
+            $moduleName = match ($moduleKey) {
+                'merchandising' => 'Product Catalog',
+                'crm' => 'Customer Relations',
+                default => Str::headline($moduleKey),
+            };
             DB::table('modules')->updateOrInsert(
                 ['key' => $moduleKey],
                 [
-                    'name' => Str::headline($moduleKey),
+                    'name' => $moduleName,
                     'description' => "Module auto-seeded from permissions: {$moduleKey}",
                     'is_active' => true,
                     'updated_at' => now(),

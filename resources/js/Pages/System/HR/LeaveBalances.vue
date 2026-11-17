@@ -1,15 +1,16 @@
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-      <div class="flex gap-2">
-        <Button label="Export" icon="pi pi-download" severity="info" outlined @click="exportBalances" />
+  <div class="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-xl font-semibold text-slate-900">Leave Balances</h1>
+        <p class="mt-1 text-sm text-slate-500">Review employee leave usage and remaining days for {{ currentYear }}.</p>
       </div>
+      <Button label="Export" icon="pi pi-download" severity="warn" outlined size="small" @click="exportBalances" />
     </div>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-500">Total Employees</span>
           <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -20,7 +21,7 @@
         <div class="text-xs text-gray-400 mt-1">Active employees</div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-500">Avg. Remaining</span>
           <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
@@ -31,7 +32,7 @@
         <div class="text-xs text-gray-400 mt-1">Per employee</div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-500">Low Balance</span>
           <div class="w-8 h-8 bg-yellow-50 rounded-lg flex items-center justify-center">
@@ -42,7 +43,7 @@
         <div class="text-xs text-gray-400 mt-1">Less than 5 days left</div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-500">Used This Year</span>
           <div class="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
@@ -55,78 +56,86 @@
     </div>
 
     <!-- Filters -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div class="flex flex-wrap gap-3 items-center justify-between">
-        <div class="flex gap-3 flex-wrap">
-          <div class="relative">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-3">
+          <div class="w-full sm:min-w-56">
             <IconField>
               <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <InputText v-model="filters.search" placeholder="Search employee" class="pl-8 rounded-lg w-64" />
+              <InputText v-model="filters.search" placeholder="Search employee" class="w-full pl-8" />
             </IconField>
           </div>
 
           <Select v-model="filters.department" :options="departmentOptions" showClear placeholder="All Departments"
-            class="rounded-lg w-48" />
+            class="w-full sm:min-w-48" />
 
           <Select v-model="filters.balance" :options="balanceFilters" showClear placeholder="Balance Range"
-            class="rounded-lg w-48" />
+            class="w-full sm:min-w-48" />
         </div>
 
-        <Button label="Reset Filters" icon="pi pi-filter-slash" severity="info" outlined @click="resetFilters" />
+        <Button label="Clear Filters" icon="pi pi-filter-slash" severity="danger" outlined size="small"
+          :disabled="!hasActiveFilters" @click="resetFilters" />
       </div>
     </div>
 
     <!-- Balances Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full">
+    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div v-if="loading" class="space-y-2 p-4" aria-label="Loading leave balances">
+        <Skeleton v-for="i in 6" :key="i" height="2.75rem" />
+      </div>
+      <div v-else-if="filteredBalances.length === 0" class="px-4 py-12 text-center">
+        <i class="pi pi-calendar-minus text-2xl text-slate-300" />
+        <p class="mt-2 text-sm font-medium text-slate-700">No leave balances found</p>
+        <p class="mt-1 text-xs text-slate-500">Try changing or clearing the filters.</p>
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-max text-sm">
           <thead>
             <tr class="bg-gray-50/50 border-b border-gray-100">
-              <th class="text-left p-4 text-sm font-medium text-gray-600">Employee</th>
-              <th class="text-left p-4 text-sm font-medium text-gray-600">Department</th>
-              <th class="text-left p-4 text-sm font-medium text-gray-600" v-for="type in leaveTypeKeys" :key="type">
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500" v-for="type in leaveTypeKeys" :key="type">
                 {{ leaveTypeLabels[type] || type }}
               </th>
-              <th class="text-left p-4 text-sm font-medium text-gray-600">Total Used</th>
-              <th class="text-left p-4 text-sm font-medium text-gray-600">Status</th>
-              <th class="text-left p-4 text-sm font-medium text-gray-600">Actions</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total Used</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            <tr v-for="emp in paginatedBalances" :key="emp.id" class="hover:bg-gray-50/50 transition-colors">
-              <td class="p-4">
+            <tr v-for="emp in paginatedBalances" :key="emp.id" class="transition-colors hover:bg-orange-50/40">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <Avatar :label="getInitials(emp.name)" size="large"
-                    class="bg-blue-100 text-blue-600 font-medium" />
+                  <Avatar :label="getInitials(emp.name)" size="normal" class="bg-slate-100 text-slate-700 font-medium" />
                   <div>
-                    <div class="font-medium text-gray-800">{{ emp.name }}</div>
+                    <div class="font-medium text-slate-800">{{ emp.name }}</div>
                     <div class="text-xs text-gray-500">{{ emp.employeeId }}</div>
                   </div>
                 </div>
               </td>
-              <td class="p-4 text-sm text-gray-600">{{ emp.department }}</td>
-              <td v-for="type in leaveTypeKeys" :key="type" class="p-4">
+              <td class="px-4 py-3 text-sm text-slate-600">{{ emp.department }}</td>
+              <td v-for="type in leaveTypeKeys" :key="type" class="px-4 py-3">
                 <div class="flex flex-col">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium">{{ getBalance(emp, type) }} days</span>
-                    <Tag v-if="getBalance(emp, type) < 5" value="Low" severity="warning" size="small" rounded />
+                    <span class="font-medium text-slate-800">{{ getBalance(emp, type) }} <span class="text-xs font-normal text-slate-500">days</span></span>
+                    <Badge v-if="getBalance(emp, type) < 5" value="Low" severity="warn" />
                   </div>
-                  <ProgressBar :value="getUsagePercentage(emp, type)" :showValue="false" class="h-1 w-20 mt-1" />
+                  <ProgressBar :value="getUsagePercentage(emp, type)" :showValue="false" class="mt-1 h-1 w-20" />
                 </div>
               </td>
-              <td class="p-4">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium">{{ emp.totalUsed }} days</span>
-                  <span class="text-xs text-gray-400">({{ Math.round((emp.totalUsed / emp.totalQuota) * 100) || 0 }}%)</span>
+                  <span class="font-medium text-slate-800">{{ emp.totalUsed }} days</span>
+                  <span class="text-xs text-slate-500">({{ usagePercent(emp) }}%)</span>
                 </div>
               </td>
-              <td class="p-4">
-                <Tag :value="getBalanceStatus(emp)" :severity="getBalanceSeverity(emp)" rounded />
+              <td class="px-4 py-3">
+                <Badge :value="getBalanceStatus(emp)" :severity="getBalanceSeverity(emp)" />
               </td>
-              <td class="p-4">
-                <div class="flex gap-2">
-                  <Button icon="pi pi-eye" text rounded severity="info" @click="viewDetails(emp)" />
-                  <Button icon="pi pi-history" text rounded severity="info" @click="viewHistory(emp)" />
+              <td class="px-4 py-3 text-right">
+                <div class="flex justify-end gap-1">
+                  <Button label="View" icon="pi pi-eye" size="small" outlined rounded @click="viewDetails(emp)" />
+                  <Button icon="pi pi-history" text rounded severity="secondary" aria-label="View leave history" @click="viewHistory(emp)" />
                 </div>
               </td>
             </tr>
@@ -135,8 +144,8 @@
       </div>
 
       <!-- Pagination -->
-      <div class="p-4 border-t border-gray-100 flex items-center justify-between">
-        <div class="text-sm text-gray-500">
+      <div v-if="!loading && filteredBalances.length" class="flex flex-col gap-2 border-t border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="text-xs text-slate-500">
           Showing {{ paginationStart }} to {{ paginationEnd }} of {{ filteredBalances.length }} entries
         </div>
         <Paginator v-model:first="paginationOffset" :rows="pageSize" :totalRecords="filteredBalances.length"
@@ -197,17 +206,17 @@
     </Dialog>
 
     <!-- History Modal -->
-    <Dialog v-model:visible="showHistoryModal" modal :style="{ width: '520px' }" class="rounded-xl"
+    <Dialog v-model:visible="showHistoryModal" modal :style="{ width: 'min(560px, calc(100vw - 2rem))' }" class="rounded-xl"
       :header="`Leave History - ${selectedEmployee?.name || ''}`">
       <div v-if="historyLoading" class="space-y-2">
         <Skeleton v-for="i in 4" :key="i" height="2.5rem" />
       </div>
       <div v-else class="space-y-3 max-h-96 overflow-y-auto">
-        <div v-for="item in historyData" :key="item.id" class="border border-gray-100 rounded-lg p-3 hover:bg-gray-50">
+        <div v-for="item in historyData" :key="item.id" class="rounded-lg border border-slate-200 p-3 transition-colors hover:bg-orange-50/40">
           <div class="flex justify-between items-start mb-2">
             <div>
               <span class="text-sm font-medium">{{ item.type }}</span>
-              <Tag :value="item.status" severity="info" size="small" class="ml-2" />
+              <Badge :value="item.status" :severity="historyStatusSeverity(item.status)" class="ml-2" />
             </div>
             <span class="text-xs text-gray-400">{{ item.date }}</span>
           </div>
@@ -223,7 +232,7 @@ import { ref, computed, onMounted } from 'vue'
 import hrService from '@/services/hr.services'
 import Button from 'primevue/button'
 import Avatar from 'primevue/avatar'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import ProgressBar from 'primevue/progressbar'
 import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
@@ -272,6 +281,8 @@ const leaveTypeLabels: Record<string, string> = {
 
 const leaveTypeKeys = ref<string[]>(Object.keys(leaveTypeLabels))
 const departmentOptions = ref<string[]>([])
+const currentYear = new Date().getFullYear()
+const hasActiveFilters = computed(() => Boolean(filters.value.search || filters.value.department || filters.value.balance))
 
 const balanceFilters = [
   { label: 'All Balances', value: null },
@@ -440,9 +451,21 @@ const getBalanceStatus = (employee: EmployeeBalanceRow) => {
 
 const getBalanceSeverity = (employee: EmployeeBalanceRow) => {
   const total = employee.totalRemaining
-  if (total < 5) return 'warning'
+  if (total < 5) return 'warn'
   if (total < 10) return 'info'
   return 'success'
+}
+
+const usagePercent = (employee: EmployeeBalanceRow) => employee.totalQuota > 0
+  ? Math.round((employee.totalUsed / employee.totalQuota) * 100)
+  : 0
+
+const historyStatusSeverity = (status: string) => {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized.includes('approv')) return 'success'
+  if (normalized.includes('reject') || normalized.includes('cancel')) return 'secondary'
+  if (normalized.includes('pending')) return 'warn'
+  return 'info'
 }
 
 const resetFilters = () => {

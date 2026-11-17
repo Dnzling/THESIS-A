@@ -11,14 +11,14 @@ class ApplicantInterviewScheduledMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public Interview $interview)
+    public function __construct(public Interview $interview, public bool $updated = false)
     {
     }
 
     public function build(): self
     {
         return $this
-            ->subject('Interview Schedule - ' . config('app.name'))
+            ->subject(($this->updated ? 'Updated Interview Schedule - ' : 'Interview Schedule - ') . config('app.name'))
             ->view('emails.hr.applicant-interview-scheduled');
     }
 }

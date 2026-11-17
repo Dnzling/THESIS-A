@@ -1,0 +1,802 @@
+<?php
+
+namespace App\Http\Controllers\Api\Logistics;
+
+use App\Http\Controllers\Controller;
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\InventoryTransaction;
+use App\Models\Hr\Employee;
+use App\Models\Logistics\ReturnPickup;
+use App\Models\Logistics\DeliveryTrip;
+use App\Models\Store\Branch;
+use App\Services\Store\ReturnResolutionPolicy;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+
+class ReplacementController extends Controller
+{
+    private function customerReturn(Request $request, int $id): EcommerceOrderReturn
+    {
+        return EcommerceOrderReturn::query()
+            ->where('source_type', 'ecommerce')
+            ->where('return_type', 'replacement')
+            ->whereHas('order', fn ($query) => $query->where('user_id', $request->user()->id))
+            ->with(['order.assignedBranch', 'orderItem.branchInventory.branch', 'orderItem.product', 'pickup.destinationBranch', 'replacementInventory.product', 'replacementInventory.variation'])
+            ->findOrFail($id);
+    }
+
+    public function customerExchangeShow(Request $request, int $id): JsonResponse
+    {
+        $case = $this->customerReturn($request, $id);
+        abort_unless($case->status === 'received' && in_array($case->replacement_status, ['ecommerce_exchange', 'payment_failed', 'awaiting_payment', 'reserved'], true), 404);
+        $allowHigherValue = app(ReturnResolutionPolicy::class)->forStore($case->store)['allow_higher_value_replacements'];
+        $item = $case->orderItem;
+        $branchId = (int) ($item?->branchInventory?->branch_id ?: $case->order?->assigned_branch_id ?: $case->order?->branch_id ?: 0);
+        abort_if($branchId <= 0, 422, 'The issuing branch could not be identified for this order.');
+        abort_unless(Branch::query()->where('store_id', $case->store_id)->where('status', 'active')->whereKey($branchId)->exists(), 422, 'The issuing branch is no longer active for exchanges.');
+        $quantity = max(1, (int) ($case->received_quantity ?: $case->requested_quantity ?: 1));
+        $sourceQuantity = max(1, (int) ($item?->quantity ?: 1));
+        $discountBasis = (float) ($item?->line_subtotal ?? ((float) ($item?->unit_price ?? 0) * $sourceQuantity));
+        $linePaid = (float) ($item?->line_total ?? $discountBasis);
+        $subtotal = max(0.0, (float) ($case->order?->subtotal ?? $linePaid));
+        $discountShare = $subtotal > 0 ? round(max(0.0, (float) ($case->order?->discount_amount ?? 0)) * ($discountBasis / $subtotal), 2) : 0.0;
+        $paidValue = max(0.0, round(($linePaid - min($linePaid, $discountShare)) * min($quantity, $sourceQuantity) / $sourceQuantity, 2));
+        $alternatives = BranchInventory::query()->where('store_id', $case->store_id)->where('branch_id', $branchId)
+            ->where('quantity_available', '>=', $quantity)->whereHas('product', fn ($q) => $q->where('store_id', $case->store_id)->where('is_active', true))
+            ->where(function ($q) use ($case) { $q->whereNull('variation_id')->orWhereHas('variation', fn ($v) => $v->where('store_id', $case->store_id)->where('is_active', true)->whereColumn('product_variations.product_id', 'branch_inventory.product_id')); })
+            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active', 'variation:id,product_id,variation_name,variation_sku,base_price,discounted_price,is_active'])
+            ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_on_hand', 'quantity_reserved', 'quantity_damaged'])
+            ->map(function (BranchInventory $inventory) use ($quantity, $paidValue): array {
+                $price = $this->replacementUnitPrice($inventory);
+                $total = round($price * $quantity, 2);
+                return ['inventory_id' => (int) $inventory->id, 'product_name' => $inventory->variation?->variation_name ? $inventory->product?->product_name . ' - ' . $inventory->variation->variation_name : $inventory->product?->product_name,
+                    'sku' => $inventory->variation?->variation_sku ?: $inventory->product?->sku, 'quantity_available' => (int) $inventory->quantity_available,
+                    'quantity' => $quantity, 'unit_price' => $price, 'total_price' => $total, 'remaining_value' => max(0, round($paidValue - $total, 2)), 'price_difference' => round($total - $paidValue, 2)];
+            })->filter(fn (array $option): bool => $allowHigherValue || $option['price_difference'] <= 0)->values();
+
+        return response()->json(['success' => true, 'data' => $case, 'branch' => $item?->branchInventory?->branch?->only(['id', 'name']) ?: $case->order?->assignedBranch?->only(['id', 'name']),
+            'original_paid_value' => $paidValue, 'quantity' => $quantity, 'alternatives' => $alternatives,
+            'selected_replacement' => $case->replacement_inventory_id ? ['inventory_id' => (int) $case->replacement_inventory_id,
+                'product_name' => $case->replacementInventory?->variation?->variation_name ? $case->replacementInventory->product?->product_name . ' - ' . $case->replacementInventory->variation->variation_name : $case->replacementInventory?->product?->product_name,
+                'quantity' => $quantity, 'total_price' => round((float) $case->replacement_unit_price * $quantity, 2), 'price_difference' => (float) $case->replacement_price_difference,
+                'remaining_value' => 0] : null]);
+    }
+
+    public function customerExchangeReserve(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate(['inventory_id' => ['required', 'integer', 'exists:branch_inventory,id'], 'payment_method' => ['required', 'in:gcash,paymaya,card,qrph']]);
+        $case = $this->customerReturn($request, $id);
+        $result = DB::transaction(function () use ($case, $request, $validated): array {
+            $locked = EcommerceOrderReturn::query()->whereKey($case->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'received' && in_array($locked->replacement_status, ['ecommerce_exchange', 'payment_failed'], true) && !$locked->replacement_inventory_id, 409, 'This exchange is no longer available.');
+            $locked->loadMissing(['order', 'orderItem.branchInventory']);
+            $source = $locked->orderItem;
+            $branchId = (int) ($source?->branchInventory?->branch_id ?: $locked->order?->assigned_branch_id ?: $locked->order?->branch_id ?: 0);
+            $quantity = max(1, (int) ($locked->received_quantity ?: $locked->requested_quantity ?: 1));
+            $inventory = BranchInventory::query()->where('store_id', $locked->store_id)->with(['branch', 'product', 'variation'])->lockForUpdate()->findOrFail($validated['inventory_id']);
+            if ((int) $inventory->branch_id !== $branchId || !$inventory->branch || $inventory->branch->status !== 'active' || !$inventory->product || !$inventory->product->is_active || ($inventory->variation && !$inventory->variation->is_active)) {
+                throw ValidationException::withMessages(['inventory_id' => ['Choose an active item from the branch that issued the original order.']]);
+            }
+            if ((int) $inventory->quantity_available < $quantity) throw ValidationException::withMessages(['inventory_id' => ['There is not enough stock at the issuing branch. Refresh and choose another item.']]);
+            $sourceQty = max(1, (int) ($source?->quantity ?: 1));
+            $discountBasis = (float) ($source?->line_subtotal ?? ((float) ($source?->unit_price ?? 0) * $sourceQty));
+            $linePaid = (float) ($source?->line_total ?? $discountBasis);
+            $orderSubtotal = max(0.0, (float) ($locked->order?->subtotal ?? $linePaid));
+            $discount = $orderSubtotal > 0 ? min($discountBasis, round(max(0.0, (float) ($locked->order?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)) : 0.0;
+            $paidValue = max(0.0, round(($linePaid - $discount) * min($quantity, $sourceQty) / $sourceQty, 2));
+            $unitPrice = $this->replacementUnitPrice($inventory);
+            $total = round($unitPrice * $quantity, 2);
+            $difference = round($total - $paidValue, 2);
+            if ($difference < 0) throw ValidationException::withMessages(['inventory_id' => ['Choose an exchange item worth at least ' . number_format($paidValue, 2) . '. You still need ' . number_format(abs($difference), 2) . ' more.']]);
+            if ($difference > 0 && !app(ReturnResolutionPolicy::class)->forStore($locked->store)['allow_higher_value_replacements']) {
+                throw ValidationException::withMessages(['inventory_id' => ['This store does not accept higher-value exchanges. Choose an equal-value item.']]);
+            }
+            $inventory->quantity_reserved += $quantity;
+            $inventory->save();
+            $locked->update(['replacement_inventory_id' => $inventory->id, 'replacement_branch_id' => $inventory->branch_id, 'replacement_product_id' => $inventory->product_id,
+                'replacement_variation_id' => $inventory->variation_id, 'replacement_unit_price' => $unitPrice, 'replacement_price_difference' => $difference,
+                'replacement_payment_method' => $validated['payment_method'], 'replacement_payment_status' => $difference > 0 ? 'pending' : 'paid',
+                'replacement_payment_reference' => null, 'replacement_customer_accepted_by' => $request->user()->id, 'replacement_customer_accepted_at' => now(),
+                'replacement_paid_by' => $difference > 0 ? null : $request->user()->id, 'replacement_paid_at' => $difference > 0 ? null : now(),
+                'replacement_status' => $difference > 0 ? 'awaiting_payment' : 'reserved']);
+            return ['case' => $locked->fresh(), 'store_id' => (int) $locked->store_id, 'amount' => (int) round(max(0, $difference) * 100)];
+        });
+        return response()->json(['success' => true, 'data' => $result['case'], 'store_id' => $result['store_id'], 'amount' => $result['amount'], 'payment_required' => $result['amount'] > 0]);
+    }
+
+    private function scopedReturn(Request $request, int $id): EcommerceOrderReturn
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        abort_if($storeId <= 0, 403, 'A store is required.');
+
+        return EcommerceOrderReturn::query()
+            ->where('store_id', $storeId)
+            ->where('return_type', 'replacement')
+            ->with([
+                'order', 'orderItem.branchInventory', 'pickup.destinationBranch', 'replacementBranch', 'replacementTrip.vehicle', 'replacementTrip.driver',
+                'salesOrder', 'salesOrderItem.branchInventory',
+            ])
+            ->findOrFail($id)
+            ->normalizeSourceRelationsForDisplay();
+    }
+
+    private function authorizeStock(Request $request): void
+    {
+        abort_unless($request->user()->hasAnyPermission([
+            'inventory.receiving.manage', 'inventory.stock.manage', 'warehouse.receiving.view', 'crm.returns.manage',
+        ]) || $request->user()->hasRole('owner'), 403);
+    }
+
+    private function authorizeSales(Request $request): void
+    {
+        abort_unless($request->user()->hasAnyPermission([
+            'sales.orders.manage', 'sales.ecommerce-orders.manage', 'sales.pos.manage',
+        ]) || $request->user()->hasRole('owner'), 403);
+    }
+
+    private function authorizeLogistics(Request $request, ?int $driverId = null): void
+    {
+        $allowed = $request->user()->hasPermissionTo('logistics.deliveries.manage')
+            || $request->user()->hasRole('owner')
+            || ($driverId && (int) $request->user()->id === $driverId);
+        abort_unless($allowed, 403);
+    }
+
+    private function assertReplacementHandoffReady(Request $request, EcommerceOrderReturn $return): ReturnPickup
+    {
+        $permissionService = app(\App\Services\Core\PermissionService::class);
+        $canManage = $permissionService->userHasPermission($request->user(), 'logistics.deliveries.manage')
+            || $permissionService->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+        $canUseDriverTrip = $permissionService->userHasPermission($request->user(), 'logistics.driver.trips');
+        abort_unless($canManage || $canUseDriverTrip, 403);
+
+        $trip = DeliveryTrip::query()
+            ->where('store_id', (int) $return->store_id)
+            ->find((int) $return->replacement_trip_id);
+        abort_unless($trip && $trip->status === 'out_for_delivery', 422, 'The linked replacement trip has not been dispatched.');
+        abort_unless(
+            (int) $return->replacement_driver_id === (int) $trip->driver_user_id,
+            403,
+            'The replacement driver does not match the assigned trip driver.',
+        );
+        if (!$canManage) {
+            abort_unless($canUseDriverTrip && (int) $trip->driver_user_id === (int) $request->user()->id, 403);
+        }
+
+        $pickup = ReturnPickup::query()
+            ->where('store_id', (int) $return->store_id)
+            ->where('return_id', (int) $return->id)
+            ->where('trip_id', (int) $trip->id)
+            ->where('driver_user_id', (int) $trip->driver_user_id)
+            ->first();
+        abort_unless($pickup && $pickup->status === 'picked_up', 422, 'The driver must first record photo proof that the returned item was picked up.');
+        abort_unless(
+            filled($pickup->proof_photo_path) || $pickup->logs()->where('status_to', 'picked_up')->whereNotNull('proof_photo_path')->exists(),
+            422,
+            'Pickup photo proof is required before the replacement can be delivered.',
+        );
+
+        return $pickup;
+    }
+
+    private function resolveSourceBranchId(EcommerceOrderReturn $return): int
+    {
+        if ($return->source_type === 'pos') {
+            $return->loadMissing(['salesOrder', 'salesOrderItem.branchInventory']);
+        } else {
+            $return->loadMissing(['order', 'orderItem.branchInventory']);
+        }
+
+        $item = $return->sourceOrderItem();
+        $order = $return->sourceOrder();
+
+        return (int) ($item?->branchInventory?->branch_id
+            ?: $order?->assigned_branch_id
+            ?: $order?->branch_id
+            ?: 0);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        abort_if($storeId <= 0, 403);
+        $rows = EcommerceOrderReturn::query()
+            ->where('store_id', $storeId)
+            ->where('return_type', 'replacement')
+            ->whereIn('status', ['approved', 'received', 'replaced'])
+            ->with([
+                'order:id,order_number,shipping_name', 'orderItem:id,product_name,sku',
+                'salesOrder:id,order_number,customer_name', 'salesOrderItem:id,product_name,sku',
+                'pickup:id,return_id,destination_branch_id,status',
+            ])
+            ->latest()->paginate(15);
+        collect($rows->items())->each(fn (EcommerceOrderReturn $return) => $return->normalizeSourceRelationsForDisplay());
+
+        return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $return = $this->scopedReturn($request, $id);
+        $return->load(['orderItem.product', 'orderItem.branchInventory.variation', 'salesOrderItem.product', 'salesOrderItem.variation', 'salesOrderItem.branchInventory.variation', 'pickup.destinationBranch', 'replacementProduct', 'replacementVariation', 'replacementInventory.product', 'replacementInventory.variation', 'replacementInventory.branch']);
+        $return->loadMissing('pickup:id,return_id,destination_branch_id');
+        $fulfillmentBranchId = (int) ($return->pickup?->destination_branch_id ?: $this->resolveSourceBranchId($return));
+        $branches = Branch::query()->where('store_id', $return->store_id)->where('status', 'active')
+            ->whereKey($fulfillmentBranchId)
+            ->get(['id', 'name', 'branch_type']);
+        $originalItem = $return->sourceOrderItem();
+        $originalInventory = $return->source_type === 'pos' ? $return->salesOrderItem?->branchInventory : $return->orderItem?->branchInventory;
+        $variationId = $originalInventory?->variation_id ?? $originalItem?->variation_id;
+        $stock = BranchInventory::query()->where('store_id', $return->store_id)
+            ->where('product_id', $originalItem?->product_id)
+            ->where('variation_id', $variationId)
+            ->whereIn('branch_id', $branches->pluck('id'))
+            ->get(['id', 'branch_id', 'quantity_available', 'quantity_reserved']);
+        $quantity = max(1, (int) ($return->received_quantity ?: $return->requested_quantity ?: 1));
+        $sourceQuantity = max(1, (int) ($originalItem?->quantity ?? 1));
+        $discountBasis = (float) ($originalItem?->line_subtotal ?? ((float) ($originalItem?->unit_price ?? 0) * $sourceQuantity));
+        $sourceLineTotal = (float) ($originalItem?->line_total ?? $discountBasis);
+        $sourceOrder = $return->sourceOrder();
+        $orderSubtotal = max(0.0, (float) ($sourceOrder?->subtotal ?? $sourceLineTotal));
+        $discountShare = $return->source_type === 'pos' ? 0.0 : ($orderSubtotal > 0
+            ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)
+            : 0.0);
+        if ($return->source_type === 'pos') $discountShare = 0.0;
+        $discountShare = min($sourceLineTotal, $discountShare);
+        $originalPaidValue = max(0.0, round(($sourceLineTotal * min($quantity, $sourceQuantity) / $sourceQuantity) - ($discountShare * min($quantity, $sourceQuantity) / $sourceQuantity), 2));
+        $originalProductId = (int) ($return->sourceOrderItem()?->product_id ?? 0);
+        $alternatives = BranchInventory::query()
+            ->where('store_id', $return->store_id)
+            ->where('quantity_available', '>=', $quantity)
+            ->where('product_id', '!=', $originalProductId)
+            ->whereIn('branch_id', $branches->pluck('id'))
+            ->whereHas('product', fn ($query) => $query->where('store_id', $return->store_id)->where('is_active', true))
+            ->where(function ($query) use ($return): void {
+                $query->whereNull('variation_id')->orWhereHas('variation', fn ($variation) => $variation
+                    ->where('store_id', $return->store_id)
+                    ->where('is_active', true)
+                    ->whereColumn('product_variations.product_id', 'branch_inventory.product_id'));
+            })
+            ->with([
+                'branch:id,name,branch_type',
+                'product:id,store_id,product_name,sku,base_price,discounted_price,is_active,weight_kg',
+                'variation:id,store_id,product_id,variation_name,variation_sku,base_price,discounted_price,is_active,weight_kg',
+            ])
+            ->get(['id', 'store_id', 'branch_id', 'product_id', 'variation_id', 'quantity_on_hand', 'quantity_reserved', 'quantity_damaged'])
+            ->map(function (BranchInventory $inventory) use ($quantity, $originalPaidValue): array {
+                $unitPrice = $this->replacementUnitPrice($inventory);
+                $total = round($unitPrice * $quantity, 2);
+                $unitWeight = $inventory->variation?->weight_kg ?? $inventory->product?->weight_kg;
+                return [
+                    'inventory_id' => (int) $inventory->id,
+                    'product_id' => (int) $inventory->product_id,
+                    'variation_id' => $inventory->variation_id ? (int) $inventory->variation_id : null,
+                    'product_name' => $inventory->variation?->variation_name
+                        ? $inventory->product?->product_name . ' - ' . $inventory->variation->variation_name
+                        : $inventory->product?->product_name,
+                    'sku' => $inventory->variation?->variation_sku ?: $inventory->product?->sku,
+                    'branch_id' => (int) $inventory->branch_id,
+                    'branch_name' => $inventory->branch?->name,
+                    'branch_type' => $inventory->branch?->branch_type,
+                    'quantity_available' => (int) $inventory->quantity_available,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'total_price' => $total,
+                    'original_paid_value' => round((float) $originalPaidValue, 2),
+                    'price_difference' => round($total - (float) $originalPaidValue, 2),
+                    'weight_kg' => $unitWeight !== null ? (float) $unitWeight : null,
+                    'total_weight_kg' => $unitWeight !== null ? round((float) $unitWeight * $quantity, 2) : null,
+                ];
+            })
+            ->filter(fn (array $option): bool => $option['price_difference'] >= 0)
+            ->values();
+        return response()->json(['success' => true, 'data' => $return, 'branches' => $branches,
+            'stock' => $stock, 'original_paid_value' => round((float) $originalPaidValue, 2), 'alternatives' => $alternatives]);
+    }
+
+    public function requestSalesAlternative(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeStock($request);
+        $return = $this->scopedReturn($request, $id);
+        $return->loadMissing('store');
+        if (!app(ReturnResolutionPolicy::class)->forStore($return->store)['allow_higher_value_replacements']) {
+            throw ValidationException::withMessages(['replacement' => ['Higher-value replacements are disabled by the store’s return resolution policy.']]);
+        }
+
+        DB::transaction(function () use ($return): void {
+            $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if ($case->status !== 'received' || !in_array($case->replacement_status, ['awaiting_stock', null], true)) {
+                throw ValidationException::withMessages(['replacement' => ['Only a received replacement awaiting stock can be sent to Sales.']]);
+            }
+            $case->replacement_status = $case->source_type === 'ecommerce' ? 'ecommerce_exchange' : 'sales_review';
+            $case->replacement_payment_status = null;
+            $case->save();
+        });
+
+        $destinationPermission = $return->source_type === 'ecommerce' ? 'sales.ecommerce-orders.view' : 'sales.orders.view';
+        $destination = $return->source_type === 'ecommerce' ? '/sales/ecommerce-orders' : '/sales/replacements/' . (int) $return->id;
+        $this->notifyUsersByPermissions((int) $return->store_id, [$destinationPermission], [
+            'store_id' => (int) $return->store_id,
+            'module' => 'sales',
+            'entity_type' => 'ecommerce_order_return',
+            'entity_id' => (int) $return->id,
+            'action' => 'replacement_sales_review_requested',
+            'title' => $return->source_type === 'ecommerce' ? 'Customer Exchange Order Ready' : 'Replacement Product Selection Required',
+            'message' => $return->source_type === 'ecommerce'
+                ? ($return->return_number ?: 'Return #' . $return->id) . ' is ready for the customer to choose an exchange item.'
+                : ($return->return_number ?: 'Return #' . $return->id) . ' needs an alternative replacement selected and any excess value paid.',
+            'severity' => 'warn',
+            'link' => $destination,
+            'data' => ['required_permission' => $destinationPermission, 'return_number' => $return->return_number],
+        ]);
+
+        return response()->json(['success' => true, 'message' => $return->source_type === 'ecommerce' ? 'The customer can now choose an exchange item in ecommerce.' : 'Replacement request sent to Sales Orders.']);
+    }
+
+    public function reserveAlternative(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeSales($request);
+        $validated = $request->validate([
+            'inventory_id' => ['required', 'integer', 'exists:branch_inventory,id'],
+            'customer_accepted' => ['required', 'accepted'],
+            'payment_method' => ['required', 'in:gcash,paymaya,card,qrph'],
+        ]);
+        $return = $this->scopedReturn($request, $id);
+        $actor = $request->user();
+        $return->loadMissing('store');
+        if (!app(ReturnResolutionPolicy::class)->forStore($return->store)['allow_higher_value_replacements']) {
+            throw ValidationException::withMessages([
+                'inventory_id' => ['Higher-value replacements are disabled by the store’s return resolution policy.'],
+            ]);
+        }
+
+        $result = DB::transaction(function () use ($return, $validated, $actor): array {
+            $case = EcommerceOrderReturn::query()->where('store_id', $return->store_id)
+                ->lockForUpdate()->findOrFail($return->id);
+            if ($case->status !== 'received' || !in_array($case->replacement_status, ['sales_review', 'payment_failed'], true)
+                || $case->replacement_inventory_id) {
+                throw ValidationException::withMessages(['replacement' => ['This replacement is not awaiting Sales product selection.']]);
+            }
+
+            $quantity = (int) $case->received_quantity;
+            if ($quantity <= 0) {
+                throw ValidationException::withMessages(['replacement' => ['Inspect and receive the returned item before reserving an alternative.']]);
+            }
+            $inventory = BranchInventory::query()->where('store_id', $case->store_id)
+                ->with(['product', 'variation', 'branch'])->lockForUpdate()->findOrFail($validated['inventory_id']);
+            if (!$inventory->branch || (int) $inventory->branch->store_id !== (int) $case->store_id
+                || $inventory->branch->status !== 'active' || !$inventory->product
+                || (int) $inventory->product->store_id !== (int) $case->store_id || !$inventory->product->is_active
+                || ($inventory->variation && ((int) $inventory->variation->store_id !== (int) $case->store_id
+                    || (int) $inventory->variation->product_id !== (int) $inventory->product_id
+                    || !$inventory->variation->is_active))) {
+                throw ValidationException::withMessages(['inventory_id' => ['Select an active product and branch from this store.']]);
+            }
+            $originalItem = $case->sourceOrderItem();
+            if (!$originalItem || (int) $originalItem->product_id === (int) $inventory->product_id) {
+                throw ValidationException::withMessages(['inventory_id' => ['Choose a different product for the higher-value replacement.']]);
+            }
+            $availableQuantity = (int) $inventory->quantity_available;
+            if ($availableQuantity < $quantity) {
+                throw ValidationException::withMessages(['inventory_id' => ['Not enough available stock remains for this replacement. Refresh the page and choose another branch or item.']]);
+            }
+
+            $unitPrice = $this->replacementUnitPrice($inventory);
+            if ($unitPrice <= 0) {
+                throw ValidationException::withMessages(['inventory_id' => ['The replacement item has no valid selling price.']]);
+            }
+            $sourceQuantity = max(1, (int) ($originalItem->quantity ?? 1));
+            $discountBasis = (float) ($originalItem->line_subtotal ?? ((float) ($originalItem->unit_price ?? 0) * $sourceQuantity));
+            $sourceLineTotal = (float) ($originalItem->line_total ?? $discountBasis);
+            $sourceOrder = $case->sourceOrder();
+            $orderSubtotal = max(0.0, (float) ($sourceOrder?->subtotal ?? $sourceLineTotal));
+            $discountShare = $case->source_type === 'pos' ? 0.0 : ($orderSubtotal > 0
+                ? round(max(0.0, (float) ($sourceOrder?->discount_amount ?? 0)) * ($discountBasis / $orderSubtotal), 2)
+                : 0.0);
+            if ($case->source_type === 'pos') $discountShare = 0.0;
+            $discountShare = min($sourceLineTotal, $discountShare);
+            $originalPaidValue = max(0.0, round(($sourceLineTotal * min($quantity, $sourceQuantity) / $sourceQuantity) - ($discountShare * min($quantity, $sourceQuantity) / $sourceQuantity), 2));
+            $difference = round(($unitPrice * $quantity) - (float) $originalPaidValue, 2);
+            if ($difference < 0) {
+                throw ValidationException::withMessages(['inventory_id' => ['This item is below the returned item value. Select an item worth at least PHP ' . number_format($originalPaidValue, 2) . '.']]);
+            }
+
+            $inventory->quantity_reserved += $quantity;
+            $inventory->save();
+
+            $case->update([
+                'replacement_inventory_id' => (int) $inventory->id,
+                'replacement_branch_id' => (int) $inventory->branch_id,
+                'replacement_product_id' => (int) $inventory->product_id,
+                'replacement_variation_id' => $inventory->variation_id,
+                'replacement_unit_price' => $unitPrice,
+                'replacement_price_difference' => $difference,
+                'replacement_payment_status' => $difference > 0 ? 'pending' : 'paid',
+                'replacement_payment_method' => $validated['payment_method'],
+                'replacement_payment_reference' => null,
+                'replacement_customer_accepted_by' => (int) $actor->id,
+                'replacement_customer_accepted_at' => now(),
+                'replacement_paid_by' => $difference > 0 ? null : (int) $actor->id,
+                'replacement_paid_at' => $difference > 0 ? null : now(),
+                'replacement_status' => $difference > 0 ? 'awaiting_payment' : 'reserved',
+            ]);
+
+            return ['case' => $case->fresh(['replacementProduct', 'replacementVariation', 'replacementBranch', 'replacementInventory'])];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Alternative selected and stock held. Complete the PayMongo payment before dispatch.',
+            'data' => $result['case'],
+        ]);
+    }
+
+    public function reserve(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeStock($request);
+        $validated = $request->validate(['branch_id' => ['required', 'integer', 'exists:branches,id']]);
+        $return = $this->scopedReturn($request, $id);
+        $return->loadMissing('pickup:id,return_id,destination_branch_id');
+        $fulfillmentBranchId = (int) ($return->pickup?->destination_branch_id ?: $this->resolveSourceBranchId($return));
+        if ($fulfillmentBranchId <= 0 || (int) $validated['branch_id'] !== $fulfillmentBranchId) {
+            throw ValidationException::withMessages(['branch_id' => ['Replacement stock must be reserved at the branch that fulfilled the original order.']]);
+        }
+        Branch::query()->where('store_id', $return->store_id)->where('status', 'active')
+            ->findOrFail($validated['branch_id']);
+        if ($return->sourceOrderItem()?->branch_inventory_id && !$return->sourceOrderItem()?->branchInventory) {
+            return response()->json(['message' => 'The original SKU is unavailable; it cannot be safely matched to replacement stock.'], 422);
+        }
+
+        $result = DB::transaction(function () use ($return, $validated) {
+            $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if (!in_array($case->status, ['approved', 'received'], true) || !in_array($case->replacement_status, ['awaiting_stock', null], true)) {
+                throw ValidationException::withMessages(['replacement' => 'This case cannot be reserved again.']);
+            }
+            $originalItem = $return->sourceOrderItem();
+            $originalInventory = $return->source_type === 'pos' ? $return->salesOrderItem?->branchInventory : $return->orderItem?->branchInventory;
+            $variationId = $originalInventory?->variation_id ?? $originalItem?->variation_id;
+            $inventory = BranchInventory::query()->where('store_id', $return->store_id)
+                ->where('branch_id', $validated['branch_id'])->where('product_id', $originalItem?->product_id)
+                ->where('variation_id', $variationId)->lockForUpdate()->first();
+            $case->replacement_branch_id = $validated['branch_id'];
+            $quantity = (int) ($case->received_quantity ?: $case->requested_quantity);
+            if (!$inventory || $quantity <= 0 || max(0, (int) $inventory->quantity_on_hand - (int) $inventory->quantity_reserved - (int) $inventory->quantity_damaged) < $quantity) {
+                $case->replacement_status = 'awaiting_stock';
+                $case->save();
+                return ['reserved' => false, 'case' => $case];
+            }
+            $inventory->quantity_reserved += $quantity;
+            $inventory->save();
+            $case->replacement_inventory_id = $inventory->id;
+            $case->replacement_status = 'reserved';
+            $case->save();
+            return ['reserved' => true, 'case' => $case];
+        });
+
+        return response()->json(['success' => true, 'message' => $result['reserved']
+            ? 'The full replacement quantity is reserved and is now ready for Logistics. Assign it to a trip to carry the replacement to the customer and bring the returned item back together.'
+            : 'Not enough stock. Case is awaiting stock.', 'data' => $result['case']]);
+    }
+
+    private function replacementUnitPrice(BranchInventory $inventory): float
+    {
+        $variationDiscountedPrice = (float) ($inventory->variation?->discounted_price ?? 0);
+        if ($variationDiscountedPrice > 0) {
+            return round($variationDiscountedPrice, 2);
+        }
+
+        $variationBasePrice = (float) ($inventory->variation?->base_price ?? 0);
+        if ($variationBasePrice > 0) {
+            return round($variationBasePrice, 2);
+        }
+
+        $productDiscountedPrice = (float) ($inventory->product?->discounted_price ?? 0);
+        if ($productDiscountedPrice > 0) {
+            return round($productDiscountedPrice, 2);
+        }
+
+        return round((float) ($inventory->product?->base_price ?? 0), 2);
+    }
+
+    public function deliver(Request $request, int $id): JsonResponse
+    {
+        $return = $this->scopedReturn($request, $id);
+        $this->assertReplacementHandoffReady($request, $return);
+        $validated = $request->validate([
+            'received_by' => ['required', 'string', 'max:255'],
+            'proof' => ['required', 'image', 'max:5120'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location_address' => ['nullable', 'string', 'max:2000'],
+        ]);
+        if (!in_array($return->status, ['approved', 'received'], true) || $return->replacement_status !== 'out_for_delivery') {
+            return response()->json(['message' => 'Only dispatched replacements can be delivered.'], 422);
+        }
+        $path = $validated['proof']->store("replacement-proofs/{$return->store_id}", 'public');
+        try {
+            DB::transaction(function () use ($return, $validated, $path, $request): void {
+                $case = EcommerceOrderReturn::query()
+                    ->where('store_id', (int) $return->store_id)
+                    ->lockForUpdate()
+                    ->findOrFail($return->id);
+                if ($case->replacement_status !== 'out_for_delivery') {
+                    throw ValidationException::withMessages(['replacement' => 'Replacement was already delivered.']);
+                }
+                $trip = DeliveryTrip::query()
+                    ->where('store_id', (int) $case->store_id)
+                    ->lockForUpdate()
+                    ->find((int) $case->replacement_trip_id);
+                if (!$trip || $trip->status !== 'out_for_delivery'
+                    || (int) $trip->driver_user_id !== (int) $case->replacement_driver_id) {
+                    throw ValidationException::withMessages(['replacement' => 'The assigned replacement trip or driver changed. Refresh and verify the trip assignment.']);
+                }
+                $permissions = app(\App\Services\Core\PermissionService::class);
+                $canManage = $permissions->userHasPermission($request->user(), 'logistics.deliveries.manage')
+                    || $permissions->userHasPermission($request->user(), 'logistics.return-pickups.manage');
+                if (!$canManage && (
+                    !$permissions->userHasPermission($request->user(), 'logistics.driver.trips')
+                    || (int) $trip->driver_user_id !== (int) $request->user()->id
+                )) {
+                    throw ValidationException::withMessages(['replacement' => 'You are no longer authorized for this assigned replacement trip.']);
+                }
+                $pickup = ReturnPickup::query()
+                    ->where('store_id', (int) $case->store_id)
+                    ->where('return_id', (int) $case->id)
+                    ->where('trip_id', (int) $trip->id)
+                    ->where('driver_user_id', (int) $trip->driver_user_id)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$pickup || $pickup->status !== 'picked_up') {
+                    throw ValidationException::withMessages(['replacement' => 'The return must be picked up and photo-confirmed before the replacement can be handed to the customer.']);
+                }
+                if (!filled($pickup->proof_photo_path)
+                    && !$pickup->logs()->where('status_to', 'picked_up')->whereNotNull('proof_photo_path')->exists()) {
+                    throw ValidationException::withMessages(['replacement' => 'Pickup photo proof is required before the replacement can be delivered.']);
+                }
+                $case->replacement_status = 'delivered';
+                $case->replacement_delivered_at = now();
+                $case->replacement_received_by = $validated['received_by'];
+                $case->replacement_proof_path = $path;
+                if (Schema::hasColumn('ecommerce_order_returns', 'current_latitude')) {
+                    $case->current_latitude = $validated['latitude'] ?? $case->current_latitude;
+                    $case->current_longitude = $validated['longitude'] ?? $case->current_longitude;
+                    $case->current_address = $validated['location_address'] ?? $case->current_address;
+                }
+                if ($case->status === 'received') {
+                    $case->status = 'replaced';
+                    $case->resolved_at = now();
+                }
+                $case->save();
+                $pickup->update(['status' => 'in_transit', 'updated_by' => $request->user()->id]);
+                \App\Models\Logistics\ReturnPickupLog::query()->create([
+                    'return_pickup_id' => $pickup->id,
+                    'event_type' => 'replacement_handoff',
+                    'status_from' => 'picked_up',
+                    'status_to' => 'in_transit',
+                    'message' => 'Replacement handed to the customer; returned item is now in transit to the branch.',
+                    'created_by' => $request->user()->id,
+                ]);
+                app(\App\Services\Logistics\CompleteDeliveryTrip::class)->afterDeliveryUpdate($case);
+            });
+        } catch (\Throwable $e) {
+            Storage::disk('public')->delete($path);
+            throw $e;
+        }
+
+        if ($return->user_id && $return->source_type !== 'pos') {
+            $this->notify((int) $return->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $return->id,
+                'action' => 'replacement_delivered',
+                'title' => 'Replacement delivered',
+                'message' => $return->status === 'received'
+                    ? 'Your replacement has been delivered. Thank you for completing the return process.'
+                    : 'Your replacement has been delivered. The returned item will be inspected when it reaches the branch.',
+                'severity' => 'success',
+                'store_id' => (int) $return->store_id,
+                'link' => '/orders/' . (int) $return->order_id,
+                'data' => ['status' => 'replaced'],
+            ]);
+        }
+
+        $branchEmployeeIds = Employee::query()
+            ->where('store_id', (int) $return->store_id)
+            ->where('branch_id', (int) $return->replacement_branch_id)
+            ->where('status', 'active')
+            ->whereNotNull('user_id')
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->pluck('user_id')
+            ->map(fn ($userId) => (int) $userId)
+            ->all();
+        $permittedBranchUsers = array_values(array_intersect(
+            $branchEmployeeIds,
+            $this->userIdsWithAnyPermission((int) $return->store_id, ['crm.returns.view']),
+        ));
+        $returnNumber = $return->return_number ?: 'Return #' . (int) $return->id;
+        foreach ($permittedBranchUsers as $userId) {
+            $alreadyNotified = \App\Models\Core\SystemNotification::query()
+                ->where('store_id', (int) $return->store_id)
+                ->where('user_id', $userId)
+                ->where('entity_type', 'ecommerce_order_return')
+                ->where('entity_id', (int) $return->id)
+                ->where('action', 'replacement_delivered')
+                ->exists();
+            if ($alreadyNotified) continue;
+
+            $this->notify($userId, [
+                'store_id' => (int) $return->store_id,
+                'branch_id' => (int) $return->replacement_branch_id,
+                'module' => 'crm',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $return->id,
+                'action' => 'replacement_delivered',
+                'title' => 'Replacement Delivered',
+                'message' => "Replacement for {$returnNumber} was delivered to the customer.",
+                'severity' => 'success',
+                'link' => '/crm/returns/' . (int) $return->id,
+                'data' => [
+                    'required_permission' => 'crm.returns.view',
+                    'status' => 'replaced',
+                    'return_number' => $returnNumber,
+                    'branch_id' => (int) $return->replacement_branch_id,
+                ],
+            ]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Replacement delivered and case completed.']);
+    }
+
+    public function fail(Request $request, int $id): JsonResponse
+    {
+        $return = $this->scopedReturn($request, $id);
+        $this->authorizeLogistics($request, (int) $return->replacement_driver_id);
+        $validated = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $tripId = (int) ($return->replacement_trip_id ?: 0);
+        DB::transaction(function () use ($return, $validated, $request, $tripId): void {
+            $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'out_for_delivery') {
+                throw ValidationException::withMessages(['replacement' => 'Only an active delivery can be marked failed.']);
+            }
+            $case->replacement_status = 'reserved';
+            $case->replacement_failure_reason = $validated['reason'];
+            $case->replacement_trip_id = null;
+            $case->replacement_driver_id = null;
+            $case->replacement_vehicle_id = null;
+            $case->replacement_assigned_at = null;
+            $case->replacement_dispatched_at = null;
+            $case->save();
+
+            if ($tripId > 0) {
+                $pickup = \App\Models\Logistics\ReturnPickup::query()
+                    ->where('store_id', $case->store_id)
+                    ->where('return_id', $case->id)
+                    ->where('trip_id', $tripId)
+                    ->where('status', 'assigned')
+                    ->first();
+                if ($pickup) {
+                    \App\Models\Logistics\ReturnPickupLog::query()->create([
+                        'return_pickup_id' => $pickup->id,
+                        'event_type' => 'status_updated',
+                        'status_from' => 'assigned',
+                        'status_to' => 'ready_for_dispatch',
+                        'message' => 'Replacement delivery was requeued; the linked return pickup is waiting for the next successful replacement attempt.',
+                        'created_by' => $request->user()->id,
+                    ]);
+                    $pickup->update([
+                        'trip_id' => null,
+                        'driver_user_id' => null,
+                        'vehicle_id' => null,
+                        'assistant_user_ids' => [],
+                        'status' => 'ready_for_dispatch',
+                        'updated_by' => $request->user()->id,
+                    ]);
+                }
+            }
+        });
+
+        if ($tripId > 0) {
+            app(\App\Services\Logistics\CompleteDeliveryTrip::class)
+                ->reconcile($tripId, (int) $return->store_id, (int) $request->user()->id);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Delivery attempt recorded. The reserved replacement is back in Ready for Dispatch.']);
+    }
+
+    public function reattempt(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeLogistics($request);
+        $return = $this->scopedReturn($request, $id);
+        DB::transaction(function () use ($return): void {
+            $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if (!in_array($case->status, ['approved', 'received'], true) || $case->replacement_status !== 'delivery_failed' || !$case->replacement_driver_id) {
+                throw ValidationException::withMessages(['replacement' => 'This replacement cannot be reattempted.']);
+            }
+            $case->replacement_status = 'out_for_delivery';
+            $case->save();
+        });
+
+        return response()->json(['success' => true, 'message' => 'Replacement delivery reopened. Reserved stock was not deducted again.']);
+    }
+
+    public function disposition(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeStock($request);
+        $validated = $request->validate(['disposition' => ['required', 'in:resell,discard']]);
+        $return = $this->scopedReturn($request, $id);
+        if ($return->status !== 'replaced' || $return->inventory_disposition) {
+            return response()->json(['message' => 'Only a completed replacement with quarantined stock can be disposed.'], 422);
+        }
+        if ($validated['disposition'] === 'resell' && $return->product_condition !== 'good') {
+            return response()->json(['message' => 'Damaged returns cannot be released to sellable stock.'], 422);
+        }
+        if ((int) ($request->user()->employee?->branch_id ?? 0) !== (int) $return->pickup?->destination_branch_id) {
+            return response()->json(['message' => 'Only staff at the receiving branch can dispose of this return.'], 403);
+        }
+        $employeeId = (int) ($request->user()->employee?->id ?? 0);
+        DB::transaction(function () use ($return, $validated, $employeeId): void {
+            $case = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if ($case->inventory_disposition || $case->status !== 'replaced') {
+                throw ValidationException::withMessages(['disposition' => 'This return was already disposed.']);
+            }
+            $sourceItem = $return->sourceOrderItem();
+            $sourceInventory = $return->source_type === 'pos' ? $return->salesOrderItem?->branchInventory : $return->orderItem?->branchInventory;
+            $variationId = $sourceInventory?->variation_id ?? $sourceItem?->variation_id;
+            $inventory = BranchInventory::query()->where('store_id', $case->store_id)
+                ->where('branch_id', $return->pickup?->destination_branch_id)
+                ->where('product_id', $sourceItem?->product_id)
+                ->where('variation_id', $variationId)->lockForUpdate()->firstOrFail();
+            $quantity = (int) $case->received_quantity;
+            if ((int) $inventory->quantity_quarantined < $quantity || $quantity <= 0) {
+                throw ValidationException::withMessages(['disposition' => 'Quarantined quantity is insufficient.']);
+            }
+            $before = (int) $inventory->quantity_on_hand;
+            $inventory->quantity_quarantined -= $quantity;
+            if ($validated['disposition'] === 'resell') {
+                $inventory->quantity_on_hand += $quantity;
+                $inventory->quantity_available += $quantity;
+            }
+            $inventory->suppressAutomaticTransactionLog();
+            $inventory->save();
+            InventoryTransaction::query()->create([
+                'transaction_number' => 'INVTX-RET-DISP-' . $case->id . '-' . now()->format('YmdHisv'),
+                'store_id' => $case->store_id, 'branch_id' => $inventory->branch_id,
+                'product_id' => $inventory->product_id, 'variation_id' => $inventory->variation_id,
+                'transaction_type' => $validated['disposition'] === 'resell' ? 'customer_return' : 'writeoff',
+                'quantity_before' => $before,
+                'quantity_change' => $validated['disposition'] === 'resell' ? $quantity : 0,
+                'quantity_after' => $inventory->quantity_on_hand,
+                'reference_type' => 'ecommerce_order_return', 'reference_id' => $case->id,
+                'notes' => 'Quarantined return ' . $validated['disposition'] . ' after replacement delivery.',
+                'unit_cost' => $inventory->average_cost ?? $inventory->unit_cost ?? 0,
+                'total_value' => (float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * $quantity,
+                'created_by' => $employeeId, 'transaction_date' => now(),
+            ]);
+            $case->inventory_disposition = $validated['disposition'];
+            $case->save();
+        });
+
+        return response()->json(['success' => true, 'message' => 'Returned unit disposition recorded.']);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

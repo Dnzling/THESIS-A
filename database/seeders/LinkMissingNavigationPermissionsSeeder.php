@@ -20,6 +20,7 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
         // ========== SUPPLIER PORTAL PERMISSION MAPPINGS ==========
         $supplierPortalMappings = [
             'supplier-portal.dashboard' => ['supplier-portal.dashboard.view'],
+            'supplier-portal.products' => ['supplier.dashboard.view'],
             'supplier-portal.registration' => ['supplier-portal.registration.view', 'supplier-portal.registration.submit'],
             'supplier-portal.rfqs' => ['supplier-portal.rfqs.view'],
             'supplier-portal.rfqs.detail' => ['supplier-portal.rfqs.view', 'supplier-portal.rfqs.respond'],
@@ -61,6 +62,7 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'merchandising.assets.upload' => ['merchandising.assets.upload'],
             'merchandising.tags' => ['merchandising.tags.view'],
             'merchandising.pricing' => ['merchandising.pricing.view'],
+            'merchandising.vouchers' => ['merchandising.vouchers.view'],
             'merchandising.pricing.bulk' => ['merchandising.pricing.edit'],
             'merchandising.pricing-history' => ['merchandising.reports.view'],
         ];
@@ -76,8 +78,8 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'finance.budgets' => ['finance.budgets.view'],
             'finance.reports' => ['finance.reports.view'],
             'finance.cashflow' => ['finance.cashflow.view'],
+            'finance.tax-vat' => ['finance.tax-vat.view'],
             'finance.invoices' => ['finance.invoices.view'],
-            'finance.price-approvals' => ['finance.price-approvals.view'],
             'finance.purchase-orders' => ['finance.purchase-orders.view'],
             'finance.purchase-orders.detail' => [
                 'finance.purchase-orders.view',

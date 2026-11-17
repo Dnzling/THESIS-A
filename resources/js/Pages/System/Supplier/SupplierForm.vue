@@ -228,6 +228,18 @@
       </div>
     </form>
 
+    <Dialog v-model:visible="showCreateConfirmation" modal header="Create this supplier?" :style="{ width: 'min(28rem, 94vw)' }">
+      <p class="text-sm leading-6 text-slate-600">
+        Confirm the supplier and contact details before adding this record to the supplier directory.
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Review Details" severity="secondary" outlined size="small" @click="showCreateConfirmation = false" />
+          <Button label="Create Supplier" severity="warn" icon="pi pi-check" size="small" :loading="saving" @click="confirmCreateSupplier" />
+        </div>
+      </template>
+    </Dialog>
+
     <Toast />
   </div>
 </template>
@@ -246,6 +258,7 @@ const props = defineProps<{
 const toast = useToast()
 
 const saving = ref(false)
+const showCreateConfirmation = ref(false)
 const errors = ref<Record<string, string>>({})
 
 const form = ref({
@@ -345,6 +358,19 @@ const submitForm = async () => {
   }
 
   errors.value = {}
+  if (props.mode === 'create') {
+    showCreateConfirmation.value = true
+    return
+  }
+
+  await persistSupplier()
+}
+
+const confirmCreateSupplier = async () => {
+  await persistSupplier()
+}
+
+const persistSupplier = async () => {
   saving.value = true
 
   try {
@@ -355,6 +381,7 @@ const submitForm = async () => {
       response = await updateSupplier(props.initialData.id, form.value)
     }
 
+    showCreateConfirmation.value = false
     if (response?.success) {
       toast.add({
         severity: 'success',
@@ -372,6 +399,7 @@ const submitForm = async () => {
       })
     }
   } catch (error: any) {
+    showCreateConfirmation.value = false
     toast.add({
       severity: 'error',
       summary: 'Error',

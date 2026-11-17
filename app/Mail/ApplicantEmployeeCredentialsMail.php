@@ -20,7 +20,7 @@ class ApplicantEmployeeCredentialsMail extends Mailable
     public function build(): self
     {
         return $this
-            ->subject('Your Employee Account Credentials')
+            ->subject('Welcome to ' . config('app.name') . ' | Your employee account')
             ->view('emails.hr.applicant-employee-credentials');
     }
 }

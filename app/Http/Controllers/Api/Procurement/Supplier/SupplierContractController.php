@@ -11,6 +11,7 @@ use App\Models\Hr\Employee;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -38,6 +39,11 @@ class SupplierContractController extends Controller
         return false;
     }
 
+    private function isInventoryRequest(Request $request): bool
+    {
+        return $request->is('api/inventory/supplier-contracts*');
+    }
+
     private function contractLinkForStore(int $contractId): string
     {
         return '/procurement/supplier-contracts/' . $contractId;
@@ -50,23 +56,33 @@ class SupplierContractController extends Controller
 
     private function notifyStoreUsers(int $storeId, int $contractId, string $title, string $message, string $action = 'info', string $severity = 'info'): void
     {
+        $requiredPermission = 'procurement.supplier_contracts.view';
+        $permissionService = app(PermissionService::class);
         $users = User::query()
-            ->where('store_id', $storeId)
+            ->where(function ($query) use ($storeId): void {
+                $query->where('store_id', $storeId)
+                    ->orWhereHas('stores', fn ($stores) => $stores->where('stores.id', $storeId));
+            })
             ->where('is_active', true)
-            ->get(['id']);
+            ->get();
 
         foreach ($users as $user) {
-            SystemNotification::query()->create([
-                'store_id' => $storeId,
-                'branch_id' => null,
+            if (!$permissionService->userHasPermission($user, $requiredPermission, $storeId)) {
+                continue;
+            }
+
+            SystemNotification::query()->firstOrCreate([
                 'user_id' => (int) $user->id,
-                'module' => 'procurement',
                 'entity_type' => 'supplier_contract',
                 'entity_id' => $contractId,
                 'action' => $action,
+            ], [
+                'store_id' => $storeId,
+                'branch_id' => null,
+                'module' => 'procurement',
                 'title' => $title,
                 'message' => $message,
-                'data' => ['contract_id' => $contractId],
+                'data' => ['contract_id' => $contractId, 'required_permission' => $requiredPermission],
                 'link' => $this->contractLinkForStore($contractId),
                 'severity' => $severity,
                 'is_read' => false,
@@ -77,38 +93,40 @@ class SupplierContractController extends Controller
     private function notifySupplierUsers(SupplierContract $contract, string $title, string $message, string $action = 'info', string $severity = 'info'): void
     {
         $supplier = Supplier::query()->find((int) $contract->supplier_id);
-        if (!$supplier || !$supplier->email) {
+        if (!$supplier) {
             return;
         }
 
+        $supplierIds = collect([(int) $supplier->id]);
         $email = strtolower(trim((string) $supplier->email));
-        if ($email === '') {
-            return;
+        if ($email !== '') {
+            $supplierIds = $supplierIds->merge(Supplier::query()
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->pluck('id'));
         }
-
-        $supplierIds = Supplier::query()
-            ->whereRaw('LOWER(email) = ?', [$email])
-            ->pluck('id');
-
-        if ($supplierIds->isEmpty()) {
-            return;
-        }
-
+        $supplierIds = $supplierIds->unique()->values();
         $portalUsers = SupplierPortal::query()
-            ->whereIn('supplier_id', $supplierIds)
+            ->where(function ($query) use ($supplier, $supplierIds): void {
+                if ($supplier->supplier_portal_id) {
+                    $query->whereKey((int) $supplier->supplier_portal_id);
+                }
+                $query->orWhereIn('supplier_id', $supplierIds);
+            })
             ->whereNotNull('user_id')
             ->pluck('user_id')
             ->unique();
 
+        $portalUsers = User::query()->whereIn('id', $portalUsers)->where('is_active', true)->pluck('id');
         foreach ($portalUsers as $userId) {
-            SystemNotification::query()->create([
-                'store_id' => (int) $contract->store_id,
-                'branch_id' => null,
+            SystemNotification::query()->firstOrCreate([
                 'user_id' => (int) $userId,
-                'module' => 'supplier_portal',
                 'entity_type' => 'supplier_contract',
                 'entity_id' => (int) $contract->id,
                 'action' => $action,
+            ], [
+                'store_id' => (int) $contract->store_id,
+                'branch_id' => null,
+                'module' => 'supplier_portal',
                 'title' => $title,
                 'message' => $message,
                 'data' => ['contract_id' => (int) $contract->id],
@@ -198,12 +216,18 @@ class SupplierContractController extends Controller
      * Show single contract
      * GET /api/procurement/contracts/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $this->syncCompletedStatuses();
 
-        $contract = SupplierContract::with(['supplier', 'createdBy'])
+        $contract = SupplierContract::with(['supplier', 'store:id,name,store_code', 'createdBy.user:id,fname,lname', 'rejectedBy:id,fname,lname'])
             ->findOrFail($id);
+
+        $user = $request->user();
+        $isStoreUser = (int) ($user?->store_id ?? 0) === (int) $contract->store_id;
+        if (!$user || (!$isStoreUser && !$user->hasRole('super_admin') && !$this->canAccessAsSupplier($user, $contract))) {
+            return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
+        }
 
         return response()->json([
             'success' => true,
@@ -218,6 +242,7 @@ class SupplierContractController extends Controller
     public function store(Request $request): JsonResponse
     {
         $isSupplierPortal = $this->isSupplierPortalRequest($request);
+        $isInventoryRequest = $this->isInventoryRequest($request) && !$isSupplierPortal;
 
         $storeId = (int) (auth()->user()?->store_id ?? 0);
         if ($storeId <= 0) {
@@ -257,6 +282,7 @@ class SupplierContractController extends Controller
             'terms_conditions' => 'nullable|string',
             'contract_file_path' => 'nullable|string',
             'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'signed_copy' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240',
             'status' => 'nullable|in:draft,pending,active,completed,rejected',
         ]);
 
@@ -307,6 +333,12 @@ class SupplierContractController extends Controller
             ], 422);
         }
 
+        // A linked supplier-portal record is not an external/manual supplier,
+        // even if an older store record still has is_external set.
+        $isExternalSupplier = (bool) $supplier->is_external
+            && empty($supplier->supplier_portal_id)
+            && !$isSupplierPortal
+            && !$isInventoryRequest;
         $hasActiveContract = SupplierContract::query()
             ->where('store_id', $storeId)
             ->where('supplier_id', (int) $validated['supplier_id'])
@@ -321,8 +353,13 @@ class SupplierContractController extends Controller
         }
 
         $validated['contract_number'] = $contractNumber;
+        $validated['tax_rate'] = 12;
         $validated['store_id'] = $storeId;
-        $validated['status'] = $validated['status'] ?? ($isSupplierPortal ? 'pending' : 'draft');
+        // Inventory records are manual external-supplier contracts, so the store's
+        // authenticated user confirms the terms at creation time. Procurement
+        // contracts remain pending until the supplier approves them in the portal.
+        $validated['status'] = $isInventoryRequest ? 'active' : 'pending';
+        $validated['submitted_by_type'] = $isSupplierPortal ? 'supplier' : 'store';
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
         if ($request->hasFile('contract_file')) {
@@ -333,6 +370,34 @@ class SupplierContractController extends Controller
         }
 
         $contract = SupplierContract::create($validated);
+
+        if ($isInventoryRequest) {
+            $contract->load('supplier');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Supplier contract created and activated successfully.',
+                'data' => $contract,
+            ], 201);
+        }
+
+        if ($isExternalSupplier) {
+            return response()->json([
+                'success' => true,
+                'message' => 'External supplier contract created with pending status. Upload the signed PDF to activate it.',
+                'data' => $contract->load('supplier'),
+            ], 201);
+        }
+
+        if (!$isSupplierPortal && $supplier->supplier_portal_id) {
+            $this->notifySupplierUsers(
+                $contract,
+                'New contract from ' . ($store->name ?: 'a store'),
+                'The store created contract ' . $contractNumber . '. Review the terms and approve or reject it in your supplier portal.',
+                'store_contract_created',
+                'info'
+            );
+        }
 
         if ($isSupplierPortal) {
             $supplierName = (string) ($supplier?->supplier_name ?? $supplier?->company_name ?? $supplier?->contact_person ?? 'A supplier');
@@ -359,7 +424,7 @@ class SupplierContractController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $contract = SupplierContract::findOrFail($id);
+        $contract = SupplierContract::where('store_id', (int) ($request->user()?->store_id ?? 0))->findOrFail($id);
 
         $validated = $request->validate([
             'contract_title' => 'nullable|string|max:255',
@@ -374,13 +439,25 @@ class SupplierContractController extends Controller
             'terms_conditions' => 'nullable|string',
             'contract_file_path' => 'nullable|string',
             'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'signed_copy' => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:10240',
             'status' => 'nullable|in:draft,pending,active,completed,terminated,rejected',
         ]);
+
+        if ($contract->supplier?->is_external && ($validated['status'] ?? null) === 'active') {
+            return response()->json(['success' => false, 'message' => 'Use the activate action after a signed copy has been uploaded.'], 422);
+        }
 
         if ($request->hasFile('contract_file')) {
             $validated['contract_file_path'] = $request->file('contract_file')->store('supplier-contracts', 'public');
         }
 
+        if ($contract->supplier?->is_external && $request->hasFile('signed_copy')) {
+            $validated['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
+            $validated['signed_copy_uploaded_by'] = (int) $request->user()->id;
+            $validated['signed_copy_uploaded_at'] = now();
+        }
+
+        $validated['tax_rate'] = 12;
         $contract->update($validated);
 
         return response()->json([
@@ -434,9 +511,15 @@ class SupplierContractController extends Controller
      * Activate contract
      * POST /api/procurement/contracts/{id}/activate
      */
-    public function activate(int $id): JsonResponse
+    public function activate(Request $request, int $id): JsonResponse
     {
         $contract = SupplierContract::findOrFail($id);
+        $user = $request->user();
+        $userStoreId = (int) ($user?->store_id ?? $user?->employee?->store_id ?? 0);
+
+        if ($userStoreId !== (int) $contract->store_id) {
+            return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
+        }
 
         if (!in_array((string) $contract->status, ['draft', 'pending'], true)) {
             return response()->json([
@@ -444,13 +527,35 @@ class SupplierContractController extends Controller
                 'message' => 'Only draft or pending contracts can be activated',
             ], 422);
         }
+        $isExternalSupplier = (bool) $contract->supplier?->is_external
+            && empty($contract->supplier?->supplier_portal_id);
+        $rules = [];
+        if ($contract->submitted_by_type === 'store') {
+            $rules['supplier_confirmed'] = ['required', 'accepted'];
+        }
+        if ($isExternalSupplier) {
+            $rules['signed_copy'] = [$contract->signed_copy_path ? 'nullable' : 'required', 'file', 'mimes:pdf', 'max:10240'];
+        }
+        $validated = $request->validate($rules, [
+            'supplier_confirmed.required' => 'Confirm that the supplier has agreed to the contract.',
+            'signed_copy.required' => 'Upload the signed contract PDF before activating this external supplier contract.',
+            'signed_copy.mimes' => 'The signed contract must be a PDF file.',
+        ]);
 
-        $contract->update(['status' => 'active']);
+        $updates = ['status' => 'active'];
+        if ($isExternalSupplier && $request->hasFile('signed_copy')) {
+            $updates['signed_copy_path'] = $request->file('signed_copy')->store('supplier-contracts/signed', 'public');
+            $updates['signed_copy_uploaded_by'] = (int) $user->id;
+            $updates['signed_copy_uploaded_at'] = now();
+        }
+        $contract->update($updates);
 
         $this->notifySupplierUsers(
             $contract,
-            'Contract approved',
-            'Your submitted contract has been approved and is now active.',
+            $contract->submitted_by_type === 'store' ? 'Contract activated' : 'Contract approved',
+            $contract->submitted_by_type === 'store'
+                ? 'The store confirmed supplier agreement and activated the contract.'
+                : 'Your submitted contract has been approved and is now active.',
             'contract_approved',
             'success'
         );
@@ -474,6 +579,9 @@ class SupplierContractController extends Controller
         ]);
 
         $contract = SupplierContract::findOrFail($id);
+        if ((int) ($request->user()?->store_id ?? 0) !== (int) $contract->store_id) {
+            return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
+        }
         if ((string) $contract->status !== 'pending') {
             return response()->json([
                 'success' => false,
@@ -505,6 +613,69 @@ class SupplierContractController extends Controller
             'message' => 'Contract rejected successfully.',
             'data' => $contract->fresh(['supplier', 'createdBy']),
         ]);
+    }
+
+    public function supplierApprove(Request $request, int $id): JsonResponse
+    {
+        $contract = SupplierContract::findOrFail($id);
+        if (!$request->user() || !$this->canAccessAsSupplier($request->user(), $contract)) {
+            return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
+        }
+        if ($contract->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Only pending contracts can be approved.'], 422);
+        }
+        if ($contract->submitted_by_type === 'supplier') {
+            return response()->json(['success' => false, 'message' => 'Your submitted contract is awaiting store approval.'], 422);
+        }
+        if (SupplierContract::query()->where('store_id', $contract->store_id)
+            ->where('supplier_id', $contract->supplier_id)->where('id', '!=', $contract->id)
+            ->where('status', 'active')->exists()) {
+            return response()->json(['success' => false, 'message' => 'An active contract already exists with this supplier.'], 422);
+        }
+
+        $contract->update([
+            'status' => 'active',
+            'rejection_reason' => null,
+            'rejected_by_user_id' => null,
+            'rejected_at' => null,
+        ]);
+        $this->notifyStoreUsers((int) $contract->store_id, (int) $contract->id,
+            'Supplier approved contract', 'The supplier approved contract ' . $contract->contract_number . '.',
+            'supplier_contract_approved', 'success');
+
+        return response()->json(['success' => true, 'message' => 'Contract approved successfully.', 'data' => $contract]);
+    }
+
+    public function supplierReject(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:5|max:255',
+            'details' => 'nullable|string|max:2000',
+        ]);
+        $contract = SupplierContract::findOrFail($id);
+        if (!$request->user() || !$this->canAccessAsSupplier($request->user(), $contract)) {
+            return response()->json(['success' => false, 'message' => 'Contract not found.'], 404);
+        }
+        if ($contract->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Only pending contracts can be rejected.'], 422);
+        }
+        if ($contract->submitted_by_type === 'supplier') {
+            return response()->json(['success' => false, 'message' => 'Your submitted contract is awaiting store review.'], 422);
+        }
+
+        $reason = trim($validated['reason']);
+        $details = trim((string) ($validated['details'] ?? ''));
+        $contract->update([
+            'status' => 'rejected',
+            'rejection_reason' => $details !== '' ? $reason . "\n\n" . $details : $reason,
+            'rejected_by_user_id' => (int) $request->user()->id,
+            'rejected_at' => now(),
+        ]);
+        $this->notifyStoreUsers((int) $contract->store_id, (int) $contract->id,
+            'Supplier rejected contract', 'The supplier rejected contract ' . $contract->contract_number . '. Reason: ' . $reason,
+            'supplier_contract_rejected', 'danger');
+
+        return response()->json(['success' => true, 'message' => 'Contract rejected successfully.', 'data' => $contract->fresh(['rejectedBy:id,fname,lname'])]);
     }
 
     /**

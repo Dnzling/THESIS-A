@@ -27,7 +27,9 @@ class JobApplicationController extends Controller
     {
         $application->load([
             'jobPosting.store',
+            'jobPosting.branch',
             'jobPosting.role',
+            'jobPosting.screeningStages',
             'employee',
             'timeline',
             'documents',
@@ -44,7 +46,7 @@ class JobApplicationController extends Controller
             'job_posting_id' => 'required|exists:job_postings,id',
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
-            'email' => 'required|email|max:255',
+            'email' => ['required', 'email', 'max:255'],
             'phone' => 'required|string|max:20',
             'current_position' => 'nullable|string|max:255',
             'current_company' => 'nullable|string|max:255',
@@ -103,6 +105,10 @@ class JobApplicationController extends Controller
             'stage_id' => 'nullable|exists:job_posting_screening_stages,id',
             'notes' => 'nullable|string'
         ]);
+
+        if ($validated['status'] === 'Hired') {
+            return response()->json(['message' => 'Complete hiring prerequisites through employee onboarding before marking the applicant hired.'], 422);
+        }
 
         $application->update(['status' => $validated['status']]);
 

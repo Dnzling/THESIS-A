@@ -26,7 +26,7 @@
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-surface-700">Email</label>
-                <InputText v-model="form.email" type="email" class="w-full" />
+                <InputText v-model.trim="form.email" type="email" placeholder="name@example.com" class="w-full" />
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-surface-700">Phone Number</label>
@@ -192,7 +192,6 @@ const form = ref({
 })
 
 const uploadedDocuments = ref<Record<string, File>>({})
-
 const uploadedDocumentCount = computed(() => Object.keys(uploadedDocuments.value).length)
 const canSubmit = computed(() => {
   const hasBasicInfo =
@@ -238,7 +237,6 @@ const handleFileUpload = (docType: string, event: any) => {
 
 const submitApplication = async () => {
   if (!canSubmit.value) return
-
   isSubmitting.value = true
   try {
     const formData = new FormData()

@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class LoginResponseResource extends JsonResource
 {
@@ -19,6 +20,7 @@ class LoginResponseResource extends JsonResource
             'access_token' => $this->resource['token'],
             'token_type' => 'bearer',
             'abilities' => $this->resource['abilities'],
+            'simple_attendance' => $this->resource['simple_attendance'] ?? null,
             'requires_verification' => $this->resource['requires_verification'] ?? false,
         ];
     }
@@ -29,5 +31,19 @@ class LoginResponseResource extends JsonResource
     public function withResponse($request, $response)
     {
         $response->setStatusCode($this->resource['status_code'] ?? 200);
+
+        if (!empty($this->resource['token'])) {
+            $response->headers->setCookie(new Cookie(
+                'auth_token',
+                rawurlencode((string) $this->resource['token']),
+                now()->addDays(7),
+                '/',
+                null,
+                $request->isSecure(),
+                false,
+                false,
+                'lax'
+            ));
+        }
     }
 }

@@ -47,8 +47,13 @@ class Product extends Model
         'length_cm',
         'width_cm',
         'height_cm',
+        'depth_cm',
         'weight_kg',
+        'additional_measurements',
+        'variation_attributes',
+        'is_bulky',
         'assembly_required',
+        'is_customizable',
         'is_featured',
         'is_new_arrival',
         'is_bestseller',
@@ -64,6 +69,13 @@ class Product extends Model
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
         'initial_stock' => 'decimal:2',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
+        'depth_cm' => 'decimal:2',
+        'weight_kg' => 'decimal:2',
+        'additional_measurements' => 'array',
+        'variation_attributes' => 'array',
         'discounted_price' => 'decimal:2',
         'pending_base_price' => 'decimal:2',
         'pending_discounted_price' => 'decimal:2',
@@ -71,6 +83,8 @@ class Product extends Model
         'price_approved_at' => 'datetime',
         'price_rejected_at' => 'datetime',
         'assembly_required' => 'boolean',
+        'is_bulky' => 'boolean',
+        'is_customizable' => 'boolean',
         'is_featured' => 'boolean',
         'is_new_arrival' => 'boolean',
         'is_bestseller' => 'boolean',
@@ -100,7 +114,7 @@ class Product extends Model
     public function suppliers()
     {
         return $this->belongsToMany(Supplier::class, 'supplier_products')
-            ->withPivot('supplier_sku', 'supplier_price', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
+            ->withPivot('supplier_sku', 'supplier_price', 'availability_status', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
             ->withTimestamps();
     }
     public function category()
@@ -146,6 +160,23 @@ class Product extends Model
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
+            ->withTimestamps();
+    }
+
+    public function shoppingRooms()
+    {
+        return $this->belongsToMany(ShoppingRoom::class, 'product_rooms');
+    }
+
+    /**
+     * Alias used when the legacy products.tags attribute would shadow the
+     * many-to-many tags relationship during serialization.
+     */
+    public function assignedTags()
+    {
+        return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
             ->withTimestamps();
     }
 
@@ -226,7 +257,10 @@ class Product extends Model
             return null;
         }
 
-        if ($user instanceof User && $user->hasPermissionTo('finance.products.view.store', $this->store_id)) {
+        if ($user instanceof User && (
+            $user->hasPermissionTo('finance.products.view.store', $this->store_id)
+            || $user->hasPermissionTo('warehouse.stock.view', $this->store_id)
+        )) {
             return $value;
         }
 
@@ -252,7 +286,13 @@ class Product extends Model
 
     public function getDimensionsAttribute()
     {
-        return "{$this->length_cm} x {$this->width_cm} x {$this->height_cm} cm";
+        $dimensions = "{$this->length_cm} x {$this->width_cm} x {$this->height_cm}";
+
+        if ($this->depth_cm !== null) {
+            $dimensions .= " x {$this->depth_cm}";
+        }
+
+        return $dimensions . ' cm';
     }
 
     public function getPrimary3dModelAttribute()

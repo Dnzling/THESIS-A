@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\RFQ\SupplierQuotationItem;
 use App\Models\Procurement\RFQ\RequestForQuotation;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -106,9 +107,9 @@ class SupplierQuotationController extends Controller
                 $subtotal += $lineTotal;
             }
 
-            $taxAmount = $subtotal * 0.12; // 12% VAT
+            $taxAmount = InclusiveTaxCalculator::includedTax((float) $subtotal, 12);
             $shippingCost = $validated['shipping_cost'] ?? 0;
-            $totalAmount = $subtotal + $taxAmount + $shippingCost;
+            $totalAmount = $subtotal + $shippingCost;
 
             // Create quotation
             $quotation = SupplierQuotation::create([

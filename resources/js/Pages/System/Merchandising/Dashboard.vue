@@ -1,723 +1,220 @@
 <template>
-  <div class="space-y-6">
-  
-    <!-- Loading State -->
-    <div v-if="loading" class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Skeleton v-for="i in 8" :key="i" height="120px" class="rounded-lg" />
+  <div class="module-dashboard space-y-5 pb-6 text-sm">
+    <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-slate-950">Product Catalog Performance</h1>
+        <p class="mt-1 text-sm text-slate-600">See which products are selling and how each store branch is performing.</p>
+        <p class="mt-1 text-xs text-slate-500">Includes POS, wholesale, and paid online orders for the selected period.</p>
       </div>
-  
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Skeleton v-for="i in 4" :key="i" height="320px" class="rounded-lg" />
+      <div class="flex items-center gap-2">
+        <Select v-model="days" :options="periods" optionLabel="label" optionValue="value" class="w-40" aria-label="Reporting period" @change="loadDashboard" />
+        <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadDashboard" />
       </div>
+    </header>
+
+    <div v-if="loading" class="space-y-5">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 4" :key="item" height="112px" class="rounded-2xl" /></div>
+      <div class="grid gap-4 xl:grid-cols-3"><Skeleton height="290px" class="rounded-2xl xl:col-span-2" /><Skeleton height="290px" class="rounded-2xl" /></div>
+      <Skeleton height="300px" class="rounded-2xl" />
     </div>
-  
-    <!-- Dashboard Content -->
-    <div v-else>
-      <!-- Stats Cards Row 1 - Products -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.products' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Total Products</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_products }}</h3>
-                <p class="text-xs text-green-600 mt-1">
-                  <i class="pi pi-check-circle"></i> {{ stats.active_products }} Active
-                </p>
-              </div>
-              <div class="bg-blue-100 p-4 rounded-full">
-                <i class="pi pi-box text-3xl text-blue-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Categories</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_categories }}</h3>
-                <p class="text-xs text-gray-500 mt-1">
-                  <i class="pi pi-tag"></i> {{ stats.total_subcategories }} Subcategories
-                </p>
-              </div>
-              <div class="bg-purple-100 p-4 rounded-full">
-                <i class="pi pi-tags text-3xl text-purple-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">In Stock</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.in_stock_products }}</h3>
-                <p class="text-xs text-yellow-600 mt-1">
-                  <i class="pi pi-exclamation-triangle"></i> {{ stats.low_stock_products }} Low Stock
-                </p>
-              </div>
-              <div class="bg-green-100 p-4 rounded-full">
-                <i class="pi pi-check-circle text-3xl text-green-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Total Value</p>
-                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.total_inventory_value) }}</h3>
-                <p class="text-xs text-gray-600 mt-1">
-                  <i class="pi pi-dollar"></i> Inventory value
-                </p>
-              </div>
-              <div class="bg-yellow-100 p-4 rounded-full">
-                <i class="pi pi-dollar text-3xl text-yellow-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Stats Cards Row 2 - Assets & Media -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.3d-gallery' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">3D Models</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_3d_models }}</h3>
-                <p class="text-xs text-indigo-600 mt-1">
-                  <i class="pi pi-cube"></i> {{ formatFileSize(stats.total_3d_size) }}
-                </p>
-              </div>
-              <div class="bg-indigo-100 p-4 rounded-full">
-                <i class="pi pi-cube text-3xl text-indigo-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'merchandising.assets' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Images</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_images }}</h3>
-                <p class="text-xs text-blue-600 mt-1">
-                  <i class="pi pi-image"></i> {{ formatFileSize(stats.total_image_size) }}
-                </p>
-              </div>
-              <div class="bg-blue-100 p-4 rounded-full">
-                <i class="pi pi-image text-3xl text-blue-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Variations</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ stats.total_variations }}</h3>
-                <p class="text-xs text-purple-600 mt-1">
-                  <i class="pi pi-th-large"></i> {{ stats.active_variations }} Active
-                </p>
-              </div>
-              <div class="bg-purple-100 p-4 rounded-full">
-                <i class="pi pi-th-large text-3xl text-purple-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Avg Price</p>
-                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.average_price) }}</h3>
-                <p class="text-xs text-gray-600 mt-1">
-                  <i class="pi pi-chart-line"></i> Per product
-                </p>
-              </div>
-              <div class="bg-orange-100 p-4 rounded-full">
-                <i class="pi pi-chart-line text-3xl text-orange-600"></i>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Charts Row 1 - Category & Stock -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Products by Category Chart -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-pie text-purple-600"></i>
-              <span>Products by Category</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="categoryChartData.labels.length > 0" type="doughnut" :data="categoryChartData"
-              :options="pieChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-chart-pie text-6xl text-gray-300 mb-3 block"></i>
-                <p>No category data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Stock Status Chart -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-bar text-green-600"></i>
-              <span>Stock Status Distribution</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="stockChartData.labels.length > 0" type="bar" :data="stockChartData" :options="barChartOptions"
-              class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-chart-bar text-6xl text-gray-300 mb-3 block"></i>
-                <p>No stock data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Charts Row 2 - Price & Features -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Price Range Distribution -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-dollar text-yellow-600"></i>
-              <span>Price Range Distribution</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="priceRangeChartData.labels.length > 0" type="bar" :data="priceRangeChartData"
-              :options="barChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-dollar text-6xl text-gray-300 mb-3 block"></i>
-                <p>No price data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Product Features -->
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-star text-blue-600"></i>
-              <span>Product Features</span>
-            </div>
-          </template>
-          <template #content>
-            <Chart v-if="featuresChartData.labels.length > 0" type="polarArea" :data="featuresChartData"
-              :options="polarChartOptions" class="h-80" />
-            <div v-else class="h-80 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <i class="pi pi-star text-6xl text-gray-300 mb-3 block"></i>
-                <p>No feature data available</p>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Recent Activity & Quick Info -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Recent Products (1/3) -->
-        <Card>
-          <template #title>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i class="pi pi-clock text-blue-600"></i>
-                <span>Recent Products</span>
-              </div>
-              <Button label="View All" text size="small" @click="router.push({ name: 'merchandising.products' })" />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="recentProducts.length === 0" class="text-center py-8 text-gray-500">
-              <i class="pi pi-inbox text-4xl mb-2 block"></i>
-              <p>No recent products</p>
-            </div>
-            <div v-else class="space-y-3">
-              <div v-for="product in recentProducts" :key="product.id"
-                class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                @click="router.push({ name: 'merchandising.products.view', params: { id: product.id } })">
-                <div class="w-10 h-10 bg-linear-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center">
-                  <i class="pi pi-box text-blue-600"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-sm text-gray-900 truncate">{{ product.product_name }}</p>
-                  <p class="text-xs text-gray-500">{{ product.sku }}</p>
-                </div>
-                <Tag :value="product.stock_status" :severity="getStockSeverity(product.stock_status)" size="small" />
-              </div>
-            </div>
-          </template>
-        </Card>
-  
-        <!-- Activity Log (2/3) -->
-        <Card class="lg:col-span-2">
-          <template #title>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i class="pi pi-history text-purple-600"></i>
-                <span>Recent Activity</span>
-              </div>
-              <Button icon="pi pi-refresh" text rounded size="small" @click="loadActivityLog" />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="loadingActivity" class="space-y-3">
-              <Skeleton v-for="i in 5" :key="i" height="60px" class="rounded-lg" />
-            </div>
-            <div v-else-if="activityLog.length === 0" class="text-center py-8 text-gray-500">
-              <i class="pi pi-inbox text-4xl mb-2 block"></i>
-              <p>No recent activity</p>
-            </div>
-            <Timeline v-else :value="activityLog" class="customized-timeline">
-              <template #marker="{ item }">
-                <div :class="['flex items-center justify-center w-8 h-8 rounded-full', getActivityColor(item.action)]">
-                  <i :class="['text-white text-sm', getActivityIcon(item.action)]"></i>
-                </div>
-              </template>
-              <template #content="{ item }">
-                <div class="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="flex-1">
-                      <p class="font-semibold text-sm text-gray-900">{{ item.description }}</p>
-                      <p class="text-xs text-gray-600 mt-1">{{ item.details }}</p>
-                      <div class="flex items-center gap-2 mt-2">
-                        <span class="text-xs text-gray-500">
-                          <i class="pi pi-user text-xs"></i> {{ item.user }}
-                        </span>
-                        <span class="text-xs text-gray-400">•</span>
-                        <span class="text-xs text-gray-500">{{ formatRelativeTime(item.created_at) }}</span>
-                      </div>
-                    </div>
-                    <Tag :value="item.action" :severity="getActivitySeverity(item.action)" size="small" />
-                  </div>
-                </div>
-              </template>
-            </Timeline>
-          </template>
-        </Card>
-      </div>
-  
-      <!-- Low Stock Alert -->
-      <Card v-if="lowStockProducts.length > 0" class="mt-6 border-l-4 border-yellow-500">
-        <template #title>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-exclamation-triangle text-yellow-600"></i>
-              <span>Low Stock Alert</span>
-            </div>
-            <Badge :value="lowStockProducts.length" severity="warning" size="large" />
-          </div>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div v-for="product in lowStockProducts" :key="product.id"
-              class="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors cursor-pointer border border-yellow-200"
-              @click="router.push({ name: 'merchandising.products.edit', params: { id: product.id } })">
-              <div class="w-12 h-12 bg-yellow-200 rounded flex items-center justify-center">
-                <i class="pi pi-exclamation-triangle text-yellow-600"></i>
-              </div>
-              <div class="flex-1">
-                <p class="font-semibold text-sm text-gray-900">{{ product.product_name }}</p>
-                <p class="text-xs text-gray-500">SKU: {{ product.sku }}</p>
-              </div>
-              <Tag value="Low Stock" severity="warning" />
-            </div>
-          </div>
-        </template>
-      </Card>
-  
-      <!-- Quick Actions -->
-      <Card class="mt-6">
-        <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-bolt text-yellow-600"></i>
-            <span>Quick Actions</span>
-          </div>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Button label="Add Product" icon="pi pi-plus" class="w-full"
-              @click="router.push({ name: 'merchandising.products.create' })" />
-            <Button label="View Products" icon="pi pi-list" severity="secondary" class="w-full"
-              @click="router.push({ name: 'merchandising.products' })" />
-            <Button label="3D Gallery" icon="pi pi-cube" severity="info" class="w-full"
-              @click="router.push({ name: 'merchandising.3d-gallery' })" />
-            <Button v-if="showReconstruction" label="3D Reconstruction" icon="pi pi-camera" severity="success" class="w-full"
-              @click="router.push({ name: 'merchandising.3d-reconstruction' })" />
-            <Button label="Upload Assets" icon="pi pi-cloud-upload" severity="secondary" class="w-full"
-              @click="router.push({ name: 'merchandising.assets.upload' })" />
-          </div>
-        </template>
-      </Card>
+    <div v-else-if="loadError" class="rounded-2xl border border-red-200 bg-white p-6">
+      <p class="font-semibold text-slate-900">Product performance could not load.</p>
+      <p class="mt-1 text-slate-600">{{ loadError }}</p>
+      <Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" />
     </div>
+    <template v-else-if="data">
+      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="metric in metrics" :key="metric.label" class="border shadow-sm" :class="metric.highlight ? 'border-orange-200' : 'border-slate-200'">
+          <template #content>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-slate-600">{{ metric.label }}</p>
+              <i :class="[metric.icon, 'text-orange-600']" />
+            </div>
+            <p class="mt-2 text-2xl font-semibold text-slate-950">{{ metric.value }}</p>
+            <p class="mt-2 text-xs text-slate-500">{{ metric.caption }}</p>
+          </template>
+        </Card>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+          <template #title>
+            <div>
+              <h2 class="text-base font-semibold">Store-wide sales trend</h2>
+              <p class="mt-1 text-xs font-normal text-slate-500">Sales from all active store branches</p>
+            </div>
+          </template>
+          <template #content>
+            <Chart v-if="hasSales" type="line" :data="salesChart" :options="lineOptions" class="h-64" />
+            <div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No product sales in this period.</div>
+          </template>
+        </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title>
+            <h2 class="text-base font-semibold">Branch sales comparison</h2>
+            <p class="mt-1 text-xs font-normal text-slate-500">Sales by branch for this period</p>
+          </template>
+          <template #content>
+            <Chart v-if="branchesWithSales.length" type="bar" :data="branchChart" :options="branchChartOptions" class="h-64" />
+            <div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No branch sales in this period.</div>
+          </template>
+        </Card>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title>
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-base font-semibold">Top-performing products</h2>
+                <p class="mt-1 text-xs font-normal text-slate-500">Ranked by item sales across branches</p>
+              </div>
+              <Button label="Product catalog" text size="small" @click="go('merchandising.products')" />
+            </div>
+          </template>
+          <template #content>
+            <DataTable :value="topProducts" size="small" rowHover responsiveLayout="scroll">
+              <Column header="Product">
+                <template #body="{ data: item }">
+                  <button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button>
+                  <p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p>
+                </template>
+              </Column>
+              <Column field="units" header="Units sold" />
+              <Column header="Branches">
+                <template #body="{ data: item }">{{ item.branches_selling }} / {{ summary.branch_count || 0 }}</template>
+              </Column>
+              <Column header="Sales">
+                <template #body="{ data: item }"><span class="font-semibold text-slate-900">{{ money(item.sales) }}</span></template>
+              </Column>
+              <template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales in this period.</div></template>
+            </DataTable>
+          </template>
+        </Card>
+
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title>
+            <h2 class="text-base font-semibold">Branch performance</h2>
+            <p class="mt-1 text-xs font-normal text-slate-500">Compare sales, units, and product availability</p>
+          </template>
+          <template #content>
+            <DataTable :value="branchPerformance" size="small" rowHover responsiveLayout="scroll">
+              <Column header="Branch">
+                <template #body="{ data: branch }">
+                  <span class="font-medium text-slate-900">{{ branch.name }}</span>
+                  <p class="mt-0.5 text-xs text-slate-500">{{ formatLabel(branch.branch_type) }}</p>
+                </template>
+              </Column>
+              <Column header="Sales">
+                <template #body="{ data: branch }"><span class="font-semibold">{{ money(branch.sales) }}</span></template>
+              </Column>
+              <Column field="units_sold" header="Units" />
+              <Column field="products_sold" header="Products" />
+              <Column header="Available stock">
+                <template #body="{ data: branch }">{{ number(branch.available_units) }}</template>
+              </Column>
+              <Column header="Change">
+                <template #body="{ data: branch }">
+                  <span v-if="branch.sales_change_percent !== null" class="text-xs font-medium" :class="branch.sales_change_percent >= 0 ? 'text-emerald-700' : 'text-red-600'">
+                    <i :class="branch.sales_change_percent >= 0 ? 'pi pi-arrow-up-right' : 'pi pi-arrow-down-right'" class="mr-1" />{{ Math.abs(branch.sales_change_percent).toFixed(1) }}%
+                  </span>
+                  <span v-else class="text-xs text-slate-500">No prior sales</span>
+                </template>
+              </Column>
+              <template #empty><div class="py-8 text-center text-sm text-slate-500">No active store branches found.</div></template>
+            </DataTable>
+          </template>
+        </Card>
+      </section>
+
+      <p class="px-1 text-xs text-slate-500">Comparison is against the immediately preceding {{ data.period_days }} days. Stock counts show current branch availability.</p>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useToast } from 'primevue/usetoast'
-import merchandisingService, { type Product } from '../../../services/merchandising.service'
-
-
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import Skeleton from 'primevue/skeleton'
-import Tag from 'primevue/tag'
-import Badge from 'primevue/badge'
-import Chart from 'primevue/chart'
-import Timeline from 'primevue/timeline'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import merchandisingService from '../../../services/merchandising.service'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+const Chart = defineAsyncComponent(() => import('primevue/chart'))
+import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+
+type TrendPoint = { date: string; label: string; sales: number; units: number; orders: number }
+type ProductPerformance = { id: number; name: string; sku?: string | null; units: number; sales: number; branches_selling: number }
+type BranchPerformance = { id: number; name: string; branch_type: string; sales: number; previous_sales: number; sales_change_percent: number | null; units_sold: number; orders: number; products_sold: number; stocked_products: number; available_units: number }
+type Summary = { sales: number; orders: number; average_order_value: number; units_sold: number; previous_sales: number; previous_units_sold: number; previous_orders: number; branches_with_sales: number; branch_count: number; active_listings: number; out_of_stock_products: number }
+type DashboardData = { period_days: number; summary: Summary; sales_trend: TrendPoint[]; top_products: ProductPerformance[]; branch_performance: BranchPerformance[] }
 
 const router = useRouter()
-const toast = useToast()
-const showReconstruction = !import.meta.env.PROD
-
-const loading = ref(true)
-const loadingActivity = ref(false)
-
-// ✅ Initialize with default values to prevent undefined errors
-const stats = ref({
-  total_products: 0,
-  active_products: 0,
-  inactive_products: 0,
-  total_categories: 0,
-  total_subcategories: 0,
-  in_stock_products: 0,
-  low_stock_products: 0,
-  out_of_stock_products: 0,
-  total_3d_models: 0,
-  total_images: 0,
-  total_variations: 0,
-  active_variations: 0,
-  total_3d_size: 0,
-  total_image_size: 0,
-  total_inventory_value: 0,
-  average_price: 0,
-  featured_count: 0,
-  new_arrival_count: 0,
-  bestseller_count: 0,
-  products_by_category: [],
-  stock_status_distribution: [],
-  price_range_distribution: []
-})
-
-const recentProducts = ref<Product[]>([])
-const lowStockProducts = ref<Product[]>([])
-const activityLog = ref([])
-
-// Chart Data
-const categoryChartData = computed(() => {
-  if (!stats.value.products_by_category || stats.value.products_by_category.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const labels = stats.value.products_by_category.map((item: any) => item.category_name || 'Uncategorized')
-  const data = stats.value.products_by_category.map((item: any) => item.count)
-
-  return {
-    labels,
-    datasets: [
-      {
-        data,
-        backgroundColor: ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#6b7280'],
-        hoverBackgroundColor: ['#4f46e5', '#7c3aed', '#db2777', '#d97706', '#059669', '#2563eb', '#dc2626', '#4b5563']
-      }
-    ]
-  }
-})
-
-const stockChartData = computed(() => {
-  if (!stats.value.stock_status_distribution || stats.value.stock_status_distribution.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const distribution = stats.value.stock_status_distribution
-
-  return {
-    labels: distribution.map((item: any) => item.stock_status),
-    datasets: [
-      {
-        label: 'Products',
-        data: distribution.map((item: any) => item.count),
-        backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'],
-        borderColor: ['#059669', '#d97706', '#dc2626', '#4b5563'],
-        borderWidth: 2,
-        borderRadius: 8
-      }
-    ]
-  }
-})
-
-const priceRangeChartData = computed(() => {
-  if (!stats.value.price_range_distribution || stats.value.price_range_distribution.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-
-  const distribution = stats.value.price_range_distribution
-
-  return {
-    labels: distribution.map((item: any) => item.range),
-    datasets: [
-      {
-        label: 'Products',
-        data: distribution.map((item: any) => item.count),
-        backgroundColor: '#f59e0b',
-        borderColor: '#d97706',
-        borderWidth: 2,
-        borderRadius: 8
-      }
-    ]
-  }
-})
-
-const featuresChartData = computed(() => {
-  return {
-    labels: ['Featured', 'New Arrivals', 'Bestsellers', 'With 3D', 'With Images'],
-    datasets: [
-      {
-        data: [
-          stats.value.featured_count || 0,
-          stats.value.new_arrival_count || 0,
-          stats.value.bestseller_count || 0,
-          stats.value.total_3d_models || 0,
-          stats.value.total_images || 0
-        ],
-        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6'],
-        borderColor: '#fff',
-        borderWidth: 2
-      }
-    ]
-  }
-})
-
-const pieChartOptions = {
-  responsive: true,
+const periods = [{ label: 'Last 7 days', value: 7 }, { label: 'Last 30 days', value: 30 }, { label: 'Last 90 days', value: 90 }]
+const days = ref(30)
+const loading = ref(false)
+const loadError = ref('')
+const data = ref<DashboardData | null>(null)
+const summary = computed(() => data.value?.summary || {} as Summary)
+const trend = computed(() => data.value?.sales_trend || [])
+const topProducts = computed(() => data.value?.top_products || [])
+const branchPerformance = computed(() => data.value?.branch_performance || [])
+const branchesWithSales = computed(() => branchPerformance.value.filter(branch => branch.sales > 0))
+const hasSales = computed(() => trend.value.some(row => Number(row.sales) > 0))
+const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
+const number = (value: unknown) => Number(value || 0).toLocaleString('en-PH')
+const percentChange = (current: number, previous: number) => previous > 0 ? `${current >= previous ? '+' : ''}${(((current - previous) / previous) * 100).toFixed(1)}% vs previous period` : current > 0 ? 'New activity this period' : 'No activity this period'
+const metrics = computed(() => [
+  { label: 'Product sales', value: money(summary.value.sales), caption: percentChange(Number(summary.value.sales || 0), Number(summary.value.previous_sales || 0)), icon: 'pi pi-wallet', highlight: true },
+  { label: 'Units sold', value: number(summary.value.units_sold), caption: percentChange(Number(summary.value.units_sold || 0), Number(summary.value.previous_units_sold || 0)), icon: 'pi pi-box' },
+  { label: 'Paid orders', value: number(summary.value.orders), caption: percentChange(Number(summary.value.orders || 0), Number(summary.value.previous_orders || 0)), icon: 'pi pi-shopping-bag' },
+  { label: 'Branches with sales', value: `${number(summary.value.branches_with_sales)} / ${number(summary.value.branch_count)}`, caption: `${number(summary.value.active_listings)} active products · ${number(summary.value.out_of_stock_products)} without stock`, icon: 'pi pi-building' },
+])
+const salesChart = computed(() => ({
+  labels: trend.value.map(row => row.label),
+  datasets: [
+    { label: 'Product sales', data: trend.value.map(row => Number(row.sales)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35, pointRadius: days.value === 90 ? 0 : 2, yAxisID: 'sales' },
+    { label: 'Units sold', data: trend.value.map(row => Number(row.units)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: .3, pointRadius: days.value === 90 ? 0 : 2, yAxisID: 'units' },
+  ],
+}))
+const branchChart = computed(() => ({
+  labels: branchesWithSales.value.slice(0, 8).map(branch => branch.name),
+  datasets: [{ label: 'Sales', data: branchesWithSales.value.slice(0, 8).map(branch => Number(branch.sales)), backgroundColor: '#fb923c', borderRadius: 5, maxBarThickness: 24 }],
+}))
+const lineOptions = {
   maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'right',
-      labels: {
-        usePointStyle: true,
-        padding: 15
-      }
-    }
-  }
-}
-
-const barChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: false
-    }
-  },
+  interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { position: 'bottom' as const, labels: { usePointStyle: true, boxWidth: 8 } } },
   scales: {
-    y: {
-      beginAtZero: true,
-      ticks: {
-        stepSize: 1
-      }
-    }
-  }
+    x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+    sales: { type: 'linear' as const, position: 'left' as const, beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } },
+    units: { type: 'linear' as const, position: 'right' as const, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { precision: 0 } },
+  },
 }
-
-const polarChartOptions = {
-  responsive: true,
+const branchChartOptions = {
+  indexAxis: 'y' as const,
   maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'bottom'
-    }
-  }
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } },
+    y: { grid: { display: false }, ticks: { autoSkip: false } },
+  },
 }
-
-// Methods
-const loadDashboardStats = async () => {
+const formatLabel = (value: unknown) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
+const go = (name: string, id?: number) => router.push(id ? { name, params: { id } } : { name })
+const loadDashboard = async () => {
   loading.value = true
+  loadError.value = ''
   try {
-    const response = await merchandisingService.getDashboardStats()
-    stats.value = { ...stats.value, ...(response || {}) }
-
-    // Load recent products
-    const productsResponse = await merchandisingService.getProducts({
-      per_page: 5,
-      product_type: 'finished_good',
-      sort_by: 'created_at',
-      sort_order: 'desc'
-    })
-    recentProducts.value = productsResponse.data.data || []
-
-    // Load low stock products
-    const lowStockResponse = await merchandisingService.getProducts({
-      stock_status: 'Low Stock',
-      product_type: 'finished_good',
-      per_page: 6
-    })
-    lowStockProducts.value = lowStockResponse.data.data || []
-
+    const response = await merchandisingService.getDashboardOverview(days.value)
+    if (response?.success === false) throw new Error(response.message || 'Unable to load dashboard.')
+    data.value = response.data
   } catch (error: any) {
-    console.error('Failed to load dashboard stats:', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load dashboard statistics',
-      life: 3000
-    })
+    loadError.value = error?.response?.data?.message || error?.message || 'Unable to load product performance.'
   } finally {
     loading.value = false
   }
 }
-
-const loadActivityLog = async () => {
-  loadingActivity.value = true
-  try {
-    const response = await merchandisingService.getActivityLog({ per_page: 10 })
-    const payload = response?.data || response || {}
-    const rows = payload?.data || payload?.data?.data || []
-    activityLog.value = (Array.isArray(rows) ? rows : []).map((item: any) => ({
-      ...item,
-      details: item?.meta?.result
-        ? `${item.meta.result.toUpperCase()} ${item?.meta?.method || ''} ${item?.meta?.path || ''}`.trim()
-        : (item?.meta?.path || item?.description || 'No additional details'),
-      action: String(item?.action || '').split('.').pop() || 'updated'
-    }))
-  } catch (error: any) {
-    console.error('Failed to load activity log:', error)
-    // Don't show error toast for activity log, just keep it empty
-    activityLog.value = []
-  } finally {
-    loadingActivity.value = false
-  }
-}
-
-const getStockSeverity = (status: string) => {
-  const severities: Record<string, string> = {
-    'In Stock': 'success',
-    'Low Stock': 'warning',
-    'Out of Stock': 'danger',
-    'Pre-order': 'info'
-  }
-  return severities[status] || 'secondary'
-}
-
-const getActivityColor = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const colors: Record<string, string> = {
-    'created': 'bg-green-500',
-    'create': 'bg-green-500',
-    'updated': 'bg-blue-500',
-    'update': 'bg-blue-500',
-    'deleted': 'bg-red-500',
-    'delete': 'bg-red-500',
-    'uploaded': 'bg-purple-500',
-    'price_changed': 'bg-yellow-500'
-  }
-  return colors[normalized] || 'bg-gray-500'
-}
-
-const getActivityIcon = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const icons: Record<string, string> = {
-    'created': 'pi pi-plus',
-    'create': 'pi pi-plus',
-    'updated': 'pi pi-pencil',
-    'update': 'pi pi-pencil',
-    'deleted': 'pi pi-trash',
-    'delete': 'pi pi-trash',
-    'uploaded': 'pi pi-upload',
-    'price_changed': 'pi pi-dollar'
-  }
-  return icons[normalized] || 'pi pi-info-circle'
-}
-
-const getActivitySeverity = (action: string) => {
-  const normalized = String(action || '').toLowerCase()
-  const severities: Record<string, string> = {
-    'created': 'success',
-    'create': 'success',
-    'updated': 'info',
-    'update': 'info',
-    'deleted': 'danger',
-    'delete': 'danger',
-    'uploaded': 'secondary',
-    'price_changed': 'warning'
-  }
-  return severities[normalized] || 'secondary'
-}
-
-const formatPrice = (price: number) => {
-  if (!price || isNaN(price)) return '0.00'
-  return new Intl.NumberFormat('en-PH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(price)
-}
-
-const formatCurrencyPHP = (price: number) => {
-  return `PHP ${formatPrice(price)}`
-}
-
-const formatFileSize = (bytes: number) => {
-  if (!bytes || bytes === 0 || isNaN(bytes)) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatRelativeTime = (dateString: string) => {
-  if (!dateString) return 'N/A'
-
-  const date = new Date(dateString)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-onMounted(() => {
-  loadDashboardStats()
-  loadActivityLog()
-})
+onMounted(loadDashboard)
 </script>

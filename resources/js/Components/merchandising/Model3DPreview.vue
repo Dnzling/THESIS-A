@@ -1,6 +1,6 @@
 <template>
-  <div class="relative w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50" :style="{ height }">
-    <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/80">
+  <div class="relative w-full overflow-hidden" :class="transparentBackground ? '' : 'rounded-lg border border-gray-200 bg-gray-50'" :style="{ height }">
+    <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center" :class="transparentBackground ? 'bg-transparent' : 'bg-white/80'">
       <div class="text-center">
         <i class="pi pi-spin pi-spinner text-xl text-gray-600"></i>
         <p class="mt-2 text-xs text-gray-600">Loading 3D preview...</p>
@@ -31,13 +31,21 @@ const props = withDefaults(defineProps<{
   cameraX?: number
   cameraY?: number
   zoom?: number
+  modelOffsetX?: number
+  screenOffsetX?: number
   height?: string
+  transparentBackground?: boolean
+  allowBottomView?: boolean
 }>(), {
   modelFormat: 'glb',
   cameraX: 0,
   cameraY: 15,
   zoom: 1.5,
+  modelOffsetX: 0,
+  screenOffsetX: 0,
   height: '320px',
+  transparentBackground: false,
+  allowBottomView: false,
 })
 
 const authStore = useAuthStore()
@@ -51,6 +59,8 @@ let renderer: THREE.WebGLRenderer | null = null
 let controls: OrbitControls | null = null
 let model: THREE.Object3D | null = null
 let animationId: number | null = null
+let visibilityObserver: IntersectionObserver | null = null
+let isVisible = true
 
 const getModelFormat = () => {
   const raw = (props.modelFormat || '').toLowerCase()
@@ -70,10 +80,17 @@ const setCameraFromProps = () => {
   )
   controls.target.set(0, 0, 0)
   controls.update()
+
+  const width = host.value?.clientWidth || 500
+  const height = host.value?.clientHeight || 320
+  camera.clearViewOffset()
+  if (props.screenOffsetX) {
+    camera.setViewOffset(width, height, -width * Number(props.screenOffsetX), 0, width, height)
+  }
 }
 
 const animate = () => {
-  if (!scene || !camera || !renderer || !controls) return
+  if (!isVisible || !scene || !camera || !renderer || !controls) return
   animationId = requestAnimationFrame(animate)
   controls.update()
   renderer.render(scene, camera)
@@ -108,6 +125,7 @@ const normalizeModel = (object: THREE.Object3D) => {
   const scale = 2.8 / maxDim
   object.scale.multiplyScalar(scale)
   object.position.sub(center.multiplyScalar(scale))
+  object.position.x += Number(props.modelOffsetX || 0)
 }
 
 const loadModel = async () => {
@@ -122,7 +140,7 @@ const loadModel = async () => {
     const height = host.value.clientHeight || 320
 
     scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xf8fafc)
+    scene.background = props.transparentBackground ? null : new THREE.Color(0xf8fafc)
 
     camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
@@ -134,13 +152,18 @@ const loadModel = async () => {
     const keyLight = new THREE.DirectionalLight(0xffffff, 0.9)
     keyLight.position.set(4, 8, 6)
     scene.add(keyLight)
+    if (props.allowBottomView) {
+      const undersideLight = new THREE.DirectionalLight(0xffffff, 0.45)
+      undersideLight.position.set(-3, -6, 4)
+      scene.add(undersideLight)
+    }
 
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.minDistance = 1
     controls.maxDistance = 20
-    controls.maxPolarAngle = Math.PI / 2
+    controls.maxPolarAngle = props.allowBottomView ? Math.PI - 0.05 : Math.PI / 2
 
     setCameraFromProps()
 
@@ -171,6 +194,14 @@ const loadModel = async () => {
       model = obj
     } else {
       const buffer = await response.arrayBuffer()
+      const signature = new TextDecoder('ascii').decode(buffer.slice(0, 4))
+      const firstBytes = new Uint8Array(buffer.slice(0, 8))
+      const isPng = firstBytes[0] === 0x89 && firstBytes[1] === 0x50 && firstBytes[2] === 0x4e && firstBytes[3] === 0x47
+      if (isPng || (format === 'glb' && signature !== 'glTF')) {
+        throw new Error(isPng
+          ? 'The 3D model URL returned a cached image. Refresh the product and try again.'
+          : 'The selected file is not a valid GLB model.')
+      }
       await new Promise<void>((resolve, reject) => {
         new GLTFLoader().parse(
           buffer,
@@ -203,6 +234,10 @@ const handleResize = () => {
   camera.aspect = width / height
   camera.updateProjectionMatrix()
   renderer.setSize(width, height)
+  camera.clearViewOffset()
+  if (props.screenOffsetX) {
+    camera.setViewOffset(width, height, -width * Number(props.screenOffsetX), 0, width, height)
+  }
 }
 
 watch(
@@ -214,18 +249,32 @@ watch(
 )
 
 watch(
-  () => [props.cameraX, props.cameraY, props.zoom],
+  () => [props.cameraX, props.cameraY, props.zoom, props.screenOffsetX],
   () => setCameraFromProps()
 )
 
 onMounted(async () => {
   await nextTick()
+  if (host.value && 'IntersectionObserver' in window) {
+    visibilityObserver = new IntersectionObserver(([entry]) => {
+      const wasVisible = isVisible
+      isVisible = entry.isIntersecting
+      if (isVisible && !wasVisible && animationId === null) animate()
+      if (!isVisible && animationId !== null) {
+        cancelAnimationFrame(animationId)
+        animationId = null
+      }
+    }, { rootMargin: '150px 0px' })
+    visibilityObserver.observe(host.value)
+  }
   loadModel()
   window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
   cleanup()
 })
 </script>

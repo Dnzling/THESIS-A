@@ -142,7 +142,7 @@ class PayrollSeeder extends Seeder
     private function getDefaultSalary($roleId): float
     {
         $salaries = [
-            2 => 55000.00, // Store Admin
+            2 => 55000.00, // Store Owner
             3 => 48000.00, // Store Manager
             4 => 52000.00, // HR Manager
             5 => 45000.00, // Accountant
@@ -160,7 +160,7 @@ class PayrollSeeder extends Seeder
     private function getOvertimeHours($roleId): float
     {
         $overtime = [
-            2 => 8.0,  // Store Admin
+            2 => 8.0,  // Store Owner
             3 => 5.0,  // Store Manager
             4 => 4.0,  // HR Manager
             5 => 3.0,  // Accountant
@@ -178,7 +178,7 @@ class PayrollSeeder extends Seeder
     private function getOvertimeAmount($roleId, $hours): float
     {
         $hourlyRates = [
-            2 => 343.75,  // Store Admin (55000/160)
+            2 => 343.75,  // Store Owner (55000/160)
             3 => 300.00,  // Store Manager (48000/160)
             4 => 325.00,  // HR Manager (52000/160)
             5 => 281.25,  // Accountant (45000/160)
@@ -197,7 +197,7 @@ class PayrollSeeder extends Seeder
     private function getBonusesTotal($roleId): float
     {
         $bonuses = [
-            2 => 0,      // Store Admin
+            2 => 0,      // Store Owner
             3 => 3000.00, // Store Manager (performance bonus)
             4 => 0,      // HR Manager
             5 => 0,      // Accountant
@@ -215,7 +215,7 @@ class PayrollSeeder extends Seeder
     private function getAllowancesTotal($roleId): float
     {
         $allowances = [
-            2 => 1750.00, // Store Admin (1000 transpo + 750 rice)
+            2 => 1750.00, // Store Owner (1000 transpo + 750 rice)
             3 => 0,       // Store Manager
             4 => 1500.00, // HR Manager (communication)
             5 => 600.00,  // Accountant (clothing)
@@ -272,7 +272,7 @@ class PayrollSeeder extends Seeder
         }
         
         $taxRates = [
-            2 => 0.15, // Store Admin
+            2 => 0.15, // Store Owner
             3 => 0.15, // Store Manager
             4 => 0.15, // HR Manager
             5 => 0.12, // Accountant

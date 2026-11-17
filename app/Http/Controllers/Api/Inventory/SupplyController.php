@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\Supply;
 use App\Models\ProductCatalog\Category;
+use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +27,40 @@ class SupplyController extends Controller
         return Category::query()
             ->where('store_id', $storeId)
             ->value('id');
+    }
+
+    /**
+     * Ensure each active branch has a branch_inventory row for this supply.
+     */
+    private function ensureBranchInventoryRowsForSupply(int $supplyId, int $storeId): void
+    {
+        $branches = Branch::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->pluck('id');
+
+        foreach ($branches as $branchId) {
+            BranchInventory::query()->firstOrCreate(
+                [
+                    'store_id' => $storeId,
+                    'branch_id' => (int) $branchId,
+                    'product_id' => $supplyId,
+                    'variation_id' => null,
+                ],
+                [
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => 0,
+                    'reorder_quantity' => 0,
+                    'maximum_stock' => 0,
+                    'safety_stock' => 0,
+                    'stock_status' => 'out_of_stock',
+                ]
+            );
+        }
     }
 
     public function index(Request $request): JsonResponse
@@ -89,6 +125,7 @@ class SupplyController extends Controller
             }
 
             $supply = Supply::create($payload);
+            $this->ensureBranchInventoryRowsForSupply($supply->id, (int) $context['store_id']);
 
             DB::commit();
 

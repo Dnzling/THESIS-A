@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\JobPosting;
 use App\Models\JobPostingScreeningStage;
 use App\Models\Core\Role;
+use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,7 +15,7 @@ class JobPostingController extends Controller
 {
     public function index(): JsonResponse
     {
-        $postings = JobPosting::with(['store', 'role', 'screeningStages', 'applications'])
+        $postings = JobPosting::with(['store.logoBranch', 'branch', 'role', 'screeningStages', 'applications'])
             ->where('store_id', Auth::user()->store_id)
             ->orderBy('created_at', 'desc')
             ->paginate(15);
@@ -26,7 +27,7 @@ class JobPostingController extends Controller
     {
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
-        $posting->load(['store', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
+        $posting->load(['store.logoBranch', 'branch', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
 
         return response()->json($posting);
     }
@@ -39,16 +40,28 @@ class JobPostingController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'department' => 'required|string|max:100',
+            'employment_type' => 'required|in:full_time,part_time,contract,intern',
+            'branch_id' => 'required|integer|exists:branches,id',
             'role_id' => 'nullable|integer|exists:roles,id',
             'salary_min' => 'required|numeric|min:0',
             'salary_max' => 'required|numeric|min:0|gte:salary_min',
             'requirements' => 'nullable|array',
+            'hiring_documents' => 'nullable|array',
+            'hiring_documents.*' => 'required|string|max:100|distinct',
+            'requires_signed_contract' => 'boolean',
+            'minimum_age' => 'sometimes|integer|min:15|max:100',
             'benefits' => 'nullable|array',
             'status' => 'required|in:Open,Closed,On Hold',
             'screening_stages' => 'required|array|min:1',
             'screening_stages.*.name' => 'required|string|max:255',
             'screening_stages.*.description' => 'nullable|string',
         ]);
+
+        $branchBelongsToStore = Branch::query()
+            ->where('id', $validated['branch_id'])
+            ->where('store_id', Auth::user()->store_id)
+            ->exists();
+        abort_unless($branchBelongsToStore, 422, 'Selected branch is not available for this store.');
 
         if (!empty($validated['role_id'])) {
             $roleExists = Role::query()
@@ -64,14 +77,19 @@ class JobPostingController extends Controller
 
         $posting = JobPosting::create([
             'store_id' => Auth::user()->store_id,
+            'branch_id' => $validated['branch_id'],
             'role_id' => $validated['role_id'] ?? null,
             'created_by' => Auth::id(),
             'title' => $validated['title'],
             'description' => $validated['description'],
             'department' => $validated['department'],
+            'employment_type' => $validated['employment_type'],
             'salary_min' => $validated['salary_min'],
             'salary_max' => $validated['salary_max'],
             'requirements' => $validated['requirements'] ?? [],
+            'hiring_documents' => $validated['hiring_documents'] ?? [],
+            'requires_signed_contract' => $validated['requires_signed_contract'] ?? true,
+            'minimum_age' => $validated['minimum_age'] ?? 18,
             'benefits' => $validated['benefits'] ?? null,
             'status' => $validated['status']
         ]);
@@ -97,13 +115,27 @@ class JobPostingController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'description' => 'sometimes|required|string',
             'department' => 'sometimes|required|string|max:100',
+            'employment_type' => 'sometimes|required|in:full_time,part_time,contract,intern',
+            'branch_id' => 'sometimes|required|integer|exists:branches,id',
             'role_id' => 'nullable|integer|exists:roles,id',
             'salary_min' => 'sometimes|required|numeric|min:0',
             'salary_max' => 'sometimes|required|numeric|min:0',
             'requirements' => 'nullable|array',
+            'hiring_documents' => 'nullable|array',
+            'hiring_documents.*' => 'required|string|max:100|distinct',
+            'requires_signed_contract' => 'boolean',
+            'minimum_age' => 'sometimes|integer|min:15|max:100',
             'benefits' => 'nullable|array',
             'status' => 'sometimes|required|in:Open,Closed,On Hold'
         ]);
+
+        if (array_key_exists('branch_id', $validated)) {
+            $branchBelongsToStore = Branch::query()
+                ->where('id', $validated['branch_id'])
+                ->where('store_id', Auth::user()->store_id)
+                ->exists();
+            abort_unless($branchBelongsToStore, 422, 'Selected branch is not available for this store.');
+        }
 
         if (array_key_exists('role_id', $validated) && !empty($validated['role_id'])) {
             $roleExists = Role::query()
@@ -119,7 +151,7 @@ class JobPostingController extends Controller
 
         $posting->update($validated);
 
-        return response()->json($posting->fresh(['role']));
+        return response()->json($posting->fresh(['role', 'branch']));
     }
 
     public function destroy(JobPosting $posting): JsonResponse

@@ -140,10 +140,17 @@ class ShiftAssignmentController extends Controller
     {
         $start = \Carbon\Carbon::parse($data['start_date']);
         $end = \Carbon\Carbon::parse($data['end_date']);
+        $pattern = is_array($assignment->recurring_pattern) ? $assignment->recurring_pattern : [];
+        $workingDays = $pattern['week_days'] ?? $pattern['days'] ?? $assignment->shift?->week_days ?? [];
+        $workingDays = collect(is_array($workingDays) ? $workingDays : [])
+            ->map(fn ($day) => strtolower((string) $day));
 
-        // Simple logic: create schedule for each day in range
-        // You can adjust this based on recurring_pattern or shift days
         while ($start->lte($end)) {
+            if ($workingDays->isNotEmpty() && !$workingDays->contains(strtolower($start->format('l')))) {
+                $start->addDay();
+                continue;
+            }
+
             // Check if schedule already exists
             $exists = \App\Models\Hr\ShiftSchedule::where('employee_id', $assignment->employee_id)
                 ->where('schedule_date', $start->format('Y-m-d'))

@@ -19,6 +19,9 @@ class SalesOrderItem extends Model
         'branch_inventory_id',
         'product_name',
         'sku',
+        'customization_request',
+        'customization_fee',
+        'customization_lead_time_days',
         'quantity',
         'unit_price',
         'line_discount',
@@ -28,6 +31,8 @@ class SalesOrderItem extends Model
 
     protected $casts = [
         'quantity' => 'integer',
+        'customization_fee' => 'decimal:2',
+        'customization_lead_time_days' => 'integer',
         'unit_price' => 'decimal:2',
         'line_discount' => 'decimal:2',
         'line_tax' => 'decimal:2',

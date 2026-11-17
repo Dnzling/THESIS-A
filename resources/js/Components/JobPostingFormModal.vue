@@ -6,7 +6,7 @@
     :style="{ width: 'min(64rem, 96vw)' }"
     :breakpoints="{ '960px': '96vw' }"
     class="job-posting-dialog"
-    @update:visible="emit('close')"
+    @update:visible="handleVisibilityChange"
   >
     <template #header>
       <div class="space-y-1">
@@ -16,12 +16,12 @@
       </div>
     </template>
 
-    <form class="space-y-6" @submit.prevent="handleSubmit">
+    <form ref="formElement" class="space-y-6" @submit.prevent="handleSubmit">
       <Message v-if="formError" severity="error" :closable="false">
         {{ formError }}
       </Message>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.9fr)]">
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.9fr)] lg:items-start">
         <div class="space-y-6">
           <Card class="border border-surface-200 shadow-none">
             <template #content>
@@ -55,20 +55,37 @@
                 </div>
 
                 <div class="space-y-2">
-                  <label class="text-sm font-medium text-surface-700">Hiring Role</label>
+                  <label class="text-sm font-medium text-surface-700">Hiring Position</label>
                   <Select
                     v-model="form.role_id"
                     :options="filteredRoleOptions"
                     optionLabel="label"
                     optionValue="value"
                     filter
-                    placeholder="Select role to hire for"
+                    placeholder="Select Position to hire for"
                     class="w-full"
                     :loading="loadingRoles"
                     :invalid="showFieldError('role_id')"
                     @change="handleRoleChange"
                   />
-                  <small v-if="showFieldError('role_id')" class="text-red-500">Hiring role is required.</small>
+                  <small v-if="showFieldError('role_id')" class="text-red-500">Hiring Position is required.</small>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-surface-700">Branch</label>
+                  <Select v-model="form.branch_id" :options="branchOptions" optionLabel="name" optionValue="id" filter placeholder="Select branch" class="w-full" :loading="loadingBranches" :invalid="showFieldError('branch_id')" />
+                  <small v-if="showFieldError('branch_id')" class="text-red-500">Branch is required.</small>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-surface-700">Employment Type</label>
+                  <Select
+                    v-model="form.employment_type"
+                    :options="employmentTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    class="w-full"
+                  />
                 </div>
 
                 <div class="space-y-2">
@@ -115,12 +132,18 @@
                   <small v-else-if="salaryRangeInvalid" class="text-amber-600">Maximum salary should be higher than minimum.</small>
                 </div>
 
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-surface-700">Minimum applicant age</label>
+                  <InputNumber v-model="form.minimum_age" inputId="minimum-applicant-age" :min="15" :max="100" :useGrouping="false" suffix=" years" fluid />
+                  <small class="text-surface-500">Applicants younger than this age cannot submit an application.</small>
+                </div>
+
                 <div class="space-y-2 md:col-span-2">
                   <label class="text-sm font-medium text-surface-700">Description</label>
                   <div class="flex flex-wrap gap-2">
-                    <Button type="button" size="small" outlined label="Sales Template" @click="applyTemplate('sales')" />
-                    <Button type="button" size="small" outlined label="Design Template" @click="applyTemplate('design')" />
-                    <Button type="button" size="small" outlined label="Operations Template" @click="applyTemplate('ops')" />
+                    <Button type="button" severity="contrast" size="small" outlined label="Sales Template" @click="applyTemplate('sales')" />
+                    <Button type="button" severity="contrast" size="small" outlined label="Design Template" @click="applyTemplate('design')" />
+                    <Button type="button" severity="contrast" size="small" outlined label="Operations Template" @click="applyTemplate('ops')" />
                   </div>
                   <Textarea
                     v-model="form.description"
@@ -137,13 +160,28 @@
           </Card>
 
           <Card class="border border-surface-200 shadow-none">
+            <template #title>Onboarding Documents</template>
+            <template #content>
+              <div class="space-y-3 text-sm">
+                <p class="text-slate-500">Choose documents HR must collect before hiring.</p>
+                <div v-for="label in hiringDocumentChoices" :key="label" class="flex items-center gap-2">
+                  <Checkbox v-model="form.hiring_documents" :inputId="`hiring-${label}`" :value="label" />
+                  <label :for="`hiring-${label}`">{{ label }}</label>
+                </div>
+                <InputText v-model.trim="customHiringDocument" placeholder="Other required document" class="w-full" />
+                <Button type="button" label="Add document" severity="secondary" size="small" outlined :disabled="!customHiringDocument" @click="addHiringDocument" />
+                <div class="flex items-center gap-2"><Checkbox v-model="form.requires_signed_contract" inputId="requires-contract" binary /><label for="requires-contract">Signed employment contract required</label></div>
+              </div>
+            </template>
+          </Card>
+          <Card class="border border-surface-200 shadow-none">
             <template #title>
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <h3 class="text-base font-semibold text-surface-900">Screening Stages</h3>
                   <p class="mt-1 text-xs text-surface-500">Set the review flow applicants will move through.</p>
                 </div>
-                <Button type="button" label="Add Stage" icon="pi pi-plus" severity="secondary" outlined @click="addStage" />
+                <Button type="button" rounded label="Add Stage" icon="pi pi-plus" severity="contrast" size="small" @click="addStage" />
               </div>
             </template>
             <template #content>
@@ -166,11 +204,13 @@
                         :invalid="submitted && !stage.name?.trim()"
                       />
                     </div>
-                    <div class="space-y-2">
+                    <div class="space-y-2 md:col-span-2">
                       <label class="text-sm font-medium text-surface-700">Notes</label>
-                      <InputText
+                      <Textarea
                         v-model="stage.description"
                         class="w-full"
+                        rows="3"
+                        autoResize
                         placeholder="Optional guidance for this stage"
                       />
                     </div>
@@ -194,7 +234,7 @@
           </Card>
         </div>
 
-        <div class="space-y-6">
+        <div class="space-y-6 lg:sticky lg:top-4 lg:self-start">
           <Card class="border border-blue-100 bg-blue-50/70 shadow-none">
             <template #title>
               <div class="flex items-center gap-2 text-blue-900">
@@ -213,8 +253,12 @@
                   <p class="mt-1 font-semibold text-surface-900">{{ form.department || 'Select department' }}</p>
                 </div>
                 <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Hiring Role</p>
-                  <p class="mt-1 font-semibold text-surface-900">{{ selectedRoleLabel || 'Select role' }}</p>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Hiring Position</p>
+                  <p class="mt-1 font-semibold text-surface-900">{{ selectedRoleLabel || 'Select Position' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Employment Type</p>
+                  <p class="mt-1 font-semibold text-surface-900">{{ selectedEmploymentTypeLabel }}</p>
                 </div>
                 <div>
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Salary Range</p>
@@ -236,7 +280,7 @@
                     </li>
                     <li class="flex items-center gap-2">
                       <i :class="form.role_id ? 'pi pi-check-circle text-green-600' : 'pi pi-times-circle text-red-500'" />
-                      Hiring role is selected
+                      Hiring Position is selected
                     </li>
                     <li class="flex items-center gap-2">
                       <i :class="!salaryRangeInvalid && form.salary_min > 0 && form.salary_max > 0 ? 'pi pi-check-circle text-green-600' : 'pi pi-times-circle text-red-500'" />
@@ -258,16 +302,17 @@
       </div>
 
       <div class="flex w-full justify-end gap-3 pt-2">
-        <Button type="button" label="Cancel" severity="secondary" outlined @click="emit('close')" />
-        <Button type="submit" severity="info" :label="posting ? 'Update Job Posting' : 'Create Job Posting'" />
+        <Button type="button" rounded label="Cancel" severity="secondary" outlined @click="requestClose" />
+        <Button type="submit" rounded :label="posting ? 'Update Job Posting' : 'Create Job Posting'" />
       </div>
     </form>
   </Dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import hrService from '../services/hr.services'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface ScreeningStageForm {
   name: string
@@ -282,6 +327,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'save'])
+const confirm = useConfirm()
+const formElement = ref<HTMLFormElement | null>(null)
 
 const statusOptions = [
   { label: 'Open', value: 'Open' },
@@ -289,30 +336,60 @@ const statusOptions = [
   { label: 'On Hold', value: 'On Hold' },
 ]
 
+const employmentTypeOptions = [
+  { label: 'Full Time', value: 'full_time' },
+  { label: 'Part Time', value: 'part_time' },
+  { label: 'Contract', value: 'contract' },
+  { label: 'Intern', value: 'intern' },
+]
+
 const defaultStages = (): ScreeningStageForm[] => [
   { name: 'Initial Review', description: 'Review applicant documents, qualifications, and fit.' },
   { name: 'Interview', description: 'Conduct the active interview and hands-on assessment.' },
 ]
+const hiringDocumentChoices = ref(['Birth Certificate', 'Valid ID', 'NBI Clearance'])
+const customHiringDocument = ref('')
+const addHiringDocument = () => {
+  const label = customHiringDocument.value.trim()
+  if (label && !form.value.hiring_documents.includes(label)) {
+    hiringDocumentChoices.value.push(label)
+    form.value.hiring_documents.push(label)
+  }
+  customHiringDocument.value = ''
+}
 
 const form = ref({
   title: '',
   department: '',
   role_id: null as number | null,
+  branch_id: null as number | null,
+  employment_type: 'full_time',
   status: 'Open',
   salary_min: 0,
   salary_max: 0,
+  minimum_age: 18,
   description: '',
   screening_stages: defaultStages(),
+  hiring_documents: [] as string[],
+  requires_signed_contract: true,
 })
+const initialFormSnapshot = ref('')
+const isFormDirty = computed(() => JSON.stringify(form.value) !== initialFormSnapshot.value)
+const pendingSubmission = ref<Record<string, any> | null>(null)
 
 const departmentOptions = ref<{ label: string; value: string }[]>([])
 const roleOptions = ref<{ label: string; value: number; department?: string }[]>([])
 const loadingDepartments = ref(false)
 const loadingRoles = ref(false)
+const branchOptions = ref<{ id: number; name: string }[]>([])
+const loadingBranches = ref(false)
 const submitted = ref(false)
 const formError = ref('')
 
 const selectedRoleLabel = computed(() => roleOptions.value.find((role) => role.value === form.value.role_id)?.label || '')
+const selectedEmploymentTypeLabel = computed(() =>
+  employmentTypeOptions.find((option) => option.value === form.value.employment_type)?.label || 'Full Time',
+)
 const selectedRoleDepartment = computed(() => roleOptions.value.find((role) => role.value === form.value.role_id)?.department || '')
 const filteredRoleOptions = computed(() => {
   if (!form.value.department) return roleOptions.value
@@ -327,9 +404,10 @@ const normalizedPostingStages = computed(() => props.posting?.screening_stages |
 const salaryRangeInvalid = computed(() => Number(form.value.salary_max || 0) < Number(form.value.salary_min || 0))
 const hasValidStages = computed(() => form.value.screening_stages.some((stage) => stage.name?.trim()))
 
-const showFieldError = (field: 'title' | 'department' | 'role_id' | 'salary_min' | 'salary_max' | 'description') => {
+const showFieldError = (field: 'title' | 'department' | 'role_id' | 'branch_id' | 'salary_min' | 'salary_max' | 'description') => {
   if (!submitted.value) return false
   if (field === 'role_id') return !form.value.role_id
+  if (field === 'branch_id') return !form.value.branch_id
   if (field === 'salary_min') return Number(form.value.salary_min || 0) <= 0
   if (field === 'salary_max') return Number(form.value.salary_max || 0) <= 0
   return !String(form.value[field] || '').trim()
@@ -340,9 +418,17 @@ const addStage = () => {
 }
 
 const removeStage = (index: number) => {
-  if (form.value.screening_stages.length > 1) {
-    form.value.screening_stages.splice(index, 1)
-  }
+  if (form.value.screening_stages.length <= 1) return
+
+  const stage = form.value.screening_stages[index]
+  confirm.require({
+    message: `Remove the “${stage?.name?.trim() || 'this screening stage'}” stage?`,
+    header: 'Remove screening stage',
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
+    acceptProps: { label: 'Remove', severity: 'danger' },
+    accept: () => form.value.screening_stages.splice(index, 1),
+  })
 }
 
 const resetForm = () => {
@@ -350,14 +436,43 @@ const resetForm = () => {
     title: '',
     department: '',
     role_id: null,
+    branch_id: null,
+    employment_type: 'full_time',
     status: 'Open',
     salary_min: 0,
     salary_max: 0,
+    minimum_age: 18,
     description: '',
     screening_stages: defaultStages(),
+    hiring_documents: [],
+    requires_signed_contract: true,
   }
   submitted.value = false
   formError.value = ''
+  initialFormSnapshot.value = JSON.stringify(form.value)
+}
+
+const closeWithoutPrompt = () => emit('close')
+
+const requestClose = () => {
+  confirm.require({
+    message: 'Close this job posting form? Any unsaved changes will be discarded.',
+    header: 'Close Job Posting',
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Continue Editing', severity: 'secondary', outlined: true },
+    acceptProps: { label: 'Discard', severity: 'warn' },
+    accept: closeWithoutPrompt,
+  })
+}
+
+const handleVisibilityChange = (visible: boolean) => {
+  if (!visible) requestClose()
+}
+
+const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+  if (!isFormDirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 const loadDepartments = async () => {
@@ -383,7 +498,7 @@ const loadRoles = async (department?: string) => {
       : '/api/store/roles/scoped'
     const response = await hrService.api.get(endpoint, department ? { params: { department } } : undefined)
     const items = response?.data?.data || response?.data || []
-    const excludedRoleNames = ['super_admin', 'admin', 'store_admin', 'owner', 'supplier_portal']
+    const excludedRoleNames = ['super_admin', 'admin', 'owner', 'supplier_portal']
     const excludedCodes = ['SA', 'ADM', 'OWN', 'SUPP']
 
     roleOptions.value = items
@@ -399,6 +514,17 @@ const loadRoles = async (department?: string) => {
       }))
   } finally {
     loadingRoles.value = false
+  }
+}
+
+const loadBranches = async () => {
+  loadingBranches.value = true
+  try {
+    const response = await hrService.getBranches()
+    const items = response?.data?.data || response?.data || []
+    branchOptions.value = items.map((branch: any) => ({ id: Number(branch.id), name: branch.name }))
+  } finally {
+    loadingBranches.value = false
   }
 }
 
@@ -446,30 +572,60 @@ const handleSubmit = () => {
     !form.value.title.trim() ||
     !form.value.department.trim() ||
     !form.value.role_id ||
+    !form.value.branch_id ||
     !form.value.description.trim() ||
     Number(form.value.salary_min || 0) <= 0 ||
     Number(form.value.salary_max || 0) <= 0
   ) {
     formError.value = 'Please complete the required fields before saving.'
+    scrollToFirstError()
     return
   }
 
   if (salaryRangeInvalid.value) {
     formError.value = 'Please review the salary range before saving.'
+    scrollToFirstError()
     return
   }
 
   if (!form.value.screening_stages.length) {
     formError.value = 'Add at least one screening stage with a name.'
+    scrollToFirstError()
     return
   }
 
-  emit('save', {
+  pendingSubmission.value = {
     ...form.value,
     title: form.value.title.trim(),
     department: form.value.department.trim(),
     description: form.value.description.trim(),
     screening_stages: form.value.screening_stages,
+  }
+
+  confirm.require({
+    message: `Submit this job posting${props.posting ? ' update' : ''}? Review the details before saving.`,
+    header: props.posting ? 'Update Job Posting' : 'Create Job Posting',
+    icon: 'pi pi-briefcase',
+    rejectProps: { label: 'Continue Editing', severity: 'secondary', outlined: true },
+    acceptProps: { label: props.posting ? 'Update Posting' : 'Create Posting', severity: 'warn' },
+    accept: () => {
+      if (pendingSubmission.value) emit('save', pendingSubmission.value)
+      pendingSubmission.value = null
+    },
+    reject: () => { pendingSubmission.value = null },
+  })
+}
+
+const scrollToFirstError = () => {
+  void nextTick(() => {
+    const firstInvalid = formElement.value?.querySelector<HTMLElement>('.p-invalid, [aria-invalid="true"]')
+    if (!firstInvalid) return
+
+    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const focusTarget = firstInvalid.matches('input, textarea, select, button')
+      ? firstInvalid
+      : firstInvalid.querySelector<HTMLElement>('input, textarea, select, button')
+    focusTarget?.focus({ preventScroll: true })
   })
 }
 
@@ -488,14 +644,21 @@ watch(
       return
     }
 
+    hiringDocumentChoices.value = [...new Set(['Birth Certificate', 'Valid ID', 'NBI Clearance', ...(newPosting.hiring_documents || [])])]
+
     form.value = {
       title: newPosting.title || '',
       department: newPosting.department || '',
       role_id: newPosting.role_id || newPosting.role?.id || null,
+      branch_id: newPosting.branch_id || newPosting.branch?.id || null,
+      employment_type: newPosting.employment_type || 'full_time',
       status: newPosting.status || 'Open',
       salary_min: Number(newPosting.salary_min || 0),
       salary_max: Number(newPosting.salary_max || 0),
+      minimum_age: Number(newPosting.minimum_age || 18),
       description: newPosting.description || '',
+      hiring_documents: newPosting.hiring_documents || [],
+      requires_signed_contract: newPosting.requires_signed_contract ?? true,
       screening_stages:
         normalizedPostingStages.value?.length
           ? normalizedPostingStages.value.map((stage: any) => ({
@@ -506,6 +669,7 @@ watch(
     }
     submitted.value = false
     formError.value = ''
+    initialFormSnapshot.value = JSON.stringify(form.value)
   },
   { immediate: true, deep: true },
 )
@@ -540,6 +704,11 @@ const handleDepartmentChange = () => {
 watch(() => form.value.role_id, handleRoleChange)
 
 onMounted(async () => {
-  await Promise.all([loadDepartments(), loadRoles()])
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  await Promise.all([loadDepartments(), loadRoles(), loadBranches()])
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 </script>

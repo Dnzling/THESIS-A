@@ -1,18 +1,21 @@
 <template>
-  <div class="p-8 min-h-screen">
-    <!-- Header Section -->
-    <div class="mb-8">
-      
-      <div class="flex justify-between items-start gap-6">
-        <div>
-          <div class="flex items-center gap-3 mb-2">
-            <h1 class="text-xl font-bold text-gray-900">{{ contract?.contract_number }}</h1>
+  <div class="mx-auto min-h-screen max-w-7xl space-y-5 px-4 py-5 text-sm md:px-6">
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-5 p-5 md:p-6">
+        <div class="min-w-0">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-600">Procurement <span class="mx-1 text-slate-300">/</span> Supplier contracts</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2.5">
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">{{ contract?.contract_title || 'Supplier contract' }}</h1>
             <Tag :value="contract?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(contract?.status)" />
           </div>
-          <p class="text-lg text-gray-600">{{ contract?.contract_title }}</p>
+          <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            <span class="font-mono text-slate-700">{{ contract?.contract_number || 'No contract number' }}</span>
+            <span class="text-slate-300">•</span>
+            <span>{{ contract?.supplier?.supplier_name || 'Supplier not set' }}</span>
+            <template v-if="contract?.store?.name"><span class="text-slate-300">•</span><span>{{ contract.store.name }}</span></template>
+          </div>
         </div>
-        
-        <div class="flex gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <Button
             v-if="contract?.contract_file_path"
             label="View Document"
@@ -20,42 +23,58 @@
             severity="secondary"
             outlined
             @click="openDocDialog"
-            class="px-6"
+            size="small"
           />
-          <Button label="Report" icon="pi pi-flag" severity="danger" outlined @click="openReportDialog" class="px-6" />
-          <Button v-if="canApproveSupplierContracts && ['draft','pending'].includes(contract?.status)" label="Approve" icon="pi pi-check-circle" severity="success" 
-            @click="activateContract" :loading="activating" class="px-6" />
-          <Button v-if="canApproveSupplierContracts && contract?.status === 'pending'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
-            @click="openRejectContractDialog" class="px-6" />
+          <a v-if="contract?.signed_copy_path" :href="signedCopyUrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-md border border-orange-300 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-50">
+            <i class="pi pi-file-check" /> View Signed Copy
+          </a>
+          <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
+          <Button v-if="!isSupplierRoute && canApproveSupplierContracts && (contract?.status === 'draft' || (contract?.status === 'pending' && contract?.submitted_by_type === 'supplier'))" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
+          <Button v-if="!isSupplierRoute && canManageSupplierContracts && isExternalContract && contract?.status === 'pending' && contract?.submitted_by_type === 'store'" label="Activate Contract" icon="pi pi-check-circle" severity="warn" size="small" @click="openSignedContractDialog" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
+            :loading="activating" @click="activateContract" size="small" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
+            @click="openRejectContractDialog" size="small" />
           <Button v-if="contract?.status === 'active'" label="Request Termination" icon="pi pi-ban" severity="danger" outlined
-            @click="openTerminateRequestDialog" class="px-6" />
+            @click="openTerminateRequestDialog" size="small" />
         </div>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center items-center py-20">
-      <ProgressSpinner />
+    <div v-if="loading" class="grid gap-4 md:grid-cols-3">
+      <Skeleton height="120px" v-for="n in 3" :key="n" />
+      <Skeleton height="340px" class="md:col-span-3" />
     </div>
 
     <div v-else-if="contract">
-      <!-- Quick Stats -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Tax Rate</p>
-          <p class="text-2xl font-bold text-orange-600">{{ contract?.tax_rate || 0 }}%</p>
-          <p class="text-xs text-gray-500 mt-2">Applied after discount</p>
+      <div v-if="contract.status === 'pending'" class="mb-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 md:p-5">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700"><i class="pi pi-clock" /></span>
+        <div class="min-w-0">
+          <p class="font-semibold text-amber-950">{{ isExternalContract && contract.submitted_by_type === 'store' ? 'Signed contract required' : contract.submitted_by_type === 'store' ? 'Pending supplier agreement' : 'Contract review required' }}</p>
+          <p class="mt-1 text-xs leading-5 text-amber-900">{{ isExternalContract ? 'Upload the contract signed by both parties to activate this external supplier agreement.' : contract.submitted_by_type === 'store' ? 'Activate after the supplier has agreed to these terms. Confirming activation records that agreement.' : `Submitted by ${(contract.submitted_by_type || 'supplier').replace(/_/g, ' ')}. Review the terms and attached document before approving or rejecting.` }}</p>
         </div>
+      </div>
 
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Volume Discount</p>
-          <p class="text-2xl font-bold text-green-600">{{ contract?.discount_percentage || 0 }}%</p>
-          <p class="text-xs text-gray-500 mt-2">On all orders</p>
+      <div class="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Supplier</p>
+          <p class="mt-2 truncate font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ contract?.supplier?.supplier_code || 'No supplier code' }}</p>
         </div>
-
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Validity</p>
-          <p class="text-2xl font-bold text-blue-600">{{ calculateDaysRemaining(contract?.end_date) }}</p>
-          <p class="text-xs text-gray-500 mt-2">Contract status</p>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Validity</p>
+          <p class="mt-2 font-semibold text-slate-900">{{ calculateDaysRemaining(contract?.end_date) }}</p>
+          <p class="mt-1 text-xs text-slate-500">Ends {{ formatDate(contract?.end_date) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Volume discount</p>
+          <p class="mt-2 text-lg font-semibold text-emerald-700">{{ contract?.discount_percentage || 0 }}%</p>
+          <p class="mt-1 text-xs text-slate-500">Applied to PO subtotal</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tax</p>
+          <p class="mt-2 text-lg font-semibold text-orange-700">{{ contract?.is_tax_exempt ? 'Exempt' : `${contract?.tax_rate || 0}%` }}</p>
+          <p class="mt-1 text-xs text-slate-500">After discount</p>
         </div>
       </div>
 
@@ -89,11 +108,12 @@
       <div v-if="contract?.status === 'rejected'" class="bg-rose-50 rounded-lg border border-rose-200 p-4 mb-6">
         <p class="text-sm font-semibold text-rose-800">Contract Rejected</p>
         <p class="text-xs text-rose-700 mt-1">{{ contract?.rejection_reason || 'No reason provided.' }}</p>
+        <p v-if="contract?.rejected_by" class="text-xs text-rose-700 mt-1">Rejected by: {{ [contract.rejected_by.fname, contract.rejected_by.lname].filter(Boolean).join(' ') }}</p>
         <p v-if="contract?.rejected_at" class="text-xs text-rose-700 mt-1">Rejected at: {{ formatDatetime(contract?.rejected_at) }}</p>
       </div>
 
-      <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-8">
-        <h3 class="text-lg font-semibold text-gray-900 mb-3">My Submitted Reports</h3>
+      <div class="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-semibold text-slate-900">Reported issues</h3><p class="mt-0.5 text-xs text-slate-500">Questions or problems raised about this agreement.</p></div><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ myReports.length }} {{ myReports.length === 1 ? 'report' : 'reports' }}</span></div>
         <div v-if="myReportsLoading" class="text-sm text-gray-500">Loading reports...</div>
         <div v-else-if="myReports.length === 0" class="text-sm text-gray-500">No submitted reports for this contract yet.</div>
         <div v-else class="space-y-2">
@@ -117,18 +137,18 @@
       </div>
 
       <!-- Content Sections -->
-      <div class="space-y-8">
+      <div class="grid items-start gap-5 lg:grid-cols-2">
         <!-- Supplier Information Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Supplier Information</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><i class="pi pi-building" /></span><div><h2 class="font-semibold text-slate-900">Supplier information</h2><p class="mt-0.5 text-xs text-slate-500">The other party to this agreement</p></div></div>
+          <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
             <div>
-              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Supplier Name</p>
-              <p class="text-lg font-semibold text-gray-900">{{ contract?.supplier?.supplier_name }}</p>
+              <p class="text-[11px] font-semibold tracking-wide text-slate-500">SUPPLIER NAME</p>
+              <p class="mt-1 font-medium text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
             </div>
             <div>
-              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Supplier Code</p>
-              <p class="font-mono text-gray-900 bg-gray-50 px-3 py-2 rounded inline-block">{{ contract?.supplier?.supplier_code }}</p>
+              <p class="text-[11px] font-semibold tracking-wide text-slate-500">SUPPLIER CODE</p>
+              <p class="mt-1 inline-block rounded-md bg-slate-50 px-2.5 py-1.5 font-mono text-xs text-slate-800">{{ contract?.supplier?.supplier_code || '-' }}</p>
             </div>
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Contact Person</p>
@@ -152,9 +172,9 @@
         </div>
 
         <!-- Contract Details Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Contract Details</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><i class="pi pi-file-edit" /></span><div><h2 class="font-semibold text-slate-900">Contract details</h2><p class="mt-0.5 text-xs text-slate-500">Agreement ownership and record information</p></div></div>
+          <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Contract Number</p>
               <p class="text-lg font-mono text-gray-900 bg-gray-50 px-3 py-2 rounded">{{ contract?.contract_number }}</p>
@@ -164,81 +184,110 @@
               <p class="text-gray-900">{{ platformName }}</p>
             </div>
             <div>
+              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Store</p>
+              <p class="text-gray-900">{{ contract?.store?.name || contract?.store?.store_code || `Store #${contract?.store_id}` }}</p>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Submitted By</p>
+              <p class="text-gray-900 capitalize">{{ (contract?.submitted_by_type || 'store').replace(/_/g, ' ') }}</p>
+            </div>
+            <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Created By</p>
-              <p class="text-gray-900">{{ contract?.createdBy?.fname }} {{ contract?.createdBy?.lname }}</p>
+              <p class="text-gray-900">{{ creatorName }}</p>
               <p class="text-xs text-gray-500 mt-1">{{ formatDate(contract?.created_at) }}</p>
             </div>
           </div>
         </div>
 
         <!-- Financial Terms Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Financial Terms</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><i class="pi pi-wallet" /></span><div><h2 class="font-semibold text-slate-900">Commercial terms</h2><p class="mt-0.5 text-xs text-slate-500">Pricing adjustments applied to purchase orders</p></div></div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold text-green-700 uppercase mb-3">Volume Discount</p>
               <p class="text-3xl font-bold text-green-600">{{ contract?.discount_percentage || 0 }}% OFF</p>
               <p class="text-xs text-green-600 mt-2">Applied to PO subtotal</p>
             </div>
-            <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold text-orange-700 uppercase mb-3">Tax Rate</p>
-              <p class="text-3xl font-bold text-orange-600">{{ contract?.tax_rate || 0 }}%</p>
-              <p class="text-xs text-orange-600 mt-2">Applied to discounted amount</p>
+              <p class="text-3xl font-bold text-orange-600">{{ contract?.is_tax_exempt ? 'Tax Exempt' : `${contract?.tax_rate || 0}%` }}</p>
+              <p class="text-xs text-orange-600 mt-2">{{ contract?.tax_note || (contract?.is_tax_exempt ? 'No tax applied' : 'Applied to discounted amount') }}</p>
             </div>
+          </div>
+          <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p class="text-xs font-semibold uppercase text-gray-600">Minimum Order Value</p>
+            <p class="mt-1 text-sm font-semibold text-gray-900">{{ contract?.minimum_order_value == null ? 'No minimum order' : formatMoney(contract.minimum_order_value) }}</p>
           </div>
         </div>
 
         <!-- Duration & Validity Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Duration & Validity</h2>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><i class="pi pi-calendar" /></span><div><h2 class="font-semibold text-slate-900">Dates &amp; validity</h2><p class="mt-0.5 text-xs text-slate-500">Effective period and agreement lifecycle</p></div></div>
+          <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">Start Date</p>
-              <div class="bg-green-50 rounded-lg p-4 border border-green-200">
-                <p class="text-2xl font-bold text-green-700">{{ formatDate(contract?.start_date) }}</p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ formatDate(contract?.start_date) }}</p>
                 <p class="text-xs text-green-600 mt-2">Contract becomes effective</p>
               </div>
             </div>
 
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">End Date</p>
-              <div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                <p class="text-2xl font-bold text-orange-700">{{ formatDate(contract?.end_date) }}</p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ formatDate(contract?.end_date) }}</p>
                 <p class="text-xs text-orange-600 mt-2">Contract expires</p>
               </div>
             </div>
 
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">Duration</p>
-              <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <p class="text-2xl font-bold text-blue-700">{{ contractDurationDays }} <span class="text-sm">days</span></p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ contractDurationDays }} <span class="text-sm">days</span></p>
                 <p class="text-xs text-blue-600 mt-2">≈ {{ Math.ceil(contractDurationDays / 30) }} months</p>
               </div>
             </div>
           </div>
 
-          <div class="mt-8 border-t pt-8">
-            <h3 class="font-semibold text-gray-900 mb-4">Progress Timeline</h3>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <div class="flex justify-between text-sm text-gray-600 mb-3">
-                <span>Started {{ daysFromStart }} days ago</span>
-                <span>{{ calculateProgressPercentage }}% complete</span>
-              </div>
-              <ProgressBar :value="calculateProgressPercentage" class="w-full" />
-            </div>
+          <div class="mt-6 border-t border-slate-200 pt-5">
+            <div class="mb-4"><h3 class="font-semibold text-slate-900">Contract lifecycle</h3><p class="mt-0.5 text-xs text-slate-500">Current agreement stage</p></div>
+            <ol class="grid gap-3 sm:grid-cols-3">
+              <li v-for="(step, index) in contractLifecycleSteps" :key="step.label" class="relative rounded-xl border p-3" :class="step.state === 'complete' ? 'border-emerald-200 bg-emerald-50/60' : step.state === 'current' ? 'border-orange-200 bg-orange-50/70' : step.state === 'failed' ? 'border-rose-200 bg-rose-50/70' : 'border-slate-200 bg-slate-50'">
+                <div class="flex items-center gap-2"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold" :class="step.state === 'complete' ? 'bg-emerald-600 text-white' : step.state === 'current' ? 'bg-orange-500 text-white' : step.state === 'failed' ? 'bg-rose-600 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'"><i v-if="step.state === 'complete'" class="pi pi-check" /><i v-else-if="step.state === 'failed'" class="pi pi-times" /><template v-else>{{ index + 1 }}</template></span><span class="text-sm font-semibold" :class="step.state === 'upcoming' ? 'text-slate-500' : 'text-slate-900'">{{ step.label }}</span></div>
+                <p class="mt-2 pl-9 text-xs" :class="step.state === 'current' ? 'text-orange-800' : step.state === 'failed' ? 'text-rose-700' : 'text-slate-500'">{{ step.detail }}</p>
+              </li>
+            </ol>
           </div>
         </div>
 
         <!-- Terms & Conditions Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Terms & Conditions</h2>
-          <div class="bg-gray-50 rounded-lg p-6 border border-gray-200 min-h-48 whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6 lg:col-span-2">
+          <div class="mb-4 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><i class="pi pi-list-check" /></span><div><h2 class="font-semibold text-slate-900">Terms &amp; conditions</h2><p class="mt-0.5 text-xs text-slate-500">Written terms included in this supplier agreement</p></div></div>
+          <div class="min-h-40 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-700">
             {{ contract?.terms_conditions || '✓ No additional terms specified' }}
           </div>
         </div>
 
-      
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 class="font-semibold text-slate-900">Contract document</h2><p class="mt-1 text-xs text-slate-500">Review the attachment before making a contract decision.</p></div>
+            <Button v-if="contractDocUrl" label="View full document" icon="pi pi-external-link" severity="warn" outlined size="small" @click="openDocDialog" />
+          </div>
+          <div v-if="contractDocUrl" class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3"><div class="flex min-w-0 items-center gap-3"><i :class="isContractImage ? 'pi pi-image' : 'pi pi-file-pdf'" class="text-lg text-orange-600" /><div class="min-w-0"><p class="truncate font-medium text-slate-900">{{ contractDocName }}</p><p class="text-xs text-slate-500">{{ isContractImage ? 'Image attachment' : isContractPdf ? 'PDF attachment' : 'Document attachment' }}</p></div></div><Button label="Open" size="small" severity="secondary" text @click="openDocNewTab" /></div>
+            <button v-if="isContractImage" type="button" class="block w-full cursor-zoom-in p-4" @click="openDocDialog"><img :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-72 rounded object-contain" /></button>
+            <iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="h-72 w-full bg-white" />
+            <div v-else class="p-6 text-center text-xs text-slate-500">Preview is unavailable for this file type. Open the attachment to view it.</div>
+          </div>
+          <div v-else class="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs text-slate-500">No contract document has been attached.</div>
+        </div>
       </div>
+    </div>
+    <div class="justify-end flex gap-4">
+                <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
+            :loading="activating" @click="activateContract" size="small" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
+            @click="openRejectContractDialog" size="small" />
     </div>
 
     <Dialog v-model:visible="showReportDialog" header="Report Contract Issue" :modal="true" class="w-[36rem]">
@@ -321,11 +370,34 @@
       </template>
     </Dialog>
 
+    <Dialog v-model:visible="showReviewDialog" modal header="Review supplier contract" class="w-[56rem] max-w-[95vw]">
+      <div class="space-y-4 text-sm">
+        <div class="rounded-xl border border-orange-200 bg-orange-50 p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-wide text-orange-700">{{ contract?.contract_number }}</p><h3 class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.contract_title || 'Supplier contract' }}</h3><p class="mt-1 text-xs text-slate-600">Submitted by {{ (contract?.submitted_by_type || 'store').replace(/_/g, ' ') }}</p></div><Tag :value="contract?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(contract?.status)" /></div>
+        </div>
+        <div class="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-2">
+          <div><p class="text-xs text-slate-500">Supplier</p><p class="mt-1 font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p></div>
+          <div><p class="text-xs text-slate-500">Store</p><p class="mt-1 font-semibold text-slate-900">{{ contract?.store?.name || '-' }}</p></div>
+          <div><p class="text-xs text-slate-500">Effective period</p><p class="mt-1 font-medium text-slate-900">{{ formatDate(contract?.start_date) }} to {{ formatDate(contract?.end_date) }}</p></div>
+          <div><p class="text-xs text-slate-500">Minimum order value</p><p class="mt-1 font-medium text-slate-900">{{ contract?.minimum_order_value == null ? 'No minimum order' : formatMoney(contract.minimum_order_value) }}</p></div>
+          <div><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 font-medium text-slate-900">{{ contract?.discount_percentage || 0 }}%</p></div>
+          <div><p class="text-xs text-slate-500">Tax</p><p class="mt-1 font-medium text-slate-900">{{ contract?.is_tax_exempt ? 'Tax exempt' : `${contract?.tax_rate || 0}%` }}</p></div>
+        </div>
+        <div><p class="mb-2 font-semibold text-slate-900">Terms &amp; conditions</p><div class="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-xs leading-5 text-slate-700">{{ contract?.terms_conditions || 'No additional terms provided.' }}</div></div>
+        <div><div class="mb-2 flex flex-wrap items-center justify-between gap-2"><p class="font-semibold text-slate-900">Attached document</p><Button v-if="contractDocUrl" label="Open full document" icon="pi pi-external-link" text size="small" severity="warn" @click="openDocDialog" /></div>
+          <div v-if="contractDocUrl" class="overflow-hidden rounded-lg border border-slate-200"><img v-if="isContractImage" :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-60 object-contain" /><iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="h-60 w-full" /><p v-else class="p-5 text-xs text-slate-600">{{ contractDocName }}. Open the file to review it.</p></div>
+          <p v-else class="rounded-lg border border-dashed border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">No document attached. Check the terms carefully before approval.</p>
+        </div>
+        <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 text-xs text-slate-700"><Checkbox v-model="reviewAcknowledged" binary inputId="review-acknowledged" /><span>I have reviewed the supplier, contract dates, commercial terms, and any attached document.</span></label>
+      </div>
+      <template #footer><div class="flex flex-wrap justify-end gap-2"><Button label="Close" severity="secondary" text size="small" @click="showReviewDialog = false" /><Button v-if="contract?.status === 'pending'" label="Reject with reason" severity="danger" outlined size="small" @click="showReviewDialog = false; openRejectContractDialog()" /><Button v-if="contract?.submitted_by_type === 'supplier'" label="Approve contract" severity="warn" size="small" :disabled="!reviewAcknowledged" :loading="activating" @click="approveReviewedContract" /></div></template>
+    </Dialog>
+
     <Dialog v-model:visible="showRejectContractDialog" header="Reject Contract" :modal="true" class="w-[32rem]">
       <div class="space-y-3">
         <div>
           <label class="block text-sm font-medium mb-1">Reason</label>
-          <Select v-model="rejectContractReason" :options="rejectContractReasonOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select a reason" />
+          <Select v-model="rejectContractReason" :options="isSupplierRoute ? supplierRejectReasonOptions : rejectContractReasonOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select a reason" />
         </div>
         <div v-if="rejectContractReason === 'other'">
           <label class="block text-sm font-medium mb-1">Custom Reason</label>
@@ -333,7 +405,7 @@
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Details (optional)</label>
-          <Textarea v-model="rejectContractDetails" rows="3" class="w-full" placeholder="Add details for supplier..." />
+          <Textarea v-model="rejectContractDetails" rows="3" class="w-full" :placeholder="isSupplierRoute ? 'Add details for the store...' : 'Add details for supplier...'" />
         </div>
       </div>
       <template #footer>
@@ -407,17 +479,38 @@
     <Dialog v-model:visible="showDocDialog" header="Contract Document" :modal="true" class="w-[72rem] max-w-[92vw]">
       <div v-if="contractDocUrl" class="space-y-3">
         <div class="flex items-center justify-between gap-3">
-          <div class="text-xs text-slate-500 break-all">{{ contractDocUrl }}</div>
+          <div class="min-w-0 truncate text-sm font-medium text-slate-900">{{ contractDocName }}</div>
           <div class="flex gap-2 shrink-0">
             <Button label="Open New Tab" icon="pi pi-external-link" size="small" outlined @click="openDocNewTab" />
             <Button label="Download" icon="pi pi-download" size="small" severity="secondary" @click="downloadDoc" />
           </div>
         </div>
-        <iframe :src="contractDocUrl" class="w-full h-[70vh] rounded border border-slate-200 bg-white" />
+        <img v-if="isContractImage" :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-[70vh] max-w-full rounded object-contain" />
+        <iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="w-full h-[70vh] rounded border border-slate-200 bg-white" />
+        <div v-else class="rounded-lg bg-slate-50 p-8 text-center text-sm text-slate-600">This file type cannot be previewed here. Use Open New Tab or Download.</div>
       </div>
       <div v-else class="text-sm text-slate-600">No contract document attachment available.</div>
       <template #footer>
         <Button label="Close" severity="secondary" @click="showDocDialog = false" />
+      </template>
+    </Dialog>
+    <Dialog v-model:visible="showSignedContractDialog" modal header="Upload Signed Contract" :style="{ width: 'min(34rem, 94vw)' }" :closable="!activating">
+      <div class="space-y-4">
+        <Message severity="info" :closable="false">Review the generated contract document first. Upload the PDF signed by both the store and supplier; the contract becomes active after upload succeeds.</Message>
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-slate-700">Signed contract PDF <span class="text-red-500">*</span></label>
+          <FileUpload mode="basic" name="signed_copy" accept=".pdf,application/pdf" :maxFileSize="10485760" :customUpload="true" :auto="false" chooseLabel="Choose signed PDF" @select="onSignedContractSelected" />
+          <div v-if="signedContractFile" class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <span class="truncate text-sm text-slate-700">{{ signedContractFile.name }}</span>
+            <Button icon="pi pi-times" text rounded severity="danger" size="small" aria-label="Remove signed PDF" @click="signedContractFile = null" />
+          </div>
+          <small v-if="signedContractError" class="text-red-600">{{ signedContractError }}</small>
+          <p class="text-xs text-slate-500">PDF only, maximum 10 MB.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined size="small" :disabled="activating" @click="showSignedContractDialog = false" />
+        <Button label="Upload and Activate" icon="pi pi-check" severity="warn" size="small" :loading="activating" :disabled="!signedContractFile" @click="submitSignedContractActivation" />
       </template>
     </Dialog>
     <ConfirmDialog />
@@ -430,10 +523,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Skeleton from 'primevue/skeleton'
+import FileUpload from 'primevue/fileupload'
+import Message from 'primevue/message'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 import axiosClient from '@/axios'
 import Select from 'primevue/select'
+import Checkbox from 'primevue/checkbox'
 
 const router = useRouter()
 const route = useRoute()
@@ -442,6 +539,9 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 const loading = ref(false)
 const activating = ref(false)
+const showSignedContractDialog = ref(false)
+const signedContractFile = ref<File | null>(null)
+const signedContractError = ref('')
 const showReportDialog = ref(false)
 const reportSubmitting = ref(false)
 const reportReason = ref('')
@@ -452,6 +552,8 @@ const myReports = ref<any[]>([])
 const myReportsLoading = ref(false)
 const showReportViewDialog = ref(false)
 const showDocDialog = ref(false)
+const showReviewDialog = ref(false)
+const reviewAcknowledged = ref(false)
 const selectedReport = ref<any | null>(null)
 const reportThread = ref<any[]>([])
 const reportThreadLoading = ref(false)
@@ -472,6 +574,19 @@ const contractDocUrl = computed(() => {
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw
   return `/storage/${raw.replace(/^storage\//, '')}`
 })
+const signedCopyUrl = computed(() => {
+  const raw = String(contract.value?.signed_copy_path || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw
+  return `/storage/${raw.replace(/^storage\//, '')}`
+})
+const contractDocName = computed(() => {
+  const path = String(contract.value?.contract_file_path || '')
+  const filename = path.split('?')[0].split('/').pop() || 'Contract attachment'
+  try { return decodeURIComponent(filename) } catch { return filename }
+})
+const isContractImage = computed(() => /\.(png|jpe?g|gif|webp)(\?|$)/i.test(contractDocUrl.value))
+const isContractPdf = computed(() => /\.pdf(\?|$)/i.test(contractDocUrl.value))
 const respondingTermination = ref(false)
 const showRejectTerminationDialog = ref(false)
 const terminationRejectNotes = ref('')
@@ -481,8 +596,14 @@ const rejectContractReason = ref('')
 const rejectContractCustomReason = ref('')
 const rejectContractDetails = ref('')
 const platformName = 'FurniSync IMS Platform'
+const creatorName = computed(() => {
+  const user = contract.value?.created_by?.user || contract.value?.createdBy?.user || contract.value?.created_by || contract.value?.createdBy
+  return [user?.fname, user?.lname].filter(Boolean).join(' ') || 'Not recorded'
+})
+const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
+const isExternalContract = computed(() => Boolean(contract.value?.supplier?.is_external && !contract.value?.supplier?.supplier_portal_id))
 const isSupplierRoute = computed(() => String(route.path || '').startsWith('/supplier-portal/'))
 const mySideType = computed(() => (isSupplierRoute.value ? 'supplier' : 'store_user'))
 const canRespondTerminationRequest = computed(() => {
@@ -525,13 +646,6 @@ const calculateDaysRemaining = (deadline: string | null): string => {
   return `Expires in ${days}d`
 }
 
-const daysFromStart = computed(() => {
-  if (!contract.value?.start_date) return 0
-  const startDate = new Date(contract.value.start_date)
-  const today = new Date()
-  return Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 3600 * 24))
-})
-
 const contractDurationDays = computed(() => {
   if (!contract.value?.start_date || !contract.value?.end_date) return 0
   const start = new Date(contract.value.start_date)
@@ -539,9 +653,41 @@ const contractDurationDays = computed(() => {
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24))
 })
 
-const calculateProgressPercentage = computed(() => {
-  if (contractDurationDays.value === 0) return 0
-  return Math.min(Math.round((daysFromStart.value / contractDurationDays.value) * 100), 100)
+const contractLifecycleSteps = computed(() => {
+  const status = String(contract.value?.status || 'draft').toLowerCase()
+  const terminal = ['rejected', 'terminated', 'expired'].includes(status)
+  const reviewLabel = isExternalContract.value
+    ? 'Signed copy'
+    : contract.value?.submitted_by_type === 'store'
+      ? 'Supplier decision'
+      : 'Store review'
+  const finalLabel = status === 'active'
+    ? 'Active'
+    : status === 'rejected'
+      ? 'Rejected'
+      : status === 'terminated'
+        ? 'Terminated'
+        : status === 'expired'
+          ? 'Expired'
+          : 'Activation'
+
+  return [
+    {
+      label: 'Created',
+      detail: status === 'draft' ? 'Draft contract recorded' : 'Contract details recorded',
+      state: status === 'draft' ? 'current' : 'complete',
+    },
+    {
+      label: reviewLabel,
+      detail: status === 'pending' ? 'Waiting for the required review or signed copy' : status === 'draft' ? 'Next step after submission' : 'Review stage completed',
+      state: status === 'pending' ? 'current' : status === 'draft' ? 'upcoming' : 'complete',
+    },
+    {
+      label: finalLabel,
+      detail: status === 'active' ? 'Agreement is in effect' : terminal ? 'Agreement ended before activation or was closed' : 'Available after the review is complete',
+      state: status === 'active' ? 'complete' : terminal ? 'failed' : 'upcoming',
+    },
+  ]
 })
 
 const statusSeverity = (status: string): string => {
@@ -622,8 +768,12 @@ const validityIcon = computed(() => {
 const loadContract = async () => {
   loading.value = true
   try {
-    const response = await procurementService.getSupplierContract(route.params.id as string)
-    contract.value = response.data
+    const response = isSupplierRoute.value
+      ? await axiosClient.get(`/api/supplier-portal/contracts/${route.params.id}`)
+      : await procurementService.getSupplierContract(route.params.id as string)
+    const payload = response?.data?.data ?? response?.data ?? response
+    if (!payload?.id) throw new Error('Contract details were not returned by the server.')
+    contract.value = payload
     await loadMyReports()
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load contract', life: 3000 })
@@ -657,6 +807,26 @@ const openReportViewDialog = (rep: any) => {
 
 const openDocDialog = () => {
   showDocDialog.value = true
+}
+
+const openReviewDialog = () => {
+  reviewAcknowledged.value = false
+  showReviewDialog.value = true
+}
+
+const approveReviewedContract = async () => {
+  if (!reviewAcknowledged.value || !contract.value?.id || contract.value.submitted_by_type !== 'supplier') return
+  activating.value = true
+  try {
+    await procurementService.activateSupplierContract(route.params.id as string)
+    showReviewDialog.value = false
+    toast.add({ severity: 'success', summary: 'Contract approved', detail: 'The contract is now active.', life: 3000 })
+    await loadContract()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Approval failed', detail: error.response?.data?.message || 'Could not approve the contract.', life: 4000 })
+  } finally {
+    activating.value = false
+  }
 }
 
 const openDocNewTab = () => {
@@ -717,13 +887,19 @@ const editContract = () => {
 
 const activateContract = async () => {
   confirm.require({
-    message: 'Approve this contract and set it to active?',
-    header: 'Approve Contract',
+    message: contract.value?.submitted_by_type === 'store'
+      ? 'Confirm that the supplier has agreed to these terms. The contract will become active immediately.'
+      : 'Approve this contract and set it to active?',
+    header: contract.value?.submitted_by_type === 'store' ? 'Activate Supplier Contract' : 'Approve Contract',
     icon: 'pi pi-check-circle',
     accept: async () => {
       activating.value = true
       try {
-        await procurementService.activateSupplierContract(route.params.id as string)
+        if (isSupplierRoute.value) {
+          await axiosClient.post(`/api/supplier-portal/contracts/${route.params.id}/approve`)
+        } else {
+          await procurementService.activateSupplierContract(route.params.id as string)
+        }
         toast.add({ severity: 'success', summary: 'Success', detail: 'Contract approved and activated.', life: 3000 })
         loadContract()
       } catch (error: any) {
@@ -738,6 +914,50 @@ const activateContract = async () => {
       }
     },
   })
+}
+
+const openSignedContractDialog = () => {
+  signedContractFile.value = null
+  signedContractError.value = ''
+  showSignedContractDialog.value = true
+}
+
+const onSignedContractSelected = (event: { files?: File[] }) => {
+  const file = event.files?.[0] || null
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.pdf') || (file.type && file.type !== 'application/pdf')) {
+    signedContractFile.value = null
+    signedContractError.value = 'Choose a PDF file.'
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    signedContractFile.value = null
+    signedContractError.value = 'The signed PDF must be 10 MB or smaller.'
+    return
+  }
+  signedContractFile.value = file
+  signedContractError.value = ''
+}
+
+const submitSignedContractActivation = async () => {
+  if (!signedContractFile.value || !contract.value?.id) {
+    signedContractError.value = 'Select the signed contract PDF before continuing.'
+    return
+  }
+  activating.value = true
+  try {
+    const formData = new FormData()
+    formData.append('signed_copy', signedContractFile.value)
+    formData.append('supplier_confirmed', '1')
+    await procurementService.activateSupplierContract(contract.value.id, formData)
+    showSignedContractDialog.value = false
+    toast.add({ severity: 'success', summary: 'Contract activated', detail: 'The signed PDF was saved and the contract is active.', life: 3000 })
+    await loadContract()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Activation failed', detail: error?.response?.data?.message || 'Could not upload the signed contract and activate this contract.', life: 4000 })
+  } finally {
+    activating.value = false
+  }
 }
 
 const openReportDialog = () => {
@@ -773,6 +993,12 @@ const rejectContractReasonOptions = [
   { label: 'Supplier compliance issue', value: 'Supplier compliance issue' },
   { label: 'Other', value: 'other' },
 ]
+const supplierRejectReasonOptions = [
+  { label: 'Contract terms need changes', value: 'Contract terms need changes' },
+  { label: 'Pricing or discount is not acceptable', value: 'Pricing or discount is not acceptable' },
+  { label: 'Dates or duration need changes', value: 'Dates or duration need changes' },
+  { label: 'Other', value: 'other' },
+]
 
 const openRejectContractDialog = () => {
   rejectContractReason.value = ''
@@ -796,7 +1022,10 @@ const submitRejectContract = async () => {
     accept: async () => {
       rejectingContract.value = true
       try {
-        await axiosClient.post(`/api/procurement/supplier-contracts/${contract.value.id}/reject`, {
+        const rejectPath = isSupplierRoute.value
+          ? `/api/supplier-portal/contracts/${contract.value.id}/reject`
+          : `/api/procurement/supplier-contracts/${contract.value.id}/reject`
+        await axiosClient.post(rejectPath, {
           reason: finalReason,
           details: rejectContractDetails.value?.trim() || null,
         })

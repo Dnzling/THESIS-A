@@ -6,6 +6,8 @@ namespace App\Models\Procurement\Receiving;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
@@ -59,6 +61,16 @@ class GoodsReceipt extends Model
         return $this->hasMany(GoodsReceiptItem::class);
     }
 
+    public function supplierEvaluation(): HasOne
+    {
+        return $this->hasOne(SupplierPerformanceEvaluation::class);
+    }
+
+    public function resolution(): HasOne
+    {
+        return $this->hasOne(GoodsReceiptResolution::class, 'original_goods_receipt_id')->latestOfMany();
+    }
+
     // Scopes
     public function scopeByDateRange($query, $start, $end)
     {
@@ -73,7 +85,8 @@ class GoodsReceipt extends Model
     // Helper Methods
     public function hasDiscrepancies(): bool
     {
-        return in_array($this->receipt_status, ['partial', 'damaged', 'rejected']);
+        return in_array($this->receipt_status, ['partial', 'damaged', 'rejected'], true)
+            || $this->items->contains(fn (GoodsReceiptItem $item) => $item->hasDiscrepancy());
     }
 
     public function getTotalItemsReceivedAttribute(): int

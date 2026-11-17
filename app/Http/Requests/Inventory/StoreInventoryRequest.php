@@ -25,7 +25,7 @@ class StoreInventoryRequest extends FormRequest
         $isCreate = $this->isMethod('post');
 
         return [
-            'product_id' => [$isCreate ? 'required' : 'sometimes', 'integer', 'exists:products,id'],
+            'product_id' => [$isCreate ? 'required' : 'sometimes', 'integer', Rule::exists('products', 'id')->whereNull('deleted_at')],
             'variation_id' => 'nullable|integer|exists:product_variations,id',
             // Quantity changes must go through stock transactions (adjustments/counts/transfers).
             'quantity_on_hand' => 'sometimes|integer|min:0',
@@ -45,8 +45,6 @@ class StoreInventoryRequest extends FormRequest
             'reorder_quantity' => 'nullable|integer|min:0',
             'maximum_stock' => 'nullable|integer|min:0',
             'safety_stock' => 'nullable|integer|min:0',
-            'unit_cost' => 'nullable|numeric|min:0',
-            'average_cost' => 'nullable|numeric|min:0',
         ];
     }
 

@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Receiving\GoodsReceipt;
-use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +17,43 @@ use Illuminate\Support\Facades\Log;
 
 class FinanceInvoiceController extends Controller
 {
+    public function store(Request $request, \App\Http\Controllers\Api\Procurement\InvoiceController $procurementInvoices): JsonResponse
+    {
+        $storeId = (int) $request->user()->store_id;
+        abort_unless($storeId > 0, 403);
+        abort_unless(PurchaseOrder::query()->where('store_id', $storeId)->whereKey($request->input('purchase_order_id'))->exists(), 404);
+
+        return $procurementInvoices->store($request);
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $invoice = Invoice::query()
+            ->where('store_id', (int) $request->user()->store_id)
+            ->findOrFail($id);
+        abort_unless($invoice->status === 'draft', 422, 'Cannot update invoice that is not in draft status.');
+
+        $validated = $request->validate([
+            'invoice_number' => ['nullable', 'string', 'max:100', 'unique:invoices,invoice_number,' . $id],
+            'due_date' => ['nullable', 'date'],
+            'invoice_amount' => ['nullable', 'numeric', 'min:0'],
+            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+            'shipping_cost' => ['nullable', 'numeric', 'min:0'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'remarks' => ['nullable', 'string'],
+        ]);
+
+        $invoice->update($validated);
+        if (array_intersect(array_keys($validated), ['invoice_amount', 'tax_amount', 'shipping_cost', 'discount_amount'])) {
+            $invoice->update(['net_amount' => (float) ($validated['invoice_amount'] ?? $invoice->invoice_amount)
+                + (float) ($validated['tax_amount'] ?? $invoice->tax_amount ?? 0)
+                + (float) ($validated['shipping_cost'] ?? $invoice->shipping_cost ?? 0)
+                - (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0)]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Invoice updated successfully', 'data' => $invoice->fresh()]);
+    }
+
     /**
      * List invoices for finance
      * GET /api/finance/invoices
@@ -85,7 +122,7 @@ class FinanceInvoiceController extends Controller
             $storeId = auth()->user()->store_id;
 
             $invoice = Invoice::with([
-                'supplier:id,supplier_name,contact_person,email,phone,bank_name,bank_account_name,bank_account_number,bank_account_type,bank_branch',
+                'supplier:id,supplier_name,contact_person,email,phone',
                 'purchaseOrder.items.product:id,product_name,sku',
                 'goodsReceipt.items',
                 'items.product:id,product_name,sku',
@@ -158,6 +195,7 @@ class FinanceInvoiceController extends Controller
             ], 404);
         }
     }
+
 
     /**
      * Perform 3-way matching
@@ -277,21 +315,12 @@ class FinanceInvoiceController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
-            }
-
             $validated = $request->validate([
                 'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
             ]);
-            $supplier = $invoice->supplier_id ? Supplier::query()->find((int) $invoice->supplier_id) : null;
-
             try {
-                DB::transaction(function () use ($invoice, $validated, $supplier) {
+                DB::transaction(function () use ($invoice, $validated) {
                     $cashflow = new CashflowService();
                     $cashflow->debit(
                         (int) $invoice->store_id,
@@ -310,11 +339,6 @@ class FinanceInvoiceController extends Controller
                     $invoice->update([
                         'status' => 'paid',
                         'payment_date' => now()->toDateString(),
-                        'paid_to_bank_name' => $supplier?->bank_name,
-                        'paid_to_account_name' => $supplier?->bank_account_name,
-                        'paid_to_account_number_masked' => $this->maskAccountNumber($supplier?->bank_account_number),
-                        'paid_to_account_type' => $supplier?->bank_account_type,
-                        'paid_to_bank_branch' => $supplier?->bank_branch,
                     ]);
 
                     $financeService = new FinanceExpenseService();
@@ -424,32 +448,4 @@ class FinanceInvoiceController extends Controller
         }
     }
 
-    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
-    {
-        if ($supplierId <= 0) {
-            return false;
-        }
-
-        $supplier = Supplier::query()->find($supplierId);
-        if (!$supplier) {
-            return false;
-        }
-
-        return filled($supplier->bank_name)
-            && filled($supplier->bank_account_name)
-            && filled($supplier->bank_account_number);
-    }
-
-    private function maskAccountNumber(?string $accountNumber): ?string
-    {
-        $raw = trim((string) $accountNumber);
-        if ($raw === '') {
-            return null;
-        }
-        $len = strlen($raw);
-        if ($len <= 4) {
-            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
-        }
-        return str_repeat('*', $len - 4) . substr($raw, -4);
-    }
 }

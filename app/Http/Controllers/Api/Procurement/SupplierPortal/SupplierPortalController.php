@@ -47,11 +47,40 @@ class SupplierPortalController extends Controller
                 'stores.province',
                 'stores.address',
                 'stores.status as store_status',
+                'store_logo_path' => DB::table('branches')
+                    ->select('logo_path')
+                    ->whereColumn('branches.store_id', 'stores.id')
+                    ->whereNotNull('logo_path')
+                    ->orderByDesc('is_main_branch')
+                    ->orderBy('id')
+                    ->limit(1),
             ])
             ->join('stores', 'stores.id', '=', 'suppliers.store_id')
             ->whereRaw('LOWER(suppliers.email) = ?', [$supplierEmail])
             ->orderByDesc('suppliers.created_at')
             ->get();
+
+        $contractsByPair = SupplierContract::query()
+            ->whereIn('supplier_id', $items->pluck('supplier_id')->all())
+            ->whereIn('store_id', $items->pluck('store_id')->all())
+            ->orderByRaw("FIELD(status,'active','pending','draft','rejected','terminated','completed') ASC")
+            ->orderByDesc('created_at')
+            ->get(['id', 'store_id', 'supplier_id', 'status', 'start_date', 'end_date'])
+            ->groupBy(fn (SupplierContract $contract) => $contract->store_id . ':' . $contract->supplier_id)
+            ->map(fn ($contracts) => $contracts->first());
+
+        $items = $items->map(function ($item) use ($contractsByPair) {
+            $contract = $contractsByPair->get($item->store_id . ':' . $item->supplier_id);
+            $item->store_logo_url = $item->store_logo_path
+                ? Storage::disk('public')->url($item->store_logo_path)
+                : null;
+            $item->contract_id = $contract?->id;
+            $item->contract_status = $contract?->status;
+            $item->contract_start_date = $contract?->start_date?->toDateString();
+            $item->contract_end_date = $contract?->end_date?->toDateString();
+
+            return $item;
+        });
 
         return response()->json([
             'success' => true,
@@ -302,6 +331,51 @@ class SupplierPortalController extends Controller
         ]);
     }
 
+    public function updateShippingRates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'delivery_fee_per_km' => ['required', 'numeric', 'min:0', 'max:1000000'],
+            'delivery_fee_per_kg' => ['required', 'numeric', 'min:0', 'max:1000000'],
+        ]);
+
+        $portal = SupplierPortal::where('user_id', (int) $request->user()->id)->firstOrFail();
+        $portal->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier delivery rates updated.',
+            'data' => $portal->fresh(),
+        ]);
+    }
+
+    /** Update the supplier account's company logo for all linked stores. */
+    public function updateCompanyLogo(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ]);
+
+        $portal = SupplierPortal::with('supplier')->where('user_id', (int) $request->user()->id)->firstOrFail();
+        $supplier = $portal->supplier;
+        if (!$supplier) {
+            return response()->json(['success' => false, 'message' => 'No supplier account is linked to this portal.'], 422);
+        }
+
+        $newPath = $request->file('logo')->store("supplier-portals/{$portal->id}/company-logo", 'public');
+        $oldPath = $supplier->logo_path;
+        $supplier->update(['logo_path' => $newPath]);
+
+        if ($oldPath && $oldPath !== $newPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Company logo updated.',
+            'data' => ['supplier' => $supplier->fresh()],
+        ]);
+    }
+
     /**
      * Update supplier payment account (bank details)
      * PUT /api/supplier-portal/payment-account
@@ -397,6 +471,12 @@ class SupplierPortalController extends Controller
                     'message' => 'You already have an approved supplier portal.',
                 ], 409);
             }
+            if ($existingPortal && $existingPortal->status === 'pending' && $existingPortal->last_submission_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your application is already under review and cannot be changed.',
+                ], 409);
+            }
 
             $portal = $existingPortal ?: new SupplierPortal(['user_id' => $user->id]);
 
@@ -470,8 +550,9 @@ class SupplierPortalController extends Controller
             // Persist submission metadata on portal but keep contact details on `suppliers` table
             $portal->status = 'pending';
             $portal->rejection_reason = null;
-            $portal->last_submission_at = now();
-            $portal->resubmission_count = ($portal->resubmission_count ?? 0) + 1;
+            // Saving the profile is only the first onboarding step. The
+            // application is submitted after all required documents exist.
+            $portal->last_submission_at = null;
             $portal->save();
 
             $portal->load(['supplier', 'verificationDocuments']);
@@ -530,6 +611,13 @@ class SupplierPortalController extends Controller
             $user = auth()->user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
+            if ($portal->status === 'pending' && $portal->last_submission_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your application is already under review and cannot be changed.',
+                ], 409);
+            }
+
             $file = $request->file('file');
             $path = 'supplier-documents/' . $portal->id . '/' . $request->document_type;
             
@@ -548,13 +636,15 @@ class SupplierPortalController extends Controller
                     'file_mime_type' => $file->getMimeType(),
                     'file_size' => $file->getSize(),
                     'status' => 'pending',
+                    'rejection_reason' => null,
+                    'reviewed_by' => null,
+                    'reviewed_at' => null,
                 ]
             );
 
-            // Update portal submission time
+            // A changed document must be explicitly submitted again.
             $portal->update([
-                'last_submission_at' => now(),
-                'resubmission_count' => $portal->resubmission_count + 1,
+                'last_submission_at' => null,
             ]);
 
             return response()->json([
@@ -567,6 +657,67 @@ class SupplierPortalController extends Controller
                 'message' => 'Error uploading document: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Submit a complete supplier application for administrator review.
+     * POST /api/supplier-portal/submit-verification
+     */
+    public function submitVerification(Request $request): JsonResponse
+    {
+        $requiredDocuments = ['business_license', 'tax_id', 'company_registration'];
+        $user = $request->user();
+        $portal = SupplierPortal::query()
+            ->with(['supplier', 'verificationDocuments'])
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$portal || !$portal->supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please save your company information first.',
+            ], 422);
+        }
+
+        if ($portal->status === 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your supplier account is already verified.',
+            ], 409);
+        }
+        if ($portal->status === 'pending' && $portal->last_submission_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your application has already been submitted for review.',
+            ], 409);
+        }
+
+        $uploadedTypes = $portal->verificationDocuments
+            ->pluck('document_type')
+            ->unique()
+            ->all();
+        $missingDocuments = array_values(array_diff($requiredDocuments, $uploadedTypes));
+
+        if ($missingDocuments !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please upload all required verification documents before submitting.',
+                'missing_documents' => $missingDocuments,
+            ], 422);
+        }
+
+        $portal->update([
+            'status' => 'pending',
+            'rejection_reason' => null,
+            'last_submission_at' => now(),
+            'resubmission_count' => ((int) $portal->resubmission_count) + 1,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Your verification documents were submitted for review.',
+            'data' => $portal->fresh(['supplier', 'verificationDocuments']),
+        ]);
     }
 
     /**
@@ -631,12 +782,61 @@ class SupplierPortalController extends Controller
             $user = auth()->user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
+            $periodStart = now()->startOfMonth()->subMonths(5);
+            $months = collect(range(0, 5))->mapWithKeys(function (int $offset) use ($periodStart): array {
+                $month = $periodStart->copy()->addMonths($offset);
+                return [$month->format('Y-m') => [
+                    'label' => $month->format('M'),
+                    'rfq_responses' => 0,
+                    'purchase_orders' => 0,
+                ]];
+            })->all();
+
+            $portal->rfqFeedbacks()
+                ->where('created_at', '>=', $periodStart)
+                ->get(['created_at', 'submitted_at'])
+                ->each(function ($feedback) use (&$months): void {
+                    $date = $feedback->submitted_at ?: $feedback->created_at;
+                    if (!$date) return;
+                    $key = \Illuminate\Support\Carbon::parse($date)->format('Y-m');
+                    if (isset($months[$key])) $months[$key]['rfq_responses']++;
+                });
+
+            $portal->poFeedbacks()
+                ->where('created_at', '>=', $periodStart)
+                ->get(['created_at', 'submitted_at'])
+                ->each(function ($feedback) use (&$months): void {
+                    $date = $feedback->submitted_at ?: $feedback->created_at;
+                    if (!$date) return;
+                    $key = \Illuminate\Support\Carbon::parse($date)->format('Y-m');
+                    if (isset($months[$key])) $months[$key]['purchase_orders']++;
+                });
+
+            $linkedSupplierIds = $portal->linkedSupplierIds()->all();
+            $ratingQuery = DB::table('supplier_ratings')
+                ->whereIn('supplier_id', $linkedSupplierIds);
+            $recentReviews = (clone $ratingQuery)
+                ->whereNotNull('comment')
+                ->where('comment', '<>', '')
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get(['id', 'rating', 'category', 'comment', 'created_at']);
+            $ratingBreakdown = (clone $ratingQuery)
+                ->select('rating', DB::raw('COUNT(*) as total'))
+                ->groupBy('rating')
+                ->pluck('total', 'rating');
+
             $stats = [
                 'portal_status' => $portal->status,
                 'is_verified' => $portal->isVerified(),
                 'total_rfqs' => $portal->rfqFeedbacks()->count(),
                 'total_pos' => $portal->poFeedbacks()->count(),
                 'pending_pos' => $portal->poFeedbacks()->where('receipt_status', 'pending')->count(),
+                'activity_months' => array_values($months),
+                'average_rating' => round((float) ((clone $ratingQuery)->avg('rating') ?? 0), 2),
+                'rating_count' => (clone $ratingQuery)->count(),
+                'rating_breakdown' => $ratingBreakdown,
+                'recent_reviews' => $recentReviews,
             ];
 
             return response()->json([

@@ -94,6 +94,18 @@ class JobOfferController extends Controller
             return response()->json(['message' => 'Offer has expired'], 422);
         }
 
+        $application = $offer->application;
+        $prerequisites = $application->onboardingPrerequisite;
+        foreach ($application->jobPosting->hiring_documents ?? [] as $label) {
+            $path = $prerequisites?->documents[$label]['path'] ?? null;
+            if (!$path || !\Illuminate\Support\Facades\Storage::disk('private')->exists($path)) {
+                return response()->json(['message' => "Upload the required {$label} before accepting the offer."], 422);
+            }
+        }
+        if ($application->jobPosting->requires_signed_contract && (!$prerequisites?->contract_signed_at || !$prerequisites->contract_path || !\Illuminate\Support\Facades\Storage::disk('private')->exists($prerequisites->contract_path))) {
+            return response()->json(['message' => 'Upload the signed employment contract before accepting the offer.'], 422);
+        }
+
         DB::beginTransaction();
 
         try {

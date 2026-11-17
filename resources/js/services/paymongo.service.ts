@@ -1,6 +1,13 @@
 import axiosClient from '../axios'
 
 class PaymongoService {
+  async getAvailableCheckoutMethods(storeId: number) {
+    const response = await axiosClient.get('/api/payments/paymongo/available-checkout-methods', {
+      params: { store_id: storeId },
+    })
+    return response.data
+  }
+
   async createIntent(payload: {
     amount: number
     currency?: string

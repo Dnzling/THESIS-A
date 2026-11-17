@@ -5,15 +5,16 @@ namespace App\Http\Controllers\Api\Payments;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceCartItem;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Finance\FinanceCashflowTransaction;
 use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
 use App\Models\Procurement\Invoice\Invoice;
-use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Sales\SalesPayment;
+use App\Models\Sales\SalesOrder;
 use App\Models\Store\Store;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Hr\Employee;
@@ -25,7 +26,9 @@ use App\Services\Sales\SalesOrderSettlementService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -110,11 +113,6 @@ class PaymongoController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
-            }
         }
 
         $store = $resolvedStoreId > 0 ? Store::query()->find($resolvedStoreId) : null;
@@ -192,6 +190,10 @@ class PaymongoController extends Controller
      */
     public function createCheckoutSession(Request $request): JsonResponse
     {
+        if (!$this->service->isConfigured()) {
+            return response()->json(['message' => 'Online Payment is not configured.'], 503);
+        }
+
         $data = $request->validate([
             'amount' => 'required|integer|min:1',
             'currency' => 'string|min:3|max:3',
@@ -204,6 +206,23 @@ class PaymongoController extends Controller
             'success_url' => 'required|url|max:500',
             'cancel_url' => 'required|url|max:500',
         ]);
+
+        if (($data['payable_type'] ?? '') === 'ecommerce_order'
+            && !empty($data['payable_id'])
+            && !$request->attributes->get('ecommerce_payment_lock_acquired')) {
+            $lock = Cache::lock('ecommerce-payment-order:'.(int) $data['payable_id'], 60);
+
+            try {
+                return $lock->block(10, function () use ($request) {
+                    $request->attributes->set('ecommerce_payment_lock_acquired', true);
+                    return $this->createCheckoutSession($request);
+                });
+            } catch (LockTimeoutException) {
+                return response()->json([
+                    'message' => 'A payment session is already being prepared for this order. Please try again shortly.',
+                ], 409);
+            }
+        }
 
         $resolvedStoreId = (int) ($data['store_id'] ?? 0);
         if ($resolvedStoreId <= 0) {
@@ -227,6 +246,38 @@ class PaymongoController extends Controller
             ], 422);
         }
 
+        if (($data['payable_type'] ?? '') === 'ecommerce_order') {
+            $order = EcommerceOrder::query()
+                ->whereKey((int) $data['payable_id'])
+                ->where('user_id', $request->user()?->id)
+                ->first();
+            if (!$order || (int) $order->store_id !== $resolvedStoreId || $order->payment_status === 'paid'
+                || in_array($order->status, ['cancelled', 'canceled'], true)
+                || empty(((array) ($order->pending_snapshot ?? []))['items'])) {
+                return response()->json(['message' => 'This order is not available for online payment.'], 422);
+            }
+            $data['amount'] = max(1, (int) round((float) $order->total_amount * 100));
+        }
+
+        $salesOrder = null;
+        if (($data['payable_type'] ?? '') === 'sales_order') {
+            $salesOrder = SalesOrder::query()
+                ->whereKey((int) $data['payable_id'])
+                ->where('store_id', $resolvedStoreId)
+                ->first();
+            $salesPayment = $salesOrder ? SalesPayment::query()
+                ->where('sales_order_id', $salesOrder->id)
+                ->where('payment_provider', 'paymongo')
+                ->whereIn('status', ['pending', 'processing', 'awaiting_payment_method', 'failed', 'cancelled'])
+                ->latest('id')
+                ->first() : null;
+
+            if (!$salesOrder || !$salesPayment || in_array(strtolower((string) $salesOrder->payment_status), ['paid', 'cancelled'], true)) {
+                return response()->json(['message' => 'This POS order is not available for online payment.'], 422);
+            }
+            $data['amount'] = max(1, (int) round((float) $salesOrder->total_amount * 100));
+        }
+
         if (($data['payable_type'] ?? '') === 'invoice') {
             $invoice = Invoice::query()
                 ->where('store_id', $resolvedStoreId)
@@ -244,36 +295,105 @@ class PaymongoController extends Controller
                 ], 422);
             }
 
-            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
-                return response()->json([
-                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
-                ], 422);
+            if (strtolower((string) $invoice->payment_status) === 'paid') {
+                return response()->json(['message' => 'This invoice is already paid.'], 422);
             }
+            $data['amount'] = max(1, (int) round((float) ($invoice->net_amount ?: $invoice->invoice_amount) * 100));
+        }
+
+        $replacement = null;
+        if (($data['payable_type'] ?? '') === 'replacement_upgrade') {
+            $replacement = EcommerceOrderReturn::query()
+                ->where('store_id', $resolvedStoreId)
+                ->where('return_type', 'replacement')
+                ->find((int) $data['payable_id']);
+            $customerOwnsExchange = $replacement
+                && $replacement->source_type === 'ecommerce'
+                && EcommerceOrder::query()->whereKey($replacement->order_id)->where('user_id', $request->user()?->id)->exists();
+            if (!$replacement || $replacement->replacement_status !== 'awaiting_payment'
+                || !$replacement->replacement_inventory_id || (float) $replacement->replacement_price_difference <= 0
+                || $replacement->replacement_payment_status === 'paid' || (!$customerOwnsExchange && (int) $replacement->store_id !== $resolvedStoreId)) {
+                return response()->json(['message' => 'This replacement is not available for online payment.'], 422);
+            }
+            $data['amount'] = max(1, (int) round((float) $replacement->replacement_price_difference * 100));
         }
 
         $store = Store::query()->find($resolvedStoreId);
-        $storeAllowedMethods = $this->resolveStorePaymongoMethods($store);
+        $isEcommerceOrder = ($data['payable_type'] ?? '') === 'ecommerce_order';
+        $isSalesOrder = ($data['payable_type'] ?? '') === 'sales_order';
+        $isReplacementUpgrade = ($data['payable_type'] ?? '') === 'replacement_upgrade';
+        $isHostedPayable = in_array($data['payable_type'] ?? '', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order', 'replacement_upgrade'], true);
+        $customerReplacementPayment = $isReplacementUpgrade && $replacement?->source_type === 'ecommerce'
+            && EcommerceOrder::query()->whereKey($replacement->order_id)->where('user_id', $request->user()?->id)->exists();
+        if ($isHostedPayable && !$isEcommerceOrder && !$customerReplacementPayment && (int) ($request->user()?->store_id ?? 0) !== $resolvedStoreId
+            && (int) ($store?->owner_id ?? 0) !== (int) ($request->user()?->id ?? 0)) {
+            return response()->json(['message' => 'This payment does not belong to your store.'], 403);
+        }
+        if (($data['payable_type'] ?? '') === 'subscription_upgrade') {
+            if ((int) $data['payable_id'] !== $resolvedStoreId) {
+                return response()->json(['message' => 'Invalid subscription store.'], 422);
+            }
+            $planKey = strtolower(trim((string) ($data['metadata']['subscription_tier'] ?? '')));
+            $plan = \App\Models\Admin\SubscriptionPlan::query()->where('plan_key', $planKey)->where('is_active', true)->first();
+            $cycle = strtolower((string) ($data['metadata']['billing_cycle'] ?? 'monthly'));
+            if (!$plan || !in_array($cycle, ['monthly', 'yearly'], true) || $planKey === 'free') {
+                return response()->json(['message' => 'Select an active paid subscription plan.'], 422);
+            }
+            $price = (float) ($cycle === 'yearly' ? $plan->yearly_price : $plan->monthly_price);
+            if ($price <= 0) {
+                return response()->json(['message' => 'This plan has no valid payment price.'], 422);
+            }
+            $data['amount'] = (int) round($price * 100);
+            $data['metadata']['subscription_tier'] = $plan->plan_key;
+            $data['metadata']['months'] = $cycle === 'yearly' ? 12 : 1;
+            $data['metadata']['amount_php'] = $price;
+        }
+        $accountMethods = $isHostedPayable && !str_starts_with((string) config('paymongo.secret'), 'sk_test_')
+            ? $this->service->activePaymentMethods()
+            : [];
+        $storeAllowedMethods = $isHostedPayable
+            ? $this->availableHostedMethods($store, $accountMethods)
+            : $this->resolveStorePaymongoMethods($store);
         $requestedAllowed = $data['payment_method_allowed'] ?? null;
         if (is_array($requestedAllowed) && count($requestedAllowed) > 0) {
             $normalized = array_values(array_unique(array_map(fn($m) => strtolower(trim((string) $m)), $requestedAllowed)));
+            if ($isSalesOrder && !in_array(strtolower((string) $salesOrder?->payment_method), $normalized, true)) {
+                return response()->json(['message' => 'The selected payment method does not match this POS order.'], 422);
+            }
+            if ($isReplacementUpgrade && !in_array(strtolower((string) $replacement?->replacement_payment_method), $normalized, true)) {
+                return response()->json(['message' => 'The selected payment method does not match this replacement request.'], 422);
+            }
             $allowed = array_values(array_intersect($normalized, $storeAllowedMethods));
+            if (($isEcommerceOrder || $isSalesOrder || $isReplacementUpgrade) && count($allowed) !== count($normalized)) {
+                return response()->json(['message' => 'This payment method is not available for this store. Please choose another method.'], 422);
+            }
             $data['payment_method_allowed'] = count($allowed) ? $allowed : $storeAllowedMethods;
         } else {
             $data['payment_method_allowed'] = $storeAllowedMethods;
         }
 
-        $supportedForCheckout = ['card', 'gcash', 'grab_pay', 'paymaya'];
+        $supportedForCheckout = $isHostedPayable
+            ? $storeAllowedMethods
+            : ['card', 'gcash', 'grab_pay', 'paymaya'];
         $methodTypes = array_values(array_intersect($data['payment_method_allowed'], $supportedForCheckout));
+        if (($isEcommerceOrder || $isSalesOrder || $isReplacementUpgrade) && is_array($requestedAllowed) && count($methodTypes) !== count(array_unique($requestedAllowed))) {
+            return response()->json(['message' => 'This payment method is not available for checkout. Please choose another method.'], 422);
+        }
         if (count($methodTypes) === 0) {
+            if ($isHostedPayable) {
+                return response()->json(['message' => 'No online payment methods are enabled for this store.'], 422);
+            }
             $methodTypes = ['gcash'];
         }
 
         $normalizedMetadata = $this->normalizeMetadata($data['metadata'] ?? null);
         $metadata = array_merge($normalizedMetadata, [
-            'store_id' => $resolvedStoreId,
-            'payable_type' => $data['payable_type'],
-            'payable_id' => $data['payable_id'] ?: null,
+            'store_id' => (string) $resolvedStoreId,
+            'payable_type' => (string) $data['payable_type'],
         ]);
+        if (!empty($data['payable_id'])) {
+            $metadata['payable_id'] = (string) $data['payable_id'];
+        }
 
         $payload = [
             'data' => [
@@ -291,6 +411,84 @@ class PaymongoController extends Controller
                 ],
             ],
         ];
+
+        if ($isEcommerceOrder && isset($order)) {
+            $payload['data']['attributes']['billing'] = [
+                'name' => $order->billing_name ?: $order->shipping_name,
+                'email' => $order->shipping_email,
+                'phone' => $order->shipping_phone,
+                'address' => [
+                    'line1' => $order->billing_address ?: $order->shipping_address,
+                    'country' => 'PH',
+                ],
+            ];
+        }
+
+        if (($isEcommerceOrder && isset($order)) || ($isReplacementUpgrade && $replacement)) {
+            $hostedPayableType = $isReplacementUpgrade ? 'replacement_upgrade' : 'ecommerce_order';
+            $hostedPayableId = $isReplacementUpgrade ? (int) $replacement->id : (int) $order->id;
+            $latest = PaymongoIntent::query()
+                ->where('payable_type', $hostedPayableType)
+                ->where('payable_id', $hostedPayableId)
+                ->latest('id')
+                ->first();
+
+            if ($latest && str_starts_with((string) $latest->payment_intent_id, 'cs_')) {
+                $session = $this->service->retrieveCheckoutSession((string) $latest->payment_intent_id);
+                if (data_get($session, 'errors.0.detail') || !data_get($session, 'data.id')) {
+                    return response()->json(['message' => 'Unable to verify the previous payment attempt. Please try again shortly.'], 502);
+                }
+
+                $payments = (array) data_get($session, 'data.attributes.payments', []);
+                $paid = collect($payments)->contains(fn ($payment) => strtolower((string) data_get($payment, 'attributes.status', '')) === 'paid');
+                if ($paid) {
+                    $latest->update(['status' => 'succeeded']);
+                    $this->syncHostedCheckoutPayment($latest->fresh());
+                    return response()->json(['message' => 'This payment has already been completed.'], 422);
+                }
+
+                $sessionStatus = strtolower((string) data_get($session, 'data.attributes.status', ''));
+                if (!in_array($sessionStatus, ['expired', 'cancelled', 'canceled', 'failed'], true)) {
+                    if (!in_array($methodTypes[0] ?? '', explode(',', (string) $latest->payment_method_allowed), true)) {
+                        $expired = $this->service->expireCheckoutSession((string) $latest->payment_intent_id);
+                        $sessionStatus = strtolower((string) data_get($expired, 'data.attributes.status', ''));
+                        if ($sessionStatus !== 'expired') {
+                            $verified = $this->service->retrieveCheckoutSession((string) $latest->payment_intent_id);
+                            $verifiedPayments = (array) data_get($verified, 'data.attributes.payments', []);
+                            $verifiedPaid = collect($verifiedPayments)->contains(fn ($payment) => strtolower((string) data_get($payment, 'attributes.status', '')) === 'paid');
+                            if ($verifiedPaid) {
+                                $latest->update(['status' => 'succeeded']);
+                                $this->syncHostedCheckoutPayment($latest->fresh());
+                                return response()->json(['message' => 'This payment has already been completed.'], 422);
+                            }
+                            $sessionStatus = strtolower((string) data_get($verified, 'data.attributes.status', ''));
+                            if ($sessionStatus !== 'expired') {
+                                return response()->json(['message' => 'Your previous payment is still processing. Please wait before choosing another method.'], 409);
+                            }
+                        }
+                    } else {
+                        $existingUrlRaw = data_get($session, 'data.attributes.checkout_url.url')
+                            ?? data_get($session, 'data.attributes.checkout_url');
+                        $existingUrl = is_string($existingUrlRaw) ? trim($existingUrlRaw) : '';
+                        if (!str_starts_with($existingUrl, 'https://checkout.paymongo.com/')) {
+                            $existingUrl = 'https://checkout.paymongo.com/'.$latest->payment_intent_id.'#'.base64_encode((string) config('paymongo.public'));
+                        }
+
+                        return response()->json(['message' => 'Continue the existing payment attempt.', 'data' => [
+                            'checkout_url' => $existingUrl,
+                            'session_id' => $latest->payment_intent_id,
+                        ]]);
+                    }
+                }
+
+                $latest->update(['status' => $sessionStatus]);
+                $this->syncEcommerceOrderFromIntent($latest->fresh(), $sessionStatus);
+                $this->syncReplacementUpgradeFromIntent($latest->fresh(), $sessionStatus);
+                if ($isReplacementUpgrade) {
+                    return response()->json(['message' => 'The previous payment attempt ended. Select the replacement item again to retry.'], 422);
+                }
+            }
+        }
 
         $sessionPayload = $this->service->createCheckoutSession($payload);
         $checkoutUrlRaw = data_get($sessionPayload, 'data.attributes.checkout_url')
@@ -314,6 +512,53 @@ class PaymongoController extends Controller
                 'errors' => data_get($sessionPayload, 'errors', []),
                 'raw' => $sessionPayload,
             ], 422);
+        }
+
+        if ($isHostedPayable && !$sessionId) {
+            return response()->json(['message' => 'PayMongo did not return a checkout session ID.'], 502);
+        }
+
+        if ($isHostedPayable) {
+            $loggedIntent = $this->service->logIntent([
+                'store_id' => $resolvedStoreId,
+                'payment_intent_id' => $sessionId,
+                'amount' => $data['amount'],
+                'currency' => $data['currency'] ?? 'PHP',
+                'status' => 'pending',
+                'description' => $data['description'] ?? 'Hosted checkout',
+                'payment_method_allowed' => implode(',', $methodTypes),
+                'metadata' => $metadata,
+                'payable_type' => $data['payable_type'],
+                'payable_id' => (int) $data['payable_id'],
+            ]);
+            if ($isSalesOrder) {
+                $salesPayment = SalesPayment::query()
+                    ->where('sales_order_id', (int) $data['payable_id'])
+                    ->where('payment_provider', 'paymongo')
+                    ->whereIn('status', ['pending', 'processing', 'awaiting_payment_method', 'failed', 'cancelled'])
+                    ->latest('id')
+                    ->first();
+                if ($salesPayment) {
+                    $salesPayment->update([
+                        'provider_reference' => $sessionId,
+                        'checkout_url' => $checkoutUrl,
+                        'status' => 'pending',
+                        'metadata' => array_merge((array) $salesPayment->metadata, [
+                            'source' => 'sales_pos',
+                            'payment_session_id' => $loggedIntent->payment_intent_id,
+                        ]),
+                    ]);
+                }
+            }
+            if ($isEcommerceOrder && isset($order) && $order->payment_status === 'failed') {
+                $order->update(['payment_status' => 'unpaid']);
+            }
+            if ($isReplacementUpgrade && $replacement) {
+                $replacement->update([
+                    'replacement_payment_status' => 'processing',
+                    'replacement_payment_reference' => $sessionId,
+                ]);
+            }
         }
 
         // Debugging guard: immediately retrieve the session to ensure it exists and inspect expiry/status.
@@ -392,6 +637,7 @@ class PaymongoController extends Controller
             $freshIntent = $intent->fresh();
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncReplacementUpgradeFromIntent($freshIntent, $status);
             $this->syncInvoiceFromIntent($freshIntent, $status);
             $this->syncCashflowTopUpFromIntent($freshIntent, $status);
             $this->syncSubscriptionFromIntent($freshIntent, $status);
@@ -407,6 +653,32 @@ class PaymongoController extends Controller
             'payable_id' => 'required|integer|min:1',
             'sync' => 'nullable|boolean',
         ]);
+
+        if ($validated['payable_type'] === 'ecommerce_order') {
+            $ownsOrder = EcommerceOrder::query()
+                ->whereKey((int) $validated['payable_id'])
+                ->where('user_id', $request->user()?->id)
+                ->exists();
+            if (!$ownsOrder) {
+                return response()->json(['message' => 'Order not found.'], 404);
+            }
+        }
+
+        if ($validated['payable_type'] === 'replacement_upgrade') {
+            $ownsReplacement = EcommerceOrderReturn::query()
+                ->whereKey((int) $validated['payable_id'])
+                ->where(function ($query) use ($request): void {
+                    $query->where('store_id', (int) ($request->user()?->store_id ?? 0))
+                        ->orWhere(function ($customerQuery) use ($request): void {
+                            $customerQuery->where('source_type', 'ecommerce')
+                                ->whereHas('order', fn ($order) => $order->where('user_id', $request->user()?->id));
+                        });
+                })
+                ->exists();
+            if (!$ownsReplacement) {
+                return response()->json(['message' => 'Replacement request not found.'], 404);
+            }
+        }
 
         $intent = PaymongoIntent::query()
             ->where('payable_type', $validated['payable_type'])
@@ -440,6 +712,30 @@ class PaymongoController extends Controller
             return;
         }
 
+        if (str_starts_with($paymentIntentId, 'cs_')) {
+            $payload = $this->service->retrieveCheckoutSession($paymentIntentId);
+            if (data_get($payload, 'errors.0.detail')) {
+                throw new \RuntimeException('Unable to verify the hosted checkout session.');
+            }
+            $payments = (array) data_get($payload, 'data.attributes.payments', []);
+            $paid = collect($payments)->contains(fn ($payment) => strtolower((string) data_get($payment, 'attributes.status', '')) === 'paid');
+            if ($paid) {
+                $intent->update([
+                    'status' => 'succeeded',
+                    'webhook_payload' => $payload,
+                ]);
+                $this->syncHostedCheckoutPayment($intent->fresh());
+            } else {
+                $status = strtolower((string) data_get($payload, 'data.attributes.status', ''));
+                if (in_array($status, ['expired', 'cancelled', 'canceled', 'failed'], true)) {
+                    $intent->update(['status' => $status]);
+                    $this->syncEcommerceOrderFromIntent($intent->fresh(), $status);
+                    $this->syncReplacementUpgradeFromIntent($intent->fresh(), $status);
+                }
+            }
+            return;
+        }
+
         $payload = $this->service->retrieveIntent($paymentIntentId);
 
         $attrs = data_get($payload, 'data.attributes', []);
@@ -455,6 +751,7 @@ class PaymongoController extends Controller
         if ($freshIntent) {
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncReplacementUpgradeFromIntent($freshIntent, $status);
             $this->syncInvoiceFromIntent($freshIntent, $status);
             $this->syncCashflowTopUpFromIntent($freshIntent, $status);
             $this->syncSubscriptionFromIntent($freshIntent, $status);
@@ -631,6 +928,39 @@ class PaymongoController extends Controller
         return count($allowed) ? $allowed : ['gcash'];
     }
 
+    public function availableCheckoutMethods(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['store_id' => ['required', 'integer', 'exists:stores,id']]);
+        if (!$this->service->isConfigured()) {
+            return response()->json(['message' => 'Online payment is not configured.'], 503);
+        }
+
+        $store = Store::query()->findOrFail((int) $validated['store_id']);
+        return response()->json([
+            'data' => [
+                'methods' => $this->availableHostedMethods(
+                    $store,
+                    str_starts_with((string) config('paymongo.secret'), 'sk_test_') ? [] : $this->service->activePaymentMethods()
+                ),
+            ],
+        ]);
+    }
+
+    private function availableHostedMethods(?Store $store, array $accountMethods): array
+    {
+        if (str_starts_with((string) config('paymongo.secret'), 'sk_test_')) {
+            return ['qrph', 'gcash', 'card', 'paymaya'];
+        }
+
+        $supported = ['qrph', 'gcash', 'card', 'paymaya', 'grab_pay'];
+        $methods = count($accountMethods) ? $accountMethods : $this->resolveStorePaymongoMethods($store);
+        // QR Ph is enabled by default for activated PayMongo accounts, even when
+        // older store settings only list individually configured wallets.
+        $methods[] = 'qrph';
+
+        return array_values(array_intersect($supported, $methods));
+    }
+
     public function webhook(Request $request): JsonResponse
     {
         $payload = $request->getContent();
@@ -641,11 +971,27 @@ class PaymongoController extends Controller
         }
 
         $event = json_decode($payload, true);
+        $eventType = (string) (data_get($event, 'data.attributes.type') ?? data_get($event, 'data.type'));
+        if ($eventType === 'checkout_session.payment.paid') {
+            $session = data_get($event, 'data.attributes.data') ?? data_get($event, 'data.data');
+            $sessionId = (string) data_get($session, 'id', '');
+            $intent = PaymongoIntent::query()->where('payment_intent_id', $sessionId)
+                ->whereIn('payable_type', ['ecommerce_order', 'subscription_upgrade', 'invoice', 'sales_order', 'replacement_upgrade'])->first();
+            // The signed paid event is authoritative even when PayMongo omits payment details.
+            if ($intent) {
+                if ($intent->status !== 'succeeded') {
+                    $intent->update(['status' => 'succeeded', 'webhook_payload' => $event]);
+                }
+                $this->syncHostedCheckoutPayment($intent->fresh());
+            }
+            return response()->json(['message' => $intent ? 'Event processed' : 'Ignored event']);
+        }
         $intent = $this->service->updateStatusFromWebhook($event);
 
         if ($intent) {
             $this->syncSalesPaymentFromIntent($intent, (string) $intent->status);
             $this->syncEcommerceOrderFromIntent($intent, (string) $intent->status);
+            $this->syncReplacementUpgradeFromIntent($intent, (string) $intent->status);
             $this->syncInvoiceFromIntent($intent, (string) $intent->status);
             $this->syncCashflowTopUpFromIntent($intent, (string) $intent->status);
             $this->syncSubscriptionFromIntent($intent, (string) $intent->status);
@@ -653,6 +999,15 @@ class PaymongoController extends Controller
         }
 
         return response()->json(['message' => 'Ignored event'], 200);
+    }
+
+    private function syncHostedCheckoutPayment(PaymongoIntent $intent): void
+    {
+        $this->syncSalesPaymentFromIntent($intent, 'succeeded');
+        $this->syncEcommerceOrderFromIntent($intent, 'succeeded');
+        $this->syncReplacementUpgradeFromIntent($intent, 'succeeded');
+        $this->syncInvoiceFromIntent($intent, 'succeeded');
+        $this->syncSubscriptionFromIntent($intent, 'succeeded');
     }
 
     private function syncSalesPaymentFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
@@ -710,6 +1065,83 @@ class PaymongoController extends Controller
         }
     }
 
+    private function syncReplacementUpgradeFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'replacement_upgrade') {
+            return;
+        }
+
+        DB::transaction(function () use ($intent, $paymongoStatus): void {
+            $return = EcommerceOrderReturn::query()->lockForUpdate()->find((int) $intent->payable_id);
+            if (!$return || (int) $return->store_id !== (int) $intent->store_id) {
+                return;
+            }
+
+            $status = strtolower(trim($paymongoStatus));
+            if ($status === 'succeeded') {
+                if ($return->replacement_payment_status === 'paid') {
+                    return;
+                }
+
+                $return->update([
+                    'replacement_payment_status' => 'paid',
+                    'replacement_payment_reference' => $intent->payment_intent_id,
+                    'replacement_paid_by' => $return->replacement_customer_accepted_by,
+                    'replacement_paid_at' => now(),
+                    'replacement_status' => 'reserved',
+                ]);
+
+                $alreadyRecorded = FinanceCashflowTransaction::query()
+                    ->where('store_id', $return->store_id)
+                    ->where('reference_type', 'replacement_upgrade')
+                    ->where('reference_id', $return->id)
+                    ->lockForUpdate()
+                    ->exists();
+                if (!$alreadyRecorded) {
+                    (new CashflowService())->credit(
+                        (int) $return->store_id,
+                        (float) $return->replacement_price_difference,
+                        'replacement_upgrade',
+                        (int) $return->id,
+                        null,
+                        'Replacement price difference ' . ($return->return_number ?: ('#' . $return->id)),
+                        (string) $return->replacement_payment_method,
+                        ['payment_intent_id' => $intent->payment_intent_id]
+                    );
+                }
+                return;
+            }
+
+            if (in_array($status, ['failed', 'cancelled', 'canceled', 'expired'], true)
+                && $return->replacement_payment_status !== 'paid') {
+                $quantity = max(1, (int) ($return->received_quantity ?: $return->requested_quantity));
+                if ($return->replacement_inventory_id) {
+                    $inventory = BranchInventory::query()->lockForUpdate()->find($return->replacement_inventory_id);
+                    if ($inventory) {
+                        $inventory->quantity_reserved = max(0, (int) $inventory->quantity_reserved - $quantity);
+                        $inventory->save();
+                    }
+                }
+                $return->update([
+                    'replacement_status' => 'payment_failed',
+                    'replacement_payment_status' => 'failed',
+                    'replacement_payment_reference' => $intent->payment_intent_id,
+                    'replacement_inventory_id' => null,
+                    'replacement_branch_id' => null,
+                    'replacement_product_id' => null,
+                    'replacement_variation_id' => null,
+                    'replacement_unit_price' => null,
+                    'replacement_price_difference' => null,
+                ]);
+                return;
+            }
+
+            if ($return->replacement_payment_status !== 'paid') {
+                $return->update(['replacement_payment_status' => 'processing']);
+            }
+        });
+    }
+
     private function syncEcommerceOrderFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
     {
         if ($intent->payable_type !== 'ecommerce_order') {
@@ -724,18 +1156,22 @@ class PaymongoController extends Controller
         $normalizedStatus = strtolower(trim($paymongoStatus));
         $nextOrderPaymentStatus = match ($normalizedStatus) {
             'succeeded' => 'paid',
-            'failed', 'cancelled', 'canceled' => 'failed',
+            'failed', 'cancelled', 'canceled', 'expired' => 'failed',
             default => 'unpaid',
         };
 
         $previousStatus = (string) $order->payment_status;
+        if ($previousStatus === 'paid' && $nextOrderPaymentStatus !== 'paid') {
+            return;
+        }
         if ($order->payment_status !== $nextOrderPaymentStatus) {
             $order->update([
                 'payment_status' => $nextOrderPaymentStatus,
             ]);
         }
 
-        if ($previousStatus !== 'paid' && $nextOrderPaymentStatus === 'paid') {
+        if ($nextOrderPaymentStatus === 'paid' && !in_array($order->status, ['cancelled', 'canceled'], true)
+            && ($previousStatus !== 'paid' || !empty(((array) ($order->pending_snapshot ?? []))['items']))) {
             // If the order was created as a Online Payment "pending snapshot" (no order items yet),
             // finalize the order items + inventory only after successful payment.
             try {
@@ -757,7 +1193,7 @@ class PaymongoController extends Controller
                     (int) $order->id,
                     Auth::id(),
                     'Ecommerce payment ' . ($order->order_number ?? ('#' . $order->id)),
-                    'paymongo_gcash',
+                    'paymongo',
                     [
                         'payment_intent_id' => $intent->payment_intent_id,
                     ]
@@ -793,8 +1229,11 @@ class PaymongoController extends Controller
             }
 
             $branchId = (int) ($fresh->assigned_branch_id ?? 0);
-            if ($branchId <= 0) {
-                return;
+            if ($branchId <= 0 || !Branch::query()->whereKey($branchId)
+                ->where('store_id', $fresh->store_id)
+                ->where('branch_type', 'storefront')
+                ->where('status', 'active')->exists()) {
+                throw new \RuntimeException("Order {$fresh->id} has no active storefront fulfillment branch.");
             }
 
             foreach ($itemsFresh as $row) {
@@ -802,7 +1241,7 @@ class PaymongoController extends Controller
                 $variationId = $row['variation_id'] ?? null;
                 $quantity = (int) ($row['quantity'] ?? 0);
                 $unitPrice = (float) ($row['unit_price'] ?? 0);
-                $taxRate = (float) ($row['tax_rate'] ?? 0);
+                $taxRate = 12.0;
                 $variationName = $row['variation_name'] ?? null;
 
                 if ($productId <= 0 || $quantity <= 0) {
@@ -813,23 +1252,12 @@ class PaymongoController extends Controller
                     ->where('store_id', $fresh->store_id)
                     ->where('branch_id', $branchId)
                     ->where('product_id', $productId)
-                    ->when($variationId, fn($q) => $q->where('variation_id', (int) $variationId))
-                    ->where('quantity_available', '>=', $quantity)
+                    ->when($variationId, fn($q) => $q->where('variation_id', (int) $variationId), fn($q) => $q->whereNull('variation_id'))
+                    ->when(!empty($snapshotFresh['stock_reserved']), fn($q) => $q->whereKey((int) ($row['branch_inventory_id'] ?? 0)))
+                    ->when(empty($snapshotFresh['stock_reserved']), fn($q) => $q->where('quantity_available', '>=', $quantity))
                     ->orderByDesc('quantity_available')
                     ->lockForUpdate()
                     ->first();
-
-                if (!$inventory && $variationId) {
-                    $inventory = BranchInventory::query()
-                        ->where('store_id', $fresh->store_id)
-                        ->where('branch_id', $branchId)
-                        ->where('product_id', $productId)
-                        ->whereNull('variation_id')
-                        ->where('quantity_available', '>=', $quantity)
-                        ->orderByDesc('quantity_available')
-                        ->lockForUpdate()
-                        ->first();
-                }
 
                 if (!$inventory) {
                     throw new \RuntimeException("Insufficient stock for product_id={$productId} (variation_id={$variationId})");
@@ -839,6 +1267,7 @@ class PaymongoController extends Controller
                 $variation = $variationId ? ProductVariation::query()->find((int) $variationId) : null;
 
                 $lineSubtotal = $unitPrice * $quantity;
+                $lineTax = round($lineSubtotal - ($lineSubtotal / 1.12), 2);
                 $fresh->items()->create([
                     'product_id' => $productId,
                     'branch_inventory_id' => $inventory->id,
@@ -846,17 +1275,27 @@ class PaymongoController extends Controller
                         ? (($product?->product_name ?? 'Product') . ' - ' . $variationName)
                         : ($product?->product_name ?? 'Product'),
                     'sku' => $variation?->variation_sku ?? $product?->sku,
+                    'customization_request' => $row['customization_request'] ?? null,
+                    'customization_status' => !empty($row['customization_request']) ? 'pending' : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
+                    'original_unit_price' => isset($row['original_unit_price'])
+                        ? (float) $row['original_unit_price'] : null,
                     'tax_rate' => $taxRate,
                     'line_subtotal' => round($lineSubtotal, 2),
-                    'line_tax' => 0,
+                    'line_tax' => $lineTax,
                     'line_total' => round($lineSubtotal, 2),
                 ]);
 
-                $inventory->quantity_reserved = max(0, (int) $inventory->quantity_reserved - $quantity);
+                if (!empty($snapshotFresh['stock_reserved']) && (int) $inventory->quantity_reserved < $quantity) {
+                    throw new \RuntimeException("Reserved stock is missing for product_id={$productId}");
+                }
+                if (!empty($snapshotFresh['stock_reserved'])) {
+                    $inventory->quantity_reserved -= $quantity;
+                } else {
+                    $inventory->quantity_available -= $quantity;
+                }
                 $inventory->quantity_on_hand = max(0, (int) $inventory->quantity_on_hand - $quantity);
-                $inventory->quantity_available = max(0, (int) $inventory->quantity_available - $quantity);
                 $inventory->updateStockStatus();
             }
 
@@ -870,7 +1309,17 @@ class PaymongoController extends Controller
                     ->delete();
             }
 
+            $vatInclusiveProductTotal = max(
+                0,
+                (float) $fresh->subtotal - (float) $fresh->discount_amount
+            );
+            $taxAmount = round(
+                $vatInclusiveProductTotal - ($vatInclusiveProductTotal / 1.12),
+                2
+            );
+
             $fresh->update([
+                'tax_amount' => $taxAmount,
                 'pending_snapshot' => null,
                 'pending_cart_id' => null,
             ]);
@@ -884,6 +1333,13 @@ class PaymongoController extends Controller
         }
 
         if (strtolower(trim($paymongoStatus)) !== 'succeeded') {
+            return;
+        }
+
+        // A successful intent may be synchronized by both the webhook and the
+        // checkout return page. The revenue reference is unique and records
+        // that this exact payment has already extended the subscription.
+        if (PlatformRevenue::query()->where('reference', $intent->payment_intent_id)->exists()) {
             return;
         }
 
@@ -909,18 +1365,37 @@ class PaymongoController extends Controller
             return;
         }
 
-        $baseDate = $store->subscription_ends_at
-            ? Carbon::parse($store->subscription_ends_at)
-            : now();
-        if ($baseDate->lt(now())) {
-            $baseDate = now();
-        }
+        $currentPlanKey = strtolower(trim((string) $store->subscriptionPlan?->plan_key));
+        $isSamePlanTrialConversion = $store->subscription_status === 'trial'
+            && $currentPlanKey !== ''
+            && $currentPlanKey === $targetPlanKey
+            && $store->trial_ends_at
+            && $store->trial_ends_at->isFuture();
+        $remainingTrialDays = $isSamePlanTrialConversion
+            ? app(\App\Services\Store\StoreTrialService::class)->daysRemaining($store)
+            : 0;
+
+        // Keep unused trial days only when the customer pays for the same plan.
+        // Switching plans starts the purchased billing term from the payment date.
+        $baseDate = $isSamePlanTrialConversion
+            ? now()->addDays($remainingTrialDays)
+            : ($store->subscriptionPlan?->plan_key !== 'free' && $store->subscription_ends_at
+                ? Carbon::parse($store->subscription_ends_at)
+                : now());
+        if ($baseDate->lt(now())) $baseDate = now();
         $newEndsAt = $baseDate->copy()->addMonths($months);
 
+        $storeSettings = is_array($store->settings) ? $store->settings : [];
+        unset($storeSettings['subscription_cancellation']);
         $store->update([
             'subscription_tier' => $targetPlan->id,
             'subscription_ends_at' => $newEndsAt->toDateString(),
+            'subscription_status' => 'paid',
+            'status' => $store->subscription_status === 'expired' && $store->status === 'inactive' ? 'active' : $store->status,
+            'settings' => $storeSettings,
         ]);
+        app(\App\Services\Modules\ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+        app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
         if ($targetPlanKey === 'unlimited') {
             $moduleIds = \DB::table('modules')
@@ -982,26 +1457,37 @@ class PaymongoController extends Controller
             return;
         }
 
-        // Prevent duplicate accounting updates when invoice was already settled manually.
+        $paymentMethod = $this->resolveInvoicePaymentMethod($intent);
+
+        // Allow later checkout refreshes to replace the generic provider label with the actual method.
         if (strtolower((string) $invoice->payment_status) === 'paid') {
+            if ($paymentMethod && $invoice->payment_method !== $paymentMethod) {
+                $invoice->update(['payment_method' => $paymentMethod]);
+                DB::table('finance_expenses')
+                    ->where('store_id', (int) $invoice->store_id)
+                    ->where('reference_type', 'invoice')
+                    ->where('reference_id', (int) $invoice->id)
+                    ->update(['payment_method' => $paymentMethod]);
+                DB::table('finance_cashflow_transactions')
+                    ->where('store_id', (int) $invoice->store_id)
+                    ->where('reference_type', 'invoice')
+                    ->where('reference_id', (int) $invoice->id)
+                    ->update(['payment_method' => $paymentMethod]);
+            }
             return;
         }
 
         $paymentAmount = (float) ($invoice->net_amount ?: $invoice->invoice_amount ?: 0);
+        $paymentMethod ??= 'paymongo';
 
-        DB::transaction(function () use ($invoice, $intent, $paymentAmount) {
+        DB::transaction(function () use ($invoice, $intent, $paymentAmount, $paymentMethod) {
             // Keep invoice state in sync with successful Online Payment payment.
             $invoice->update([
                 'payment_status' => 'paid',
-                'payment_method' => 'paymongo_gcash',
+                'payment_method' => $paymentMethod,
                 'payment_amount' => $paymentAmount,
                 'payment_date' => now()->toDateString(),
                 'status' => 'paid',
-                'paid_to_bank_name' => $invoice->supplier?->bank_name,
-                'paid_to_account_name' => $invoice->supplier?->bank_account_name,
-                'paid_to_account_number_masked' => $this->maskAccountNumber($invoice->supplier?->bank_account_number),
-                'paid_to_account_type' => $invoice->supplier?->bank_account_type,
-                'paid_to_bank_branch' => $invoice->supplier?->bank_branch,
             ]);
 
             if ($invoice->purchaseOrder) {
@@ -1036,7 +1522,7 @@ class PaymongoController extends Controller
             if ($expense->status !== 'paid') {
                 $expense->update([
                     'status' => 'paid',
-                    'payment_method' => 'paymongo_gcash',
+                    'payment_method' => $paymentMethod,
                     'payment_date' => now()->toDateString(),
                     'paid_by' => auth()->id(),
                     'paid_at' => now(),
@@ -1060,7 +1546,7 @@ class PaymongoController extends Controller
                     (int) $invoice->id,
                     auth()->id(),
                     'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)) . ' via Online Payment',
-                    'paymongo_gcash',
+                    $paymentMethod,
                     [
                         'payment_intent_id' => $intent->payment_intent_id,
                     ]
@@ -1102,6 +1588,65 @@ class PaymongoController extends Controller
                 ]);
             }
         }
+    }
+
+    private function resolveInvoicePaymentMethod(PaymongoIntent $intent): ?string
+    {
+        $payload = (array) ($intent->webhook_payload ?? []);
+        $method = $this->extractInvoicePaymentMethod($payload);
+
+        if (!$method && str_starts_with((string) $intent->payment_intent_id, 'cs_')) {
+            $session = $this->service->retrieveCheckoutSession((string) $intent->payment_intent_id);
+            $method = $this->extractInvoicePaymentMethod((array) $session);
+        }
+
+        return $method;
+    }
+
+    private function extractInvoicePaymentMethod(array $payload): ?string
+    {
+        $resources = [];
+        $eventResource = data_get($payload, 'data.attributes.data');
+        if (is_array($eventResource)) {
+            $resources[] = $eventResource;
+        }
+
+        foreach ((array) data_get($payload, 'data.attributes.payments', []) as $payment) {
+            if (is_array($payment)) {
+                $resources[] = $payment;
+            }
+        }
+
+        foreach ($resources as $resource) {
+            $attributes = (array) data_get($resource, 'attributes', []);
+            $rawMethod = strtolower((string) (
+                data_get($attributes, 'source.type')
+                ?? data_get($attributes, 'payment_method_details.type')
+                ?? data_get($attributes, 'payment_method.type')
+                ?? data_get($attributes, 'payment_method_type')
+                ?? ''
+            ));
+
+            if (in_array($rawMethod, ['gcash'], true)) {
+                return 'gcash';
+            }
+            if (in_array($rawMethod, ['maya', 'paymaya'], true)) {
+                return 'maya';
+            }
+            if ($rawMethod === 'card') {
+                $funding = strtolower((string) (
+                    data_get($attributes, 'source.attributes.card_type')
+                    ?? data_get($attributes, 'source.attributes.funding')
+                    ?? data_get($attributes, 'payment_method_details.card.funding')
+                    ?? data_get($attributes, 'payment_method_details.card.type')
+                    ?? ''
+                ));
+
+                return in_array($funding, ['credit', 'debit'], true) ? $funding . '_card' : 'card';
+            }
+        }
+
+        return null;
     }
 
     private function syncCashflowTopUpFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
@@ -1217,32 +1762,4 @@ class PaymongoController extends Controller
         return 0;
     }
 
-    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
-    {
-        if ($supplierId <= 0) {
-            return false;
-        }
-
-        $supplier = Supplier::query()->find($supplierId);
-        if (!$supplier) {
-            return false;
-        }
-
-        return filled($supplier->bank_name)
-            && filled($supplier->bank_account_name)
-            && filled($supplier->bank_account_number);
-    }
-
-    private function maskAccountNumber(?string $accountNumber): ?string
-    {
-        $raw = trim((string) $accountNumber);
-        if ($raw === '') {
-            return null;
-        }
-        $len = strlen($raw);
-        if ($len <= 4) {
-            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
-        }
-        return str_repeat('*', $len - 4) . substr($raw, -4);
-    }
 }

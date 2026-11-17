@@ -81,6 +81,15 @@ class ProductAssetController extends BaseController
     public function store(Request $request)
     {
         try {
+            if ($request->input('asset_type') === '3D_Model'
+                && $request->route()->getActionMethod() !== 'storeForProductForm'
+                && !$this->userHasAnyPermission(['merchandising.3d.manage', 'merchandising.admin'])) {
+                return $this->errorResponse(
+                    'Your subscription does not include 3D model management. Upgrade your plan to upload 3D models.',
+                    403
+                );
+            }
+
             $validated = $this->validateRequest($request, [
                 'product_id' => 'required|exists:products,id',
                 'asset_type' => 'required|in:3D_Model,3D_Thumbnail,Image_Main,Image_Gallery,Image_360,Video_Product,Video_Assembly,Manual_PDF,Texture_Map',
@@ -207,6 +216,18 @@ class ProductAssetController extends BaseController
                 $e
             );
         }
+    }
+
+    /** Upload the primary product model through the merchandising product form. */
+    public function storeForProductForm(Request $request, int $productId)
+    {
+        $request->merge([
+            'product_id' => $productId,
+            'asset_type' => '3D_Model',
+            'is_primary' => true,
+        ]);
+
+        return $this->store($request);
     }
 
     /**
@@ -411,7 +432,9 @@ class ProductAssetController extends BaseController
                 'product_id' => 'required|exists:products,id',
                 'assets' => 'required|array',
                 'assets.*.id' => 'required|exists:product_assets,id',
-                'assets.*.display_order' => 'required|integer|min:0'
+                'assets.*.display_order' => 'required|integer|min:0',
+                'assets.*.asset_type' => 'nullable|in:Image_Main,Image_Gallery',
+                'assets.*.is_primary' => 'nullable|boolean'
             ]);
 
             // Verify product belongs to store
@@ -424,13 +447,22 @@ class ProductAssetController extends BaseController
             DB::beginTransaction();
 
             try {
+                ProductAsset::byStore($this->getStoreId())
+                    ->where('product_id', $validated['product_id'])
+                    ->whereIn('asset_type', ['Image_Main', 'Image_Gallery'])
+                    ->update(['is_primary' => false]);
+
                 foreach ($validated['assets'] as $item) {
                     $asset = ProductAsset::byStore($this->getStoreId())
                         ->where('product_id', $validated['product_id'])
                         ->find($item['id']);
 
                     if ($asset) {
-                        $asset->update(['display_order' => $item['display_order']]);
+                        $asset->update(array_filter([
+                            'display_order' => $item['display_order'],
+                            'asset_type' => $item['asset_type'] ?? null,
+                            'is_primary' => $item['is_primary'] ?? null,
+                        ], fn ($value) => $value !== null));
                     }
                 }
 

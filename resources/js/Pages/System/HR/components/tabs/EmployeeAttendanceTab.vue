@@ -1,57 +1,57 @@
 <!-- views/system/employees/components/tabs/EmployeeAttendanceTab.vue -->
 <template>
-  <div class="space-y-4">
+  <div class="space-y-4 text-xs">
     <!-- Summary Cards -->
-    <div class="grid grid-cols-5 gap-4">
-      <div class="bg-gray-50 rounded-lg p-3">
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+      <div class="rounded-xl border border-slate-100 bg-slate-50 p-3">
         <div class="text-xs text-gray-500">Total Days</div>
-        <div class="text-xl font-semibold text-gray-700">{{ summary.total_days || 0 }}</div>
+        <div class="text-base font-semibold text-gray-700">{{ summary.total_days || 0 }}</div>
       </div>
-      <div class="bg-gray-50 rounded-lg p-3">
+      <div class="rounded-xl border border-slate-100 bg-slate-50 p-3">
         <div class="text-xs text-gray-500">Present</div>
-        <div class="text-xl font-semibold text-green-600">{{ summary.present || 0 }}</div>
+        <div class="text-base font-semibold text-green-600">{{ summary.present || 0 }}</div>
       </div>
-      <div class="bg-gray-50 rounded-lg p-3">
+      <div class="rounded-xl border border-slate-100 bg-slate-50 p-3">
         <div class="text-xs text-gray-500">Absent</div>
-        <div class="text-xl font-semibold text-red-600">{{ summary.absent || 0 }}</div>
+        <div class="text-base font-semibold text-red-600">{{ summary.absent || 0 }}</div>
       </div>
-      <div class="bg-gray-50 rounded-lg p-3">
+      <div class="rounded-xl border border-slate-100 bg-slate-50 p-3">
         <div class="text-xs text-gray-500">Late</div>
-        <div class="text-xl font-semibold text-orange-600">{{ summary.late || 0 }}</div>
+        <div class="text-base font-semibold text-orange-600">{{ summary.late || 0 }}</div>
       </div>
-      <div class="bg-gray-50 rounded-lg p-3">
+      <div class="rounded-xl border border-slate-100 bg-slate-50 p-3">
         <div class="text-xs text-gray-500">Total Hours</div>
-        <div class="text-xl font-semibold text-blue-600">{{ summary.total_worked_hours || 0 }}</div>
+        <div class="text-base font-semibold text-blue-600">{{ summary.total_worked_hours || 0 }}</div>
       </div>
     </div>
 
     <!-- Additional Summary Row -->
-    <div class="grid grid-cols-4 gap-4">
-      <div class="bg-gray-50/50 rounded-lg p-2">
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div class="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
         <div class="text-xs text-gray-500">Half Day</div>
-        <div class="text-lg font-semibold text-amber-600">{{ summary.half_day || 0 }}</div>
+        <div class="text-xs font-semibold text-amber-600">{{ summary.half_day || 0 }}</div>
       </div>
-      <div class="bg-gray-50/50 rounded-lg p-2">
+      <div class="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
         <div class="text-xs text-gray-500">On Leave</div>
-        <div class="text-lg font-semibold text-purple-600">{{ summary.on_leave || 0 }}</div>
+        <div class="text-xs font-semibold text-purple-600">{{ summary.on_leave || 0 }}</div>
       </div>
-      <div class="bg-gray-50/50 rounded-lg p-2">
+      <div class="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
         <div class="text-xs text-gray-500">Holiday</div>
-        <div class="text-lg font-semibold text-indigo-600">{{ summary.holiday || 0 }}</div>
+        <div class="text-xs font-semibold text-indigo-600">{{ summary.holiday || 0 }}</div>
       </div>
-      <div class="bg-gray-50/50 rounded-lg p-2">
+      <div class="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
         <div class="text-xs text-gray-500">OT Hours</div>
-        <div class="text-lg font-semibold text-blue-600">
+        <div class="text-xs font-semibold text-blue-600">
           {{ (summary.total_overtime_minutes / 60).toFixed(1) || 0 }}
         </div>
       </div>
     </div>
 
     <!-- Date Range Selector -->
-    <div class="flex justify-between items-center">
-      <div class="flex items-center gap-3">
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600">Range:</span>
+    <div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="flex min-w-0 flex-col gap-1">
+          <span class="text-xs text-gray-600">Range:</span>
           <DatePicker 
             v-model="dateRangeRange"
             selectionMode="range"
@@ -59,7 +59,7 @@
             dateFormat="yy-mm-dd"
             :maxDate="new Date()"
             placeholder="Select Range"
-            class="w-64 p-fluid"
+            class="w-full sm:w-64 p-fluid"
             size="small"
           />
         </div>
@@ -100,7 +100,7 @@
     </div>
 
     <!-- Quick Month Selector -->
-    <div class="flex gap-2 pb-2 overflow-x-auto">
+    <div class="flex flex-wrap gap-2">
       <Button 
         v-for="month in quickMonths" 
         :key="month.value"
@@ -113,24 +113,25 @@
     </div>
 
     <!-- Employee Info Banner -->
-    <div v-if="employeeInfo.name" class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+    <div v-if="employeeInfo.name" class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
       <i class="pi pi-user text-blue-500"></i>
       <div>
         <span class="font-medium text-blue-700">{{ employeeInfo.name }}</span>
-        <span v-if="employeeInfo.employee_id" class="text-sm text-blue-600 ml-2">(ID: {{ employeeInfo.employee_id }})</span>
+        <span v-if="employeeInfo.employee_id" class="text-xs text-blue-600 ml-2">(ID: {{ employeeInfo.employee_id }})</span>
       </div>
-      <div class="ml-auto text-sm text-gray-600">
+      <div class="ml-auto text-xs text-gray-600">
         {{ dateRangeDisplay }}
       </div>
     </div>
 
     <!-- Attendance Table -->
+    <div class="overflow-x-auto rounded-xl border border-slate-200">
     <DataTable 
       :value="attendanceHistory" 
       :paginator="true" 
-      :rows="15" 
+      :rows="10" 
       :rowsPerPageOptions="[10, 15, 20, 50]"
-      class="p-datatable-sm"
+      class="p-datatable-sm text-xs"
       :loading="loading"
       stripedRows
       showGridlines
@@ -244,18 +245,20 @@
           </div>
         </template>
       </Column>
+
+      <template #loading>
+        <div class="space-y-2 p-3">
+          <Skeleton v-for="row in 5" :key="row" height="1.75rem" />
+        </div>
+      </template>
+      <template #empty>
+        <div class="py-8 text-center text-xs text-slate-500">
+          <i class="pi pi-calendar mb-2 block text-xl text-slate-300"></i>
+          <p class="font-medium text-slate-600">No attendance records for this period</p>
+          <p class="mt-1">Try a different date range.</p>
+        </div>
+      </template>
     </DataTable>
-
-    <!-- No Data Message -->
-    <div v-if="!loading && attendanceHistory.length === 0" class="text-center py-8 text-gray-500">
-      <i class="pi pi-calendar text-4xl mb-2 block text-gray-300"></i>
-      <p>No attendance records found for the selected period</p>
-      <p class="text-sm mt-1">Try adjusting your date range or check back later</p>
-    </div>
-
-    <!-- Loading Skeleton -->
-    <div v-if="loading" class="space-y-2">
-      <Skeleton v-for="i in 5" :key="i" height="3rem"></Skeleton>
     </div>
 
     <!-- Attendance Details Dialog -->
@@ -325,7 +328,7 @@
         
         <div v-if="selectedAttendance.notes" class="bg-gray-50 p-2 rounded">
           <div class="text-xs text-gray-500">Notes</div>
-          <div class="text-sm">{{ selectedAttendance.notes }}</div>
+          <div class="text-xs">{{ selectedAttendance.notes }}</div>
         </div>
         
         <div class="text-xs text-gray-400 pt-2 border-t">
@@ -350,6 +353,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import hrService from '@/services/hr.services'
+import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../../stores/auth'
 
@@ -709,6 +713,12 @@ onMounted(() => {
 <style scoped>
 .p-datatable-sm :deep(.p-datatable-tbody > tr > td) {
   padding: 0.5rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.p-datatable-sm :deep(.p-datatable-thead > tr > th) {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 :deep(.p-tag) {

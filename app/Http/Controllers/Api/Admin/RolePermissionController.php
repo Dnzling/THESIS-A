@@ -49,10 +49,17 @@ class RolePermissionController extends Controller
     {
         $roles = DB::table('roles')
             ->select('roles.*')
-            ->where(function ($query) {
-                $query->whereNull('roles.store_id')
-                    ->orWhere('roles.name', 'store_admin');
+            // The Super Admin catalog shows global system roles only. Including
+            // tenant-scoped owner roles here makes Store Owner appear multiple times.
+            ->whereNull('roles.store_id')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('roles as canonical_roles')
+                    ->whereNull('canonical_roles.store_id')
+                    ->whereColumn('canonical_roles.name', 'roles.name')
+                    ->whereColumn('canonical_roles.id', '<', 'roles.id');
             })
+            ->where('roles.name', '!=', 'driver')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(
                 SELECT COUNT(*)
@@ -77,7 +84,15 @@ class RolePermissionController extends Controller
         $authUser = Auth::user();
         $isSuperAdmin = (bool) $authUser?->role && (string) $authUser->role->name === 'super_admin';
 
-        $protectedRoles = ['super_admin', 'unassigned_role'];
+        $protectedRoles = [
+            'super_admin',
+            'owner',
+            'driver',
+            'applicant',
+            'supplier',
+            'customer',
+            'unassigned_role',
+        ];
         if (in_array((string) $role->name, $protectedRoles, true)) {
             return response()->json([
                 'message' => 'This role is protected and cannot be deleted.',
@@ -145,6 +160,49 @@ class RolePermissionController extends Controller
         return response()->json($permissions);
     }
 
+    /** Get the master module catalog used by permissions and navigation. */
+    public function getModules()
+    {
+        return response()->json(DB::table('modules')->orderBy('name')->get());
+    }
+
+    public function createModule(Request $request)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key',
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $id = DB::table('modules')->insertGetId([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module created successfully', 'id' => $id], 201);
+    }
+
+    public function updateModule(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key,' . $id,
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        DB::table('modules')->where('id', $id)->update([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module updated successfully']);
+    }
+
     /**
      * Get role permissions
      */
@@ -165,7 +223,7 @@ class RolePermissionController extends Controller
     public function updateRolePermissions(Request $request, $roleId)
     {
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'exists:permissions,id'
         ]);
 
@@ -220,15 +278,40 @@ class RolePermissionController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $permission = DB::table('permissions')->insertGetId([
-            'name' => $request->name,
-            'display_name' => $request->display_name,
-            'module' => $request->module,
-            'description' => $request->description,
-            'is_active' => $request->is_active ?? true,
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
+        $now = now();
+        [$permission, $ownerRoleIds] = DB::transaction(function () use ($request, $now): array {
+            $permissionId = DB::table('permissions')->insertGetId([
+                'name' => $request->name,
+                'display_name' => $request->display_name,
+                'module' => $request->module,
+                'description' => $request->description,
+                'is_active' => $request->is_active ?? true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            foreach (DB::table('subscription_plans')->pluck('id') as $planId) {
+                DB::table('plan_permissions')->updateOrInsert(
+                    ['plan_id' => $planId, 'permission_id' => $permissionId],
+                    ['included' => true, 'created_at' => $now, 'updated_at' => $now]
+                );
+            }
+
+            $ownerRoleIds = DB::table('roles')->where('name', 'owner')->pluck('id');
+            foreach ($ownerRoleIds as $roleId) {
+                DB::table('role_permissions')->updateOrInsert(
+                    ['role_id' => $roleId, 'permission_id' => $permissionId],
+                    ['created_at' => $now, 'updated_at' => $now]
+                );
+            }
+
+            return [$permissionId, $ownerRoleIds];
+        });
+
+        User::query()
+            ->whereIn('role_id', $ownerRoleIds)
+            ->get()
+            ->each(fn (User $user) => $this->permissionService->clearUserCache($user));
 
         return response()->json(['message' => 'Permission created successfully', 'id' => $permission], 201);
     }

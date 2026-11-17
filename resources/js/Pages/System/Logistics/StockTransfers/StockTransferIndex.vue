@@ -106,7 +106,7 @@ import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import Skeleton from 'primevue/skeleton'
-import inventoryService from '../../../../services/inventory.service'
+import logisticsService from '../../../../services/logistics.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -127,7 +127,7 @@ const pageState = reactive({
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
-  { label: 'Receiver Acknowledged', value: 'receiver_acknowledged' },
+  { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Received', value: 'received' },
 ]
@@ -135,7 +135,8 @@ const statusOptions = [
 const loadTransfers = async () => {
   loading.value = true
   try {
-    const response = await inventoryService.getTransfers({
+    const response = await logisticsService.getStockTransfers({
+      logistics_ready: true,
       page: pageState.page,
       per_page: pageState.rows,
       status: filters.status || undefined,
@@ -188,7 +189,7 @@ const statusSeverity = (status?: string) => {
   const s = String(status || '').toLowerCase()
   if (s === 'received') return 'success'
   if (s === 'in_transit') return 'info'
-  if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge') return 'warning'
+  if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge' || s === 'sender_approved') return 'info'
   if (s === 'cancelled') return 'danger'
   return 'secondary'
 }
@@ -196,7 +197,11 @@ const statusSeverity = (status?: string) => {
 const formatStatus = (row: any) => {
   const status = String(row?.status || '').toLowerCase()
   const notes = String(row?.notes || '').toLowerCase()
-  if (status === 'in_transit' && notes.includes('sent to logistics')) return 'Logistics Processing'
+  const deliveryStatus = String(row?.delivery_status || '').toLowerCase()
+  const hasDelivery = !!row?.driver_user_id || !!row?.driver_name || !!row?.vehicle_type || !!row?.tracking_number
+  if (deliveryStatus === 'ready_for_dispatch') return 'Ready for Dispatch'
+  if (status === 'in_transit' && notes.includes('sent to logistics') && !hasDelivery) return 'Ready for Dispatch'
+  if (status === 'sender_approved') return 'Warehouse Review'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || '-'
 }
 
@@ -221,4 +226,3 @@ watch(
 
 onMounted(loadTransfers)
 </script>
-

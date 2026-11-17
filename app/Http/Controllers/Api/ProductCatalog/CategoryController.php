@@ -7,6 +7,7 @@ use App\Models\ProductCatalog\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class CategoryController extends BaseController
@@ -101,7 +102,6 @@ class CategoryController extends BaseController
     {
         try {
             $validated = $this->validateRequest($request, [
-                'category_code' => 'required|string|max:20',
                 'category_name' => 'required|string|max:100',
                 'description' => 'nullable|string',
                 'parent_category_id' => 'nullable|exists:categories,id',
@@ -113,18 +113,9 @@ class CategoryController extends BaseController
             DB::beginTransaction();
 
             try {
-                // Check if code is unique for this store
-                $exists = Category::byStore($this->getStoreId())
-                                 ->where('category_code', $validated['category_code'])
-                                 ->exists();
-
-                if ($exists) {
-                    DB::rollBack();
-                    return $this->errorResponse('Category code already exists for this store', 422);
-                }
-
                 $data = $validated;
                 $data['store_id'] = $this->getStoreId();
+                $data['category_code'] = $this->generateCategoryCode($validated['category_name']);
                 
                 // Auto-calculate level
                 if ($request->parent_category_id) {
@@ -214,7 +205,6 @@ class CategoryController extends BaseController
             $category = Category::byStore($this->getStoreId())->findOrFail($id);
 
             $validated = $this->validateRequest($request, [
-                'category_code' => 'sometimes|string|max:20|unique:categories,category_code,' . $id . ',id,store_id,' . $this->getStoreId(),
                 'category_name' => 'sometimes|string|max:100',
                 'description' => 'nullable|string',
                 'parent_category_id' => 'nullable|exists:categories,id',
@@ -277,6 +267,21 @@ class CategoryController extends BaseController
                 $e
             );
         }
+    }
+
+    private function generateCategoryCode(string $name): string
+    {
+        $base = Str::upper(Str::slug($name, '-'));
+        $base = Str::limit($base ?: 'CATEGORY', 20, '');
+        $code = $base;
+        $suffix = 2;
+
+        while (Category::byStore($this->getStoreId())->withTrashed()->where('category_code', $code)->exists()) {
+            $ending = '-' . $suffix++;
+            $code = substr($base, 0, 20 - strlen($ending)) . $ending;
+        }
+
+        return $code;
     }
 
     /**

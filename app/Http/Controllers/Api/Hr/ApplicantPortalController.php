@@ -9,6 +9,7 @@ use App\Models\ApplicantProfile;
 use App\Models\ApplicantProfileDocument;
 use App\Models\JobApplication;
 use App\Models\JobPosting;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -67,14 +68,14 @@ class ApplicantPortalController extends Controller
         $useProfile = $request->boolean('use_profile');
         $profile = null;
 
-        if (JobApplication::where('job_posting_id', $posting->id)->where('user_id', $user->id)->exists()) {
+        if ($user && JobApplication::where('job_posting_id', $posting->id)->where('user_id', $user->id)->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You already submitted an application for this job posting.',
             ], 422);
         }
 
-        if ($useProfile) {
+        if ($useProfile && $user) {
             $profile = ApplicantProfile::with('documents')
                 ->where('user_id', $user->id)
                 ->first();
@@ -83,13 +84,6 @@ class ApplicantPortalController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Please complete your applicant profile before applying.',
-                ], 422);
-            }
-
-            if ($profile->documents->isEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please upload at least one document in your applicant profile before applying.',
                 ], 422);
             }
 
@@ -109,10 +103,11 @@ class ApplicantPortalController extends Controller
         } else {
             $validated = $request->validate([
                 'first_name' => 'required|string|max:100',
+                'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
                 'email' => ['required', 'email', 'max:255', Rule::unique('job_applications')->where(fn ($q) => $q->where('job_posting_id', $posting->id))],
-                'phone' => 'required|string|max:20',
-                'birthday' => 'required|date',
+                'phone' => ['required', 'string', 'regex:/^09\d{2}-\d{3}-\d{4}$/'],
+                'birthday' => 'required|date|before_or_equal:today',
                 'city' => 'required|string|max:255',
                 'province' => 'required|string|max:255',
                 'barangay' => 'required|string|max:255',
@@ -126,13 +121,37 @@ class ApplicantPortalController extends Controller
             ]);
         }
 
+        if (empty($validated['birthday'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'birthday' => ['Enter your birthday to confirm you meet the minimum age for this job.'],
+            ]);
+        }
+
+        $minimumAge = (int) ($posting->minimum_age ?: 18);
+        if (Carbon::parse($validated['birthday'])->diffInYears(Carbon::today()) < $minimumAge) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'birthday' => ["Applicants for this job must be at least {$minimumAge} years old."],
+            ]);
+        }
+
+        if (JobApplication::query()
+            ->where('job_posting_id', $posting->id)
+            ->where('email', $validated['email'])
+            ->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You already submitted an application for this job posting.',
+            ], 422);
+        }
+
         $application = JobApplication::create([
             'job_posting_id' => $posting->id,
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'first_name' => $validated['first_name'],
+            'middle_name' => $validated['middle_name'] ?? null,
             'last_name' => $validated['last_name'],
             'email' => $validated['email'],
-            'phone' => $validated['phone'],
+            'phone' => $validated['phone'] ?? '',
             'birthday' => $validated['birthday'] ?? null,
             'city' => $validated['city'] ?? null,
             'province' => $validated['province'] ?? null,
@@ -147,7 +166,7 @@ class ApplicantPortalController extends Controller
         ApplicationTimeline::create([
             'application_id' => $application->id,
             'status' => 'Applied',
-            'changed_by' => $user->id,
+            'changed_by' => $user?->id,
             'changed_at' => now(),
             'notes' => 'Application submitted via job portal',
         ]);
@@ -182,11 +201,11 @@ class ApplicantPortalController extends Controller
                         'applicant_name' => trim("{$application->first_name} {$application->last_name}"),
                     ],
                 ],
-                [$user->id]
+                $user ? [$user->id] : []
             );
         }
 
-        if (empty($recipientIds) && (int) ($posting->created_by ?? 0) > 0 && (int) $posting->created_by !== (int) $user->id) {
+        if (empty($recipientIds) && (int) ($posting->created_by ?? 0) > 0 && (int) $posting->created_by !== (int) ($user?->id ?? 0)) {
             $this->notify((int) $posting->created_by, [
                 'store_id' => $posting->store_id,
                 'module' => 'hr',

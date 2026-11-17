@@ -11,6 +11,9 @@ class RFQSupplier extends Model
 {
     protected $table = 'rfq_suppliers';
 
+    protected $hidden = ['email_reply_token', 'email_send_error'];
+    protected $appends = ['email_reply_tracking_enabled'];
+
     protected $fillable = [
         'rfq_id',
         'supplier_id',
@@ -19,12 +22,17 @@ class RFQSupplier extends Model
         'viewed_at',
         'responded_at',
         'decline_reason',
+        'email_sent_at',
+        'email_delivery_status',
+        'email_send_error',
+        'email_reply_token',
     ];
 
     protected $casts = [
         'invited_at' => 'datetime',
         'viewed_at' => 'datetime',
         'responded_at' => 'datetime',
+        'email_sent_at' => 'datetime',
     ];
 
     // Relationships
@@ -36,6 +44,16 @@ class RFQSupplier extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    public function emailReplies(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RFQSupplierEmailReply::class, 'rfq_supplier_id')->orderBy('received_at');
+    }
+
+    public function getEmailReplyTrackingEnabledAttribute(): bool
+    {
+        return filled($this->email_reply_token);
     }
 
     // Helper Methods

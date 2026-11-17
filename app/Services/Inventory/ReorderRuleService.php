@@ -19,6 +19,7 @@ class ReorderRuleService
         try {
             // Set default values
             $data['is_active'] = $data['is_active'] ?? true;
+            $data['auto_generate_po'] = false;
             $data = $this->hydrateDemandDefaults($data);
 
             $rule = ReorderRule::create($data);
@@ -49,6 +50,7 @@ class ReorderRuleService
     {
         try {
             $oldData = $rule->toArray();
+            $data['auto_generate_po'] = false;
             $mergedData = array_merge($oldData, $data);
             $data = $this->hydrateDemandDefaults($data, $mergedData);
 
@@ -151,8 +153,8 @@ class ReorderRuleService
                                 'rule_type' => 'automatic',
                                 'trigger_type' => 'reorder_point',
                                 'reorder_point' => $inventory->reorder_point,
-                                'reorder_quantity' => max(10, $inventory->reorder_point * 0.5), // Suggest 50% of reorder point or minimum 10
-                                'safety_stock' => max(5, $inventory->reorder_point * 0.2), // Suggest 20% of reorder point or minimum 5
+                            'reorder_quantity' => max(1, (int) ceil(($inventory->reorder_point ?? 0) - ($inventory->quantity_available ?? 0))),
+                            'safety_stock' => (int) ($inventory->safety_stock ?? 0),
                                 'priority' => 'medium',
                             ],
                         ];

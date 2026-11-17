@@ -4,7 +4,7 @@
   <Toast />
   <div class="flex h-screen w-full max-w-[100vw] overflow-hidden">
     <!-- Sidebar -->
-    <aside class="sidebar bg-white w-64 shadow-lg flex flex-col z-30 overflow-y-auto">
+    <aside class="sidebar w-64 shrink-0 bg-white shadow-lg flex flex-col z-30 overflow-y-auto">
       <!-- Logo section -->
       <div class="px-5 py-4 border-b border-gray-200">
         <div class="flex items-center gap-3">
@@ -16,7 +16,7 @@
   
           <!-- Brand Text -->
           <div>
-            <span class="portal-brand ">FURNISYNC</span>
+            <span class="portal-brand text-orange-500 text-xl">FURNISYNC</span>
           </div>
         </div>
       </div>
@@ -49,7 +49,7 @@
     </aside>
   
     <!-- Main content -->
-    <div class="flex-1 flex flex-col h-screen">
+    <div class="min-w-0 flex-1 flex flex-col h-screen">
       <!-- Top header -->
       <header class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between sticky top-0 z-20">
         <div>
@@ -121,6 +121,9 @@
                     <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
                   <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                  <p v-if="notif.data?.created_by?.name" class="mt-1 text-[11px] text-gray-400 truncate">
+                    Created by {{ notif.data.created_by.name }}
+                  </p>
                 </div>
               </button>
             </div>
@@ -140,7 +143,7 @@
       </header>
   
       <!-- Scrollable content -->
-      <main class="flex-1 overflow-y-auto p-5 bg-gray-50">
+      <main data-page-scroll-container class="flex-1 overflow-y-auto p-5 bg-gray-50">
         <slot />
       </main>
     </div>
@@ -165,6 +168,7 @@ const pageTitle = computed(() => String(page.props?.title || ''))
 const pageSubtitle = computed(() => String(page.props?.subtitle || ''))
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isBooting = ref(true)
 
 type User = {
   id: number
@@ -199,30 +203,49 @@ const adminMenu = [
   },
   {
     to: "/admin/subscription",
+    name: 'AdminSubscription',
     label: "Subscriptions",
     icon: "pi pi-credit-card text-gray-500 w-5"
   },
   {
-    to: "/admin/store-validation",
-    name: 'AdminStoreValidation',
-    label: "Store Verification",
-    icon: "pi pi-verified text-gray-500 w-5"
+    to: "/admin/home-content",
+    name: 'admin.home-content',
+    label: "Home Content",
+    icon: "pi pi-desktop text-gray-500 w-5"
   },
   {
-    to: "/admin/verification/suppliers",
-    name: 'admin.supplier-verification',
-    label: "Supplier Verification",
-    icon: "pi pi-building-columns text-gray-500 w-5"
+    to: "/admin/shopping-navigation",
+    name: 'admin.shopping-navigation',
+    label: "Shopping Navigation",
+    icon: "pi pi-th-large text-gray-500 w-5"
   },
   {
-    to: "/admin/customer-validation",
-    label: "Customer Verification",
-    icon: "pi pi-user text-gray-500 w-5"
+    to: "/admin/ecommerce-feedback",
+    name: 'admin.ecommerce-feedback',
+    label: "Ecommerce Feedback",
+    icon: "pi pi-comments text-gray-500 w-5"
   },
+  {
+    to: "/admin/3d-model-requests",
+    name: 'admin.3d-model-requests',
+    label: "3D Model Requests",
+    icon: "pi pi-box text-gray-500 w-5"
+  },
+  // {
+  //   to: "/admin/customer-validation",
+  //   label: "Customer Verification",
+  //   icon: "pi pi-user text-gray-500 w-5"
+  // },
   {
     to: "/admin/stores",
     label: "Stores",
     icon: "pi pi-building text-gray-500 w-5"
+  },
+  {
+    to: "/admin/suppliers",
+    name: 'admin.suppliers.index',
+    label: "Suppliers",
+    icon: "pi pi-truck text-gray-500 w-5"
   },
 
   {
@@ -363,14 +386,22 @@ const formatTimeAgo = (iso: string) => {
 }
 
 onMounted(() => {
-  if (!isAuthenticated.value) {
+  const storedToken = localStorage.getItem('auth_token')
+  if (!storedToken) {
     router.visit('/login')
     return
   }
+
+  if (!authStore.user) {
+    authStore.fetchCurrentUser().catch(() => null)
+  }
+
   loadNotifications()
+  isBooting.value = false
 })
 
 watch(isAuthenticated, (value) => {
+  if (isBooting.value) return
   if (value) return
   notifications.value = []
   unreadCount.value = 0

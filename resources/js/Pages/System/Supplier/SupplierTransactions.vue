@@ -1,12 +1,13 @@
 <template>
-  <div class="max-w-6xl mx-auto space-y-6 pb-6">
+  <div class="max-w-6xl mx-auto space-y-4 px-4 py-4 sm:px-6 pb-6">
     <PageHeader title="Transactions" subtitle="Supplier billing and payment activity" icon="pi pi-credit-card" />
 
-    <Card>
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #content>
-        <div class="text-center py-12 text-gray-500">
-          <i class="pi pi-receipt text-4xl mb-3 block"></i>
-          <p class="text-sm">No transactions available yet.</p>
+        <div class="flex flex-col items-center py-12 text-center">
+          <i class="pi pi-receipt mb-3 text-3xl text-slate-400"></i>
+          <h2 class="text-sm font-semibold text-slate-800">No transactions yet</h2>
+          <p class="mt-1 max-w-sm text-sm text-slate-500">Supplier billing and payment activity will appear here when transactions are available.</p>
         </div>
       </template>
     </Card>

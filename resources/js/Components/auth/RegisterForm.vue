@@ -18,8 +18,8 @@
                 </div>
 
                 <!-- Error Message -->
-                <Message v-if="errorMessage" severity="error" :closable="true" @close="errorMessage = ''" class="mb-6">
-                    {{ errorMessage }}
+                <Message v-if="errorMessage || Object.keys(props.serverErrors || {}).length" severity="error" class="mb-6">
+                    {{ errorMessage || Object.values(props.serverErrors || {})[0] }}
                 </Message>
     
                 <!-- Success Message (for registration redirect) -->
@@ -37,10 +37,11 @@
                                 <label class="block text-sm font-medium text-gray-700">
                                     Firstname <span class="text-red-500">*</span>
                                 </label>
-                                <InputText v-model="formData.fname" placeholder="ex. Juan"
+                                <InputText :model-value="formData.fname" placeholder="Juan"
+                                    @update:model-value="formData.fname = sanitizeName($event)"
                                     :class="{ 'p-invalid': validationErrors.fname }" class="w-full mt-1" />
-                                <small v-if="validationErrors.fname" class="p-error">
-                                    {{ validationErrors.fname }}
+                                <small v-if="validationErrors.fname || props.serverErrors?.fname" class="p-error">
+                                    {{ validationErrors.fname || props.serverErrors?.fname }}
                                 </small>
                             </div>
     
@@ -49,10 +50,11 @@
                                 <label class="block text-sm font-medium text-gray-700">
                                     Lastname <span class="text-red-500">*</span>
                                 </label>
-                                <InputText v-model="formData.lname" placeholder="Dela Cruz"
+                                <InputText :model-value="formData.lname" placeholder="Dela Cruz"
+                                    @update:model-value="formData.lname = sanitizeName($event)"
                                     :class="{ 'p-invalid': validationErrors.lname }" class="w-full mt-1" />
-                                <small v-if="validationErrors.lname" class="p-error">
-                                    {{ validationErrors.lname }}
+                                <small v-if="validationErrors.lname || props.serverErrors?.lname" class="p-error">
+                                    {{ validationErrors.lname || props.serverErrors?.lname }}
                                 </small>
                             </div>
                         </div>
@@ -68,10 +70,11 @@
                         </div>
                         <div class="p-inputgroup">
                             <InputText id="email" type="email" v-model="formData.email" placeholder="email@example.com"
-                                :class="{ 'p-invalid': validationErrors.email }" class="w-full" />
+                                :class="{ 'p-invalid': validationErrors.email }" class="w-full"
+                                @blur="validateEmailField" @input="validationErrors.email = ''" />
                         </div>
-                        <small v-if="validationErrors.email" class="p-error">
-                            {{ validationErrors.email }}
+                        <small v-if="validationErrors.email || props.serverErrors?.email" class="p-error">
+                            {{ validationErrors.email || props.serverErrors?.email }}
                         </small>
                     </div>
     
@@ -85,8 +88,8 @@
                             dateFormat="mm/dd/yy" :showIcon="true" iconDisplay="input" :maxDate="maxDate" :minDate="minDate"
                             showButtonBar inputClass="w-full" />
     
-                        <small v-if="validationErrors.birthday" class="p-error">
-                            {{ validationErrors.birthday }}
+                        <small v-if="validationErrors.birthday || props.serverErrors?.birthday" class="p-error">
+                            {{ validationErrors.birthday || props.serverErrors?.birthday }}
                         </small>
                     </div>
     
@@ -101,10 +104,23 @@
                         <div class="p-inputgroup">
                             <Password id="password" v-model="formData.password" :feedback="false" toggleMask
                                 placeholder="Enter your password" :class="{ 'p-invalid': validationErrors.password }"
-                                class="w-full" autocomplete="new-password" />
+                                class="w-full" autocomplete="new-password" @focus="passwordFocused = true" @blur="passwordFocused = false" />
                         </div>
-                        <small v-if="validationErrors.password" class="p-error">
-                            {{ validationErrors.password }}
+                        <Transition name="password-guide">
+                            <div v-if="showPasswordRules" class="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                                <p class="mb-2 font-semibold text-gray-800">Password must include:</p>
+                                <ul class="space-y-2">
+                                    <li v-for="rule in passwordRuleItems" :key="rule.key" class="flex items-center gap-2 transition-colors duration-300" :class="rule.met ? 'text-emerald-700' : 'text-gray-500'">
+                                        <span class="flex h-5 w-5 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300" :class="rule.met ? 'scale-100 border-emerald-500 bg-emerald-500 text-white' : 'scale-90 bg-white text-gray-400'">
+                                            <i :class="rule.met ? 'pi pi-check' : 'pi pi-check'"></i>
+                                        </span>
+                                        <span>{{ rule.label }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </Transition>
+                        <small v-if="validationErrors.password || props.serverErrors?.password" class="p-error">
+                            {{ validationErrors.password || props.serverErrors?.password }}
                         </small>
                     </div>
     
@@ -156,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed} from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
@@ -169,6 +185,7 @@ import Auth3DHero from '@/Components/auth/Auth3DHero.vue'
 
 const props = defineProps<{
   isSubmitting? :boolean
+  serverErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -208,6 +225,30 @@ const formData = reactive<RegisterFormData>({
 const validationErrors = reactive<ValidationErrors>({})
 const errorMessage = ref<string>('')
 const successMessage = ref<string>('')
+const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/
+const passwordFocused = ref(false)
+const passwordRuleItems = reactive([
+  { key: 'length', label: 'At least 8 characters', met: false },
+  { key: 'uppercase', label: 'One uppercase letter', met: false },
+  { key: 'number', label: 'One number', met: false },
+  { key: 'special', label: 'One special character', met: false },
+])
+
+const showPasswordRules = computed(() => passwordFocused.value && formData.password.length > 0)
+const sanitizeName = (value: string) => String(value || '').replace(/[^\p{L}\p{M}\s'-]/gu, '').replace(/\s{2,}/g, ' ')
+
+const updatePasswordRules = (value: string) => {
+  passwordRuleItems[0].met = value.length >= 8
+  passwordRuleItems[1].met = /[A-Z]/.test(value)
+  passwordRuleItems[2].met = /\d/.test(value)
+  passwordRuleItems[3].met = /[^A-Za-z0-9]/.test(value)
+}
+
+watch(
+  () => formData.password,
+  (value) => updatePasswordRules(value),
+  { immediate: true }
+)
 
 
 const maxDate = computed(() => {
@@ -223,9 +264,20 @@ const minDate = computed(() => {
 })
 
 // Validation
+const validateEmailField = (): boolean => {
+  const email = formData.email.trim()
+  if (!email) {
+    validationErrors.email = 'Email is required'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    validationErrors.email = 'Please enter a valid email address (e.g., user@example.com)'
+  } else {
+    validationErrors.email = ''
+  }
+  return !validationErrors.email
+}
+
 const validateForm = (): boolean => {
   let isValid = true
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
   // Clear previous errors
   validationErrors.fname = ''
@@ -235,12 +287,15 @@ const validateForm = (): boolean => {
   validationErrors.password = ''
   validationErrors.confirmPassword = ''
 
-  if (!formData.fname.trim()) {
+  formData.fname = sanitizeName(formData.fname).trim()
+  formData.lname = sanitizeName(formData.lname).trim()
+
+  if (!formData.fname) {
     validationErrors.fname = 'Firstname is required'
     isValid = false
   }
 
-  if (!formData.lname.trim()) {
+  if (!formData.lname) {
     validationErrors.lname = 'Lastname is required'
     isValid = false
   }
@@ -250,14 +305,7 @@ const validateForm = (): boolean => {
     isValid = false
   }
 
-  // Email validation
-  if (!formData.email.trim()) {
-    validationErrors.email = 'Email is required'
-    isValid = false
-  } else if (!emailRegex.test(formData.email)) {
-    validationErrors.email = 'Please enter valid email address (e.g., user@example.com)'
-    isValid = false
-  }
+  if (!validateEmailField()) isValid = false
 
   // Password validation
   if (!formData.password) {
@@ -265,6 +313,9 @@ const validateForm = (): boolean => {
     isValid = false
   } else if (formData.password.length < 8) {
     validationErrors.password = 'Password must be at least 8 characters'
+    isValid = false
+  } else if (!passwordRegex.test(formData.password)) {
+    validationErrors.password = 'Password must include an uppercase letter, a number, and a special character'
     isValid = false
   }
 
@@ -301,5 +352,27 @@ const handleSubmit = () => {
 
 :deep(.p-password-input) {
     width: 100%;
+}
+</style>
+
+<style scoped>
+.password-guide-enter-active,
+.password-guide-leave-active {
+    transition: opacity 0.22s ease, transform 0.22s ease, max-height 0.22s ease;
+    max-height: 180px;
+}
+
+.password-guide-enter-from,
+.password-guide-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+}
+
+.password-guide-enter-to,
+.password-guide-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 180px;
 }
 </style>

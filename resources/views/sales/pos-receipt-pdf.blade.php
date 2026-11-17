@@ -25,7 +25,7 @@
       </div>
       <div class="right">
         <div>Date: {{ optional($receipt?->issued_at ?? $order->created_at)->format('Y-m-d H:i') }}</div>
-        <div>Status: {{ strtoupper($order->payment_status ?? 'pending') }}</div>
+        <div>Payment Status: {{ ucwords(str_replace('_', ' ', $order->payment_status ?? 'pending')) }}</div>
       </div>
     </div>
 
@@ -46,6 +46,7 @@
           <div>Cashier: {{ trim(($issued_by?->fname ?? '').' '.($issued_by?->lname ?? '')) ?: '-' }}</div>
           <div>Customer: {{ $order->customer_name ?? 'Walk-in' }}</div>
           <div>Phone: {{ $order->customer_phone ?? '-' }}</div>
+          <div>Fulfillment: {{ $order->delivery_required ? 'Delivery' : 'Pickup' }}</div>
         </td>
       </tr>
     </table>
@@ -55,10 +56,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width: 50%">Product</th>
-            <th style="width: 12%">Qty</th>
-            <th style="width: 19%">Unit Price</th>
-            <th style="width: 19%">Line Total</th>
+            <th style="width: 42%">Product</th>
+            <th style="width: 10%">Qty</th>
+            <th style="width: 16%">Base Unit</th>
+            <th style="width: 16%">Custom Fee / Unit</th>
+            <th style="width: 16%">Line Total</th>
           </tr>
         </thead>
         <tbody>
@@ -67,14 +69,19 @@
               <td>
                 {{ $item->product_name ?? 'Product' }}
                 <div class="muted">{{ $item->sku ?? '' }}</div>
+                @if (!empty($item->customization_request))
+                  <div><strong>Upholstery:</strong> {{ $item->customization_request }}</div>
+                  <div class="muted">Estimated lead time: {{ $item->customization_lead_time_days }} days</div>
+                @endif
               </td>
               <td>{{ $item->quantity }}</td>
               <td>{{ number_format((float) $item->unit_price, 2) }}</td>
+              <td>{{ number_format((float) ($item->customization_fee ?? 0), 2) }}</td>
               <td>{{ number_format((float) $item->line_total, 2) }}</td>
             </tr>
           @empty
             <tr>
-              <td colspan="4" class="muted">No items recorded.</td>
+              <td colspan="5" class="muted">No items recorded.</td>
             </tr>
           @endforelse
         </tbody>
@@ -87,14 +94,25 @@
           <td>Subtotal: {{ number_format((float) $order->subtotal, 2) }}</td>
           <td>Discount: {{ number_format((float) $order->discount_amount, 2) }}</td>
           <td>Tax: {{ number_format((float) $order->tax_amount, 2) }}</td>
+          <td>Shipping: {{ number_format((float) ($order->shipping_fee ?? 0), 2) }}</td>
           <td class="right"><strong>Total: {{ number_format((float) $order->total_amount, 2) }}</strong></td>
         </tr>
+        @if ((float) ($order->commission_rate ?? 0) > 0)
         <tr>
-          <td>Payment Method: {{ strtoupper($order->payment_method ?? '-') }}</td>
+          <td colspan="4">Store plan commission: {{ rtrim(rtrim(number_format((float) $order->commission_rate, 2), '0'), '.') }}% ({{ number_format((float) ($order->commission_amount ?? 0), 2) }}; not included in customer total)</td>
+        </tr>
+        @endif
+        <tr>
+          <td>Payment Method: {{ ($order->payment_method ?? null) === 'card' ? 'Online Payment' : (($order->payment_method ?? null) === 'gcash' ? 'GCash' : ucfirst(str_replace('_', ' ', $order->payment_method ?? '-'))) }}</td>
           <td>Amount Tendered: {{ number_format((float) ($order->amount_tendered ?? 0), 2) }}</td>
           <td>Change: {{ number_format((float) ($order->change_amount ?? 0), 2) }}</td>
           <td class="right">Reference: {{ $order->payment_reference ?? $receipt?->payment_reference ?? '-' }}</td>
         </tr>
+        @if ($order->paid_at)
+        <tr>
+          <td colspan="4">Paid At: {{ optional($order->paid_at)->format('M d, Y h:i A') }}</td>
+        </tr>
+        @endif
       </table>
     </div>
   </body>

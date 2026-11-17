@@ -17,7 +17,7 @@ class SalesRolePermissionsSeeder extends Seeder
 
         $assignments = [
             'super_admin' => $allSalesPermissionIds,
-            'store_admin' => $allSalesPermissionIds,
+            'owner' => $allSalesPermissionIds,
             'store_manager' => $allSalesPermissionIds,
             'sales_staff' => DB::table('permissions')
                 ->whereIn('name', [

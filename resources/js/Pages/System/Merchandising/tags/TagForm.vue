@@ -43,7 +43,6 @@
           <p class="text-xs font-semibold text-blue-900 mb-2">Tag Types:</p>
           <ul class="text-xs text-blue-800 space-y-1 list-disc list-inside">
             <li><strong>Style:</strong> Design aesthetics (Modern, Vintage, Industrial)</li>
-            <li><strong>Room:</strong> Room categories (Living Room, Bedroom, Office)</li>
             <li><strong>Promotion:</strong> Sales and offers (Sale, New, Limited Edition)</li>
             <li><strong>Feature:</strong> Product features (Eco-friendly, Handmade, Premium)</li>
           </ul>
@@ -166,7 +165,7 @@ const form = reactive({
 })
 
 const errors = ref<Record<string, string>>({})
-const tagTypes = ['Style', 'Room', 'Promotion', 'Feature']
+const tagTypes = ['Style', 'Promotion', 'Feature']
 
 // Watch tag name to auto-generate slug
 watch(() => form.tag_name, (newVal) => {

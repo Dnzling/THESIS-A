@@ -22,7 +22,7 @@ class LeaveController extends Controller
         $user = Auth::user();
         $storeId = $user->store_id;
 
-        $query = Leave::with(['employee', 'approver', 'handoverTo'])
+        $query = Leave::with(['employee.user:id,fname,lname', 'approver', 'handoverTo'])
             ->whereHas('employee', function ($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             });
@@ -184,7 +184,7 @@ class LeaveController extends Controller
         $user = Auth::user();
         $storeId = $user->store_id;
 
-        $leave = Leave::with(['employee', 'approver', 'handoverTo'])
+        $leave = Leave::with(['employee.user:id,fname,lname', 'approver', 'handoverTo'])
             ->whereHas('employee', function ($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             })

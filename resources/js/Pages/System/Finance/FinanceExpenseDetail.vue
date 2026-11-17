@@ -1,31 +1,26 @@
 <template>
-	<div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-		<div class="rounded-3xl border border-gray-100 bg-linear-to-r from-slate-50 via-white to-blue-50 p-5 shadow-sm">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div class="flex items-center gap-3">
-					<Button icon="pi pi-arrow-left" rounded text @click="goBack" />
-					<div>
-						<h1 class="text-xl font-semibold tracking-tight text-gray-900">Expense Detail</h1>
-						<p class="mt-0.5 text-sm text-gray-500">Full expense record with linked invoice/receipt details.</p>
-					</div>
+	<div class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+		<ConfirmDialog />
+		<header class="flex flex-wrap items-center justify-between gap-3">
+			<div class="flex min-w-0 items-center gap-3">
+				<Button icon="pi pi-chevron-left" rounded outlined aria-label="Go back" v-tooltip.bottom="'Go back'" class="!h-10 !w-10 shrink-0 !border-slate-200 !bg-white !text-slate-600 shadow-sm" @click="goBack" />
+				<div class="min-w-0">
+					<p class="text-xs font-medium uppercase tracking-wide text-orange-700">Finance Expense</p>
+					<h1 class="truncate font-mono text-lg font-semibold tracking-tight text-slate-900">{{ expenseDisplayReference || (expense ? 'Expense #' + expense.id : 'Expense Details') }}</h1>
+					<p class="mt-0.5 text-sm text-slate-500">{{ expense?.branch?.name || 'Store-wide' }}<span v-if="expense?.category"> · {{ formatLabel(expense.category) }}</span></p>
 				</div>
-				<Button icon="pi pi-print" label="Print" :disabled="!expense" @click="printDocument" />
 			</div>
-		</div>
+			<div class="flex items-center gap-2">
+				<Badge v-if="expense" :value="formatStatus(expense.status)" :severity="statusSeverity(expense.status)" />
+				<Button icon="pi pi-print" label="Print" severity="secondary" outlined size="small" :disabled="!expense" @click="printDocument" />
+			</div>
+		</header>
 
-		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+		<Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
 			<template #content>
-				<div v-if="loading" class="p-6 text-sm text-gray-500">Loading expense details...</div>
-				<div v-else-if="!expense" class="p-6 text-sm text-gray-500">Expense not found.</div>
-				<div v-else class="grid grid-cols-1 gap-4 p-6 md:grid-cols-3">
-					<div>
-						<p class="text-xs uppercase tracking-wide text-gray-500">Category</p>
-						<p class="mt-1 text-sm font-semibold text-gray-900">{{ expense.category || '-' }}</p>
-					</div>
-					<div>
-						<p class="text-xs uppercase tracking-wide text-gray-500">Status</p>
-						<Tag :value="formatStatus(expense.status)" :severity="statusSeverity(expense.status)" />
-					</div>
+				<div v-if="loading" class="space-y-3 p-6"><div class="h-6 w-48 animate-pulse rounded bg-slate-100" /><div class="h-20 animate-pulse rounded-xl bg-slate-50" /><div class="h-28 animate-pulse rounded-xl bg-slate-50" /></div>
+				<div v-else-if="!expense" class="p-8 text-center text-sm text-slate-500">Expense not found.</div>
+				<div v-else class="expense-meta-grid grid grid-cols-1 gap-3 p-5 sm:p-6 md:grid-cols-3">
 					<div>
 						<p class="text-xs uppercase tracking-wide text-gray-500">Amount</p>
 						<p class="mt-1 text-base font-semibold text-green-700">₱ {{ formatMoney(expense.amount) }}</p>
@@ -36,7 +31,7 @@
 					</div>
 					<div>
 						<p class="text-xs uppercase tracking-wide text-gray-500">Payment Method</p>
-						<p class="mt-1 text-sm text-gray-700">{{ expense.payment_method || '-' }}</p>
+						<p class="mt-1 text-sm text-gray-700">{{ expense.payment_method ? formatLabel(expense.payment_method) : '-' }}</p>
 					</div>
 					<div>
 						<p class="text-xs uppercase tracking-wide text-gray-500">Payment Date</p>
@@ -44,15 +39,27 @@
 					</div>
 					<div>
 						<p class="text-xs uppercase tracking-wide text-gray-500">Reference Type</p>
-						<p class="mt-1 text-sm text-gray-700">{{ expense.reference_type || '-' }}</p>
+						<p class="mt-1 text-sm text-gray-700">{{ formatLabel(expense.reference_type) }}</p>
 					</div>
 					<div>
-						<p class="text-xs uppercase tracking-wide text-gray-500">Reference #</p>
-						<p class="mt-1 text-sm text-gray-700">{{ expense.reference_number || '-' }}</p>
+						<p class="text-xs uppercase tracking-wide text-gray-500">Payment Reference</p>
+						<p class="mt-1 break-all font-mono text-sm text-gray-700">{{ expense.payment_reference || '-' }}</p>
 					</div>
 					<div>
 						<p class="text-xs uppercase tracking-wide text-gray-500">Currency</p>
 						<p class="mt-1 text-sm text-gray-700">{{ expense.currency || 'PHP' }}</p>
+					</div>
+					<div>
+						<p class="text-xs uppercase tracking-wide text-gray-500">Requested By</p>
+						<p class="mt-1 text-sm text-gray-700">{{ person(expense.requested_by) }}</p>
+					</div>
+					<div v-if="expense.approved_by">
+						<p class="text-xs uppercase tracking-wide text-gray-500">Approved By</p>
+						<p class="mt-1 text-sm text-gray-700">{{ person(expense.approved_by) }}</p>
+					</div>
+					<div v-if="expense.paid_by">
+						<p class="text-xs uppercase tracking-wide text-gray-500">Recorded Paid By</p>
+						<p class="mt-1 text-sm text-gray-700">{{ person(expense.paid_by) }}</p>
 					</div>
 					<div class="md:col-span-3">
 						<p class="text-xs uppercase tracking-wide text-gray-500">Description</p>
@@ -62,6 +69,63 @@
 						<p class="text-xs uppercase tracking-wide text-gray-500">Notes</p>
 						<p class="mt-1 whitespace-pre-wrap text-sm text-gray-700">{{ expense.notes }}</p>
 					</div>
+					<div v-if="expense.branch_expense_request" class="md:col-span-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+						<p class="text-xs font-medium uppercase tracking-wide text-blue-800">Originating branch request</p>
+						<p class="mt-1 text-sm font-medium text-gray-900">{{ expense.branch_expense_request.title }} <span v-if="expense.branch_expense_request.reference_number" class="font-mono text-xs text-slate-500">· {{ expense.branch_expense_request.reference_number }}</span></p>
+						<div class="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+							<div><p class="text-xs text-slate-500">Category</p><p class="mt-1 font-medium text-slate-800">{{ formatLabel(expense.branch_expense_request.category) }}</p></div>
+							<div><p class="text-xs text-slate-500">Approved estimate</p><p class="mt-1 font-medium text-slate-800">PHP {{ formatMoney(expense.branch_expense_request.estimated_amount) }}</p></div>
+							<div><p class="text-xs text-slate-500">Actual recorded</p><p class="mt-1 font-medium text-slate-800">PHP {{ formatMoney(expense.branch_expense_request.actual_amount ?? expense.amount) }}</p></div>
+							<div><p class="text-xs text-slate-500">Difference</p><p class="mt-1 font-medium text-slate-800">{{ Number(expense.branch_expense_request.actual_amount ?? expense.amount) - Number(expense.branch_expense_request.estimated_amount) > 0 ? '+' : '' }}PHP {{ formatMoney(Number(expense.branch_expense_request.actual_amount ?? expense.amount) - Number(expense.branch_expense_request.estimated_amount)) }}</p></div>
+						</div>
+						<a v-if="expense.branch_expense_request.receipt_url && !expense.branch_expense_request.receipt_mime?.startsWith('image/')" :href="expense.branch_expense_request.receipt_url" target="_blank" rel="noopener" class="mt-2 inline-flex text-sm text-orange-700 hover:underline">Open receipt</a>
+						<button v-if="expense.branch_expense_request.receipt_url && expense.branch_expense_request.receipt_mime?.startsWith('image/')" type="button" class="group relative mt-3 block h-28 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-50" aria-label="View branch expense receipt" @click="openReceiptPreview">
+							<img v-if="branchReceiptImage" :src="branchReceiptImage" alt="Branch expense receipt" class="h-full w-full object-cover transition group-hover:scale-[1.03]" />
+							<span v-else class="absolute inset-0 flex items-center justify-center text-slate-400"><i class="pi pi-image text-xl" /></span>
+							<span class="absolute inset-0 flex items-center justify-center bg-slate-950/0 text-white opacity-0 transition group-hover:bg-slate-950/35 group-hover:opacity-100"><i class="pi pi-eye text-xl" /></span>
+						</button>
+					</div>
+				</div>
+			</template>
+		</Card>
+
+		<Card v-if="expense?.status === 'pending_approval' && canApprove" class="overflow-hidden rounded-2xl border border-orange-200 shadow-sm">
+			<template #title><span class="text-base">Expense Approval</span></template>
+			<template #content>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<p class="text-sm text-slate-600">Review the expense details and supporting receipt before deciding.</p>
+					<div class="flex justify-end gap-2">
+						<Button label="Reject" severity="secondary" outlined :disabled="acting" @click="showReject = true" />
+						<Button label="Approve Expense" icon="pi pi-check" severity="warn" :loading="acting" @click="confirmApprove" />
+					</div>
+				</div>
+			</template>
+		</Card>
+
+		<Dialog v-model:visible="showReject" modal header="Reject Expense" :style="{ width: 'min(92vw, 30rem)' }">
+			<label class="mb-1 block text-sm font-medium text-slate-700">Reason for rejection <span class="text-red-600">*</span></label>
+			<Textarea v-model="rejectNotes" rows="4" autoResize fluid placeholder="Explain why this expense is being rejected." />
+			<template #footer>
+				<Button label="Keep Reviewing" severity="secondary" outlined :disabled="acting" @click="showReject = false" />
+				<Button label="Reject Expense" severity="warn" :loading="acting" :disabled="!rejectNotes.trim()" @click="rejectExpense" />
+			</template>
+		</Dialog>
+
+		<Dialog v-model:visible="receiptPreviewVisible" modal header="Branch Request Receipt" :style="{ width: 'min(92vw, 56rem)' }" :breakpoints="{ '640px': '96vw' }">
+			<img v-if="branchReceiptImage" :src="branchReceiptImage" alt="Branch expense receipt" class="mx-auto max-h-[75vh] max-w-full rounded-lg object-contain" />
+		</Dialog>
+
+		<Card v-if="benefitDetail" class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+			<template #title>Employee benefit request</template>
+			<template #content>
+				<div class="grid gap-4 p-6 text-sm md:grid-cols-3">
+					<div><p class="text-gray-500">Employee</p><p class="font-medium">{{ benefitDetail.employee?.user?.fname }} {{ benefitDetail.employee?.user?.lname }}</p></div>
+					<div><p class="text-gray-500">Benefit</p><p class="font-medium">{{ benefitDetail.deduction_type?.name }}</p></div>
+					<div><p class="text-gray-500">Provider</p><p class="font-medium">{{ benefitDetail.provider }}</p></div>
+					<div><p class="text-gray-500">Service date</p><p class="font-medium">{{ formatDate(benefitDetail.service_date) }}</p></div>
+					<div><p class="text-gray-500">Benefit used</p><p class="font-medium">₱ {{ formatMoney(benefitDetail.used_amount) }}</p></div>
+					<div><p class="text-gray-500">Company payment</p><p class="font-medium">₱ {{ formatMoney(benefitDetail.company_payment_amount) }}</p></div>
+					<div class="md:col-span-3"><a v-if="benefitDetail.receipt_path" :href="`/storage/${benefitDetail.receipt_path}`" target="_blank" rel="noopener" class="text-blue-600 underline">View final receipt</a></div>
 				</div>
 			</template>
 		</Card>
@@ -131,7 +195,7 @@
 			</template>
 		</Card>
 
-		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm" v-else-if="expense && expense.reference_type">
+		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm" v-else-if="expense && expense.reference_type && !['employee_benefit_request', 'branch_expense_request'].includes(expense.reference_type)">
 			<template #content>
 				<div class="p-6 text-sm text-gray-500">
 					No expanded invoice/receipt detail is available for reference type: {{ expense.reference_type }}.
@@ -142,21 +206,40 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import Card from 'primevue/card'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Tag from 'primevue/tag'
+import Dialog from 'primevue/dialog'
+import Textarea from 'primevue/textarea'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 import financeService from '../../../services/finance.service'
+import axios from '@/axios'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const confirm = useConfirm()
+const toast = useToast()
+const auth = useAuthStore()
 
 const loading = ref(false)
+const acting = ref(false)
+const showReject = ref(false)
+const rejectNotes = ref('')
 const expense = ref<any>(null)
 const invoiceDetail = ref<any>(null)
+const benefitDetail = ref<any>(null)
+const branchReceiptImage = ref('')
+const receiptPreviewVisible = ref(false)
+const expenseDisplayReference = computed(() => expense.value?.branch_expense_request?.reference_number || expense.value?.reference_number || '')
+const canApprove = computed(() => auth.hasPermission('finance.expenses.approve'))
 
 const formatMoney = (value: number | string) => {
 	const amount = typeof value === 'string' ? parseFloat(value) : value || 0
@@ -168,19 +251,86 @@ const formatDate = (value: string) => {
 	return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+const formatLabel = (value: string | null) => value ? value.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : '-'
+
+const person = (user: any) => user ? [user.fname, user.lname].filter(Boolean).join(' ') || user.name || '-' : '-'
+
 const formatStatus = (status: string) => {
 	if (!status) return '-'
 	return status.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
 const statusSeverity = (status: string) => {
-	if (status === 'approved' || status === 'matched' || status === 'paid') return 'success'
+	if (status === 'approved' || status === 'finance_approved' || status === 'matched' || status === 'paid') return 'success'
 	if (status === 'pending' || status === 'pending_approval') return 'warn'
-	if (status === 'rejected' || status === 'exception' || status === 'cancelled') return 'danger'
+	if (status === 'submitted_to_finance') return 'info'
+	if (status === 'rejected' || status === 'finance_rejected' || status === 'exception') return 'danger'
+	if (status === 'cancelled') return 'secondary'
 	return 'secondary'
 }
 
-const goBack = () => router.push({ name: 'finance.expenses' })
+const goBack = () => window.history.length > 1 ? router.back() : router.push({ name: 'finance.expenses' })
+
+const confirmApprove = () => {
+	if (!expense.value) return
+	confirm.require({
+		header: 'Approve this expense?',
+		message: `Approve expense ${expenseDisplayReference.value}?`,
+		icon: 'pi pi-check-circle',
+		acceptLabel: 'Approve Expense',
+		rejectLabel: 'Keep Reviewing',
+		acceptProps: { severity: 'warn' },
+		rejectProps: { severity: 'secondary', outlined: true },
+		accept: approveExpense,
+	})
+}
+
+const approveExpense = async () => {
+	if (!expense.value || acting.value) return
+	acting.value = true
+	try {
+		await financeService.approveExpense(Number(expense.value.id))
+		toast.add({ severity: 'success', summary: 'Expense approved', life: 4000 })
+		await loadDetail()
+	} catch (error: any) {
+		toast.add({ severity: 'error', summary: 'Unable to approve expense', detail: error?.response?.data?.message || 'Please try again.', life: 5000 })
+	} finally {
+		acting.value = false
+	}
+}
+
+const rejectExpense = async () => {
+	if (!expense.value || !rejectNotes.value.trim() || acting.value) return
+	acting.value = true
+	try {
+		await financeService.rejectExpense(Number(expense.value.id), { notes: rejectNotes.value.trim() })
+		showReject.value = false
+		rejectNotes.value = ''
+		toast.add({ severity: 'success', summary: 'Expense rejected', life: 4000 })
+		await loadDetail()
+	} catch (error: any) {
+		toast.add({ severity: 'error', summary: 'Unable to reject expense', detail: error?.response?.data?.message || 'Please try again.', life: 5000 })
+	} finally {
+		acting.value = false
+	}
+}
+
+const loadBranchReceiptImage = async () => {
+	const url = expense.value?.branch_expense_request?.receipt_url
+	if (!url || !expense.value?.branch_expense_request?.receipt_mime?.startsWith('image/')) return
+	try {
+		const parsed = new URL(url, window.location.origin)
+		const response = await axios.get(parsed.pathname + parsed.search, { responseType: 'blob' })
+		branchReceiptImage.value = URL.createObjectURL(response.data)
+	} catch {
+		branchReceiptImage.value = ''
+	}
+}
+
+const openReceiptPreview = async () => {
+	if (!branchReceiptImage.value) await loadBranchReceiptImage()
+	if (branchReceiptImage.value) receiptPreviewVisible.value = true
+}
 
 const loadDetail = async () => {
 	loading.value = true
@@ -188,10 +338,15 @@ const loadDetail = async () => {
 		const id = Number(route.params.id)
 		const expenseRes = await financeService.getExpenseDetail(id)
 		expense.value = expenseRes.data || null
+		await loadBranchReceiptImage()
 
 		if (expense.value?.reference_type === 'invoice' && expense.value?.reference_id) {
 			const invoiceRes = await financeService.getInvoice(Number(expense.value.reference_id))
 			invoiceDetail.value = invoiceRes.data || null
+		}
+		if (expense.value?.reference_type === 'employee_benefit_request' && expense.value?.reference_id) {
+			const benefitRes = await financeService.getBenefitRequest(Number(expense.value.reference_id))
+			benefitDetail.value = benefitRes.data || null
 		}
 	} finally {
 		loading.value = false
@@ -217,7 +372,7 @@ const printDocument = () => {
 	const html = `
 		<html>
 			<head>
-				<title>Expense ${e.reference_number || e.id}</title>
+				<title>Expense ${e.branch_expense_request?.reference_number || e.reference_number || e.id}</title>
 				<style>
 					body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; margin: 0; background: #f5f7fb; color: #101828; }
 					.page { max-width: 920px; margin: 24px auto; background: #ffffff; border: 1px solid #e7ebf1; border-radius: 16px; padding: 24px; }
@@ -243,7 +398,7 @@ const printDocument = () => {
 					<div class="top">
 						<div>
 							<h2 class="title">Expense Document</h2>
-							<p class="subtitle">Reference: ${e.reference_number || '-'} | Type: ${e.reference_type || '-'}</p>
+							<p class="subtitle">Expense reference: ${e.branch_expense_request?.reference_number || e.reference_number || '-'}${e.payment_reference ? ` | Payment reference: ${e.payment_reference}` : ''}</p>
 						</div>
 						<div class="pill">${formatStatus(e.status || '-')}</div>
 					</div>
@@ -304,5 +459,21 @@ const printDocument = () => {
 	}, 250)
 }
 
+onBeforeUnmount(() => {
+	if (branchReceiptImage.value) URL.revokeObjectURL(branchReceiptImage.value)
+})
 onMounted(loadDetail)
 </script>
+
+<style scoped>
+.expense-meta-grid > div {
+	border: 1px solid #e2e8f0;
+	border-radius: 0.75rem;
+	padding: 0.75rem;
+}
+
+.expense-meta-grid > div:first-child {
+	border-color: #fed7aa;
+	background: #fff7ed;
+}
+</style>

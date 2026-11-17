@@ -53,13 +53,16 @@ class ReorderRuleController extends Controller
     private function resolveBranchId(Request $request): int
     {
         $context = $this->getUserContext();
+        if (!$this->hasGlobalAccess() && !empty($context['branch_id'])) {
+            return (int) $context['branch_id'];
+        }
         return (int) ($request->branch_id ?? $context['branch_id'] ?? 0);
     }
 
     private function hasGlobalAccess(): bool
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
-        return in_array($roleName, ['super_admin', 'owner'], true);
+        return $roleName === 'super_admin' && empty(auth()->user()?->store_id);
     }
 
     /**
@@ -96,7 +99,7 @@ class ReorderRuleController extends Controller
             $context = $this->getUserContext();
 
             if (!$this->hasGlobalAccess() && empty($context['store_id']) && empty($context['branch_id'])) {
-                $perPage = $request->get('per_page', 15);
+                $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
                 $empty = ReorderRule::query()->whereRaw('1 = 0')->paginate($perPage);
 
                 return response()->json([
@@ -153,7 +156,8 @@ class ReorderRuleController extends Controller
                 });
             }
 
-            $rules = $query->orderBy('priority', 'desc')->orderBy('product_id')->paginate(15);
+            $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
+            $rules = $query->orderBy('priority', 'desc')->orderBy('product_id')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -180,6 +184,10 @@ class ReorderRuleController extends Controller
             DB::beginTransaction();
 
             $payload = $request->validated();
+            if (($payload['basis_type'] ?? null) === 'demand_lead_time' && !app(\App\Services\Inventory\ForecastPlanService::class)->allowsForecast((int) ($request->user()?->store_id ?: $request->user()?->employee?->store_id))) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Forecast-based reorder rules require Growth or Enterprise.'], 422);
+            }
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = $this->resolveBranchId($request);
             }
@@ -252,6 +260,10 @@ class ReorderRuleController extends Controller
             DB::beginTransaction();
 
             $payload = $request->validated();
+            if (($payload['basis_type'] ?? null) === 'demand_lead_time' && !app(\App\Services\Inventory\ForecastPlanService::class)->allowsForecast((int) ($request->user()?->store_id ?: $request->user()?->employee?->store_id))) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Forecast-based reorder rules require Growth or Enterprise.'], 422);
+            }
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = (int) $reorderRule->branch_id;
             }
@@ -443,6 +455,13 @@ class ReorderRuleController extends Controller
                     'success' => false,
                     'message' => 'Branch is required for reorder status checks.',
                 ], 422);
+            }
+
+            if (!$this->canAccessBranchRecord($branchId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot generate reorder suggestions for another store or branch.',
+                ], 403);
             }
 
             $result = $this->reorderRuleService->checkReorderStatus(

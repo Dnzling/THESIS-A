@@ -60,7 +60,7 @@ class VehicleController extends Controller
 
         $validated = $request->validate([
             'vehicle_name' => 'required|string|max:120',
-            'vehicle_type' => 'required|in:motorcycle,van,truck,car,other',
+            'vehicle_type' => 'required|in:van,truck,closed_truck,other',
             'plate_number' => 'required|string|max:50',
             'brand' => 'nullable|string|max:100',
             'model' => 'nullable|string|max:100',
@@ -116,7 +116,7 @@ class VehicleController extends Controller
 
         $validated = $request->validate([
             'vehicle_name' => 'required|string|max:120',
-            'vehicle_type' => 'required|in:motorcycle,van,truck,car,other',
+            'vehicle_type' => 'required|in:van,truck,closed_truck,other',
             'plate_number' => 'required|string|max:50',
             'brand' => 'nullable|string|max:100',
             'model' => 'nullable|string|max:100',
@@ -176,6 +176,7 @@ class VehicleController extends Controller
     private function buildIndexQuery(int $storeId, ?int $branchId, $user, Request $request): Builder
     {
         $query = EcommerceDeliveryVehicle::query()
+            ->with('branch:id,name')
             ->select([
                 'id',
                 'store_id',
@@ -292,4 +293,3 @@ class VehicleController extends Controller
         return response()->json(['success' => false, 'message' => $message], $statusCode);
     }
 }
-

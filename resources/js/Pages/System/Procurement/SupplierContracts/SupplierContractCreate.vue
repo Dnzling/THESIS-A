@@ -1,33 +1,73 @@
 <template>
-  <div class="p-6 min-h-screen">
-    <div class="mb-6 flex justify-between items-center">
-      <div>
-        <h1 class="text-xl font-bold text-gray-800">Create Supplier Contract</h1>
-      </div>
-    </div>
+  <div class="min-h-screen bg-slate-50/70 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-6xl">
+      <header class="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Procurement / Supplier agreements</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Create Supplier Contract</h1>
+          <p class="mt-1 max-w-2xl text-sm text-slate-600">Set the agreement period, commercial terms, and conditions before reviewing the generated contract.</p>
+        </div>
+      </header>
 
-    <form @submit.prevent="submitForm" class="max-w-4xl mx-auto">
+    <form @submit.prevent="submitForm" class="mx-auto max-w-6xl space-y-4">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Contract title</p>
+                <p class="mt-2 break-words text-sm font-semibold text-slate-900">{{ form.contract_title || 'New supplier agreement' }}</p>
+                <p class="mt-1 text-xs text-slate-500">Store: {{ selectedStoreName }}</p>
+              </div>
+              <i class="pi pi-file-edit rounded-full bg-blue-50 p-2 text-sm text-blue-600" />
+            </div>
+          </template>
+        </Card>
+
+        <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Agreement terms</p>
+                <p class="mt-2 text-sm font-semibold capitalize text-slate-900">{{ form.contract_type }} agreement</p>
+                <p class="mt-1 text-xs text-slate-500">{{ form.start_date ? reviewDate(form.start_date) : 'Start date not selected' }} <span v-if="form.end_date">to {{ reviewDate(form.end_date) }}</span></p>
+              </div>
+              <i class="pi pi-calendar rounded-full bg-violet-50 p-2 text-sm text-violet-600" />
+            </div>
+          </template>
+        </Card>
+
+        <Card class="overflow-hidden rounded-2xl border-0 bg-blue-700 text-white shadow-sm">
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-blue-100">Supplier</p>
+                <p class="mt-2 truncate text-sm font-semibold text-white">{{ selectedSupplierName }}</p>
+                <p class="mt-1 text-xs text-blue-100">{{ isExternalSupplier ? 'External supplier' : 'Supplier agreement' }}</p>
+              </div>
+              <i class="pi pi-users rounded-full bg-white/15 p-2 text-sm text-white" />
+            </div>
+          </template>
+        </Card>
+      </div>
 
       <!-- Section 1: Supplier & Contract Basic Info -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <span>Supplier & Contract Information</span>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Contract Details &amp; Term</h2>
           </div>
         </template>
 
         <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Store Name</label>
-              <InputText :modelValue="selectedStoreName" class="w-full" disabled />
-            </div>
-
-            <div class="flex flex-col gap-2">
+          <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div class="flex flex-col gap-2 md:col-span-1">
               <label class="text-sm font-semibold text-gray-700">Contract Title</label>
               <InputText v-model="form.contract_title" placeholder="e.g., Annual Furniture Supply Agreement 2026" class="w-full" />
               <small class="text-gray-500">Auto-generated based on supplier and dates. You can edit if needed.</small>
               <small v-if="errors.contract_title" class="text-red-600">{{ errors.contract_title }}</small>
+              <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
+              
             </div>
 
             <div class="flex flex-col gap-2">
@@ -38,19 +78,25 @@
               <small class="text-gray-600 mt-2" v-if="contractTypeDescription">{{ contractTypeDescription }}</small>
             </div>
 
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 md:col-span-2">
               <label class="text-sm font-semibold text-gray-700">Contract Duration <span class="text-red-500">*</span></label>
-              <DatePicker
-                v-model="contractRange"
-                selectionMode="range"
-                date-format="yy-mm-dd" fluid
-                placeholder="Select start and end date"
-                :min-date="new Date()"
-                class="w-full"
-              />
-              <small v-if="errors.start_date || errors.end_date" class="text-red-600">{{ errors.start_date || errors.end_date }}</small>
-              <small v-else-if="form.start_date && form.end_date" class="text-green-600">
-                Duration: {{ contractDurationDays }} days
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-medium text-slate-600">Start Date</label>
+                  <DatePicker v-model="form.start_date" date-format="M d, yy" fluid placeholder="Select start date" showIcon 
+                    :min-date="new Date()" @update:model-value="onStartDateChange" />
+                  <small v-if="errors.start_date" class="text-red-600">{{ errors.start_date }}</small>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-medium text-slate-600">End Date</label>
+                  <DatePicker v-model="form.end_date" date-format="M d, yy" fluid placeholder="Select end date" showIcon
+                    :min-date="form.start_date || new Date()" :disabled="!form.start_date" />
+                  <small class="text-xs text-slate-500">Defaults to one year after the start date; you can adjust it.</small>
+                  <small v-if="errors.end_date" class="text-red-600">{{ errors.end_date }}</small>
+                </div>
+              </div>
+              <small v-if="form.start_date && form.end_date && !errors.end_date" class="text-green-600">
+                Contract term: {{ contractDurationDays }} days
               </small>
             </div>
           </div>
@@ -58,15 +104,23 @@
       </Card>
 
       <!-- Section 3: Financial Terms -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <span>Financial Terms</span>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Financial Terms</h2>
           </div>
         </template>
 
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-gray-700">Minimum Order Value</label>
+              <InputNumber v-model="form.minimum_order_value" mode="currency" currency="PHP" locale="en-PH"
+                :min="0" :minFractionDigits="2" :maxFractionDigits="2" placeholder="No minimum" fluid />
+              <small class="text-gray-500">Leave blank or enter ₱0.00 if there is no minimum purchase requirement.</small>
+              <small v-if="errors.minimum_order_value" class="text-red-600">{{ errors.minimum_order_value }}</small>
+            </div>
+
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Discount Percentage <span class="text-red-500">*</span></label>
               <InputNumber v-model="form.discount_percentage" :min="0" :max="100" placeholder="0" 
@@ -74,49 +128,50 @@
               <small v-if="errors.discount_percentage" class="text-red-600">{{ errors.discount_percentage }}</small>
             </div>
 
-            <div class="flex flex-col gap-2">
+            <!-- <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Tax Rate (%)</label>
-              <InputNumber v-model="form.tax_rate" :min="0" :max="100" placeholder="0" suffix="%" class="w-full" />
+              <InputNumber v-model="form.tax_rate" :min="12" :max="12" suffix="%" class="w-full" disabled />
+              <small class="text-gray-600">Fixed at 12%.</small>
               <small v-if="errors.tax_rate" class="text-red-600">{{ errors.tax_rate }}</small>
-            </div>
+            </div> -->
           </div>
 
           <Divider class="my-6" />
 
-          <div class="p-4 bg-blue-50 border border-blue-200 rounded">
+          <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <p class="text-sm text-blue-900">
               <i class="pi pi-info-circle mr-2"></i>
-              <strong>Summary:</strong> {{ form.discount_percentage }}% discount, tax {{ form.tax_rate }}%
+              <strong>Summary:</strong> {{ form.discount_percentage }}% discount, minimum order
+              {{ form.minimum_order_value == null ? 'none' : '₱' + formatCurrency(form.minimum_order_value) }}, tax {{ form.tax_rate }}%
             </p>
           </div>
         </template>
       </Card>
 
       <!-- Section 4: Terms & Conditions -->
-      <Card class="mb-6">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <i class="pi pi-file-edit text-2xl text-purple-600"></i>
-            <span>Terms & Conditions</span>
+          <div class="-mx-5 -mt-5 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <h2 class="text-sm font-semibold text-slate-800">Terms &amp; Conditions</h2>
           </div>
         </template>
 
         <template #content>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Terms & Conditions</label>
-            <Textarea v-model="form.terms_conditions" rows="6" 
-              placeholder="Enter contract terms and conditions here..." class="w-full" />
-            <small class="text-gray-600">{{ form.terms_conditions?.length || 0 }} / 5000 characters</small>
+            <Textarea v-model="form.terms_conditions" rows="7" maxlength="5000"
+              placeholder="Enter delivery, quality, payment, or other agreed terms..." class="w-full" />
+            <div class="flex items-center justify-between gap-3"><small class="text-slate-500">Use clear terms that both parties can review.</small><small class="text-slate-500">{{ form.terms_conditions?.length || 0 }} / 5000</small></div>
           </div>
         </template>
       </Card>
 
       <!-- Section 5: Document Attachment -->
-      <Card class="mb-6">
+      <Card v-if="!isExternalSupplier" class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-3">
-            <i class="pi pi-file text-2xl text-red-600"></i>
-            <span>Contract Document (Optional)</span>
+          <div class="-mx-5 -mt-5 flex items-center gap-2 border-b border-slate-100 bg-white px-5 py-3 sm:-mx-6 sm:-mt-6 sm:px-6">
+            <i class="pi pi-file text-sm text-slate-500"></i>
+            <span class="text-sm font-semibold text-slate-800">Contract Document (Optional)</span>
           </div>
         </template>
 
@@ -144,34 +199,76 @@
       </Card>
 
       <!-- Action Buttons -->
-      <div class="flex gap-3 justify-end">
+      <div class="sticky bottom-0 z-10 -mx-1 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 px-1 py-4 backdrop-blur sm:flex-row sm:justify-end">
         <Button 
           :label="route.query.supplier_id ? 'Skip for Now' : 'Cancel'" 
-          severity="secondary" 
+          severity="contrast" outlined rounded
           @click="skipOrCancel()" />
-        <Button label="Save as Draft" severity="warning" icon="pi pi-save" @click="saveDraft" :loading="submitting" />
-        <Button label="Review & Submit" severity="success" icon="pi pi-eye" @click="openReviewDialog" :loading="submitting" />
+        <Button v-if="!isExternalSupplier" label="Save as Pending" severity="info" rounded outlined icon="pi pi-save" @click="saveDraft" :loading="submitting" />
+        <Button label="Review & Create" icon="pi pi-eye" rounded @click="openReviewDialog" :loading="submitting" />
       </div>
     </form>
+    </div>
 
-    <Dialog v-model:visible="showReviewDialog" modal header="Review Contract" :style="{ width: '70rem' }">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="space-y-2 text-sm">
-          <div><b>Store:</b> {{ selectedStoreName }}</div>
-          <div><b>Supplier:</b> {{ selectedSupplierName }}</div>
-          <div><b>Title:</b> {{ form.contract_title }}</div>
-          <div><b>Type:</b> {{ form.contract_type }}</div>
-          <div><b>Date Range:</b> {{ form.start_date ? form.start_date.toISOString().split('T')[0] : '-' }} to {{ form.end_date ? form.end_date.toISOString().split('T')[0] : '-' }}</div>
-          <div><b>Discount:</b> {{ form.discount_percentage }}%</div>
-          <div><b>Tax Rate:</b> {{ form.tax_rate }}%</div>
+    <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="max-w-[96vw] overflow-hidden" :style="{ width: 'min(72rem, 96vw)', height: 'min(92vh, 900px)' }" :pt="{ root: { class: 'flex flex-col overflow-hidden' }, content: { class: 'flex min-h-0 flex-1 flex-col overflow-hidden p-0' }, footer: { class: 'shrink-0 p-0' } }">
+      <div class="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Final review</p>
+          <h2 class="mt-1 text-xl font-semibold text-slate-900">Review supplier contract</h2>
+          <p class="mt-1 text-xs text-slate-500">{{ isExternalSupplier ? 'Review the generated contract document before creating it. Upload the signed copy when you are ready to activate.' : 'Confirm the details below before submitting this agreement to the supplier.' }}</p>
         </div>
-        <iframe class="w-full h-[420px] border rounded" :srcdoc="reviewHtml"></iframe>
+        <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close review" @click="showReviewDialog = false" />
+      </div>
+
+      <div class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 md:px-6">
+        <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Contract title</p><p class="mt-1 font-semibold text-slate-900">{{ form.contract_title }}</p></div>
+          <div><p class="text-xs text-slate-500">Type</p><p class="mt-1 font-medium capitalize text-slate-900">{{ form.contract_type }}</p></div>
+          <div><p class="text-xs text-slate-500">Duration</p><p class="mt-1 font-medium text-slate-900">{{ contractDurationDays }} days</p></div>
+          <div><p class="text-xs text-slate-500">Store</p><p class="mt-1 font-medium text-slate-900">{{ selectedStoreName }}</p></div>
+          <div><p class="text-xs text-slate-500">Supplier</p><p class="mt-1 font-medium text-slate-900">{{ selectedSupplierName }}</p></div>
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Effective period</p><p class="mt-1 font-medium text-slate-900">{{ reviewDate(form.start_date) }} to {{ reviewDate(form.end_date) }}</p></div>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.discount_percentage || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Tax rate</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.tax_rate || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">{{ isExternalSupplier ? 'Contract document' : 'Attachment' }}</p><p class="mt-1 truncate font-semibold text-slate-900">{{ isExternalSupplier ? 'PDF generated on creation' : contractFile?.name || 'No file attached' }}</p><p v-if="contractFile && !isExternalSupplier" class="mt-1 text-xs text-slate-500">{{ formatFileSize(contractFile.size) }}</p></div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3"><div><h3 class="font-semibold text-slate-900">Agreement preview</h3><p class="text-xs text-slate-500">Read the generated agreement before submission.</p></div><span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">Draft preview</span></div>
+          <iframe class="h-[min(68vh,760px)] min-h-[480px] w-full bg-white" :srcdoc="reviewHtml" title="Draft store-supplier agreement"></iframe>
+        </div>
       </div>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <Button label="Close" severity="secondary" @click="showReviewDialog = false" />
-          <Button label="Submit Contract" severity="success" icon="pi pi-check" @click="submitForm" :loading="submitting" />
+        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
+          <p class="text-xs text-slate-500">{{ isExternalSupplier ? 'The contract will remain pending until you upload the signed PDF during activation.' : route.query.from_inventory ? 'Manual inventory supplier contracts become active immediately after submission.' : 'Supplier portal contracts remain pending until the supplier agrees to the terms.' }}</p>
+          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Create Pending Contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showDraftConfirmation" modal header="Save contract as pending?" :style="{ width: 'min(28rem, 94vw)' }">
+      <p class="text-sm leading-6 text-slate-600">
+        {{ route.query.from_inventory ? 'This will create an active manual supplier contract for inventory purchasing.' : 'This will submit the contract for review with Pending status. It will become active after supplier approval.' }}
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Keep Editing" severity="secondary" outlined size="small" @click="showDraftConfirmation = false" />
+          <Button label="Save as Pending" severity="warn" icon="pi pi-save" size="small" :loading="submitting" @click="confirmSaveDraft" />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showResponseDialog" modal :closable="responseType === 'error'" :header="responseTitle" :style="{ width: 'min(28rem, 94vw)' }">
+      <div class="flex items-start gap-3">
+        <i :class="responseType === 'success' ? 'pi pi-check-circle text-2xl text-green-600' : 'pi pi-times-circle text-2xl text-red-600'" />
+        <p class="text-sm leading-6 text-slate-600">{{ responseMessage }}</p>
+      </div>
+      <template #footer>
+        <Button v-if="responseType === 'success'" :label="responseActionLabel" severity="warn" size="small" @click="continueAfterSuccess" />
+        <Button v-else label="Review and try again" severity="secondary" outlined size="small" @click="showResponseDialog = false" />
       </template>
     </Dialog>
   </div>
@@ -182,29 +279,42 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const submitting = ref(false)
 const suppliers = ref<any[]>([])
 const contractFile = ref<File | null>(null)
+const selectedSupplierIsExternal = ref(false)
+const isExternalSupplier = computed(() => selectedSupplierIsExternal.value && !route.query.from_inventory && !route.query.from_supplier_portal)
 const selectedSupplierName = ref<string>('Not Selected')
 const selectedStoreName = ref<string>('Not Selected')
 const showReviewDialog = ref(false)
+const showDraftConfirmation = ref(false)
+const showResponseDialog = ref(false)
+const responseType = ref<'success' | 'error'>('success')
+const responseTitle = ref('')
+const responseMessage = ref('')
+const responseActionLabel = ref('Continue')
+const responseDestination = ref<(() => void) | null>(null)
 const titleManuallyEdited = ref(false)
 
 const form = reactive({
-  store_id: null,
+  store_id: null as number | null,
   supplier_id: null,
   contract_title: '',
   contract_type: 'supply',
-  start_date: null,
-  end_date: null,
+  start_date: null as Date | null,
+  end_date: null as Date | null,
+  minimum_order_value: null as number | null,
   discount_percentage: 0,
   payment_terms_days: 30,
-  tax_rate: 0,
+  tax_rate: 12,
   terms_conditions: '',
   contract_file_path: null,
 })
@@ -243,6 +353,7 @@ const contractDurationDays = computed(() => {
   const end = new Date(form.end_date)
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24))
 })
+const reviewDate = (value: Date | null) => value ? new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '-'
 
 const paymentDueDate = computed(() => {
   if (!form.start_date || !form.payment_terms_days) return 'N/A'
@@ -251,36 +362,20 @@ const paymentDueDate = computed(() => {
   return dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
-const contractRange = computed({
-  get: () => {
-    if (!form.start_date && !form.end_date) return null
-    return [form.start_date, form.end_date].filter(Boolean)
-  },
-  set: (value: any) => {
-    if (!Array.isArray(value) || value.length === 0) {
-      form.start_date = null
-      form.end_date = null
-      return
-    }
-    const a = value[0] || null
-    const b = value[1] || null
-    // PrimeVue range can return the dates in the order the user clicked; normalize so start <= end.
-    if (a && b) {
-      const da = new Date(a)
-      const db = new Date(b)
-      if (da.getTime() <= db.getTime()) {
-        form.start_date = a
-        form.end_date = b
-      } else {
-        form.start_date = b
-        form.end_date = a
-      }
-      return
-    }
-    form.start_date = a
-    form.end_date = b
-  },
-})
+const oneYearAfter = (startDate: Date): Date => {
+  const endDate = new Date(startDate)
+  const month = endDate.getMonth()
+  endDate.setFullYear(endDate.getFullYear() + 1)
+  if (endDate.getMonth() !== month) endDate.setDate(0)
+  return endDate
+}
+
+const onStartDateChange = (value: Date | null) => {
+  form.start_date = value
+  form.end_date = value ? oneYearAfter(value) : null
+  delete errors.start_date
+  delete errors.end_date
+}
 
 const reviewHtml = computed(() => {
   const start = form.start_date ? form.start_date.toISOString().split('T')[0] : '-'
@@ -296,7 +391,7 @@ const reviewHtml = computed(() => {
           /* BARABARA font for FurniSync platform name only */
           @font-face {
               font-family: 'Barabara';
-              src: url('/resources/fonts/BARABARA-final.otf') format('opentype');
+              src: url('/fonts/BARABARA-final.otf') format('opentype');
               font-weight: normal;
               font-style: normal;
           }
@@ -446,11 +541,14 @@ const reviewHtml = computed(() => {
           
           /* Terms and Conditions styling */
           .terms-section {
+              box-sizing: border-box;
+              max-width: 100%;
               margin: 15px 0;
               padding: 12px;
               background: #fef9e6;
               border-left: 4px solid #f39c12;
               font-size: 9pt;
+              overflow-wrap: anywhere;
           }
           
           .terms-title {
@@ -463,6 +561,10 @@ const reviewHtml = computed(() => {
           .terms-content {
               white-space: pre-wrap;
               line-height: 1.5;
+              overflow-wrap: anywhere;
+              word-break: normal;
+              text-align: justify;
+              text-justify: inter-word;
           }
           
           .signature-section {
@@ -506,7 +608,7 @@ const reviewHtml = computed(() => {
   </head>
   <body>
       <div class="contract-header">
-          <div class="platform-name">FurniSync</div>
+          <div class="platform-name">FURNISYNC</div>
           <div class="document-title">STORE-SUPPLIER AGREEMENT</div>
           <div class="document-subtitle">Facilitated by FurniSync IMS Platform</div>
       </div>
@@ -738,6 +840,7 @@ const onFileSelect = (event: any) => {
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(key => delete errors[key])
 
+  if (!form.store_id) errors.store_id = 'Your account has no assigned store'
   if (!form.supplier_id) errors.supplier_id = 'Please select a supplier'
   if (!form.contract_title) {
     form.contract_title = generateContractTitle()
@@ -751,73 +854,24 @@ const validateForm = (): boolean => {
   if (form.discount_percentage < 0 || form.discount_percentage > 100) {
     errors.discount_percentage = 'Discount must be between 0 and 100'
   }
-  if (form.tax_rate < 0 || form.tax_rate > 100) {
-    errors.tax_rate = 'Tax rate must be between 0 and 100'
+  if (Number(form.tax_rate) !== 12) {
+    errors.tax_rate = 'Tax rate is fixed at 12%'
   }
-
   return Object.keys(errors).length === 0
 }
 
 const saveDraft = async () => {
+  if (!form.store_id) {
+    showResponse('error', 'Store unavailable', 'Your account has no assigned store.')
+    return
+  }
   if (!form.supplier_id) {
-    toast.add({ severity: 'warn', summary: 'Incomplete', detail: 'Please select supplier first', life: 3000 })
+    showResponse('error', 'Supplier required', 'Please select a supplier before saving the contract.')
     return
   }
   if (!form.contract_title) form.contract_title = generateContractTitle()
 
-  submitting.value = true
-  try {
-    const formData = new FormData()
-    Object.entries(form).forEach(([key, value]) => {
-      if (value !== null && value !== '') {
-        if (value instanceof Date) {
-          formData.append(key, value.toISOString().split('T')[0])
-        } else {
-          formData.append(key, String(value))
-        }
-      }
-    })
-    formData.append('status', 'pending')
-    if (contractFile.value) {
-      formData.append('contract_file', contractFile.value)
-    }
-
-    await procurementService.createSupplierContract(formData)
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Contract saved as draft',
-      life: 3000,
-    })
-    
-    if (route.query.from_supplier_portal) {
-      const storeId = route.query.store_id
-      setTimeout(() => {
-        if (storeId) {
-          router.push({ name: 'supplier.stores.show', params: { storeId } })
-        } else {
-          router.push({ name: 'supplier.stores' })
-        }
-      }, 1500)
-    } else {
-      // If coming from supplier creation flow, redirect to suppliers list
-      const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
-      setTimeout(() => router.push({ name: redirectName }), 1500)
-    }
-  } catch (error: any) {
-    const serverErrors = error?.response?.data?.errors || {}
-    Object.keys(serverErrors).forEach((k) => {
-      errors[k] = Array.isArray(serverErrors[k]) ? serverErrors[k][0] : String(serverErrors[k])
-    })
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to save contract',
-      life: 3000,
-    })
-  } finally {
-    submitting.value = false
-  }
+  showDraftConfirmation.value = true
 }
 
 const submitForm = async () => {
@@ -826,6 +880,14 @@ const submitForm = async () => {
     return
   }
 
+  await createPendingContract('review')
+}
+
+const confirmSaveDraft = async () => {
+  await createPendingContract('draft')
+}
+
+const createPendingContract = async (mode: 'draft' | 'review') => {
   submitting.value = true
   try {
     const formData = new FormData()
@@ -839,47 +901,61 @@ const submitForm = async () => {
       }
     })
     formData.append('status', 'pending')
-    if (contractFile.value) {
-      formData.append('contract_file', contractFile.value)
-    }
-
-    await procurementService.createSupplierContract(formData)
-    showReviewDialog.value = false
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Contract created successfully',
-      life: 3000,
-    })
-    
-    if (route.query.from_supplier_portal) {
-      const storeId = route.query.store_id
-      setTimeout(() => {
-        if (storeId) {
-          router.push({ name: 'supplier.stores.show', params: { storeId } })
-        } else {
-          router.push({ name: 'supplier.stores' })
-        }
-      }, 1500)
+    if (contractFile.value && !isExternalSupplier.value) formData.append('contract_file', contractFile.value)
+    let response: any
+    if (route.query.from_inventory) {
+      response = await inventoryService.createSupplierContract(formData)
     } else {
-      // If coming from supplier creation flow, redirect to suppliers list
-      const redirectName = route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index'
-      setTimeout(() => router.push({ name: redirectName }), 1500)
+      response = await procurementService.createSupplierContract(formData)
     }
+    showReviewDialog.value = false
+    showDraftConfirmation.value = false
+    responseDestination.value = isExternalSupplier.value && response?.data?.id
+      ? () => router.push({ name: 'procurement.supplier-contracts.detail', params: { id: response.data.id } })
+      : getContractDestination
+    responseActionLabel.value = isExternalSupplier.value ? 'Upload Signed Copy Later' : 'View Contracts'
+    const inventoryCreated = Boolean(route.query.from_inventory)
+    showResponse(
+      'success',
+      inventoryCreated ? 'Contract created and activated' : isExternalSupplier.value || mode === 'draft' ? 'Contract created as pending' : 'Contract submitted',
+      inventoryCreated
+        ? 'The manual supplier contract is now active and ready for inventory purchase orders.'
+        : isExternalSupplier.value ? 'The generated contract PDF is available on the contract details page. Upload the signed PDF when you are ready to activate it.' : 'The contract was created with Pending status and will become active after supplier approval.'
+    )
   } catch (error: any) {
     const serverErrors = error?.response?.data?.errors || {}
     Object.keys(serverErrors).forEach((k) => {
       errors[k] = Array.isArray(serverErrors[k]) ? serverErrors[k][0] : String(serverErrors[k])
     })
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to create contract',
-      life: 3000,
-    })
+    const firstFieldError = Object.values(serverErrors).flat()[0]
+    const message = error?.response?.data?.message || (typeof firstFieldError === 'string' ? firstFieldError : null) || 'The contract could not be submitted. Check the form and try again.'
+    showResponse('error', 'Contract not submitted', message)
   } finally {
     submitting.value = false
   }
+}
+
+const showResponse = (type: 'success' | 'error', title: string, message: string) => {
+  responseType.value = type
+  responseTitle.value = title
+  responseMessage.value = message
+  showResponseDialog.value = true
+}
+
+const getContractDestination = () => {
+  if (route.query.from_supplier_portal) {
+    const storeId = route.query.store_id
+    router.push(storeId ? { name: 'supplier.stores.show', params: { storeId } } : { name: 'supplier.stores' })
+  } else if (route.query.from_inventory && route.query.supplier_id) {
+    router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } })
+  } else {
+    router.push({ name: route.query.supplier_id ? 'procurement.suppliers' : 'procurement.supplier-contracts.index' })
+  }
+}
+
+const continueAfterSuccess = () => {
+  showResponseDialog.value = false
+  responseDestination.value?.()
 }
 
 const openReviewDialog = () => {
@@ -902,6 +978,11 @@ const skipOrCancel = () => {
   }
 
   if (route.query.supplier_id) {
+    if (route.query.from_inventory) {
+      router.push({ name: 'inventory.suppliers.detail', params: { id: route.query.supplier_id } })
+      return
+    }
+
     // Coming from supplier creation - go to suppliers list
     router.push({ name: 'procurement.suppliers' })
   } else {
@@ -912,24 +993,31 @@ const skipOrCancel = () => {
 
 onMounted(async () => {
   try {
-    selectedStoreName.value = (route.query.store_name as string) || 'Not Selected'
+    const currentUser = await authStore.fetchCurrentUser()
+    const assignedStore = currentUser?.store || authStore.user?.store
+    form.store_id = assignedStore?.id || null
+    selectedStoreName.value = assignedStore?.name || 'No store assigned'
     selectedSupplierName.value = (route.query.supplier_name as string) || 'Not Selected'
 
     // Auto-select supplier if passed from supplier creation flow
     if (route.query.supplier_id) {
       form.supplier_id = parseInt(route.query.supplier_id as string)
-      form.store_id = route.query.store_id ? parseInt(route.query.store_id as string) : null
-
+      if (!route.query.from_inventory && !route.query.from_supplier_portal) {
+        const supplierResponse = await procurementService.getSupplier(form.supplier_id)
+        const supplierData = supplierResponse?.data?.data || supplierResponse?.data || supplierResponse
+        selectedSupplierIsExternal.value = Boolean(supplierData?.is_external && !supplierData?.supplier_portal_id)
+        selectedSupplierName.value = supplierData?.supplier_name || selectedSupplierName.value
+      }
       if (!selectedSupplierName.value || selectedSupplierName.value === 'Not Selected') {
-        const response = await procurementService.getSuppliers({ per_page: 100 })
+        const response = route.query.from_inventory
+          ? await inventoryService.getSuppliers({ per_page: 100 })
+          : await procurementService.getSuppliers({ per_page: 100 })
         suppliers.value = response.data?.data || []
         const supplier = suppliers.value.find(s => s.id === form.supplier_id)
         if (supplier) {
           selectedSupplierName.value = supplier.supplier_name
         }
       }
-      onSupplierChange()
-
       toast.add({
         severity: 'info',
         summary: 'Create Contract',

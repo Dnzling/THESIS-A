@@ -48,7 +48,9 @@ class Payroll extends Model
         'payment_date' => 'date',
         'approved_at' => 'datetime',
         'paid_at' => 'datetime',
-        'created_at' => 'datetime'   
+        'created_at' => 'datetime',
+        'hourly_rate_at_generation' => 'decimal:4',
+        'payslip_snapshot' => 'array',
     ];
 
     public function employee(): BelongsTo

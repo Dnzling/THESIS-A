@@ -6,10 +6,18 @@ namespace App\Http\Controllers\Api\Procurement\Receiving;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Receiving\GoodsReceiptItem;
+use App\Models\Procurement\Receiving\GoodsReceiptResolution;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Core\ActivityLog;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Hr\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -25,12 +33,13 @@ class GoodsReceiptController extends Controller
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
-        $query = GoodsReceipt::with(['purchaseOrder.supplier', 'branch', 'receivedBy', 'verifiedBy'])
+        if ($storeId <= 0) {
+            return response()->json(['success' => false, 'message' => 'No store is assigned to this account.'], 403);
+        }
+        $query = GoodsReceipt::with(['purchaseOrder.supplier', 'purchaseOrder.purchaseRequisition', 'branch', 'receivedBy.user', 'verifiedBy.user'])
             ->withCount('items');
 
-        if ($storeId > 0) {
-            $query->whereHas('purchaseOrder', fn($q) => $q->where('store_id', $storeId));
-        }
+        $query->whereHas('purchaseOrder', fn($q) => $q->where('store_id', $storeId));
 
         // Filters
         if ($request->has('branch_id')) {
@@ -45,7 +54,21 @@ class GoodsReceiptController extends Controller
             $query->where('receipt_status', $request->receipt_status);
         }
 
-        if ($request->has('start_date') && $request->has('end_date')) {
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('grn_number', 'like', "%{$search}%")
+                    ->orWhereHas('purchaseOrder', function ($poQuery) use ($search) {
+                        $poQuery->where('po_number', 'like', "%{$search}%")
+                            ->orWhereHas('supplier', function ($supplierQuery) use ($search) {
+                                $supplierQuery->where('supplier_name', 'like', "%{$search}%")
+                                    ->orWhere('company_name', 'like', "%{$search}%");
+                            });
+                    });
+            });
+        }
+
+        if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('receipt_date', [$request->start_date, $request->end_date]);
         }
 
@@ -62,21 +85,138 @@ class GoodsReceiptController extends Controller
      * Show single goods receipt
      * GET /api/procurement/goods-receipts/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $receipt = GoodsReceipt::with([
             'purchaseOrder.supplier',
+            'purchaseOrder.purchaseRequisition',
             'branch',
             'items.product',
             'items.variation',
             'items.purchaseOrderItem',
-            'receivedBy',
-            'verifiedBy'
-        ])->findOrFail($id);
+            'receivedBy.user',
+            'verifiedBy.user',
+            'supplierEvaluation.evaluator:id,fname,lname',
+        ])->whereHas('purchaseOrder', function ($query) use ($request) {
+            $query->where('store_id', $request->user()->store_id);
+        })->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $receipt,
+        ]);
+    }
+
+    public function saveQualityCheck(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'quality_notes' => 'nullable|string|max:5000',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|integer',
+            'items.*.condition' => 'required|in:good,damaged,defective',
+            'items.*.notes' => 'nullable|string|max:2000',
+        ]);
+
+        try {
+            $receipt = DB::transaction(function () use ($request, $id, $validated) {
+                $receipt = GoodsReceipt::with('items')
+                    ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id))
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+                $items = $receipt->items->keyBy('id');
+                if (count($validated['items']) !== $items->count()) {
+                    throw new \DomainException('The quality check must include every receipt item.');
+                }
+                $seen = [];
+                foreach ($validated['items'] as $entry) {
+                    $itemId = (int) $entry['id'];
+                    if (!$items->has($itemId) || isset($seen[$itemId])) {
+                        throw new \DomainException('A quality-check item is invalid or repeated.');
+                    }
+                    $seen[$itemId] = true;
+                    $items->get($itemId)->update([
+                        'condition' => $entry['condition'],
+                        'notes' => $entry['notes'] ?? null,
+                    ]);
+                }
+                $receipt->update(['quality_notes' => $validated['quality_notes'] ?? null]);
+
+                return $receipt->fresh('items');
+            });
+        } catch (\DomainException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $receipt]);
+    }
+
+    /**
+     * Create or update the supplier evaluation attached to a goods receipt.
+     */
+    public function saveSupplierEvaluation(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'quality_score' => 'required|integer|between:1,5',
+            'quantity_accuracy_score' => 'required|integer|between:1,5',
+            'delivery_timeliness_score' => 'required|integer|between:1,5',
+            'packaging_condition_score' => 'required|integer|between:1,5',
+            'remarks' => 'nullable|string|max:2000',
+        ]);
+
+        $storeId = (int) $request->user()->store_id;
+        $receipt = GoodsReceipt::with('purchaseOrder.supplier')
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->findOrFail($id);
+
+        $purchaseOrder = $receipt->purchaseOrder;
+        if (!$purchaseOrder?->supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This goods receipt has no supplier to evaluate.',
+            ], 422);
+        }
+
+        $scores = [
+            $validated['quality_score'],
+            $validated['quantity_accuracy_score'],
+            $validated['delivery_timeliness_score'],
+            $validated['packaging_condition_score'],
+        ];
+
+        $evaluation = DB::transaction(function () use ($validated, $scores, $receipt, $purchaseOrder, $storeId, $request) {
+            $evaluation = SupplierPerformanceEvaluation::updateOrCreate(
+                ['goods_receipt_id' => $receipt->id],
+                [
+                    'store_id' => $storeId,
+                    'supplier_id' => $purchaseOrder->supplier_id,
+                    'purchase_order_id' => $purchaseOrder->id,
+                    'evaluated_by_user_id' => $request->user()->id,
+                    'quality_score' => $validated['quality_score'],
+                    'quantity_accuracy_score' => $validated['quantity_accuracy_score'],
+                    'delivery_timeliness_score' => $validated['delivery_timeliness_score'],
+                    'packaging_condition_score' => $validated['packaging_condition_score'],
+                    'overall_rating' => round(array_sum($scores) / count($scores), 2),
+                    'remarks' => $validated['remarks'] ?? null,
+                ]
+            );
+
+            $purchaseOrder->supplier->updateRating();
+
+            ActivityLog::record(
+                'supplier_performance_evaluated',
+                "Supplier evaluated from goods receipt {$receipt->grn_number}.",
+                ['goods_receipt_id' => $receipt->id, 'overall_rating' => $evaluation->overall_rating],
+                'supplier',
+                $purchaseOrder->supplier_id
+            );
+
+            return $evaluation;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier performance rating saved successfully.',
+            'data' => $evaluation->load('evaluator:id,fname,lname'),
         ]);
     }
 
@@ -86,14 +226,24 @@ class GoodsReceiptController extends Controller
      */
     public function print(int $id)
     {
+        $user = request()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        abort_unless($storeId > 0, 403);
+
         $receipt = GoodsReceipt::with([
+            'purchaseOrder.store',
             'purchaseOrder.supplier',
             'branch',
             'items.product',
+            'items.variation',
             'items.purchaseOrderItem',
             'receivedBy',
             'verifiedBy'
-        ])->findOrFail($id);
+        ])->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->findOrFail($id);
+
+        $assignedBranchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
+        abort_if($assignedBranchId > 0 && (int) $receipt->branch_id !== $assignedBranchId, 404);
 
         $data = [
             'grn_number' => $receipt->grn_number,
@@ -111,6 +261,9 @@ class GoodsReceiptController extends Controller
             'received_by' => $receipt->receivedBy,
             'verified_by' => $receipt->verifiedBy,
             'items' => $receipt->items,
+            'store' => $receipt->purchaseOrder?->store,
+            'printed_by' => trim(implode(' ', array_filter([$user?->fname, $user?->mname, $user?->lname]))) ?: ($user?->email ?? 'Authenticated user'),
+            'printed_at' => now(),
         ];
 
         $pdf = \PDF::loadView('procurement.goods-receipt-pdf', $data)
@@ -132,8 +285,6 @@ class GoodsReceiptController extends Controller
     {
         $validated = $request->validate([
             'purchase_order_id' => 'required|exists:purchase_orders,id',
-            'receipt_date' => 'required|date',
-            'receipt_time' => 'required',
             'delivery_note_number' => 'nullable|string|max:100',
             'vehicle_number' => 'nullable|string|max:50',
             'driver_name' => 'nullable|string|max:100',
@@ -151,27 +302,73 @@ class GoodsReceiptController extends Controller
             'status' => 'nullable|in:draft,completed',
         ]);
 
+        // Receipt timestamp is authoritative server data, not user-entered data.
+        $receivedAt = now();
+        $receiptDate = $receivedAt->toDateString();
+        $receiptTime = $receivedAt->format('H:i:s');
+
         DB::beginTransaction();
         try {
+            $autoCreatedInvoice = null;
             $actorEmployeeId = $this->resolveActorEmployeeId();
             if (!$actorEmployeeId) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Your account is not linked to an employee profile. Please contact admin before creating a goods receipt.',
                 ], 422);
             }
 
-            $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
+            $po = PurchaseOrder::with('items')
+                ->where('store_id', $request->user()->store_id)
+                ->lockForUpdate()
+                ->findOrFail($validated['purchase_order_id']);
+
+            $isSimpleInventoryPo = in_array($po->status, ['pending_receipt', 'partially_received'], true);
+            if (!in_array($po->status, [
+                'pending_receipt', 'partially_received', 'sent_to_supplier',
+                'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered',
+            ], true)) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Submit the purchase order before creating a goods receipt.'], 422);
+            }
+
+            $pickup = PurchaseOrderShipment::where('purchase_order_id', $po->id)->first();
+            if ($pickup && $pickup->status !== 'delivered') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The supplier pickup must arrive at the store before goods can be received.',
+                ], 422);
+            }
 
             // Validate quantities vs expected
+            if (($validated['status'] ?? 'completed') === 'completed'
+                && collect($validated['items'])->sum('quantity_received') <= 0) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Receive at least one item before completing a goods receipt.'], 422);
+            }
+
+            $seenPoItemIds = [];
             foreach ($validated['items'] as $itemData) {
-                if ($itemData['quantity_received'] > $itemData['quantity_expected']) {
+                $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
+                $pending = $poItem ? max(0, $poItem->quantity_ordered - $poItem->quantity_received - $poItem->quantity_rejected) : 0;
+                if (!$poItem || (int) $poItem->product_id !== (int) $itemData['product_id']
+                    || (int) ($poItem->variation_id ?? 0) !== (int) ($itemData['variation_id'] ?? 0)
+                    || isset($seenPoItemIds[$poItem->id])) {
+                    DB::rollBack();
+                    return response()->json(['success' => false, 'message' => 'The receipt contains an invalid or duplicate PO item.'], 422);
+                }
+                $seenPoItemIds[$poItem->id] = true;
+                if ((int) $itemData['quantity_expected'] !== $pending || $itemData['quantity_received'] > $pending) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
-                        'message' => 'Quantity received cannot exceed quantity expected.',
+                        'message' => 'Receipt quantities must not exceed the outstanding PO quantity.',
                     ], 422);
                 }
                 if (($itemData['quantity_damaged'] ?? 0) > $itemData['quantity_received']) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => 'Quantity damaged cannot exceed quantity received.',
@@ -205,14 +402,16 @@ class GoodsReceiptController extends Controller
                 $receiptStatus = 'partial';
             }
 
+            $isDraft = ($validated['status'] ?? 'completed') === 'draft';
+
             // Create GRN
             $grn = GoodsReceipt::create([
                 'grn_number' => $grnNumber,
                 'purchase_order_id' => $validated['purchase_order_id'],
                 'branch_id' => $po->branch_id,
-                'receipt_date' => $validated['receipt_date'],
-                'receipt_time' => $validated['receipt_time'],
-                'receipt_status' => $receiptStatus,
+                'receipt_date' => $receiptDate,
+                'receipt_time' => $receiptTime,
+                'receipt_status' => $isDraft ? 'draft' : $receiptStatus,
                 'received_by' => $actorEmployeeId,
                 'delivery_note_number' => $validated['delivery_note_number'] ?? null,
                 'vehicle_number' => $validated['vehicle_number'] ?? null,
@@ -224,14 +423,12 @@ class GoodsReceiptController extends Controller
             ActivityLog::record(
                 'grn_created',
                 "Goods receipt {$grnNumber} created for PO {$po->po_number}.",
-                ['grn_number' => $grnNumber, 'po_number' => $po->po_number, 'receipt_status' => $receiptStatus],
+                ['grn_number' => $grnNumber, 'po_number' => $po->po_number, 'receipt_status' => $grn->receipt_status],
                 'goods_receipt',
                 $grn->id
             );
 
             // Create items and, if not a draft, update inventory
-            $isDraft = (isset($validated['status']) && $validated['status'] === 'draft');
-
             foreach ($validated['items'] as $itemData) {
                 // Create GRN item
                 $grnItem = GoodsReceiptItem::create([
@@ -249,149 +446,206 @@ class GoodsReceiptController extends Controller
                 // Update PO item
                 $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
                 if (!$poItem) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Invalid PO item selected for PO #{$po->id}.",
-                    ], 422);
+                    throw new \RuntimeException("Invalid PO item selected for PO #{$po->id}.");
                 }
-                $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
-
                 if (!$isDraft) {
+                    // PO received quantity means usable units. Damaged units stay
+                    // outstanding until replaced or settled by an approved credit.
+                    $poItem->updateReceived(max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0)));
+
                     // Update branch inventory
                     $inventory = BranchInventory::firstOrCreate(
-                    [
-                        'branch_id' => $po->branch_id,
-                        'product_id' => $itemData['product_id'],
-                        'variation_id' => $itemData['variation_id'] ?? null,
-                    ],
-                    [
-                        'store_id' => $po->store_id,
-                        'quantity_on_hand' => 0,
-                        'quantity_available' => 0,
-                        'reorder_point' => 10,
-                        'reorder_quantity' => 20,
-                        'safety_stock' => 5,
-                        'stock_status' => 'out_of_stock',
-                    ]
-                );
+                        [
+                            'branch_id' => $po->branch_id,
+                            'product_id' => $itemData['product_id'],
+                            'variation_id' => $itemData['variation_id'] ?? null,
+                        ],
+                        [
+                            'store_id' => $po->store_id,
+                            'quantity_on_hand' => 0,
+                            'quantity_available' => 0,
+                            'reorder_point' => 10,
+                            'reorder_quantity' => 20,
+                            'safety_stock' => 5,
+                            'stock_status' => 'out_of_stock',
+                        ]
+                    );
 
-                $quantityBefore = $inventory->quantity_on_hand;
-
-                // Add received stock
-                $inventory->quantity_on_hand += $itemData['quantity_received'];
-                $inventory->quantity_available += $itemData['quantity_received'];
-                
-                // Add damaged stock
-                if (($itemData['quantity_damaged'] ?? 0) > 0) {
-                    $inventory->quantity_damaged += $itemData['quantity_damaged'];
-                }
-
-                // Update costs
-                $newCost = $poItem->unit_cost;
-                $totalQuantity = $quantityBefore + $itemData['quantity_received'];
-                
-                if ($totalQuantity > 0) {
-                    $inventory->average_cost = (
-                        ($inventory->average_cost * $quantityBefore) + 
-                        ($newCost * $itemData['quantity_received'])
-                    ) / $totalQuantity;
-                }
-
-                $inventory->unit_cost = $newCost;
-                $inventory->save();
-
-                    $inventory->updateStockStatus();
-                    $inventory->calculateTotalValue();
-
-                    // Create inventory transaction with unique datetime-based number
-                $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
-
-                InventoryTransaction::create([
-                    'transaction_number' => $transactionNumber,
-                    'store_id' => $po->store_id,
-                    'branch_id' => $po->branch_id,
-                    'product_id' => $itemData['product_id'],
-                    'variation_id' => $itemData['variation_id'] ?? null,
-                    'transaction_type' => 'purchase',
-                    'quantity_before' => $quantityBefore,
-                    'quantity_change' => $itemData['quantity_received'],
-                    'quantity_after' => $inventory->quantity_on_hand,
-                    'reference_type' => 'goods_receipt',
-                    'reference_id' => $grn->id,
-                    'notes' => "Received from PO {$po->po_number}",
-                    'unit_cost' => $newCost,
-                    'total_value' => $newCost * $itemData['quantity_received'],
-                    'created_by' => $actorEmployeeId,
-                    'transaction_date' => now(),
-                ]);
-
-                    // If damaged, create damage transaction with unique datetime-based number
+                    $quantityBefore = $inventory->quantity_on_hand;
+                    $inventory->quantity_on_hand += $itemData['quantity_received'];
+                    $inventory->quantity_available += max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0));
                     if (($itemData['quantity_damaged'] ?? 0) > 0) {
-                    $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+                        $inventory->quantity_damaged += $itemData['quantity_damaged'];
+                    }
 
+                    $newCost = $poItem->unit_cost;
+                    $inventory->suppressAutomaticTransactionLog();
+                    $inventory->save();
+                    $inventory->updateStockStatus();
+
+                    $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
                     InventoryTransaction::create([
-                        'transaction_number' => $damageTransactionNumber,
+                        'transaction_number' => $transactionNumber,
                         'store_id' => $po->store_id,
                         'branch_id' => $po->branch_id,
                         'product_id' => $itemData['product_id'],
                         'variation_id' => $itemData['variation_id'] ?? null,
-                        'transaction_type' => 'damage',
-                        'quantity_before' => $inventory->quantity_on_hand,
-                        'quantity_change' => $itemData['quantity_damaged'],
+                        'transaction_type' => 'purchase',
+                        'quantity_before' => $quantityBefore,
+                        'quantity_change' => $itemData['quantity_received'],
                         'quantity_after' => $inventory->quantity_on_hand,
                         'reference_type' => 'goods_receipt',
                         'reference_id' => $grn->id,
-                        'notes' => "Damaged items received from PO {$po->po_number}",
+                        'notes' => "Received from PO {$po->po_number}",
                         'unit_cost' => $newCost,
-                        'total_value' => $newCost * $itemData['quantity_damaged'],
+                        'total_value' => $newCost * $itemData['quantity_received'],
                         'created_by' => $actorEmployeeId,
                         'transaction_date' => now(),
                     ]);
+
+                    if (($itemData['quantity_damaged'] ?? 0) > 0) {
+                        $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+                        InventoryTransaction::create([
+                            'transaction_number' => $damageTransactionNumber,
+                            'store_id' => $po->store_id,
+                            'branch_id' => $po->branch_id,
+                            'product_id' => $itemData['product_id'],
+                            'variation_id' => $itemData['variation_id'] ?? null,
+                            'transaction_type' => 'damage',
+                            'quantity_before' => $inventory->quantity_on_hand,
+                            'quantity_change' => $itemData['quantity_damaged'],
+                            'quantity_after' => $inventory->quantity_on_hand,
+                            'reference_type' => 'goods_receipt',
+                            'reference_id' => $grn->id,
+                            'notes' => "Damaged items received from PO {$po->po_number}",
+                            'unit_cost' => $newCost,
+                            'total_value' => $newCost * $itemData['quantity_damaged'],
+                            'created_by' => $actorEmployeeId,
+                            'transaction_date' => now(),
+                        ]);
+                    }
                 }
-                } // end not draft
             }
 
             // Update PO status (only when not draft)
             if (!$isDraft) {
-            $allItemsReceived = $po->items->every(function ($item) {
-                return $item->isFullyReceived();
-            });
-            if ($allItemsReceived) {
-                $po->markGoodsReceived();
-                $po->update([
-                    'actual_delivery_date' => $validated['receipt_date'],
-                ]);
+                $allItemsReceived = $po->items->every(function ($item) {
+                    return $item->isFullyReceived();
+                });
+                if ($allItemsReceived) {
+                    $po->markGoodsReceived();
+                    $po->update([
+                        'actual_delivery_date' => $receiptDate,
+                    ]);
 
-                // Update supplier performance
-                $expectedDate = $po->expected_delivery_date;
-                $actualDate = $validated['receipt_date'];
-                $onTime = $actualDate <= $expectedDate;
+                    // Update supplier performance
+                    $expectedDate = $po->expected_delivery_date;
+                    $actualDate = $receiptDate;
+                    $onTime = $actualDate <= $expectedDate;
 
-                if ($po->supplier) {
-                    $po->supplier->recordDelivery($onTime);
+                    if ($po->supplier) {
+                        $po->supplier->recordDelivery($onTime);
+                    }
+
+                    ActivityLog::record(
+                        'po_delivered',
+                        "PO {$po->po_number} marked delivered.",
+                        ['po_number' => $po->po_number, 'receipt_date' => $receiptDate],
+                        'purchase_order',
+                        $po->id
+                    );
+
+                } else {
+                    if ($isSimpleInventoryPo) {
+                        $po->markPartiallyReceived();
+                    } else {
+                        $po->markInTransit();
+                    }
+
+                    ActivityLog::record(
+                        'po_partial_received',
+                        "PO {$po->po_number} partially received.",
+                        ['po_number' => $po->po_number],
+                        'purchase_order',
+                        $po->id
+                    );
                 }
 
-                ActivityLog::record(
-                    'po_delivered',
-                    "PO {$po->po_number} marked delivered.",
-                    ['po_number' => $po->po_number, 'receipt_date' => $validated['receipt_date']],
-                    'purchase_order',
-                    $po->id
-                );
-            } else {
-                $po->markInTransit();
-
-                ActivityLog::record(
-                    'po_partial_received',
-                    "PO {$po->po_number} partially received.",
-                    ['po_number' => $po->po_number],
-                    'purchase_order',
-                    $po->id
-                );
-            }
+                if ($isSimpleInventoryPo) {
+                    $this->syncSimpleInventoryRequisitionStatus($po);
+                }
             } // end not draft
 
+            // Link a posted GRN to the supplier's active follow-up delivery.
+            if (!$isDraft) {
+                $activeResolution = GoodsReceiptResolution::query()
+                    ->where('purchase_order_id', $po->id)
+                    ->where('status', 'delivery_submitted')
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
+
+                $po->load('items');
+                if ($activeResolution) {
+                    $activeResolution->followUpReceipts()->syncWithoutDetaching([$grn->id]);
+                    $activeResolution->update([
+                        'follow_up_goods_receipt_id' => $activeResolution->follow_up_goods_receipt_id ?: $grn->id,
+                        'status' => $po->items->every(fn ($item) => $item->isFullyReceived()) ? 'resolved' : 'delivery_submitted',
+                        'resolved_at' => $po->items->every(fn ($item) => $item->isFullyReceived()) ? now() : null,
+                    ]);
+                    ActivityLog::record(
+                        'po_follow_up_goods_receipt_recorded',
+                        "Follow-up goods receipt {$grn->grn_number} recorded for PO {$po->po_number}.",
+                        ['resolution_id' => $activeResolution->id, 'goods_receipt_id' => $grn->id, 'grn_number' => $grn->grn_number],
+                        'purchase_order',
+                        $po->id
+                    );
+                }
+
+                // Create or refresh the single Finance invoice after every posted
+                // receipt. The match remains an exception until quantities and any
+                // supplier resolution are settled.
+                if (!$isSimpleInventoryPo) {
+                    $autoCreatedInvoice = $this->createFinanceInvoiceForCompletedReceipt($po, $grn);
+                    $invoice = $autoCreatedInvoice ?: Invoice::where('purchase_order_id', $po->id)->first();
+                    $invoice?->load(['purchaseOrder.items', 'items'])->performThreeWayMatch();
+                }
+
+            }
+
             DB::commit();
+
+            if ($autoCreatedInvoice) {
+                $this->notifyUsersByPermissions(
+                    (int) $po->store_id,
+                    [
+                        'finance.invoices.view',
+                        'finance.invoices.manage',
+                        'finance.invoices.approve',
+                        'finance.payables.view',
+                        'finance.payables.manage',
+                        'finance.payables.approve',
+                    ],
+                    [
+                        'store_id' => (int) $po->store_id,
+                        'branch_id' => (int) $po->branch_id,
+                        'module' => 'finance',
+                        'entity_type' => 'invoice',
+                        'entity_id' => (int) $autoCreatedInvoice->id,
+                        'action' => 'goods_received_invoice_created',
+                        'title' => 'Supplier Invoice Ready for Review',
+                        'message' => "Invoice {$autoCreatedInvoice->invoice_number} was created after PO {$po->po_number} was fully received.",
+                        'severity' => 'info',
+                        'link' => "/finance/invoices/{$autoCreatedInvoice->id}",
+                        'data' => [
+                            'invoice_id' => (int) $autoCreatedInvoice->id,
+                            'invoice_number' => (string) $autoCreatedInvoice->invoice_number,
+                            'purchase_order_id' => (int) $po->id,
+                            'goods_receipt_id' => (int) $grn->id,
+                        ],
+                    ]
+                );
+            }
 
             return response()->json([
                 'success' => true,
@@ -416,12 +670,75 @@ class GoodsReceiptController extends Controller
     }
 
     /**
+     * Create the Finance invoice from posted receipt quantities once per PO.
+     *
+     * Any discrepancy remains subject to the three-way-match exception until resolved.
+     */
+    private function createFinanceInvoiceForCompletedReceipt(PurchaseOrder $po, GoodsReceipt $grn): ?Invoice
+    {
+        return app(\App\Services\Procurement\PurchaseOrderInvoiceService::class)
+            ->createForCompletedReceipt($po, $grn);
+    }
+
+    public function updateDraft(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'quality_notes' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.purchase_order_item_id' => 'required|integer',
+            'items.*.quantity_received' => 'required|integer|min:0',
+        ]);
+
+        try {
+            $grn = DB::transaction(function () use ($request, $id, $validated) {
+                $grn = GoodsReceipt::with('items')
+                    ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id))
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+                if ($grn->receipt_status !== 'draft') {
+                    throw new \DomainException('Only draft receipts can be edited.');
+                }
+
+                $po = $grn->purchaseOrder()->with('items')->lockForUpdate()->firstOrFail();
+                $draftItems = $grn->items->keyBy('purchase_order_item_id');
+                if (count($validated['items']) !== $draftItems->count()) {
+                    throw new \DomainException('The draft must include every saved PO item.');
+                }
+                $seen = [];
+                foreach ($validated['items'] as $itemData) {
+                    $poItemId = (int) $itemData['purchase_order_item_id'];
+                    $draftItem = $draftItems->get($poItemId);
+                    $poItem = $po->items->firstWhere('id', $poItemId);
+                    $pending = $poItem ? max(0, $poItem->quantity_ordered - $poItem->quantity_received - $poItem->quantity_rejected) : 0;
+                    if (!$draftItem || !$poItem || isset($seen[$poItemId]) || $itemData['quantity_received'] > $pending) {
+                        throw new \DomainException('A draft item is invalid or exceeds the outstanding PO quantity.');
+                    }
+                    $seen[$poItemId] = true;
+                    $draftItem->update(['quantity_expected' => $pending, 'quantity_received' => $itemData['quantity_received']]);
+                }
+                $grn->update(['quality_notes' => $validated['quality_notes'] ?? null]);
+
+                return $grn->fresh('items');
+            });
+        } catch (\DomainException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $grn]);
+    }
+
+    /**
      * Verify goods receipt
      * POST /api/procurement/goods-receipts/{id}/verify
      */
     public function verify(int $id): JsonResponse
     {
-        $grn = GoodsReceipt::findOrFail($id);
+        abort_unless(
+            $this->userHasAnyPermission(['inventory.receiving.manage'], request()->user()),
+            403,
+            'You do not have permission to complete goods receipts.'
+        );
+
         $actorEmployeeId = $this->resolveActorEmployeeId();
         if (!$actorEmployeeId) {
             return response()->json([
@@ -430,20 +747,44 @@ class GoodsReceiptController extends Controller
             ], 422);
         }
 
-        $grn->verify($actorEmployeeId);
+        try {
+            $grn = DB::transaction(function () use ($id, $actorEmployeeId) {
+                $grn = GoodsReceipt::with('items')
+                    ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', request()->user()->store_id))
+                    ->lockForUpdate()
+                    ->findOrFail($id);
 
-        // If this GRN was a draft (inventory not applied) ensure inventory is applied on verify
-        $hasTransactions = \App\Models\Inventory\InventoryTransaction::where('reference_type', 'goods_receipt')
-            ->where('reference_id', $grn->id)
-            ->exists();
+                if ($grn->receipt_status === 'draft') {
+                    $po = $grn->purchaseOrder()->with('items')->lockForUpdate()->firstOrFail();
+                    if (!in_array($po->status, ['pending_receipt', 'partially_received', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered'], true)) {
+                        throw new \DomainException('The purchase order is no longer open for receiving.');
+                    }
+                    if ($grn->items->sum('quantity_received') <= 0) {
+                        throw new \DomainException('Receive at least one item before completing the draft.');
+                    }
+                    foreach ($grn->items as $item) {
+                        $poItem = $po->items->firstWhere('id', $item->purchase_order_item_id);
+                        $pending = $poItem ? max(0, $poItem->quantity_ordered - $poItem->quantity_received - $poItem->quantity_rejected) : 0;
+                        if (!$poItem || $item->quantity_received > $pending) {
+                            throw new \DomainException('The draft quantity exceeds the outstanding PO quantity.');
+                        }
+                    }
 
-        if (!$hasTransactions) {
-            // Load controller helper to apply inventory changes for this GRN
-            try {
-                $this->applyInventoryForGrn($grn);
-            } catch (\Exception $e) {
-                \Log::error('Failed to apply inventory on GRN verify', ['grn' => $grn->id, 'error' => $e->getMessage()]);
-            }
+                    $grn->receipt_date = now()->toDateString();
+                    $grn->receipt_time = now()->format('H:i:s');
+                    $this->applyInventoryForGrn($grn);
+                    $hasDamaged = $grn->items->contains(fn ($item) => $item->quantity_damaged > 0);
+                    $hasShort = $grn->items->contains(fn ($item) => $item->quantity_received < $item->quantity_expected);
+                    $grn->receipt_status = $hasDamaged ? 'damaged' : ($hasShort ? 'partial' : 'full');
+                }
+
+                $grn->verified_by = $actorEmployeeId;
+                $grn->save();
+
+                return $grn;
+            });
+        } catch (\DomainException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
@@ -465,8 +806,12 @@ class GoodsReceiptController extends Controller
 
         $po = $grn->purchaseOrder()->with('items')->first();
         if (!$po) return;
+        $isSimpleInventoryPo = in_array($po->status, ['pending_receipt', 'partially_received'], true);
 
         foreach ($grn->items as $grnItem) {
+            if ($grnItem->quantity_received <= 0) {
+                continue;
+            }
             $itemData = [
                 'purchase_order_item_id' => $grnItem->purchase_order_item_id,
                 'product_id' => $grnItem->product_id,
@@ -477,7 +822,7 @@ class GoodsReceiptController extends Controller
 
             $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
             if ($poItem) {
-                $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
+                $poItem->updateReceived(max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0)));
             }
 
             $inventory = BranchInventory::firstOrCreate(
@@ -499,25 +844,24 @@ class GoodsReceiptController extends Controller
 
             $quantityBefore = $inventory->quantity_on_hand;
             $inventory->quantity_on_hand += $itemData['quantity_received'];
-            $inventory->quantity_available += $itemData['quantity_received'];
+            $inventory->quantity_available += max(0, (int) $itemData['quantity_received'] - (int) ($itemData['quantity_damaged'] ?? 0));
 
             if (($itemData['quantity_damaged'] ?? 0) > 0) {
                 $inventory->quantity_damaged += $itemData['quantity_damaged'];
             }
 
             $newCost = $poItem->unit_cost ?? 0;
-            $totalQuantity = $quantityBefore + $itemData['quantity_received'];
-            if ($totalQuantity > 0) {
-                $inventory->average_cost = (
-                    ($inventory->average_cost * $quantityBefore) +
-                    ($newCost * $itemData['quantity_received'])
-                ) / $totalQuantity;
-            }
-            $inventory->unit_cost = $newCost;
+            $this->updateInventoryCostFromReceipt(
+                (int) $po->store_id,
+                (int) $itemData['product_id'],
+                isset($itemData['variation_id']) ? (int) $itemData['variation_id'] : null,
+                (int) $itemData['quantity_received'],
+                (float) $newCost
+            );
+            $inventory->suppressAutomaticTransactionLog();
             $inventory->save();
 
             $inventory->updateStockStatus();
-            $inventory->calculateTotalValue();
 
             $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
@@ -572,8 +916,86 @@ class GoodsReceiptController extends Controller
             $po->markGoodsReceived();
             $po->update(['actual_delivery_date' => $grn->receipt_date]);
         } else {
-            $po->markInTransit();
+            if (in_array($po->status, ['pending_receipt', 'partially_received'], true)) {
+                $po->markPartiallyReceived();
+            } else {
+                $po->markInTransit();
+            }
         }
+
+        if ($isSimpleInventoryPo) {
+            $this->syncSimpleInventoryRequisitionStatus($po);
+        }
+    }
+
+    private function syncSimpleInventoryRequisitionStatus(PurchaseOrder $po): void
+    {
+        if (!$po->purchase_requisition_id) {
+            return;
+        }
+
+        $requisition = PurchaseRequisition::query()
+            ->where('store_id', $po->store_id)
+            ->with('items:id,requisition_id,quantity_requested')
+            ->lockForUpdate()
+            ->find($po->purchase_requisition_id);
+
+        if (!$requisition || $requisition->items->isEmpty()
+            || in_array($requisition->status, ['rejected', 'cancelled'], true)) {
+            return;
+        }
+
+        $allRequestedQuantitiesReceived = $requisition->items->every(function ($requestedItem) use ($requisition) {
+            $receivedQuantity = PurchaseOrderItem::query()
+                ->where('purchase_requisition_item_id', $requestedItem->id)
+                ->whereHas('purchaseOrder', fn ($query) => $query
+                    ->where('store_id', $requisition->store_id)
+                    ->where('purchase_requisition_id', $requisition->id)
+                    ->whereNotIn('status', ['cancelled', 'canceled', 'rejected']))
+                ->sum('quantity_received');
+
+            return (int) $receivedQuantity >= (int) $requestedItem->quantity_requested;
+        });
+
+        if ($allRequestedQuantitiesReceived && $requisition->status !== 'received') {
+            $requisition->update(['status' => 'received']);
+        }
+    }
+
+    private function updateInventoryCostFromReceipt(
+        int $storeId,
+        int $productId,
+        ?int $variationId,
+        int $receivedQuantity,
+        float $receivedUnitCost
+    ): void {
+        if ($receivedQuantity <= 0) {
+            return;
+        }
+
+        $stockQuery = BranchInventory::query()
+            ->where('store_id', $storeId)
+            ->where('product_id', $productId);
+        $variationId === null
+            ? $stockQuery->whereNull('variation_id')
+            : $stockQuery->where('variation_id', $variationId);
+        $existingQuantity = (int) $stockQuery->sum('quantity_on_hand');
+
+        $costRecord = $variationId === null
+            ? Product::query()->where('store_id', $storeId)->find($productId)
+            : ProductVariation::query()->where('product_id', $productId)->find($variationId);
+
+        if (!$costRecord) {
+            return;
+        }
+
+        $currentCost = $costRecord->getRawOriginal('cost_price');
+        $weightedCost = $existingQuantity > 0 && $currentCost !== null
+            ? (($existingQuantity * (float) $currentCost) + ($receivedQuantity * $receivedUnitCost)) / ($existingQuantity + $receivedQuantity)
+            : $receivedUnitCost;
+
+        $costRecord->cost_price = round($weightedCost, 2);
+        $costRecord->save();
     }
 
     /**
@@ -585,10 +1007,18 @@ class GoodsReceiptController extends Controller
         $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier'])
             ->findOrFail($poId);
 
-        if (!in_array($po->status, ['supplier_accepted', 'sent_to_supplier', 'in_transit'])) {
+        if (!in_array($po->status, ['pending_receipt', 'partially_received', 'supplier_accepted', 'sent_to_supplier', 'in_transit', 'delivered'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Purchase order is not ready for receiving',
+            ], 422);
+        }
+
+        $pickup = PurchaseOrderShipment::where('purchase_order_id', $po->id)->first();
+        if ($pickup && $pickup->status !== 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'The supplier pickup has not arrived at the store yet.',
             ], 422);
         }
 

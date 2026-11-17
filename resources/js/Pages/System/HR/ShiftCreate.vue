@@ -5,8 +5,8 @@
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-800">Create New Shift</h1>
-        <p class="text-sm text-gray-500 mt-1">Define shift details and assignment rules</p>
+        <h1 class="text-2xl font-semibold text-gray-800">Create Shift Template</h1>
+        <p class="text-sm text-gray-500 mt-1">Save reusable shift hours and working days for employee schedules.</p>
       </div>
       <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined @click="cancel" />
     </div>
@@ -90,7 +90,7 @@
       <!-- Footer Actions -->
       <div class="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-end gap-2">
         <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined @click="cancel" />
-        <Button label="Create Shift" icon="pi pi-check" severity="info" @click="confirmCreateShift" :loading="saving" />
+        <Button label="Create Template" icon="pi pi-check" severity="warn" @click="confirmCreateShift" :loading="saving" />
       </div>
     </div>
 
@@ -100,12 +100,12 @@
         <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <i class="pi pi-check text-green-500 text-2xl"></i>
         </div>
-        <h3 class="text-lg font-semibold text-gray-800 mb-2">Shift Created Successfully!</h3>
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Shift Template Created Successfully</h3>
         <p class="text-sm text-gray-500 mb-4">
-          Shift "<strong>{{ form.name }}</strong>" has been created and is ready for assignment.
+          "<strong>{{ form.name }}</strong>" is ready to use in employee schedules and onboarding.
         </p>
         <div class="flex gap-2 justify-center">
-          <Button label="Back to Shifts" severity="info" @click="goBack" />
+          <Button label="Back to Templates" severity="warn" @click="goBack" />
           <Button label="Create Another" severity="secondary" outlined @click="createAnother" />
         </div>
       </div>
@@ -214,8 +214,8 @@ const breakEndDisplay = computed(() => {
 
 const confirmCreateShift = () => {
   confirm.require({
-    header: 'Create Shift',
-    message: 'Save this shift? End time will be set to 8 hours after the start time.',
+    header: 'Create Shift Template',
+    message: 'Save this reusable shift template? End time will be set to 8 hours after the start time.',
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Save',
     rejectLabel: 'Cancel',
@@ -272,11 +272,11 @@ const createShift = async () => {
 }
 
 const cancel = () => {
-  router.push({ name: 'hr.shifts' })
+  router.push({ name: 'hr.shifts.templates' })
 }
 
 const goBack = () => {
-  router.push({ name: 'hr.shifts' })
+  router.push({ name: 'hr.shifts.templates' })
 }
 
 const createAnother = () => {

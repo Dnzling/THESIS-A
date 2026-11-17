@@ -44,6 +44,28 @@ class InventoryNavigationSeeder extends Seeder
                 'meta' => json_encode(['subtitle' => 'Organize products by categories'])
             ],
             [
+                'name' => 'inventory.suppliers',
+                'display_name' => 'Suppliers',
+                'module' => 'inventory',
+                'route_name' => 'inventory.suppliers',
+                'route_path' => '/inventory/suppliers',
+                'icon' => 'pi pi-truck',
+                'parent_id' => null,
+                'display_order' => 4,
+                'meta' => json_encode(['subtitle' => 'View inventory suppliers'])
+            ],
+            [
+                'name' => 'inventory.purchase-orders',
+                'display_name' => 'Purchase Orders',
+                'module' => 'inventory',
+                'route_name' => 'inventory.purchase-orders.index',
+                'route_path' => '/inventory/purchase-orders',
+                'icon' => 'pi pi-file-edit',
+                'parent_id' => null,
+                'display_order' => 5,
+                'meta' => json_encode(['subtitle' => 'Create and track supplier purchase orders'])
+            ],
+            [
                 'name' => 'inventory.units',
                 'display_name' => 'Units',
                 'module' => 'inventory',
@@ -64,6 +86,17 @@ class InventoryNavigationSeeder extends Seeder
                 'parent_id' => null,
                 'display_order' => 5,
                 'meta' => json_encode(['subtitle' => 'Track stock issues and deductions'])
+            ],
+            [
+                'name' => 'inventory.supply-issuance',
+                'display_name' => 'Supply Issuance',
+                'module' => 'inventory',
+                'route_name' => 'inventory.supply-issuance.create',
+                'route_path' => '/inventory/supply-issuance/create',
+                'icon' => 'pi pi-send',
+                'parent_id' => null,
+                'display_order' => 6,
+                'meta' => json_encode(['subtitle' => 'Issue office and operational supplies'])
             ],
             [
                 'name' => 'inventory.stock-returns',
@@ -178,8 +211,11 @@ class InventoryNavigationSeeder extends Seeder
             'inventory.dashboard' => ['inventory.dashboard.view'],
             'inventory.products' => ['inventory.products.view'],
             'inventory.categories' => ['inventory.categories.view'],
+            'inventory.suppliers' => ['inventory.products.view'],
+            'inventory.purchase-orders' => ['inventory.purchase_orders.view'],
             'inventory.units' => ['inventory.units.view'],
             'inventory.stock-issues' => ['inventory.stock-issues.view'],
+            'inventory.supply-issuance' => ['inventory.stock-issues.view'],
             'inventory.stock-returns' => ['inventory.stock-returns.view'],
             'inventory.stock-counts' => ['inventory.stock-counts.view'],
             'inventory.warehouses' => ['inventory.warehouses.view'],

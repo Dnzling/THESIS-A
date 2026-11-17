@@ -11,12 +11,15 @@ use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\Supplier\SupplierContract;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Supplier\SupplierPayment;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
+use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 
 class PurchaseOrder extends Model
 {
@@ -30,11 +33,15 @@ class PurchaseOrder extends Model
         'purchase_requisition_id',
         'rfq_id',
         'supplier_quotation_id',
+        'supplier_contract_id',
         'status',
         'subtotal',
         'tax_amount',
         'shipping_cost',
+        'shipping_fee_breakdown',
         'discount_amount',
+        'contract_discount_percentage',
+        'contract_tax_rate',
         'total_amount',
         'approval_tier_level',
         'required_approvers',
@@ -45,6 +52,8 @@ class PurchaseOrder extends Model
         'payment_terms',
         'order_date',
         'expected_delivery_date',
+        'fulfillment_method',
+        'supplier_fulfillment_status',
         'actual_delivery_date',
         'payment_due_date',
         'created_by',
@@ -56,7 +65,10 @@ class PurchaseOrder extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
+        'shipping_fee_breakdown' => 'array',
         'discount_amount' => 'decimal:2',
+        'contract_discount_percentage' => 'decimal:2',
+        'contract_tax_rate' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'approval_tier_level' => 'integer',
         'required_approvers' => 'array',
@@ -100,6 +112,16 @@ class PurchaseOrder extends Model
         return $this->belongsTo(SupplierQuotation::class);
     }
 
+    public function supplierContract(): BelongsTo
+    {
+        return $this->belongsTo(SupplierContract::class);
+    }
+
+    public function shipment()
+    {
+        return $this->hasOne(PurchaseOrderShipment::class);
+    }
+
     public function stockOrderRequest(): BelongsTo
     {
         return $this->belongsTo(StockOrderRequest::class);
@@ -123,6 +145,17 @@ class PurchaseOrder extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(SupplierPayment::class);
+    }
+
+    public function supplierResponse()
+    {
+        return $this->hasOne(SupplierPOFeedback::class)->latestOfMany();
+    }
+
+    public function supplierFulfillmentUpdates(): HasMany
+    {
+        return $this->hasMany(\App\Models\Procurement\SupplierPortal\SupplierPOFulfillmentUpdate::class)
+            ->orderBy('created_at');
     }
 
     // Scopes
@@ -231,6 +264,19 @@ class PurchaseOrder extends Model
         $this->supplier->incrementOrders($this->total_amount);
     }
 
+    public function submitForReceipt(): void
+    {
+        $this->update([
+            'status' => 'pending_receipt',
+            'order_date' => today(),
+        ]);
+    }
+
+    public function markPartiallyReceived(): void
+    {
+        $this->update(['status' => 'partially_received']);
+    }
+
     public function getQuantityReceivedAttribute(): int
     {
         return $this->items->sum('quantity_received');
@@ -275,14 +321,57 @@ class PurchaseOrder extends Model
     public function markInTransit(): void
     {
         $this->update(['status' => 'in_transit']);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
+                ->update(['status' => 'in_transit']);
+        }
+    }
+
+    public function markOutForDelivery(): void
+    {
+        $this->update([
+            'status' => 'out_for_delivery',
+            'supplier_fulfillment_status' => $this->fulfillment_method === 'store_pickup'
+                ? 'dispatched'
+                : $this->supplier_fulfillment_status,
+        ]);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered', 'received'])
+                ->update(['status' => 'out_for_delivery']);
+        }
     }
 
     public function markDelivered(): void
     {
         $this->update([
             'status' => 'delivered',
+            'supplier_fulfillment_status' => $this->fulfillment_method === 'store_pickup'
+                ? 'delivered'
+                : $this->supplier_fulfillment_status,
             'actual_delivery_date' => now()->toDateString(),
         ]);
+
+        if (!$this->purchase_requisition_id) {
+            return;
+        }
+
+        $hasUndeliveredPurchaseOrder = static::query()
+            ->where('purchase_requisition_id', $this->purchase_requisition_id)
+            ->whereNotIn('status', ['delivered', 'goods_received', 'cancelled', 'canceled'])
+            ->exists();
+
+        if (!$hasUndeliveredPurchaseOrder) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'received'])
+                ->update(['status' => 'delivered']);
+        }
     }
 
     public function markGoodsReceived(): void
@@ -291,5 +380,21 @@ class PurchaseOrder extends Model
             'status' => 'goods_received',
             'actual_delivery_date' => now()->toDateString(),
         ]);
+
+        if (!$this->purchase_requisition_id) {
+            return;
+        }
+
+        $hasOutstandingPurchaseOrder = static::query()
+            ->where('purchase_requisition_id', $this->purchase_requisition_id)
+            ->whereNotIn('status', ['goods_received', 'cancelled', 'canceled', 'rejected'])
+            ->exists();
+
+        if (!$hasOutstandingPurchaseOrder) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'received'])
+                ->update(['status' => 'received']);
+        }
     }
 }

@@ -14,6 +14,7 @@ use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Services\Logistics\DistanceService;
+use App\Services\Procurement\InclusiveTaxCalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -290,8 +291,6 @@ class SupplierShipmentController extends Controller
 
         $shipment->purchaseOrder?->markDelivered();
 
-        $this->updatePurchaseRequisitionStatus($shipment->purchaseOrder?->purchase_requisition_id, 'delivered');
-
         $createdInvoice = $this->autoCreateInvoiceForDeliveredPurchaseOrder($shipment);
 
         ActivityLog::record(
@@ -334,7 +333,7 @@ class SupplierShipmentController extends Controller
             return;
         }
 
-        $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
+        $terminalStatuses = ['rejected', 'cancelled', 'delivered', 'received'];
         if (in_array($pr->status, $terminalStatuses, true)) {
             return;
         }
@@ -346,7 +345,7 @@ class SupplierShipmentController extends Controller
         $previousStatus = (string) $pr->status;
         $pr->update(['status' => $status]);
 
-        if ($status === 'delivered') {
+        if ($status === 'received') {
             $pr->loadMissing(['requestedBy']);
             $requesterUserId = (int) ($pr->requestedBy?->user_id ?? 0);
             $notificationPayload = [
@@ -355,16 +354,16 @@ class SupplierShipmentController extends Controller
                 'module' => 'inventory',
                 'entity_type' => 'purchase_requisition',
                 'entity_id' => (int) $pr->id,
-                'action' => 'delivered',
-                'title' => 'Purchase Requisition Delivered',
-                'message' => "PR {$pr->pr_number} has been marked as delivered.",
+                'action' => 'received',
+                'title' => 'Purchase Requisition Received',
+                'message' => "PR {$pr->pr_number} has been marked as received.",
                 'severity' => 'success',
                 'link' => "/inventory/requisites/{$pr->id}",
                 'data' => [
                     'pr_id' => (int) $pr->id,
                     'pr_number' => (string) $pr->pr_number,
                     'status_from' => $previousStatus,
-                    'status_to' => 'delivered',
+                    'status_to' => 'received',
                 ],
             ];
 
@@ -463,10 +462,12 @@ class SupplierShipmentController extends Controller
 
             $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
             $discountRate = $contract ? (float) ($contract->discount_percentage ?? 0) : 0.0;
-            $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
-            $shippingCost = (float) ($po->shipping_cost ?? 0);
+            $shippingCost = $po->fulfillment_method === 'supplier_delivery'
+                ? (float) ($po->shipping_cost ?? 0)
+                : 0.0;
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
-            $netAmount = $invoiceAmount + $taxAmount + $shippingCost - $discountAmount;
+            $taxAmount = InclusiveTaxCalculator::includedTax(max(0, $invoiceAmount - $discountAmount), $taxRate);
+            $netAmount = max(0, $invoiceAmount - $discountAmount) + $shippingCost;
 
             $invoice = Invoice::create([
                 'store_id' => $storeId,

@@ -40,8 +40,14 @@
             </div>
 
             <div>
-              <label class="text-xs font-semibold text-gray-600">Basis Type <span class="text-red-500">*</span></label>
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-xs font-semibold text-gray-600">Basis Type <span class="text-red-500">*</span></label>
+                <button type="button" v-tooltip.top.focus="basisHelpText" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-300" aria-label="Explain reorder calculation choices" :aria-expanded="basisHelpVisible" @click="basisHelpVisible = !basisHelpVisible">
+                  <i class="pi pi-info-circle text-sm" />
+                </button>
+              </div>
               <Select v-model="form.basis_type" :options="basisTypeOptions" optionLabel="label" optionValue="value" class="w-full mt-1" />
+              <p v-if="basisHelpVisible" class="mt-2 rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs leading-5 text-slate-700">{{ basisHelpText }}</p>
             </div>
 
             <div>
@@ -81,17 +87,13 @@
           </div>
 
           <Message v-if="form.basis_type === 'demand_lead_time'" severity="info" :closable="false">
-            Average Daily Demand is auto-computed by the backend from recent sales history.
+            This uses sales from the past 30 days and the supplier's delivery time to estimate when stock may run low. The suggested quantity aims to cover sales while you wait for delivery, plus your safety stock. More sales history and an accurate delivery-time estimate make this suggestion more useful.
           </Message>
 
           <div class="flex items-center gap-6 pt-1">
             <div class="flex items-center gap-2">
               <Checkbox v-model="form.is_active" binary inputId="is_active" />
               <label for="is_active" class="text-sm text-gray-700">Active</label>
-            </div>
-            <div class="flex items-center gap-2">
-              <Checkbox v-model="form.auto_generate_po" binary inputId="auto_generate_po" />
-              <label for="auto_generate_po" class="text-sm text-gray-700">Auto-generate PR/PO</label>
             </div>
           </div>
 
@@ -164,7 +166,6 @@ const form = reactive({
   economic_order_quantity: null as number | null,
   avg_daily_demand: null as number | null,
   priority: 'medium',
-  auto_generate_po: false,
   is_active: true,
   notes: '',
 })
@@ -173,6 +174,8 @@ const basisTypeOptions = [
   { label: 'Reorder Point', value: 'reorder_point' },
   { label: 'Demand + Lead Time', value: 'demand_lead_time' },
 ]
+const basisHelpVisible = ref(false)
+const basisHelpText = 'Reorder Point is a fixed stock level you choose; when stock reaches it, the system suggests replenishing toward your set target. Demand + Lead Time uses recent sales and the supplier delivery time to estimate when to reorder and how much stock may be needed while waiting. Choose the first for a simple manual rule; choose the second for a suggestion that responds to sales history and delivery time.'
 
 const priorityOptions = [
   { label: 'Critical', value: 'critical' },

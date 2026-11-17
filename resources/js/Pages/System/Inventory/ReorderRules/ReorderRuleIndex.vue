@@ -1,53 +1,23 @@
 ﻿<template>
-  <div class="p-4 min-h-screen">
-    <div class="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+  <div class="min-h-screen space-y-4 p-4">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">Reorder Rules</h1>
-        <p class="text-xs text-gray-500 mt-0.5">Branch-based replenishment settings per product.</p>
+        <h1 class="text-xl font-bold text-slate-900">Reorder Rules</h1>
+        <p class="mt-0.5 text-xs text-slate-500">Configure when and how much each branch should replenish.</p>
       </div>
-      <div class="flex gap-2">
-        <Button
-          label="Create Rule"
-          icon="pi pi-plus"
-          size="small"
-          severity="success"
-          @click="router.push({ name: 'inventory.reorder-rules.create' })"
-        />
-        <Button
-          label="Auto Create Rules"
-          icon="pi pi-plus-circle"
-          size="small"
-          severity="info"
-          :loading="autoCreating"
-          @click="autoCreateRules(false)"
-        />
-        <Button
-          label="Sync Existing"
-          icon="pi pi-refresh"
-          size="small"
-          severity="secondary"
-          outlined
-          :loading="autoCreating"
-          @click="autoCreateRules(true)"
-        />
+      <div class="flex flex-wrap gap-2">
+        <Button label="Create Rule" icon="pi pi-plus" size="small" severity="warn" @click="router.push({ name: 'inventory.reorder-rules.create' })" />
       </div>
     </div>
 
-    <Card class="mb-4">
+    <Card>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-gray-600">Search</label>
-            <InputText v-model="filters.search" placeholder="Product name or SKU" />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-gray-600">Priority</label>
-            <Select v-model="filters.priority" :options="priorityOptions" optionLabel="label" optionValue="value" showClear />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-gray-600">Status</label>
-            <Select v-model="filters.is_active" :options="activeOptions" optionLabel="label" optionValue="value" showClear />
-          </div>
+        <div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+          <IconField class="w-full md:w-72"><InputIcon class="pi pi-search" /><InputText v-model="filters.search" placeholder="Search product or SKU" size="small" fluid /></IconField>
+          <Select v-model="filters.priority" :options="priorityOptions" optionLabel="label" optionValue="value" placeholder="All priorities" showClear size="small" class="w-full md:w-40" />
+          <Select v-model="filters.is_active" :options="activeOptions" optionLabel="label" optionValue="value" placeholder="All statuses" showClear size="small" class="w-full md:w-40" />
+          <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small" @click="resetFilters" />
+          <span class="text-xs text-slate-500 md:ml-auto">{{ pagination.total }} rules</span>
         </div>
       </template>
     </Card>
@@ -76,50 +46,58 @@
         <DataTable
           v-else
           :value="rules"
-          stripedRows
-          class="p-datatable-sm"
+          dataKey="id"
+          rowHover
+          scrollable
+          :tableStyle="{ minWidth: '70rem' }"
+          class="p-datatable-sm text-sm"
           paginator
           :rows="filters.per_page"
+          :rowsPerPageOptions="[15, 25, 50]"
           :totalRecords="pagination.total"
           :first="(pagination.current_page - 1) * filters.per_page"
+          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageSelect CurrentPageReport"
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} rules"
           @page="onPage"
         >
           <Column header="Product" style="min-width: 220px">
             <template #body="{ data }">
-              <div class="text-sm">
-                <div class="font-medium">{{ data.product_name || '-' }}</div>
-                <div class="text-gray-500">{{ data.product_sku || '-' }}</div>
+              <div class="min-w-0">
+                <p class="truncate font-medium text-slate-900">{{ data.product_name || '—' }}</p>
+                <p class="mt-0.5 truncate font-mono text-xs text-slate-500">{{ data.product_sku || 'No SKU' }}</p>
               </div>
             </template>
           </Column>
-          <Column field="basis_type" header="Basis" style="width: 160px">
-            <template #body="{ data }">{{ toLabel(data.basis_type || 'reorder_point') }}</template>
+          <Column header="Branch" style="min-width: 140px"><template #body="{ data }"><span class="text-slate-700 text-xs">{{ data.branch?.name || '—' }}</span></template></Column>
+          <Column field="basis_type" header="Basis" style="min-width: 150px" class="text-xs">
+            <template #body="{ data }"><Badge :value="toLabel(data.basis_type || 'reorder_point')" severity="secondary" /></template>
           </Column>
-          <Column field="reorder_point" header="Reorder Point" style="width: 120px" />
-          <Column field="reorder_quantity" header="Reorder Qty" style="width: 120px" />
-          <Column field="safety_stock" header="Safety" style="width: 100px" />
-          <Column field="maximum_stock" header="Max" style="width: 100px" />
+          <Column field="reorder_point" header="Reorder Point" style="width: 120px"><template #body="{ data }">{{ formatQuantity(data.reorder_point) }}</template></Column>
+          <Column field="reorder_quantity" header="Reorder Qty" style="width: 115px"><template #body="{ data }">{{ formatQuantity(data.reorder_quantity) }}</template></Column>
+          <Column field="safety_stock" header="Safety Stock" style="width: 115px"><template #body="{ data }">{{ formatQuantity(data.safety_stock) }}</template></Column>
+          <Column field="maximum_stock" header="Max Stock" style="width: 110px"><template #body="{ data }">{{ formatQuantity(data.maximum_stock) }}</template></Column>
           <Column field="priority" header="Priority" style="width: 110px">
             <template #body="{ data }">
-              <Tag :value="toLabel(data.priority)" :severity="prioritySeverity(data.priority)" />
+              <Badge :value="toLabel(data.priority)" :severity="prioritySeverity(data.priority)" />
             </template>
           </Column>
           <Column field="is_active" header="Status" style="width: 110px">
             <template #body="{ data }">
-              <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+              <Badge :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
             </template>
           </Column>
-          <Column header="Actions" style="width: 150px">
+          <Column header="Actions" style="width: 100px">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-eye" rounded text severity="info" @click="openDetail(data.id)" />
-                <Button icon="pi pi-pencil" rounded text severity="warning" @click="openEdit(data.id)" />
-                <Button icon="pi pi-trash" rounded text severity="danger" @click="removeRule(data.id)" />
-              </div>
+              <Button label="View" icon="pi pi-eye" outlined rounded size="small" class="text-xs" @click="openDetail(data.id)" />
             </template>
           </Column>
           <template #empty>
-            <div class="text-center py-8 text-gray-500">No reorder rules found for this branch.</div>
+            <div class="flex flex-col items-center py-10 text-center">
+              <i class="pi pi-sliders-h text-3xl text-slate-300" />
+              <p class="mt-3 text-sm font-medium text-slate-700">No reorder rules found</p>
+              <p class="mt-1 text-xs text-slate-500">Create a rule to set replenishment thresholds for your products.</p>
+              <Button label="Create Rule" icon="pi pi-plus" severity="warn" size="small" class="mt-4" @click="router.push({ name: 'inventory.reorder-rules.create' })" />
+            </div>
           </template>
         </DataTable>
       </template>
@@ -128,18 +106,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '@/services/inventory.service'
 import { useAuthStore } from '@/stores/auth'
+import Badge from 'primevue/badge'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
 
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 
 const loading = ref(false)
-const autoCreating = ref(false)
 const rules = ref<any[]>([])
 
 const pagination = reactive({
@@ -154,6 +134,7 @@ const filters = reactive({
   page: 1,
   per_page: 15,
 })
+const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.priority || filters.is_active !== null))
 
 const userBranchId = Number(
   (authStore.user as any)?.branch_id ||
@@ -189,10 +170,16 @@ const normalizeRule = (row: any) => ({
 const toLabel = (value: string) => {
   const text = String(value || '')
   if (!text) return '-'
+  if (text === 'demand_lead_time') return 'Demand + Lead Time'
   return text
     .split('_')
     .map((w) => `${w.charAt(0).toUpperCase()}${w.slice(1)}`)
     .join(' ')
+}
+
+const formatQuantity = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === '') return '—'
+  return Number(value).toLocaleString('en-PH', { maximumFractionDigits: 2 })
 }
 
 const prioritySeverity = (priority: string) => {
@@ -225,58 +212,21 @@ const loadRules = async () => {
   }
 }
 
-const autoCreateRules = async (overwrite = false) => {
-  autoCreating.value = true
-  try {
-    const payload: any = { overwrite }
-    if (userBranchId > 0) payload.branch_id = userBranchId
-    const response = await inventoryService.autoCreateReorderRules(payload)
-    toast.add({
-      severity: 'success',
-      summary: 'Reorder Rules',
-      detail: response?.message || 'Auto-create completed.',
-      life: 3500,
-    })
-    await loadRules()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to auto-create reorder rules',
-      life: 3500,
-    })
-  } finally {
-    autoCreating.value = false
-  }
-}
-
 const openDetail = (id: number) => {
   router.push({ name: 'inventory.reorder-rules.detail', params: { id } })
-}
-
-const openEdit = (id: number) => {
-  router.push({ name: 'inventory.reorder-rules.edit', params: { id } })
-}
-
-const removeRule = async (id: number) => {
-  if (!confirm('Delete this reorder rule?')) return
-  try {
-    await inventoryService.deleteReorderRule(id)
-    toast.add({ severity: 'success', summary: 'Deleted', detail: 'Reorder rule removed.', life: 2500 })
-    loadRules()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to delete reorder rule',
-      life: 3000,
-    })
-  }
 }
 
 const onPage = (event: any) => {
   filters.page = event.page + 1
   filters.per_page = event.rows
+  loadRules()
+}
+
+const resetFilters = () => {
+  filters.search = ''
+  filters.priority = null
+  filters.is_active = null
+  filters.page = 1
   loadRules()
 }
 

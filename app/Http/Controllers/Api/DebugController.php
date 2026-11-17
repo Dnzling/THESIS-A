@@ -14,11 +14,16 @@ class DebugController extends Controller
      */
     public function shiftsToday(Request $request)
     {
+        $user = $request->user();
+        $storeId = $user?->store_id;
         $today = Carbon::today();
 
         $query = ShiftAssignment::where('start_date', '<=', $today)
             ->where(function ($q) use ($today) {
                 $q->whereNull('end_date')->orWhere('end_date', '>=', $today);
+            })
+            ->whereHas('employee', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
             })
             ->with([
                 // don't select non-existent columns; eager-load relations instead
@@ -26,10 +31,6 @@ class DebugController extends Controller
                     $qe->select('id', 'fname', 'lname')->with(['branch:id,name', 'role:id,name']);
                 }
             ]);
-
-        if ($request->has('store_id')) {
-            $query->where('store_id', $request->get('store_id'));
-        }
 
         $items = $query->get()->map(function ($s) {
             $emp = $s->employee;

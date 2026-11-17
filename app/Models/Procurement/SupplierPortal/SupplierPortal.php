@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\User;
 use App\Models\Procurement\Supplier\Supplier;
+use Illuminate\Support\Collection;
 
 class SupplierPortal extends Model
 {
@@ -25,6 +26,8 @@ class SupplierPortal extends Model
         'country',
         'latitude',
         'longitude',
+        'delivery_fee_per_km',
+        'delivery_fee_per_kg',
         'tin',
         'status',
         'rejection_reason',
@@ -39,6 +42,8 @@ class SupplierPortal extends Model
         'last_submission_at' => 'datetime',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
+        'delivery_fee_per_km' => 'decimal:2',
+        'delivery_fee_per_kg' => 'decimal:2',
     ];
 
     // Relationships
@@ -50,6 +55,23 @@ class SupplierPortal extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class, 'supplier_id', 'id');
+    }
+
+    /**
+     * Supplier records used by stores can have different IDs from the supplier
+     * account's original record. Include both when resolving portal visibility.
+     */
+    public function linkedSupplierIds(): Collection
+    {
+        $ids = Supplier::query()
+            ->where('supplier_portal_id', $this->id)
+            ->pluck('id');
+
+        if ($this->supplier_id) {
+            $ids->push((int) $this->supplier_id);
+        }
+
+        return $ids->map(fn ($id) => (int) $id)->unique()->values();
     }
 
     public function verifiedBy(): BelongsTo

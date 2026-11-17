@@ -17,6 +17,7 @@ class ProductAsset extends Model
     protected $fillable = [
         'store_id',
         'product_id',
+        'variation_id',
         'asset_type',
         'file_name',
         'file_path',
@@ -106,7 +107,7 @@ class ProductAsset extends Model
 
     public function variation()
     {
-        return $this->hasOne(ProductVariation::class, 'custom_3d_model_id');
+        return $this->belongsTo(ProductVariation::class, 'variation_id');
     }
 
     // Scopes

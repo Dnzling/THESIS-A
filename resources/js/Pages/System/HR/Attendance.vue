@@ -1,8 +1,8 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div v-for="stat in stats" :key="stat.label" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div v-for="stat in stats" :key="stat.label" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm text-gray-500">{{ stat.label }}</div>
@@ -16,43 +16,44 @@
     </div>
   
     <!-- Header with Search and Filters -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-      <div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="flex flex-wrap items-end gap-3">
         <!-- Search Input -->
-        <span class="p-input-icon-left w-full sm:w-64">
-          <IconField>
+        <div class="w-full sm:w-64">
+          <IconField class="w-full">
             <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search employee..." class="w-full" size="small" />
+            <InputText v-model="filters.search" placeholder="Search employee..." class="w-full text-xs" size="small" />
           </IconField>
-        </span>
+        </div>
   
         <!-- Status Filter -->
-        <Select v-model="filters.status" :options="statusFilterOptions" optionLabel="label" size="small"
-          optionValue="value" placeholder="All Status" showClear class="w-full sm:w-40">
+        <Select v-model="filters.status" :options="statusFilterOptions" optionLabel="label"
+          optionValue="value" placeholder="All Statuses" showClear class="w-full text-xs sm:w-44" size="small">
           <template #option="slotProps">
-            <Tag :value="slotProps.option.label" :severity="getStatusSeverity(slotProps.option.value)" />
+            <Badge :value="slotProps.option.label" :severity="getStatusSeverity(slotProps.option.value)" />
           </template>
         </Select>
   
         <!-- Date Picker -->
         <DatePicker v-model="filters.dateRange" selectionMode="range" :manualInput="false" showIcon showClear size="small"
-          placeholder="Date Range" fluid :maxDate="new Date()" dateFormat="M dd, yy" />
-      </div>
+          placeholder="Date range" class="w-full text-xs sm:w-60" :maxDate="new Date()" dateFormat="M dd, yy" />
   
       <!-- Clear Filters & Refresh -->
-      <div class="flex gap-2">
-        <Button v-if="hasActiveFilters" label="Clear" icon="pi pi-filter-slash" severity="secondary" text size="small"
+        <Button v-if="hasActiveFilters" label="Clear Filter" icon="pi pi-filter-slash" severity="danger" size="small"
           @click="clearFilters" />
-        <Button icon="pi pi-refresh" severity="info" text size="small" @click="fetchAttendance" />
-      </div>
+        <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" @click="fetchAttendance" />
+    </div>
     </div>
   
     <!-- Attendance Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <DataTable :value="attendanceData" class="w-full text-sm" :loading="loading" paginator :rows="10" :totalRecords="totalRecords"
+    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div v-if="loading" class="space-y-2 p-4">
+        <div v-for="row in 6" :key="row" class="grid grid-cols-6 gap-3"><Skeleton v-for="cell in 6" :key="cell" height="2.5rem" class="rounded-md" /></div>
+      </div>
+      <DataTable v-else :value="attendanceData" class="w-full text-xs" paginator :rows="10" :totalRecords="totalRecords"
         :rowsPerPageOptions="[5, 10, 20, 50]"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageSelect"
-        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries" rowHover showGridlines
+        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries" rowHover
         responsiveLayout="scroll">
         <Column field="attendanceDateRaw" header="Date" sortable style="width: 120px">
           <template #body="{ data }">
@@ -102,9 +103,9 @@
           </template>
         </Column>
   
-        <Column field="status" header="Status" sortable style="width: 120px">
+        <Column field="status" header="Status" sortable style="width: 150px">
           <template #body="{ data }">
-            <Tag :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)" />
+            <Badge :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)" />
           </template>
         </Column>
   
@@ -170,7 +171,7 @@
           <Select v-model="editingAttendance.status" :options="statusOptions" optionLabel="label" optionValue="value"
             class="w-full">
             <template #option="slotProps">
-              <Tag :value="slotProps.option.label" :severity="getStatusSeverity(slotProps.option.value)" />
+            <Badge :value="slotProps.option.label" :severity="getStatusSeverity(slotProps.option.value)" />
             </template>
           </Select>
         </div>
@@ -285,6 +286,8 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
@@ -293,7 +296,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 // State
-const loading = ref(false)
+const loading = ref(true)
 const saving = ref(false)
 const showEditDialog = ref(false)
 const showDetailsDialog = ref(false)
@@ -315,7 +318,8 @@ const statusFilterOptions = [
   { label: 'Late', value: 'late' },
   { label: 'Absent', value: 'absent' },
   { label: 'On Leave', value: 'on_leave' },
-  { label: 'Half Day', value: 'half_day' }
+  { label: 'Half Day', value: 'half_day' },
+  { label: 'Unscheduled', value: 'unscheduled' }
 ]
 
 const statusOptions = [
@@ -323,7 +327,8 @@ const statusOptions = [
   { label: 'Late', value: 'late' },
   { label: 'Absent', value: 'absent' },
   { label: 'On Leave', value: 'on_leave' },
-  { label: 'Half Day', value: 'half_day' }
+  { label: 'Half Day', value: 'half_day' },
+  { label: 'Unscheduled', value: 'unscheduled' }
 ]
 
 // Stats
@@ -386,8 +391,9 @@ const getStatusSeverity = (status: string): string => {
     'present': 'success',
     'absent': 'danger',
     'on_leave': 'info',
-    'half_day': 'warning',
-    'late': 'danger'
+    'half_day': 'warn',
+    'late': 'danger',
+    'unscheduled': 'info'
   }
   return map[status?.toLowerCase()] || 'secondary'
 }
@@ -399,6 +405,7 @@ const formatStatus = (status: string): string => {
     'absent': 'Absent',
     'on_leave': 'On Leave',
     'half_day': 'Half Day',
+    'unscheduled': 'Unscheduled - Review Schedule',
     'holiday': 'Holiday'
   }
   return map[status] || status || 'Unknown'
@@ -488,7 +495,11 @@ const formatDayOfWeek = (dateString: string): string => {
 // Transform API data to UI format
 const transformAttendance = (item: any): any => {
   const employee = item.employee || {}
+  const employeeUser = employee.user || {}
   const shift = item.shift || {}
+  const firstName = employeeUser.fname || employee.fname || ''
+  const lastName = employeeUser.lname || employee.lname || ''
+  const employeeName = `${firstName} ${lastName}`.trim()
 
   return {
     id: item.id,
@@ -497,9 +508,7 @@ const transformAttendance = (item: any): any => {
     dayOfWeek: formatDayOfWeek(item.attendance_date),
     employee: {
       id: employee.id,
-      name: employee.fname && employee.lname
-        ? `${employee.fname} ${employee.lname}`.trim()
-        : 'Unknown',
+      name: employeeName || employeeUser.email || employee.email || 'Unknown Employee',
       department: employee.department || 'N/A'
     },
     clockIn: formatTime(item.clock_in),

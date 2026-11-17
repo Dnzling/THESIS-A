@@ -89,6 +89,10 @@ class StockReturnRequest extends FormRequest
                 $validator->errors()->add('supplier_id', 'Supplier is required for supplier returns');
             }
 
+            if ($returnType === 'supplier_return' && $this->input('return_reason') !== 'damaged') {
+                $validator->errors()->add('return_reason', 'Supplier disposition requests must be recorded as damaged returns.');
+            }
+
             // Validate that to_branch_id is provided for branch returns
             if ($returnType === 'branch_return' && !$this->input('to_branch_id')) {
                 $validator->errors()->add('to_branch_id', 'Destination branch is required for branch returns');
@@ -99,9 +103,14 @@ class StockReturnRequest extends FormRequest
                 $branchInventoryId = $item['branch_inventory_id'] ?? null;
                 $quantityReturned = $item['quantity_returned'] ?? 0;
 
-                if ($branchInventoryId && $quantityReturned > 0) {
-                    // Here you could add additional validation to check if the quantity
-                    // is available in the branch inventory, but for now we'll trust the frontend
+                if ($branchInventoryId && $quantityReturned > 0 && $returnType === 'supplier_return') {
+                    $inventory = \App\Models\Inventory\BranchInventory::query()
+                        ->where('store_id', (int) auth()->user()?->store_id)
+                        ->where('branch_id', $fromBranchId)
+                        ->find($branchInventoryId);
+                    if (!$inventory || (int) $quantityReturned > (int) $inventory->quantity_damaged) {
+                        $validator->errors()->add("items.{$index}.quantity_returned", 'Quantity cannot exceed damaged units recorded for this branch item.');
+                    }
                 }
             }
         });

@@ -5,6 +5,7 @@ namespace App\Services\Core;
 use App\Models\Core\Permission;
 use App\Models\Core\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class PermissionService
 {
@@ -52,10 +53,11 @@ class PermissionService
      */
     public function getUserPermissions(User $user, ?int $storeId = null): array
     {
-        $cacheKey = $this->getCacheKey($user->id, $storeId);
+        $resolvedStoreId = $storeId ?? ($user->store_id ? (int) $user->store_id : null);
+        $cacheKey = $this->getCacheKey($user->id, $resolvedStoreId);
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($user, $storeId): array {
-            if ($storeId !== null && !$this->belongsToStore($user, $storeId)) {
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($user, $resolvedStoreId): array {
+            if ($resolvedStoreId !== null && !$this->belongsToStore($user, $resolvedStoreId)) {
                 return [];
             }
 
@@ -91,6 +93,20 @@ class PermissionService
                 $permissionNames = array_values(array_diff($permissionNames, $revokeOverrides));
             }
 
+            if ($resolvedStoreId !== null) {
+                $planPermissions = DB::table('stores')
+                    ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+                    ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+                    ->where('stores.id', $resolvedStoreId)
+                    ->where('plan_permissions.included', true)
+                    ->where('permissions.is_active', true)
+                    ->whereNull('permissions.deleted_at')
+                    ->pluck('permissions.name')
+                    ->all();
+
+                $permissionNames = array_values(array_intersect($permissionNames, $planPermissions));
+            }
+
             return $permissionNames;
         });
     }
@@ -105,6 +121,17 @@ class PermissionService
         if ($user->store_id) {
             Cache::forget($this->getCacheKey($user->id, (int) $user->store_id));
         }
+    }
+
+    public function clearStoreCache(int $storeId): void
+    {
+        User::query()
+            ->where('store_id', $storeId)
+            ->pluck('id')
+            ->each(function ($userId) use ($storeId): void {
+                Cache::forget($this->getCacheKey((int) $userId, $storeId));
+                Cache::forget($this->getCacheKey((int) $userId, null));
+            });
     }
 
     protected function belongsToStore(User $user, int $storeId): bool

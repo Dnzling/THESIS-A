@@ -11,7 +11,7 @@ class EmployeeSeeder extends Seeder
     public function run(): void
     {
         $employees = [
-            // Store Admin (SADM)
+            // Store Owner (OWN)
             [
                 'user_id' => 2,
                 'store_id' => 1,

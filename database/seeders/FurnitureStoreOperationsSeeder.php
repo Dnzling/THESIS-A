@@ -30,7 +30,7 @@ class FurnitureStoreOperationsSeeder extends Seeder
         $accounts = [
             [
                 'email' => 'operations.admin@fsp.local',
-                'role' => 'store_admin',
+                'role' => 'owner',
                 'employee_number' => 'OPS-ADMIN-0001',
                 'fname' => 'Operations',
                 'lname' => 'Admin',
@@ -77,7 +77,7 @@ class FurnitureStoreOperationsSeeder extends Seeder
                 );
 
                 $userId = DB::table('users')->where('email', $account['email'])->value('id');
-                if ($account['role'] === 'store_admin') {
+                if ($account['role'] === 'owner') {
                     $operationsUserId = (int) $userId;
                 }
 
@@ -125,7 +125,7 @@ class FurnitureStoreOperationsSeeder extends Seeder
                 );
             }
 
-            $this->ensureRolePermissions('store_admin', [
+            $this->ensureRolePermissions('owner', [
                 'sales.ecommerce-orders.view',
                 'sales.ecommerce-orders.manage',
                 'sales.order.approve',

@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Api\Procurement\SupplierPortal;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
+use App\Models\Procurement\SupplierPortal\SupplierPOFulfillmentUpdate;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierPOFeedbackController extends Controller
@@ -33,7 +37,8 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            if (!$portal->supplier_id) {
+            $supplierIds = $portal->linkedSupplierIds();
+            if ($supplierIds->isEmpty()) {
                 $perPage = (int) $request->get('per_page', 10);
                 $page = (int) $request->get('page', 1);
                 $empty = new LengthAwarePaginator([], 0, $perPage, $page, [
@@ -57,9 +62,10 @@ class SupplierPOFeedbackController extends Controller
                 'declined_supplier',
             ];
 
-            $query = PurchaseOrder::where('supplier_id', $portal->supplier_id)
+            $query = PurchaseOrder::whereIn('supplier_id', $supplierIds)
                 ->whereIn('status', $allowedStatuses)
-                ->with(['items.product', 'supplier', 'store']);
+                ->withCount('items')
+                ->with(['supplier', 'store']);
 
             // Filter by status
             if ($request->has('status')) {
@@ -83,9 +89,19 @@ class SupplierPOFeedbackController extends Controller
 
             $pos = $query->paginate($request->get('per_page', 10));
 
+            // Fetch feedback for every PO on this page in one query. This avoids the
+            // supplier portal issuing one HTTP request per table row.
+            $feedbackByPurchaseOrder = $portal->poFeedbacks()
+                ->whereIn('purchase_order_id', $pos->getCollection()->pluck('id'))
+                ->orderByDesc('submitted_at')
+                ->get()
+                ->unique('purchase_order_id')
+                ->keyBy('purchase_order_id');
+
             // add trimmed store info
-            $pos->getCollection()->transform(function ($po) {
+            $pos->getCollection()->transform(function ($po) use ($feedbackByPurchaseOrder) {
                 $arr = $po->toArray();
+                $arr['supplier_feedback'] = $feedbackByPurchaseOrder->get($po->id)?->toArray();
                 if ($po->relationLoaded('store') && $po->store) {
                     $arr['store'] = [
                         'id' => $po->store->id ?? null,
@@ -133,21 +149,38 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            if (!$portal->supplier_id) {
+            if ($portal->linkedSupplierIds()->isEmpty()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Supplier portal is not linked to a supplier.',
                 ], 409);
             }
 
-            $po = PurchaseOrder::with(['items.product', 'supplier', 'branch', 'store'])
+            $poRelations = ['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract'];
+            $hasFulfillmentUpdatesTable = Schema::hasTable('supplier_po_fulfillment_updates');
+            if ($hasFulfillmentUpdatesTable) {
+                $poRelations[] = 'supplierFulfillmentUpdates.creator';
+            }
+
+            $po = PurchaseOrder::with($poRelations)
                 ->findOrFail($id);
 
-            if ($po->supplier_id !== $portal->supplier_id) {
+            if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized access to this purchase order.',
                 ], 403);
+            }
+
+            foreach ($po->items as $item) {
+                foreach (['length_cm', 'width_cm', 'height_cm', 'depth_cm', 'weight_kg'] as $dimension) {
+                    $item->setAttribute(
+                        $dimension,
+                        $item->{$dimension}
+                            ?? $item->variation?->{$dimension}
+                            ?? $item->product?->{$dimension}
+                    );
+                }
             }
 
             // Get supplier's feedback for this PO
@@ -155,9 +188,25 @@ class SupplierPOFeedbackController extends Controller
                 ->where('purchase_order_id', $id)
                 ->first();
 
-            $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with(['branch', 'supplier'])
+            $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with([
+                'branch',
+                'supplier',
+                'driverEmployee.user',
+                'driverEmployee.branch',
+                'driverEmployee.role',
+                'driverUser',
+                'vehicle',
+            ])
                 ->where('purchase_order_id', $id)
                 ->first();
+
+            $deliveryLogs = $shipment
+                ? PurchaseOrderDeliveryLog::with(['creator:id,fname,lname', 'attachments'])
+                    ->where('shipment_id', $shipment->id)
+                    ->orderByDesc('logged_at')
+                    ->orderByDesc('id')
+                    ->get()
+                : collect();
 
             $goodsReceipt = \App\Models\Procurement\Receiving\GoodsReceipt::with(['items.product'])
                 ->where('purchase_order_id', $id)
@@ -174,8 +223,8 @@ class SupplierPOFeedbackController extends Controller
                 ->active()
                 ->orderBy('end_date', 'desc')
                 ->first();
-            $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
-            $contractDiscountPercent = $contract?->discount_percentage ?? 0;
+            $contractTaxRate = $po->contract_tax_rate ?? (($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0);
+            $contractDiscountPercent = $po->contract_discount_percentage ?? ($contract?->discount_percentage ?? 0);
 
             $rejectionReason = $po->rejection_details['reason'] ?? null;
             if (!$rejectionReason && $feedback?->rejection_reason) {
@@ -187,7 +236,14 @@ class SupplierPOFeedbackController extends Controller
                 'data' => [
                     'po' => $po,
                     'supplier_feedback' => $feedback,
+                    'fulfillment_updates' => $hasFulfillmentUpdatesTable ? $po->supplierFulfillmentUpdates : collect(),
                     'shipment' => $shipment,
+                    'delivery_logs' => $deliveryLogs,
+                    'supplier_location' => [
+                        'latitude' => $portal->latitude ?? $po->supplier?->latitude,
+                        'longitude' => $portal->longitude ?? $po->supplier?->longitude,
+                        'address' => $portal->address ?? $po->supplier?->address,
+                    ],
                     'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
                     'rejection_reason' => $rejectionReason,
@@ -197,11 +253,54 @@ class SupplierPOFeedbackController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
+            Log::error('Supplier PO detail failed.', [
+                'user_id' => Auth::id(),
+                'purchase_order_id' => $id,
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching PO: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Return only tracking data for a PO visible to the authenticated supplier.
+     */
+    public function getPODeliveryTracking($id): JsonResponse
+    {
+        $portal = SupplierPortal::where('user_id', Auth::id())->firstOrFail();
+        abort_unless($portal->isVerified(), 409, 'Your supplier account is not verified yet.');
+
+        $po = PurchaseOrder::with(['supplier:id,supplier_name,address,latitude,longitude', 'branch:id,name,address,city,latitude,longitude'])
+            ->whereIn('supplier_id', $portal->linkedSupplierIds())
+            ->findOrFail($id);
+
+        $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with(['branch', 'supplier'])
+            ->where('purchase_order_id', $po->id)
+            ->first();
+        $logs = $shipment
+            ? PurchaseOrderDeliveryLog::with(['creator:id,fname,lname', 'attachments'])
+                ->where('shipment_id', $shipment->id)
+                ->orderByDesc('logged_at')
+                ->orderByDesc('id')
+                ->get()
+            : collect();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipment' => $shipment,
+                'delivery_logs' => $logs,
+                'supplier_location' => [
+                    'latitude' => $portal->latitude ?? $po->supplier?->latitude,
+                    'longitude' => $portal->longitude ?? $po->supplier?->longitude,
+                    'address' => $portal->address ?? $po->supplier?->address,
+                ],
+            ],
+        ]);
     }
 
     /**
@@ -213,6 +312,7 @@ class SupplierPOFeedbackController extends Controller
         $validator = Validator::make($request->all(), [
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'response' => 'required|in:accepted,rejected',
+            'fulfillment_method' => 'prohibited',
             'rejection_reason' => 'required_if:response,rejected|string',
             'expected_delivery_date' => 'nullable|date|after_or_equal:today',
             'delivery_quantity' => 'nullable|integer|min:1',
@@ -240,14 +340,31 @@ class SupplierPOFeedbackController extends Controller
 
             $po = PurchaseOrder::findOrFail($request->purchase_order_id);
 
+            if (!$portal->linkedSupplierIds()->contains((int) $po->supplier_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to this purchase order.',
+                ], 403);
+            }
+
+            if ($request->response === 'accepted' && !in_array($po->fulfillment_method, ['store_pickup', 'supplier_delivery'], true)) {
+                return response()->json(['success' => false, 'message' => 'The store has not selected a fulfillment method for this PO.'], 422);
+            }
+
             // Create or update feedback
             $feedback = SupplierPOFeedback::updateOrCreate(
                 [
-                    'supplier_portal_id' => $portal->id,
+                    'supplier_id' => $po->supplier_id,
                     'purchase_order_id' => $request->purchase_order_id,
                 ],
                 [
+                    'supplier_portal_id' => $portal->id,
+                    'response_source' => 'portal',
+                    'response_channel' => 'portal',
+                    'response_date' => now()->toDateString(),
+                    'recorded_by' => null,
                     'response' => $request->response,
+                    'fulfillment_method' => $request->response === 'accepted' ? $po->fulfillment_method : null,
                     'rejection_reason' => $request->get('rejection_reason'),
                     'expected_delivery_date' => $request->get('expected_delivery_date'),
                     'delivery_quantity' => $request->get('delivery_quantity'),
@@ -257,12 +374,18 @@ class SupplierPOFeedbackController extends Controller
             );
 
             if ($request->response === 'accepted') {
+                $po->supplier_fulfillment_status = 'preparing';
+                $po->save();
                 $po->markSupplierAccepted();
 
                 ActivityLog::record(
                     'po_supplier_accepted',
                     "PO {$po->po_number} accepted by supplier.",
-                    ['po_number' => $po->po_number, 'supplier_id' => $portal->supplier_id],
+                    [
+                        'po_number' => $po->po_number,
+                        'supplier_id' => $po->supplier_id,
+                        'fulfillment_method' => $po->fulfillment_method,
+                    ],
                     'purchase_order',
                     $po->id
                 );
@@ -292,7 +415,7 @@ class SupplierPOFeedbackController extends Controller
                     "PO {$po->po_number} declined by supplier.",
                     [
                         'po_number' => $po->po_number,
-                        'supplier_id' => $portal->supplier_id,
+                        'supplier_id' => $po->supplier_id,
                         'reason' => $request->get('rejection_reason'),
                     ],
                     'purchase_order',
@@ -327,6 +450,72 @@ class SupplierPOFeedbackController extends Controller
                 'message' => 'Error submitting feedback: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function updateFulfillment(Request $request, int $id): JsonResponse
+    {
+        $portal = SupplierPortal::where('user_id', (int) $request->user()->id)->firstOrFail();
+        abort_unless($portal->isVerified(), 409, 'Your supplier account is not verified yet.');
+        $po = PurchaseOrder::query()->whereIn('supplier_id', $portal->linkedSupplierIds())->findOrFail($id);
+        abort_unless($po->status === 'supplier_accepted' || $po->status === 'in_transit', 422, 'This PO is not in the supplier fulfillment workflow.');
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:ready_for_pickup,dispatched,delivered'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'photos' => ['required_if:status,dispatched,delivered', 'array', 'min:1'],
+            'photos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        $current = strtolower(trim((string) ($po->supplier_fulfillment_status ?: 'preparing')));
+        $current = str_replace([' ', '-'], '_', $current);
+        $next = $validated['status'];
+        if ($po->fulfillment_method === 'store_pickup') {
+            if ($current === 'ready_for_pickup' && $next === 'ready_for_pickup') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Purchase order is already ready for pickup.',
+                    'data' => ['purchase_order' => $po],
+                ]);
+            }
+            abort_unless($current === 'preparing' && $next === 'ready_for_pickup', 422, 'Store pickup can only move from Preparing to Ready for Pickup.');
+        } else {
+            $valid = ($current === 'preparing' && $next === 'dispatched')
+                || ($current === 'dispatched' && $next === 'delivered');
+            abort_unless($valid, 422, 'Supplier delivery must move from Preparing to Dispatched, then Delivered.');
+        }
+
+        $photoPaths = [];
+        foreach ($request->file('photos', []) as $photo) {
+            $photoPaths[] = $photo->store("supplier/purchase-orders/{$po->id}/fulfillment", 'public');
+        }
+
+        $update = SupplierPOFulfillmentUpdate::create([
+            'purchase_order_id' => $po->id,
+            'supplier_portal_id' => $portal->id,
+            'created_by' => $request->user()->id,
+            'status' => $next,
+            'notes' => $validated['notes'] ?? null,
+            'photo_paths' => $photoPaths,
+        ]);
+
+        $po->supplier_fulfillment_status = $next;
+        if ($next === 'dispatched') $po->markInTransit();
+        elseif ($next === 'delivered') $po->markDelivered();
+        else $po->save();
+
+        ActivityLog::record(
+            'po_supplier_fulfillment_updated',
+            "Supplier updated PO {$po->po_number} fulfillment to " . str_replace('_', ' ', $next) . '.',
+            ['status' => $next, 'photos' => count($photoPaths)],
+            'purchase_order',
+            $po->id
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Purchase order fulfillment updated.',
+            'data' => ['update' => $update->load('creator'), 'purchase_order' => $po->fresh()],
+        ]);
     }
 
     /**

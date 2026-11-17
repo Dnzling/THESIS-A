@@ -10,12 +10,6 @@ use Illuminate\Http\Request;
 
 class InventoryConfigurationController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:sanctum');
-        $this->middleware('can:inventory.configuration.manage');
-    }
-
     /**
      * Get configuration for store
      */
@@ -32,8 +26,6 @@ class InventoryConfigurationController extends Controller
                         'enable_transfer_approvals' => true,
                         'enable_finance_approval' => true,
                         'enable_auto_alerts' => true,
-                        'enable_auto_reorder_suggestions' => true,
-                        'auto_reorder_suggestions_time' => '08:00',
                     ]
                 );
 

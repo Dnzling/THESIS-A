@@ -26,7 +26,7 @@
             font-weight: bold;
         }
         .expiry-note {
-            color: yellow;
+            color: orange;
             font-weight: bold;
         }
         .footer {

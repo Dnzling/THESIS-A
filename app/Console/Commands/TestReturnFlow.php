@@ -3,12 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
-use App\Http\Controllers\Api\Sales\SalesReturnController;
+use App\Http\Controllers\Api\CRM\ReturnController;
 use App\Http\Controllers\Api\Sales\SalesRefundController;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Ecommerce\EcommerceOrder;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\ProductCatalog\Product;
 use App\Models\Sales\SalesRefund;
@@ -91,10 +91,10 @@ class TestReturnFlow extends Command
 
             $this->line('Return created id=' . $return->id . ' status=' . $return->status);
 
-            $salesController = app(SalesReturnController::class);
+            $salesController = app(ReturnController::class);
 
             // Approve
-            $approveReq = Request::create("/api/sales/returns/{$return->id}/status", 'PUT', [
+            $approveReq = Request::create("/api/crm/returns/{$return->id}/status", 'PUT', [
                 'status' => 'approved',
                 'return_type' => $returnType,
                 'review_notes' => 'Approved by smoke test',
@@ -106,7 +106,7 @@ class TestReturnFlow extends Command
 
             // Schedule pickup
             $scheduledAt = now()->addDay()->format('Y-m-d H:i:s');
-            $pickupReq = Request::create("/api/sales/returns/{$return->id}/pickup", 'POST', [
+            $pickupReq = Request::create("/api/crm/returns/{$return->id}/pickup", 'POST', [
                 'scheduled_at' => $scheduledAt,
                 'pickup_name' => $order->shipping_name,
                 'pickup_phone' => $order->shipping_phone,
@@ -155,7 +155,7 @@ class TestReturnFlow extends Command
             // Receive (Inventory posting)
             $invBefore = InventoryTransaction::query()->where('reference_type', 'ecommerce_order_return')->where('reference_id', $return->id)->count();
             $refundBefore = SalesRefund::query()->where('order_type', 'ecommerce_return')->where('order_id', $return->id)->count();
-            $receiveReq = Request::create("/api/sales/returns/{$return->id}/receive", 'POST', [
+            $receiveReq = Request::create("/api/crm/returns/{$return->id}/receive", 'POST', [
                 'received_quantity' => 1,
                 'condition' => 'good',
                 'notes' => 'Received by smoke test',
