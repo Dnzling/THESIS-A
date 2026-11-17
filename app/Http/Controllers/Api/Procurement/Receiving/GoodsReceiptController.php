@@ -733,6 +733,12 @@ class GoodsReceiptController extends Controller
      */
     public function verify(int $id): JsonResponse
     {
+        abort_unless(
+            $this->userHasAnyPermission(['inventory.receiving.manage'], request()->user()),
+            403,
+            'You do not have permission to complete goods receipts.'
+        );
+
         $actorEmployeeId = $this->resolveActorEmployeeId();
         if (!$actorEmployeeId) {
             return response()->json([

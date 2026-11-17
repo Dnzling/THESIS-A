@@ -499,6 +499,8 @@ const getStatusSeverity = (status: string | null): string => {
 const transformLeaveData = (records: any[]): LeaveRequest[] => {
   return records.map((item: any) => {
     const employee = item.employee || {}
+    const employeeUser = employee.user || {}
+    const employeeName = [employeeUser.fname || employee.fname, employeeUser.lname || employee.lname].filter(Boolean).join(' ').trim()
     const approver = item.approver
     const handoverTo = item.handover_to
 
@@ -522,9 +524,7 @@ const transformLeaveData = (records: any[]): LeaveRequest[] => {
       handover_to: handoverTo,
 
       // Transformed fields for UI
-      employeeName: employee.fname && employee.lname
-        ? `${employee.fname} ${employee.lname}`.trim()
-        : 'Unknown',
+      employeeName: employeeName || employee.full_name || employee.name || 'Unknown',
       department: employee.department || 'N/A',
       employeeId: employee.employee_number || `#${employee.id}`,
       leaveType: item.leave_type

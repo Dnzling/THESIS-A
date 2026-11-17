@@ -131,9 +131,11 @@
                                         header="Employee"
                                     />
                                     <Column
-                                        field="hire_date"
                                         header="Hire Date"
-                                    />
+                                        ><template #body="{ data }">{{
+                                            data.hire_date
+                                        }}</template></Column
+                                    >
                                     <Column
                                         field="months_covered"
                                         header="Months Covered"
@@ -254,6 +256,17 @@ const summaryCards = computed(() => [
 ]);
 const money = (value: any) =>
     `₱${Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatDate = (value: unknown) => {
+    if (!value) return "Not set";
+    const parsed = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) return "Not set";
+    return parsed.toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "Asia/Manila",
+    });
+};
 const time = (value: string | null) =>
     value
         ? new Date(value).toLocaleTimeString("en-PH", {
@@ -354,7 +367,7 @@ const calculateThirteenthMonth = async () => {
                 return {
                     employee_name:
                         `${employee.fname || ""} ${employee.lname || ""}`.trim(),
-                    hire_date: hireDate || "Not set",
+                    hire_date: formatDate(hireDate),
                     months_covered: months,
                     basic_salary: basic,
                     thirteenth_month: basic / 12,

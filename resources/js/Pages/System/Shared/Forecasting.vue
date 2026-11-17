@@ -156,7 +156,7 @@
                     ></Column>
                     <Column header="Action" style="min-width: 170px"
                         ><template #body="{ data }"
-                            ><div class="flex w-max flex-nowrap items-center gap-2"><Button label="View" size="small" outlined rounded severity="secondary" @click="viewItem(data)" /><Button v-if="data.action_key === 'create_restock'"
+                            ><div class="flex w-max flex-nowrap items-center gap-2"><Button label="View" size="small" outlined rounded severity="secondary" @click="viewItem(data)" /><Button v-if="data.action_key === 'create_restock' && (warehouse || canManageStockRequests)"
                                 label="Restock"
                                 size="small"
                                 outlined
@@ -242,8 +242,11 @@ import Paginator from "primevue/paginator";
 import Message from "primevue/message";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
+import { useAuthStore } from "@/stores/auth";
 
 const warehouse = window.location.pathname.startsWith("/warehouse/");
+const authStore = useAuthStore();
+const canManageStockRequests = computed(() => authStore.hasPermission("inventory.stock-requests.manage"));
 const endpoint = warehouse
     ? "/api/warehouse/forecasting"
     : "/api/inventory/forecasting";
@@ -312,12 +315,11 @@ const performAction = (data: any) => {
         viewItem(data);
         return;
     }
+    if (!warehouse && !canManageStockRequests.value) return;
     const useWarehouseTransfer = !warehouse && warehouseEnabled.value;
     const path = warehouse
         ? "/warehouse/purchase-requisitions/create"
-        : useWarehouseTransfer
-          ? "/inventory/stock-requests/create"
-          : "/inventory/purchase-orders/create";
+        : "/inventory/stock-requests/create";
     const params = warehouse
         ? new URLSearchParams({
               branch_inventory_id: String(data.id),
@@ -337,12 +339,13 @@ const performAction = (data: any) => {
                 notes: `Restock requested from the ${selectedPeriodDays.value}-day forecast.`,
             })
         : new URLSearchParams({
-              forecast_prefill: "1",
+              type: "purchase",
+              stock_view_prefill: "1",
+              branch_inventory_id: String(data.id),
               product_id: String(data.product_id),
               variation_id: String(data.variation_id || 0),
-              quantity_ordered: String(Math.max(1, Number(data.recommended || 0))),
-              branch_id: String(data.branch_id),
-              forecast_days: String(selectedPeriodDays.value),
+              requested_quantity: String(Math.max(1, Number(data.recommended || 0))),
+              notes: `Restock requested from the ${selectedPeriodDays.value}-day forecast.`,
           });
     router.visit(`${path}?${params.toString()}`);
 };

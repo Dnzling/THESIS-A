@@ -29,9 +29,9 @@
           @click="openView3DModal"
         />
         <Button
-          v-if="!selectedVariation"
-          label="Edit"
-          icon="pi pi-pencil"
+          v-if="!selectedVariation && canManageStockRequests"
+          label="Request Stock"
+          icon="pi pi-box"
           rounded
           size="small"
           @click="goToEdit"
@@ -483,6 +483,7 @@ const deleting = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteError = ref('')
 const canManageProducts = computed(() => authStore.hasPermission('inventory.products.manage'))
+const canManageStockRequests = computed(() => authStore.hasPermission('inventory.stock-requests.manage'))
 const view3DModalVisible = ref(false)
 const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)
@@ -709,7 +710,19 @@ const goToEdit = () => {
     goToEditVariation(selectedVariation.value)
     return
   }
-  router.push({ name: 'inventory.products.edit', params: { id: productId.value } })
+  const stock = branchInventory.value
+  router.push({
+    name: 'inventory.stock-requests.create',
+    query: {
+      stock_view_prefill: '1',
+      ...(stock?.id ? { branch_inventory_id: String(stock.id) } : {}),
+      product_id: String(productId.value),
+      variation_id: String(stock?.variation_id || 0),
+      ...(stock?.branch_id ? { receiving_branch_id: String(stock.branch_id) } : {}),
+      requested_quantity: String(Math.max(1, Number(stock?.reorder_quantity || 1))),
+      notes: 'Stock request from inventory product details.',
+    },
+  })
 }
 
 const goToAddVariant = () => {

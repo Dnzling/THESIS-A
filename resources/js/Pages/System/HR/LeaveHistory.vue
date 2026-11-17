@@ -197,11 +197,11 @@ const statusSeverity = (status: string) => {
 const transformLeaveData = (records: any[]): LeaveRequest[] => {
   return records.map((item: any) => {
     const employee = item.employee || {}
+    const employeeUser = employee.user || {}
+    const employeeName = [employeeUser.fname || employee.fname, employeeUser.lname || employee.lname].filter(Boolean).join(' ').trim()
     return {
       id: item.id,
-      employeeName: employee.fname && employee.lname
-        ? `${employee.fname} ${employee.lname}`.trim()
-        : 'Unknown',
+      employeeName: employeeName || employee.full_name || employee.name || 'Unknown',
       department: employee.department || 'N/A',
       leaveType: item.leave_type
         ? item.leave_type.charAt(0).toUpperCase() + item.leave_type.slice(1).replace(/_/g, ' ')

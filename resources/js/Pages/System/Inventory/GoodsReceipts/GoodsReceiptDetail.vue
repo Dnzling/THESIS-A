@@ -63,7 +63,7 @@
             @click="router.push(`/inventory/goods-receipts/create?draft_id=${receipt.id}`)"
           />
           <Button
-            v-if="!isProcurement && receipt.receipt_status === 'draft'"
+            v-if="!isProcurement && receipt.receipt_status === 'draft' && canCompleteReceipt"
             label="Complete Receipt"
             icon="pi pi-check"
             :loading="saving"
@@ -576,6 +576,7 @@ const displayQualityStatus = computed(() => {
 const canRateSupplier = computed(() => Boolean(
   receipt.value?.supplier_id && receipt.value?.receipt_status !== 'draft' && authStore.hasPermission('inventory.receiving.manage')
 ))
+const canCompleteReceipt = computed(() => authStore.hasPermission('inventory.receiving.manage'))
 
 const overallSupplierRating = computed(() => {
   const fields = ratingCriteria.map(({ field }) => Number(ratingForm.value[field] || 0))
