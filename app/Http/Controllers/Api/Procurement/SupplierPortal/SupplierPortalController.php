@@ -47,11 +47,40 @@ class SupplierPortalController extends Controller
                 'stores.province',
                 'stores.address',
                 'stores.status as store_status',
+                'store_logo_path' => DB::table('branches')
+                    ->select('logo_path')
+                    ->whereColumn('branches.store_id', 'stores.id')
+                    ->whereNotNull('logo_path')
+                    ->orderByDesc('is_main_branch')
+                    ->orderBy('id')
+                    ->limit(1),
             ])
             ->join('stores', 'stores.id', '=', 'suppliers.store_id')
             ->whereRaw('LOWER(suppliers.email) = ?', [$supplierEmail])
             ->orderByDesc('suppliers.created_at')
             ->get();
+
+        $contractsByPair = SupplierContract::query()
+            ->whereIn('supplier_id', $items->pluck('supplier_id')->all())
+            ->whereIn('store_id', $items->pluck('store_id')->all())
+            ->orderByRaw("FIELD(status,'active','pending','draft','rejected','terminated','completed') ASC")
+            ->orderByDesc('created_at')
+            ->get(['id', 'store_id', 'supplier_id', 'status', 'start_date', 'end_date'])
+            ->groupBy(fn (SupplierContract $contract) => $contract->store_id . ':' . $contract->supplier_id)
+            ->map(fn ($contracts) => $contracts->first());
+
+        $items = $items->map(function ($item) use ($contractsByPair) {
+            $contract = $contractsByPair->get($item->store_id . ':' . $item->supplier_id);
+            $item->store_logo_url = $item->store_logo_path
+                ? Storage::disk('public')->url($item->store_logo_path)
+                : null;
+            $item->contract_id = $contract?->id;
+            $item->contract_status = $contract?->status;
+            $item->contract_start_date = $contract?->start_date?->toDateString();
+            $item->contract_end_date = $contract?->end_date?->toDateString();
+
+            return $item;
+        });
 
         return response()->json([
             'success' => true,

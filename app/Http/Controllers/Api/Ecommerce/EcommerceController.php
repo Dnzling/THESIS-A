@@ -2514,10 +2514,6 @@ class EcommerceController extends Controller
                 $fresh->save();
 
                 if ($fresh->payment_status === 'paid') {
-                    $refundRouting = app(EcommerceRefundRoutingService::class);
-                    $refundMethod = $refundRouting->canRefundToOriginal($fresh)
-                        ? $refundRouting->originalMethod($fresh)
-                        : null;
                     FinanceRefund::query()->firstOrCreate(
                         ['order_type' => 'ecommerce_order', 'order_id' => $fresh->id],
                         [
@@ -2529,10 +2525,8 @@ class EcommerceController extends Controller
                             'amount' => max(0, round((float) $fresh->total_amount - (float) $fresh->shipping_fee, 2)),
                             'status' => 'pending',
                             'requested_by' => $user->id,
-                            'refund_method' => $refundMethod,
-                            'notes' => $refundMethod
-                                ? 'Refund to the original payment method. Shipping fee excluded.'
-                                : 'Customer payout destination is required. Shipping fee excluded from the refund amount.',
+                            'refund_method' => null,
+                            'notes' => 'Customer recipient payout details are required before refund processing. Shipping fee excluded from the refund amount.',
                         ]
                     );
                 }
@@ -2610,10 +2604,6 @@ class EcommerceController extends Controller
 
         $order = EcommerceOrder::query()->where('user_id', $request->user()->id)
             ->where('status', 'cancelled')->where('payment_status', 'paid')->findOrFail($id);
-        $refundRouting = app(EcommerceRefundRoutingService::class);
-        if ($refundRouting->canRefundToOriginal($order)) {
-            throw ValidationException::withMessages(['refund_method' => ['This order is eligible for a refund to its original payment method; no payout destination is needed.']]);
-        }
         $refund = DB::transaction(function () use ($order, $data) {
             $refund = FinanceRefund::query()->where('store_id', $order->store_id)
                 ->where('order_type', 'ecommerce_order')->where('order_id', $order->id)
@@ -2798,13 +2788,10 @@ class EcommerceController extends Controller
             throw ValidationException::withMessages(['refund_method' => ['Refunds are disabled by this store’s return resolution policy.']]);
         }
 
-        $requestedMethod = (string) $request->input('refund_method');
         $validated = $request->validate([
-            'refund_method' => ['required', Rule::in($returnPolicy['refund_methods'])],
+            'refund_method' => ['required', Rule::in(['gcash', 'maya'])],
             'refund_account_name' => ['required', 'string', 'min:2', 'max:255', "regex:/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*$/u"],
-            'refund_account_number' => $requestedMethod === 'bank_transfer'
-                ? ['required', 'string', 'min:5', 'max:100']
-                : ['required', 'string', 'regex:/^09[0-9]{9}$/'],
+            'refund_account_number' => ['required', 'string', 'regex:/^09[0-9]{9}$/'],
         ]);
 
         if ((string) $return->return_type !== 'refund' || !in_array((string) $return->status, ['approved', 'received', 'refund_pending'], true)) {
@@ -2812,10 +2799,6 @@ class EcommerceController extends Controller
         }
 
         $return->loadMissing(['order', 'orderItem']);
-        $refundRouting = app(EcommerceRefundRoutingService::class);
-        if ($return->order && $refundRouting->canRefundToOriginal($return->order)) {
-            throw ValidationException::withMessages(['refund_method' => ['This order is eligible for a refund to its original payment method; no payout destination is needed.']]);
-        }
         $refund = FinanceRefund::query()->firstOrCreate(
             [
                 'store_id' => (int) $return->store_id,
@@ -3924,8 +3907,9 @@ class EcommerceController extends Controller
             'cancellation_refund' => $cancellationRefund ? array_merge($cancellationRefund->toArray(), [
                 'original_payment_method' => $originalRefundMethod,
                 'automatic_refund_available' => $automaticOriginalRefund,
-                'refund_destination_required' => !$automaticOriginalRefund
-                    && (!$cancellationRefund->refund_method || !$cancellationRefund->refund_account_name || !$cancellationRefund->refund_account_number),
+            'refund_destination_required' => !in_array($cancellationRefund->refund_method, ['gcash', 'maya'], true)
+                    || !$cancellationRefund->refund_account_name
+                    || !preg_match('/^09[0-9]{9}$/', (string) $cancellationRefund->refund_account_number),
             ]) : null,
             'shipping_name' => $order->shipping_name,
             'shipping_phone' => $order->shipping_phone,
@@ -4076,10 +4060,9 @@ class EcommerceController extends Controller
                         ] : null,
                         'refund_eta' => $latestReturn->return_type === 'refund' ? 'less than 30 days after Finance sends the refund' : null,
                         'refund_method_required' => $latestReturn->return_type === 'refund'
-                            && !$automaticOriginalRefund
-                            && (!$latestReturn->financeRefund?->refund_method
+                            && (!in_array($latestReturn->financeRefund?->refund_method, ['gcash', 'maya'], true)
                                 || !$latestReturn->financeRefund?->refund_account_name
-                                || !$latestReturn->financeRefund?->refund_account_number),
+                                || !preg_match('/^09[0-9]{9}$/', (string) $latestReturn->financeRefund?->refund_account_number)),
                         'created_at' => $latestReturn->created_at,
                         'refund' => $latestReturn->financeRefund ? [
                             'id' => (int) $latestReturn->financeRefund->id,
@@ -4090,10 +4073,9 @@ class EcommerceController extends Controller
                             'refund_method' => $latestReturn->financeRefund->refund_method,
                             'original_payment_method' => $originalRefundMethod,
                             'automatic_refund_available' => $automaticOriginalRefund,
-                            'refund_destination_required' => !$automaticOriginalRefund
-                                && (!$latestReturn->financeRefund->refund_method
-                                    || !$latestReturn->financeRefund->refund_account_name
-                                    || !$latestReturn->financeRefund->refund_account_number),
+                            'refund_destination_required' => !in_array($latestReturn->financeRefund->refund_method, ['gcash', 'maya'], true)
+                                || !$latestReturn->financeRefund->refund_account_name
+                                || !preg_match('/^09[0-9]{9}$/', (string) $latestReturn->financeRefund->refund_account_number),
                             'refund_account_name' => $latestReturn->financeRefund->refund_account_name,
                             'refund_account_number' => $latestReturn->financeRefund->refund_account_number,
                             'payout_provider' => $latestReturn->financeRefund->payout_provider,

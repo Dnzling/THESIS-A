@@ -891,10 +891,7 @@ class ReturnController extends Controller
                 }
 
                 if ($return->return_type === 'refund') {
-                    $refundRouting = app(EcommerceRefundRoutingService::class);
-                    $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
-                        ? $refundRouting->originalMethod($sourceOrder)
-                        : $return->preferred_refund_method;
+                    $refundMethod = $return->preferred_refund_method;
                     FinanceRefund::query()->updateOrCreate(
                         ['store_id' => (int) $return->store_id, 'order_type' => 'ecommerce_return', 'order_id' => (int) $return->id],
                         [
@@ -1296,10 +1293,7 @@ class ReturnController extends Controller
             }
 
             if ($return->return_type === 'refund') {
-                $refundRouting = app(EcommerceRefundRoutingService::class);
-                $refundMethod = $return->source_type !== 'pos' && $sourceOrder && $refundRouting->canRefundToOriginal($sourceOrder)
-                    ? $refundRouting->originalMethod($sourceOrder)
-                    : $return->preferred_refund_method;
+                $refundMethod = $return->preferred_refund_method;
                 $amountCalculation = app(ReturnRefundAmountService::class)->calculate($return, $receivedQty);
                 $amount = $amountCalculation['amount'];
                 $refund = FinanceRefund::query()->updateOrCreate(

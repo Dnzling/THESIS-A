@@ -25,12 +25,6 @@
             <input v-model="form.store_name" type="text" class="field" placeholder="e.g. FurniSync Main Store" data-testid="store-name" />
           </div>
 
-          <div class="md:col-span-2 mt-2 border-t border-slate-100 pt-4 text-base font-semibold text-slate-800">Business information</div>
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-medium text-slate-700">Business Type *</label>
-            <Select v-model="form.business_type" :options="businessTypeOptions" rounded optionLabel="label" optionValue="value" class="w-full" data-testid="business-type" />
-          </div>
-
           <div class="md:col-span-2 mt-2 border-t border-slate-100 pt-4 text-base font-semibold text-slate-800">Contact information</div>
           <div><label class="mb-2 block text-sm font-medium text-slate-700">Contact Person</label><input :value="contactPerson" type="text" class="field bg-slate-100" disabled data-testid="contact-person" /></div>
           <div><label class="mb-2 block text-sm font-medium text-slate-700">Contact Email</label><input :value="(authStore.currentUser as any)?.email || ''" type="email" class="field bg-slate-100" disabled /></div>
@@ -113,7 +107,7 @@
           </div>
         </div>
 
-        <div class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"><div class="font-semibold text-slate-800">Review & create</div><p class="mt-1">{{ form.store_name || 'Your store' }} · {{ form.business_type }} · {{ form.address || 'Address not entered' }}</p></div>
+        <div class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"><div class="font-semibold text-slate-800">Review & create</div><p class="mt-1">{{ form.store_name || 'Your store' }} · {{ form.address || 'Address not entered' }}</p></div>
 
         <div v-if="errorMessage" class="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {{ errorMessage }}
@@ -168,18 +162,8 @@ let searchDebounce: ReturnType<typeof setTimeout> | null = null
 let searchController: AbortController | null = null
 let skipSearchQuery = ''
 
-const businessTypeOptions = [
-  { label: 'Retail', value: 'retail' },
-  { label: 'Enterprise', value: 'enterprise' },
-  { label: 'Showroom', value: 'showroom' },
-  { label: 'Wholesale', value: 'wholesale' },
-  { label: 'Online Store', value: 'online_store' },
-
-]
-
 const form = ref({
   store_name: '',
-  business_type: 'retail',
   contact_number: String((authStore.currentUser as any)?.contact_number || (authStore.currentUser as any)?.phone_number || ''),
   city_id: '',
   barangay: '',
@@ -456,7 +440,6 @@ const submitStore = async () => {
     const payload = {
       store_name: form.value.store_name,
       contact_person: contactPerson.value,
-      business_type: form.value.business_type,
       province: 'Cavite',
       city: selectedCity?.name || selectedCity?.city_name || '',
       barangay: selectedBarangay?.name || selectedBarangay?.barangay_name || '',

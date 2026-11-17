@@ -6,7 +6,7 @@ use App\Models\Store\Store;
 
 class ReturnResolutionPolicy
 {
-    private const REFUND_METHODS = ['gcash', 'maya', 'bank_transfer'];
+    private const REFUND_METHODS = ['gcash', 'maya'];
 
     public function forStore(?Store $store): array
     {

@@ -262,6 +262,16 @@ class ProcurementService {
     return response.data
   }
 
+  async getSupplierMatchableProducts(id: number, search?: string) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/matchable-products`, { params: { search } })
+    return response.data
+  }
+
+  async matchSupplierProduct(id: number, offerId: number, productId: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers/${id}/products/${offerId}/match`, { product_id: productId })
+    return response.data
+  }
+
   async getProductHistory(idOrParams: number | Record<string, any>, params?: any) {
     if (typeof idOrParams === 'number') {
       const response = await axiosClient.get(`${this.baseUrl}/products/${idOrParams}/history`, { params })

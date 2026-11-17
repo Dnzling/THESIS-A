@@ -131,15 +131,14 @@
               <label class="mb-2 block text-xs font-semibold text-slate-700">Preferred {{ serviceMethod }} date *</label>
               <DatePicker v-model="fulfillmentDate" :disabledDates="disabledFulfillmentDates" :minDate="minFulfillmentDate" :maxDate="maxFulfillmentDate" dateFormat="M d, yy" showIcon size="small" placeholder="Select an available date" :disabled="availabilityLoading || !fulfillmentDates.length" fluid onlyDate>
                 <template #date="{ date }">
-                  <span :class="holidayForCalendarDate(date) ? 'text-red-700 line-through' : ''" :title="holidayForCalendarDate(date)?.name || undefined">
-                    {{ date.day }}<i v-if="holidayForCalendarDate(date)" class="pi pi-info-circle ml-1 text-[9px]" />
+                  <span :class="holidayForCalendarDate(date) ? 'text-red-700 line-through' : ''">
+                    {{ date.day }}
                   </span>
                 </template>
               </DatePicker>
               <p v-if="availabilityError" class="mt-2 text-xs text-red-600">{{ availabilityError }}</p>
               <p v-else-if="!availabilityLoading && !fulfillmentDates.length" class="mt-2 text-xs text-amber-700">No dates are available in the next 30 days. Please contact the store.</p>
               <p v-if="fulfillmentWindow" class="mt-2 text-xs text-slate-600">Service window: {{ formatServiceTime(fulfillmentWindow.start) }} to {{ formatServiceTime(fulfillmentWindow.end) }}. The store will confirm the exact time.</p>
-              <p v-if="fulfillmentDates.length" class="mt-2 text-xs text-orange-800">Crossed-out dates include Philippine public holidays. Hover over the info icon to see the holiday name. Other available dates account for branch service suspensions and stock availability.</p>
             </div>
           </template>
         </Card>

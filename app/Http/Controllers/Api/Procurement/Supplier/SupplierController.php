@@ -6,15 +6,11 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
-use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Models\ProductCatalog\ProductAsset;
-use App\Models\ProductCatalog\ProductVariation;
-use Illuminate\Support\Str;
 
 class SupplierController extends Controller
 {
@@ -427,82 +423,59 @@ class SupplierController extends Controller
     {
         $sourceSupplier = Supplier::query()
             ->whereKey($portal->supplier_id)
-            ->with(['products.category.parent', 'products.subcategory.parent', 'products.assets', 'products.variations.assets'])
+            ->with(['products.variations'])
             ->first();
 
-        if (!$sourceSupplier || (int) $sourceSupplier->store_id === (int) $targetSupplier->store_id) {
+        if (!$sourceSupplier) {
             return;
         }
 
         DB::transaction(function () use ($sourceSupplier, $targetSupplier): void {
-          foreach ($sourceSupplier->products as $sourceProduct) {
-            $targetProduct = Product::query()
-                ->where('store_id', $targetSupplier->store_id)
-                ->where('sku', $sourceProduct->sku)
-                ->first();
-
-            if (!$targetProduct) {
-                $category = $this->copySupplierCategory($sourceProduct->category, (int) $targetSupplier->store_id);
-                $subcategory = $this->copySupplierCategory($sourceProduct->subcategory, (int) $targetSupplier->store_id, $category);
-
-                $targetProduct = $sourceProduct->replicate(['store_id', 'category_id', 'subcategory_id']);
-                $targetProduct->store_id = $targetSupplier->store_id;
-                $targetProduct->category_id = $category?->id;
-                $targetProduct->subcategory_id = $subcategory?->id;
-                $targetProduct->save();
-
-                foreach ($sourceProduct->assets->whereNull('variation_id') as $asset) {
-                    $copy = $asset->replicate(['store_id', 'product_id', 'variation_id']);
-                    $copy->store_id = $targetSupplier->store_id;
-                    $copy->product_id = $targetProduct->id;
-                    $copy->variation_id = null;
-                    $copy->save();
-                }
-            }
-
-            foreach ($sourceProduct->variations as $sourceVariation) {
-                $targetVariation = ProductVariation::query()
-                    ->where('store_id', $targetSupplier->store_id)
-                    ->where('product_id', $targetProduct->id)
-                    ->where('variation_sku', $sourceVariation->variation_sku)
+            foreach ($sourceSupplier->products as $sourceProduct) {
+                $existingOffer = DB::table('supplier_products')
+                    ->where('supplier_id', $targetSupplier->id)
+                    ->where(function ($query) use ($sourceProduct, $targetSupplier): void {
+                        $query->where('source_product_id', $sourceProduct->id)
+                            ->orWhere(function ($legacy) use ($sourceProduct, $targetSupplier): void {
+                                $legacy->whereNull('source_product_id')
+                                    ->whereIn('product_id', Product::query()
+                                        ->where('store_id', $targetSupplier->store_id)
+                                        ->where('sku', $sourceProduct->sku)
+                                        ->select('id'));
+                            });
+                    })
                     ->first();
 
-                if ($targetVariation) {
+                if ($existingOffer) {
+                    $linkedProduct = $existingOffer->product_id
+                        ? Product::query()->where('store_id', $targetSupplier->store_id)->with('variations')->find($existingOffer->product_id)
+                        : null;
+                    $keepMatch = $linkedProduct && $this->supplierProductsHaveMatchingVariants($sourceProduct, $linkedProduct);
+                    DB::table('supplier_products')->where('id', $existingOffer->id)->update([
+                        'source_product_id' => $sourceProduct->id,
+                        'product_id' => $keepMatch ? $linkedProduct->id : null,
+                        'updated_at' => now(),
+                    ]);
                     continue;
                 }
 
-                $targetVariation = $sourceVariation->replicate(['store_id', 'product_id', 'custom_3d_model_id', 'custom_image_id']);
-                $targetVariation->store_id = $targetSupplier->store_id;
-                $targetVariation->product_id = $targetProduct->id;
-                $targetVariation->custom_3d_model_id = null;
-                $targetVariation->custom_image_id = null;
-                $targetVariation->save();
+                $matchedProduct = Product::query()
+                    ->where('store_id', $targetSupplier->store_id)
+                    ->where('sku', $sourceProduct->sku)
+                    ->with('variations')
+                    ->first();
 
-                $assetIdMap = [];
-                foreach ($sourceVariation->assets as $asset) {
-                    $copy = $asset->replicate(['store_id', 'product_id', 'variation_id']);
-                    $copy->store_id = $targetSupplier->store_id;
-                    $copy->product_id = $targetProduct->id;
-                    $copy->variation_id = $targetVariation->id;
-                    $copy->save();
-                    $assetIdMap[(int) $asset->id] = (int) $copy->id;
+                if ($matchedProduct && !$this->supplierProductsHaveMatchingVariants($sourceProduct, $matchedProduct)) {
+                    $matchedProduct = null;
+                }
+                if ($matchedProduct && DB::table('supplier_products')->where('supplier_id', $targetSupplier->id)->where('product_id', $matchedProduct->id)->exists()) {
+                    $matchedProduct = null;
                 }
 
-                $targetVariation->update([
-                    'custom_3d_model_id' => $assetIdMap[(int) $sourceVariation->custom_3d_model_id] ?? null,
-                    'custom_image_id' => $assetIdMap[(int) $sourceVariation->custom_image_id] ?? null,
-                ]);
-            }
-
-            $hasOffer = DB::table('supplier_products')
-                ->where('supplier_id', $targetSupplier->id)
-                ->where('product_id', $targetProduct->id)
-                ->exists();
-
-            if (!$hasOffer) {
                 DB::table('supplier_products')->insert([
                     'supplier_id' => $targetSupplier->id,
-                    'product_id' => $targetProduct->id,
+                    'product_id' => $matchedProduct?->id,
+                    'source_product_id' => $sourceProduct->id,
                     'supplier_sku' => $sourceProduct->pivot->supplier_sku,
                     'supplier_price' => $sourceProduct->pivot->supplier_price,
                     'minimum_order_quantity' => $sourceProduct->pivot->minimum_order_quantity,
@@ -513,50 +486,48 @@ class SupplierController extends Controller
                     'updated_at' => now(),
                 ]);
             }
-          }
         });
     }
 
-    private function copySupplierCategory(?Category $source, int $storeId, ?Category $parentOverride = null): ?Category
+    private function supplierProductsHaveMatchingVariants(Product $source, Product $target): bool
     {
-        if (!$source) {
-            return null;
+        $sourceVariations = $source->relationLoaded('variations') ? $source->variations : $source->variations()->get();
+        $targetVariations = $target->relationLoaded('variations') ? $target->variations : $target->variations()->get();
+        if ($sourceVariations->count() !== $targetVariations->count()) {
+            return false;
         }
 
-        $parent = $parentOverride;
-        if (!$parent && $source->parent) {
-            $parent = $this->copySupplierCategory($source->parent, $storeId);
-        }
-
-        $category = Category::withTrashed()
-            ->where('store_id', $storeId)
-            ->where('parent_category_id', $parent?->id)
-            ->whereRaw('LOWER(category_name) = ?', [Str::lower($source->category_name)])
-            ->first();
-
-        if ($category) {
-            if ($category->trashed()) {
-                $category->restore();
+        $unmatchedTargets = $targetVariations->values();
+        foreach ($sourceVariations as $sourceVariation) {
+            $targetIndex = $unmatchedTargets->search(fn ($targetVariation) => $this->supplierVariationMatches($sourceVariation, $targetVariation));
+            if ($targetIndex === false) {
+                return false;
             }
-            return $category;
+            $unmatchedTargets->forget($targetIndex);
         }
 
-        $baseCode = strtoupper(trim(preg_replace('/[^A-Z0-9]+/i', '-', $source->category_name), '-')) ?: 'SUPPLIER-CATEGORY';
-        $code = substr($baseCode, 0, 45);
-        $suffix = 1;
-        while (Category::withTrashed()->where('store_id', $storeId)->where('category_code', $code)->exists()) {
-            $code = substr($baseCode, 0, 40) . '-' . $suffix++;
+        return $unmatchedTargets->isEmpty();
+    }
+
+    private function supplierVariationMatches($source, $target): bool
+    {
+        $sourceSku = strtolower(trim((string) $source->variation_sku));
+        $targetSku = strtolower(trim((string) $target->variation_sku));
+        if ($sourceSku !== '' && $targetSku !== '' && $sourceSku === $targetSku) {
+            return true;
         }
 
-        return Category::create([
-            'store_id' => $storeId,
-            'category_code' => $code,
-            'category_name' => $source->category_name,
-            'description' => $source->description,
-            'parent_category_id' => $parent?->id,
-            'level' => $parent ? 2 : 1,
-            'is_active' => true,
-        ]);
+        $key = static function ($variation): string {
+            $attributes = collect([$variation->color, $variation->size, $variation->material, $variation->texture, $variation->finish])
+                ->map(fn ($value) => strtolower(trim((string) $value)))
+                ->filter()
+                ->values();
+            return $attributes->isNotEmpty()
+                ? 'attributes:' . $attributes->implode('|')
+                : 'name:' . strtolower(trim((string) $variation->variation_name));
+        };
+
+        return $key($source) !== 'name:' && $key($source) === $key($target);
     }
 
     private function ratingsFromOtherStores($portals, int $storeId): array
@@ -803,11 +774,12 @@ class SupplierController extends Controller
      */
     public function attachProducts(Request $request, int $id): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
+        $storeId = (int) $supplier->store_id;
 
         $validated = $request->validate([
             'products' => 'required|array|min:1',
-            'products.*.product_id' => 'required|exists:products,id',
+            'products.*.product_id' => "required|exists:products,id,store_id,{$storeId}",
             'products.*.supplier_sku' => 'nullable|string|max:100',
             'products.*.supplier_price' => 'required|numeric|min:0',
             'products.*.minimum_order_quantity' => 'nullable|integer|min:1',
@@ -901,10 +873,7 @@ class SupplierController extends Controller
 
     public function availableProducts(int $id, Request $request): JsonResponse
     {
-        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
-
-        // Supplier portal listings may be added after this store linked the supplier.
-        // Refresh the store's local product and supplier-offer records before listing them.
+        $supplier = Supplier::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
         if ($supplier->supplier_portal_id) {
             $portal = SupplierPortal::query()->find($supplier->supplier_portal_id);
             if ($portal) {
@@ -912,123 +881,133 @@ class SupplierController extends Controller
             }
         }
 
-        $productModels = $supplier->products()
-            ->where('products.is_active', true)
-            ->where(function ($query) {
-                $query->whereNull('supplier_products.availability_status')
-                    ->orWhereNotIn('supplier_products.availability_status', ['unavailable', 'out_of_stock', 'inactive']);
-            })
-            ->with([
-                'category:id,category_name',
-                'subcategory:id,category_name',
-                'variations' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
-            ])
-            ->select(
-                'products.id', 'products.product_name',
-                'products.category_id', 'products.subcategory_id', 'products.product_type',
-                'products.unit_of_measurement', 'products.is_active'
-            )
-            ->get();
-
-        $approvedProductIds = collect();
-        if ($productModels->isNotEmpty()) {
-            $approvedFeedbacks = DB::table('supplier_rfq_feedbacks as feedback')
-                ->join('rfq_items as rfq_item', 'rfq_item.id', '=', 'feedback.rfq_item_id')
-                ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
-                ->where('rfq.store_id', $supplier->store_id)
-                ->whereNull('rfq.deleted_at')
-                ->where('feedback.status', 'approved')
-                ->whereIn('rfq_item.product_id', $productModels->pluck('id'))
-                ->where(function ($query) use ($supplier) {
-                    $query->where('feedback.supplier_id', $supplier->id);
-                    if ($supplier->supplier_portal_id) {
-                        $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
-                    }
-                })
-                ->select('rfq_item.product_id', 'rfq_item.variation_id')
-                ->get()
-                ->map(fn ($row) => (int) $row->product_id . ':' . (int) ($row->variation_id ?? 0));
-
-            $approvedProductIds = $approvedFeedbacks->unique();
-        }
-
-        $assets = ProductAsset::query()
-            ->whereIn('product_id', $productModels->pluck('id'))
-            ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
-            ->orderByDesc('is_primary')
-            ->orderBy('display_order')
-            ->get()
-            ->unique('product_id')
-            ->keyBy('product_id');
+        $offers = DB::table('supplier_products')->where('supplier_id', $supplier->id)->orderBy('id')->get();
+        $approved = DB::table('supplier_rfq_feedbacks as feedback')
+            ->join('rfq_items as item', 'item.id', '=', 'feedback.rfq_item_id')
+            ->join('request_for_quotations as rfq', 'rfq.id', '=', 'feedback.rfq_id')
+            ->where('rfq.store_id', $supplier->store_id)->whereNull('rfq.deleted_at')
+            ->where('feedback.status', 'approved')
+            ->where(function ($query) use ($supplier): void {
+                $query->where('feedback.supplier_id', $supplier->id);
+                if ($supplier->supplier_portal_id) $query->orWhere('feedback.supplier_portal_id', $supplier->supplier_portal_id);
+            })->get(['item.product_id', 'item.variation_id'])
+            ->mapWithKeys(fn ($row) => [(int) $row->product_id . ':' . (int) ($row->variation_id ?? 0) => true]);
 
         $taxRate = $supplier->is_tax_exempt ? 0.0 : (float) ($supplier->default_tax_rate ?? 12);
-        $products = $productModels->flatMap(function ($product) use ($assets, $taxRate, $supplier, $approvedProductIds) {
-            $baseCost = round((float) $product->pivot->supplier_price, 2);
+        $rows = collect();
+        foreach ($offers as $offer) {
+            $matched = $offer->product_id
+                ? Product::query()->where('store_id', $supplier->store_id)->with(['category:id,category_name', 'subcategory:id,category_name', 'variations' => fn ($q) => $q->where('is_active', true), 'assets'])->find($offer->product_id)
+                : null;
+            $source = $offer->source_product_id
+                ? Product::query()->with(['category:id,category_name', 'subcategory:id,category_name', 'variations' => fn ($q) => $q->where('is_active', true), 'assets'])->find($offer->source_product_id)
+                : null;
+            $product = $matched ?: $source;
+            if (!$product) continue;
+
+            $isMatched = $matched !== null;
+            $productId = (int) ($matched?->id ?? $source?->id ?? $product->id);
+            $availability = $offer->availability_status ?? 'available';
+            $baseCost = round((float) $offer->supplier_price, 2);
             $common = [
-                'product_id' => (int) $product->id,
+                'product_id' => $productId,
+                'matched_product_id' => $matched?->id,
+                'source_product_id' => $source?->id,
+                'offer_id' => (int) $offer->id,
+                'supplier_sku' => $offer->supplier_sku,
+                'match_status' => $isMatched ? 'matched' : 'needs_match',
                 'category_id' => $product->category_id,
                 'category_name' => $product->category?->category_name,
                 'subcategory_name' => $product->subcategory?->category_name,
                 'product_type' => $product->product_type,
                 'unit_of_measurement' => $product->unit_of_measurement,
-                'availability_status' => $product->pivot->availability_status ?? 'available',
-                'minimum_order_quantity' => (int) ($product->pivot->minimum_order_quantity ?? 1),
-                'lead_time_days' => (int) ($product->pivot->lead_time_days ?? 7),
+                'availability_status' => $availability,
+                'minimum_order_quantity' => (int) ($offer->minimum_order_quantity ?? 1),
+                'lead_time_days' => (int) ($offer->lead_time_days ?? 7),
                 'tax_rate' => round($taxRate, 2),
                 'is_tax_exempt' => (bool) $supplier->is_tax_exempt,
-                'is_active' => (bool) $product->is_active && ($product->pivot->availability_status ?? 'available') !== 'out_of_stock',
-                'image_url' => $assets->get($product->id)?->thumbnail_url,
+                'is_active' => (bool) $product->is_active && !in_array($availability, ['unavailable', 'out_of_stock', 'inactive'], true),
+                'image_url' => $product->assets->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])->sortByDesc('is_primary')->first()?->thumbnail_url,
             ];
-
-            if ($product->variations->isNotEmpty()) {
-                return $product->variations->map(function ($variation) use ($common, $baseCost) {
-                    $cost = $variation->cost_price !== null ? round((float) $variation->cost_price, 2) : $baseCost;
-                    $tax = round($cost * ($common['tax_rate'] / 100), 2);
-                    $attributes = collect([$variation->color, $variation->size, $variation->material, $variation->texture, $variation->finish])->filter()->implode(' · ');
-                    return array_merge($common, [
-                        'id' => (int) $variation->id,
-                        'variation_id' => (int) $variation->id,
+            $variations = $product->variations;
+            if ($variations->isNotEmpty()) {
+                foreach ($variations as $variation) {
+                    $targetVariation = $isMatched
+                        ? $matched->variations->first(fn ($candidate) => $this->supplierVariationMatches($variation, $candidate))
+                        : null;
+                    $variationId = $targetVariation?->id ?? (!$isMatched ? $variation->id : null);
+                    $supplierVariation = $source?->variations->first(fn ($candidate) => $this->supplierVariationMatches($candidate, $variation));
+                    $costSource = $supplierVariation ?? $variation;
+                    $cost = $costSource->cost_price !== null ? round((float) $costSource->cost_price, 2) : $baseCost;
+                    $tax = round($cost * ($taxRate / 100), 2);
+                    $rows->push(array_merge($common, [
+                        'id' => (int) ($variationId ?? $variation->id), 'variation_id' => $variationId ? (int) $variationId : null,
                         'product_name' => $product->product_name . ' — ' . $variation->variation_name,
-                        'variation_name' => $variation->variation_name,
-                        'variation_sku' => $variation->variation_sku,
-                        'variation_attributes' => $attributes,
-                        'is_active' => $common['is_active'] && (bool) $variation->is_active,
-                        'is_acquired' => $approvedProductIds->contains((int) $product->id . ':' . (int) $variation->id),
-                        'base_cost' => $cost,
-                        'tax_amount' => $tax,
-                        'cost_including_tax' => round($cost + $tax, 2),
-                    ]);
-                });
+                        'variation_name' => $variation->variation_name, 'variation_sku' => $variation->variation_sku,
+                        'is_active' => $common['is_active'] && (bool) $variation->is_active && (!$isMatched || $variationId !== null),
+                        'is_acquired' => $isMatched && $variationId ? $approved->has($productId . ':' . (int) $variationId) : false,
+                        'base_cost' => $cost, 'tax_amount' => $tax, 'cost_including_tax' => round($cost + $tax, 2),
+                    ]));
+                }
+                continue;
             }
-
-            $taxAmount = round($baseCost * ($taxRate / 100), 2);
-            return [array_merge($common, [
-                'id' => (int) $product->id,
-                'variation_id' => null,
-                'product_name' => $product->product_name,
-                'variation_name' => null,
-                'variation_sku' => null,
-                'variation_attributes' => null,
-                'is_acquired' => $approvedProductIds->contains((int) $product->id . ':0'),
-                'base_cost' => $baseCost,
-                'tax_amount' => $taxAmount,
-                'cost_including_tax' => round($baseCost + $taxAmount, 2),
-            ])];
-        })->values();
+            $tax = round($baseCost * ($taxRate / 100), 2);
+            $rows->push(array_merge($common, [
+                'id' => $productId, 'variation_id' => null, 'product_name' => $product->product_name,
+                'variation_name' => null, 'variation_sku' => null,
+                'is_acquired' => $isMatched && $approved->has($productId . ':0'),
+                'base_cost' => $baseCost, 'tax_amount' => $tax, 'cost_including_tax' => round($baseCost + $tax, 2),
+            ]));
+        }
 
         return response()->json([
             'success' => true,
             'data' => [
-                'supplier' => [
-                    'id' => (int) $supplier->id,
-                    'supplier_name' => $supplier->supplier_name,
-                    'contract_status' => $supplier->hasActiveContract() ? 'active' : 'inactive',
-                ],
-                'products' => $products,
+                'supplier' => ['id' => (int) $supplier->id, 'supplier_name' => $supplier->supplier_name, 'contract_status' => $supplier->hasActiveContract() ? 'active' : 'inactive'],
+                'products' => $rows->values(),
             ],
         ]);
     }
 
+    public function matchSupplierProduct(Request $request, int $id, int $offerId): JsonResponse
+    {
+        $supplier = Supplier::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
+        $validated = $request->validate(['product_id' => 'required|integer']);
+        $offer = DB::table('supplier_products')->where('supplier_id', $supplier->id)->where('id', $offerId)->first();
+        abort_unless($offer && $offer->source_product_id, 404);
+
+        $portalSupplierId = $supplier->supplier_portal_id
+            ? SupplierPortal::query()->whereKey($supplier->supplier_portal_id)->value('supplier_id')
+            : null;
+        abort_unless($portalSupplierId && DB::table('supplier_products')->where('supplier_id', $portalSupplierId)->where('product_id', $offer->source_product_id)->exists(), 404);
+
+        $source = Product::query()->with('variations')->findOrFail($offer->source_product_id);
+        $target = Product::query()->where('store_id', $supplier->store_id)->where('is_active', true)->with('variations')->findOrFail($validated['product_id']);
+        if (!$this->supplierProductsHaveMatchingVariants($source, $target)) {
+            return response()->json(['success' => false, 'message' => 'Match products only when both have the same variation SKUs or attributes.', 'errors' => ['product_id' => ['The selected store product has different variations.']]], 422);
+        }
+        if (DB::table('supplier_products')->where('supplier_id', $supplier->id)->where('product_id', $target->id)->where('id', '!=', $offerId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'This store product is already linked to another offer from this supplier.'], 422);
+        }
+
+        DB::table('supplier_products')->where('id', $offerId)->update(['product_id' => $target->id, 'updated_at' => now()]);
+        return response()->json(['success' => true, 'message' => 'Supplier offer matched to the store product.']);
+    }
+
+    public function matchableProducts(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::query()->where('store_id', $request->user()->store_id)->findOrFail($id);
+        $search = trim((string) $request->query('search', ''));
+        $products = Product::query()->where('store_id', $supplier->store_id)->where('is_active', true)
+            ->when($search !== '', fn ($query) => $query->where(fn ($nested) => $nested->where('product_name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%")))
+            ->with(['variations' => fn ($query) => $query->where('is_active', true)->orderBy('id')])
+            ->orderBy('product_name')->limit(50)->get(['id', 'product_name', 'sku'])
+            ->map(fn (Product $product) => [
+                'id' => (int) $product->id, 'product_name' => $product->product_name, 'sku' => $product->sku,
+                'variations' => $product->variations->map(fn ($variation) => ['variation_sku' => $variation->variation_sku, 'variation_name' => $variation->variation_name])->values(),
+            ]);
+        return response()->json(['success' => true, 'data' => $products]);
+    }
     /**
      * Get supplier performance metrics
      * GET /api/procurement/suppliers/{id}/performance

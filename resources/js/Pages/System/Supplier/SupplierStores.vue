@@ -15,26 +15,35 @@
         </div>
       </template>
       <template #content>
-        <div v-if="loading" class="space-y-2 p-4">
-          <div v-for="row in 5" :key="row" class="grid grid-cols-2 gap-3 sm:grid-cols-5"><Skeleton v-for="cell in 5" :key="cell" height="2rem" /></div>
+        <div v-if="loading" class="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-for="row in 3" :key="row" class="space-y-3 rounded-xl border border-slate-200 p-3">
+            <Skeleton height="9rem" border-radius="0.75rem" />
+            <Skeleton height="1.25rem" width="65%" />
+            <Skeleton height="1rem" width="45%" />
+          </div>
         </div>
-        <DataTable v-else :value="linkedStores" dataKey="store_id" size="small" paginator :rows="10" :rowsPerPageOptions="[10, 15, 25]" responsiveLayout="scroll" class="p-datatable-sm text-sm" rowHover>
-          <template #empty>
-            <div class="py-8 text-center text-sm text-slate-500">No linked stores yet.</div>
-          </template>
-          <Column field="store_name" header="Store" sortable />
-          <Column field="province" header="Province" sortable />
-          <Column field="city" header="City" sortable />
-          <Column field="address" header="Address" />
-          <Column field="linked_at" header="Linked On" sortable>
-            <template #body="{ data }">{{ formatDate(data.linked_at) }}</template>
-          </Column>
-          <Column header="Actions" style="width:120px">
-            <template #body="{ data }">
-              <Button label="View" icon="pi pi-eye" size="small" outlined rounded class="text-xs" @click="openStoreShow(data.store_id)" />
-            </template>
-          </Column>
-        </DataTable>
+        <div v-else-if="linkedStores.length" class="grid grid-cols-1 gap-4 p-1 sm:grid-cols-2 xl:grid-cols-3">
+          <article v-for="store in linkedStores" :key="`${store.store_id}-${store.supplier_id}`" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div class="relative h-36 bg-slate-100">
+              <img v-if="store.store_logo_url" :src="store.store_logo_url" :alt="`${store.store_name} logo`" class="h-full w-full object-cover" />
+              <div v-else class="flex h-full items-center justify-center text-slate-400"><i class="pi pi-building text-4xl" aria-hidden="true" /></div>
+            </div>
+            <div class="space-y-3 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 class="truncate font-semibold text-slate-900">{{ store.store_name }}</h3>
+                  <p class="mt-1 text-xs text-slate-500">{{ [store.city, store.province].filter(Boolean).join(', ') || store.address || 'Location not provided' }}</p>
+                </div>
+                <Tag :value="contractStatusLabel(store.contract_status)" :severity="contractStatusSeverity(store.contract_status)" />
+              </div>
+              <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                <span>Linked {{ formatDate(store.linked_at) }}</span>
+                <Button label="View" icon="pi pi-eye" size="small" severity="secondary" outlined @click="openStoreShow(store.store_id)" />
+              </div>
+            </div>
+          </article>
+        </div>
+        <div v-else class="py-8 text-center text-sm text-slate-500">No linked stores yet.</div>
       </template>
     </Card>
 
@@ -82,6 +91,7 @@ import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Skeleton from 'primevue/skeleton'
+import Tag from 'primevue/tag'
 import supplierService from '../../../services/supplier.service'
 
 const toast = useToast()
@@ -99,6 +109,17 @@ const formatDate = (value: string | null) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
   return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+const contractStatusLabel = (status?: string | null) => status
+  ? status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+  : 'No contract'
+const contractStatusSeverity = (status?: string | null) => {
+  if (status === 'active') return 'success'
+  if (status === 'pending') return 'warn'
+  if (status === 'rejected') return 'danger'
+  if (status === 'completed') return 'info'
+  return 'secondary'
 }
 
 const loadLinkedStores = async () => {

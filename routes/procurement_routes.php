@@ -80,8 +80,12 @@ Route::prefix('procurement')->group(function () {
             ->middleware('can:procurement.suppliers.view');
         Route::get('/{id}/available-products', [SupplierController::class, 'availableProducts'])
             ->middleware('can:procurement.suppliers.view');
+        Route::get('/{id}/matchable-products', [SupplierController::class, 'matchableProducts'])
+            ->middleware('can:procurement.suppliers.view');
         Route::post('/{id}/products', [SupplierController::class, 'attachProducts'])
             ->middleware('can:procurement.suppliers.manage');
+        Route::post('/{id}/products/{offerId}/match', [SupplierController::class, 'matchSupplierProduct'])
+            ->whereNumber('offerId')->middleware('can:procurement.suppliers.manage');
         Route::get('/{id}/performance', [SupplierController::class, 'performance'])
             ->middleware('can:procurement.suppliers.view');
         Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory'])

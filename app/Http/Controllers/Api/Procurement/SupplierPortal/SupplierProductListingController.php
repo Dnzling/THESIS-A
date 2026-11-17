@@ -249,7 +249,6 @@ class SupplierProductListingController extends Controller
         ]);
 
         $portal = SupplierPortal::query()->where('user_id', $request->user()->id)->firstOrFail();
-        abort_unless($portal->status === 'approved', 403, 'Your supplier account must be approved before creating products.');
 
         $suppliers = $this->linkedSuppliers($portal);
         abort_if($suppliers->isEmpty(), 422, 'Link at least one store before creating a product.');

@@ -81,7 +81,9 @@
             </div>
             <div v-if="order.cancellation_refund" class="md:col-span-2 rounded-lg border border-orange-200 bg-orange-50 p-3">
                 <p class="font-semibold text-slate-900">Refund status: {{ visibleRefundStatus(order.cancellation_refund) }}</p>
-              <p class="mt-1 text-slate-600">{{ formatMoney(order.cancellation_refund.amount) }} will be refunded {{ order.cancellation_refund.automatic_refund_available ? `to the original ${paymentMethodLabel(order.cancellation_refund.original_payment_method)} payment method` : 'after you provide payout details for Finance' }}.</p>
+              <p v-if="order.cancellation_refund.status === 'simulated'" class="mt-1 text-slate-600">Your refund of {{ formatMoney(order.cancellation_refund.amount) }} has been processed to your selected account.</p>
+              <p v-else class="mt-1 text-slate-600">Your refund of {{ formatMoney(order.cancellation_refund.amount) }} is being processed to your selected GCash or Maya account. Shipping is excluded.</p>
+              <p v-if="order.cancellation_refund.refund_method" class="mt-1 text-xs text-slate-600">{{ refundMethodLabel(order.cancellation_refund.refund_method) }} | {{ order.cancellation_refund.refund_account_name }} | {{ order.cancellation_refund.refund_account_number }}</p>
                <p v-if="order.cancellation_refund.status === 'awaiting_payout' || isLegacyUnpaidRefund(order.cancellation_refund)" class="mt-1 text-xs text-amber-800">Your refund is awaiting payout.</p>
                <p v-if="order.cancellation_refund.payout_reference && !isLegacyUnpaidRefund(order.cancellation_refund)" class="mt-1 text-xs text-slate-600">Refund reference: {{ order.cancellation_refund.payout_reference }}</p>
               <Button v-if="order.cancellation_refund.refund_destination_required && ['pending', 'approved'].includes(order.cancellation_refund.status)" label="Add payout details" size="small" text class="mt-2" @click="openCancellationRefundMethod" />
@@ -212,14 +214,15 @@
                 </div>
                 <div v-if="item.return_request?.refund"
                   class="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-                  <p class="font-semibold">{{ item.return_request.refund.automatic_refund_available ? 'Original Payment Method' : item.return_request.refund.refund_method ? 'Payout Details' : 'Refund Processing' }}</p>
+                  <p class="font-semibold">{{ item.return_request.refund.refund_method ? 'Refund Payment Details' : 'Refund Processing' }}</p>
                   <p v-if="item.return_request.refund.amount !== undefined" class="mt-1">Refund amount: <strong>{{ formatMoney(item.return_request.refund.amount) }}</strong></p>
-                  <p class="mt-1">{{ item.return_request.refund.automatic_refund_available ? paymentMethodLabel(item.return_request.refund.original_payment_method) : (item.return_request.refund.refund_method ? refundMethodLabel(item.return_request.refund.refund_method) : 'Payout method not provided') }}</p>
-                  <template v-if="!item.return_request.refund.automatic_refund_available">
+                  <p class="mt-1">{{ item.return_request.refund.refund_method ? refundMethodLabel(item.return_request.refund.refund_method) : 'Payout method not provided' }}</p>
+                  <template>
                     <p>{{ item.return_request.refund.refund_account_name }}</p>
                     <p>{{ item.return_request.refund.refund_account_number }}</p>
                   </template>
                    <p v-if="item.return_request.refund.status === 'awaiting_payout' || isLegacyUnpaidRefund(item.return_request.refund)" class="mt-2 font-medium">Your refund is awaiting payout.</p>
+                   <p v-else-if="item.return_request.refund.status === 'simulated'" class="mt-2 font-medium">Your refund has been processed. Expected arrival is less than 30 days.</p>
                    <p v-else-if="item.return_request.refund.status === 'sent'" class="mt-2 font-medium">Finance sent the refund. Expected arrival: less than 30 days.</p>
                    <p v-else-if="item.return_request.refund.processed_at" class="mt-2 font-medium">Processed {{ formatDateTime(item.return_request.refund.processed_at) }}. {{ item.return_request.refund.notes || '' }}</p>
                    <p v-else class="mt-2 font-medium">Estimated arrival: less than 30 days after Finance sends the refund.</p>
@@ -227,7 +230,7 @@
                 <div v-else-if="item.return_request?.return_type === 'refund'"
                   class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <p class="font-semibold">Refund approved</p>
-                  <p class="mt-1">Finance will refund to the original payment method when available. Otherwise, provide GCash or Maya payout details. Estimated arrival is less than 30 days after Finance sends it.</p>
+                  <p class="mt-1">Finance is processing your refund to the selected GCash or Maya account.</p>
                 </div>
 
                 <div v-if="item.return_request?.return_type === 'replacement'" class="rounded-xl border border-orange-200 bg-orange-50/70 p-3 text-sm text-orange-950">
@@ -346,7 +349,7 @@
   
     <Dialog v-model:visible="refundDialogVisible" modal header="Payout Details" class="w-full max-w-lg">
       <div class="space-y-4">
-        <p class="text-sm text-slate-600">The original payment method is used when a direct refund is available. Otherwise, enter the GCash or Maya account where Finance can send the payout.</p>
+        <p class="text-sm text-slate-600">Enter the GCash or Maya account where you want to receive the refund.</p>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Payout method *</label>
           <Select v-model="refundForm.refund_method" :options="refundMethodOptions"
@@ -815,24 +818,20 @@ function refundMethodLabel(value: string) {
   return ({ gcash: 'GCash', card: 'Card', maya: 'Maya' } as Record<string, string>)[value] || formatStatus(value)
 }
 
-function paymentMethodLabel(value: string) {
-  return ({ card: 'Card', gcash: 'GCash', maya: 'Maya', grab_pay: 'GrabPay' } as Record<string, string>)[value] || 'original payment method'
-}
-
 function isLegacyUnpaidRefund(refund: any) {
   return ['simulation', 'paymongo_wallet_test'].includes(refund?.payout_provider) && refund?.status === 'sent'
 }
 
 function visibleRefundStatus(refund: any) {
   if (refund?.status === 'awaiting_payout' || isLegacyUnpaidRefund(refund)) return 'Awaiting Payout'
-  if (refund?.status === 'sent') return 'Refunded'
+  if (['sent', 'simulated'].includes(refund?.status)) return 'Refunded'
   return formatStatus(refund?.status)
 }
 
 function openRefundMethod(returnRequest: any) {
   activeReturnId.value = Number(returnRequest.id)
   refundForm.refund_method = refundMethodOptions.value.some((method) => method.value === returnRequest.refund?.refund_method)
-    ? returnRequest.refund.refund_method : (['gcash', 'maya'].includes(returnRequest.refund?.original_payment_method) ? returnRequest.refund.original_payment_method : 'gcash')
+    ? returnRequest.refund.refund_method : 'gcash'
   refundForm.refund_account_name = returnRequest.refund?.refund_account_name || ''
   refundForm.refund_account_number = returnRequest.refund?.refund_account_number || ''
   Object.keys(refundTouched).forEach((key) => { refundTouched[key as keyof typeof refundTouched] = false })
@@ -843,7 +842,7 @@ function openCancellationRefundMethod() {
   activeReturnId.value = null
   const refund = order.value?.cancellation_refund
   refundForm.refund_method = refundMethodOptions.value.some((method) => method.value === refund?.refund_method)
-    ? refund.refund_method : (['gcash', 'maya'].includes(refund?.original_payment_method) ? refund.original_payment_method : 'gcash')
+    ? refund.refund_method : 'gcash'
   refundForm.refund_account_name = refund?.refund_account_name || ''
   refundForm.refund_account_number = refund?.refund_account_number || ''
   Object.keys(refundTouched).forEach((key) => { refundTouched[key as keyof typeof refundTouched] = false })

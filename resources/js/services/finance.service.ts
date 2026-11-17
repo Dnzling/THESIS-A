@@ -67,13 +67,13 @@ const financeService = {
     return response.data
   },
 
-  async markRefundSent(id: number | string, payload: { provider: 'paymongo' | 'manual' | 'simulation'; payout_reference?: string; notes?: string }) {
-    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/send`, payload)
+  async createRefundPayoutCheckout(id: number | string, payload: { success_url: string; cancel_url: string }) {
+    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/payout/test-checkout`, payload)
     return response.data
   },
 
-  async checkPaymongoRefund(id: number | string) {
-    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/paymongo/check`)
+  async confirmRefundPayout(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/refunds/${id}/payout/confirm`)
     return response.data
   },
 

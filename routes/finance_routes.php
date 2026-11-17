@@ -28,8 +28,8 @@ Route::prefix('finance')->group(function () {
         Route::post('/', [FinanceRefundController::class, 'store'])->middleware('can:finance.refunds.manage');
         Route::get('/{refund}', [FinanceRefundController::class, 'show'])->middleware('can:finance.refunds.view');
         Route::put('/{refund}/status', [FinanceRefundController::class, 'updateStatus'])->middleware('can:finance.refunds.approve');
-        Route::post('/{refund}/send', [FinanceRefundController::class, 'markSent'])->middleware('can:finance.refunds.approve');
-        Route::post('/{refund}/paymongo/check', [FinanceRefundController::class, 'refreshPaymongoRefund'])->middleware('can:finance.refunds.approve');
+        Route::post('/{refund}/payout/test-checkout', [FinanceRefundController::class, 'createPayoutTestCheckout'])->middleware('can:finance.refunds.approve');
+        Route::post('/{refund}/payout/confirm', [FinanceRefundController::class, 'confirmPayoutTestCheckout'])->middleware('can:finance.refunds.approve');
     });
 
     Route::prefix('liquidations')->group(function () {

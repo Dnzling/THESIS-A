@@ -81,12 +81,12 @@ const refundSummary = ref({
 })
 const filters = reactive({ search: '', source: 'all', status: '' })
 const sources = [{ label: 'All Sources', value: 'all' }, { label: 'Ecommerce Returns', value: 'ecommerce_return' }, { label: 'Ecommerce', value: 'ecommerce' }, { label: 'In Store', value: 'sales' }, { label: 'Manual', value: 'manual' }]
-const statuses = [{ label: 'All Statuses', value: '' }, { label: 'For Inspection', value: 'pending_inspection' }, { label: 'Pending Finance Approval', value: 'pending' }, { label: 'Approved - Awaiting Send', value: 'approved' }, { label: 'Awaiting Payout', value: 'awaiting_payout' }, { label: 'Transfer Processing', value: 'processing' }, { label: 'Transfer Failed', value: 'transfer_failed' }, { label: 'Refunded', value: 'sent' }, { label: 'Sandbox Simulated', value: 'simulated' }, { label: 'Rejected', value: 'rejected' }]
+const statuses = [{ label: 'All Statuses', value: '' }, { label: 'For Inspection', value: 'pending_inspection' }, { label: 'Pending Finance Approval', value: 'pending' }, { label: 'Approved - Awaiting Send', value: 'approved' }, { label: 'Awaiting Payout', value: 'awaiting_payout' }, { label: 'Transfer Processing', value: 'processing' }, { label: 'Transfer Failed', value: 'transfer_failed' }, { label: 'Refunded', value: 'refunded' }, { label: 'Rejected', value: 'rejected' }]
 const currency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const dateTime = (value: any) => value ? new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '-'
-const label = (value: any) => value === 'pending_inspection' ? 'For Inspection' : value === 'awaiting_payout' ? 'Awaiting Payout' : value === 'sent' ? 'Refunded' : value === 'simulated' ? 'Sandbox Simulated' : String(value || 'pending').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
+const label = (value: any) => value === 'pending_inspection' ? 'For Inspection' : value === 'awaiting_payout' ? 'Awaiting Payout' : ['sent', 'simulated'].includes(value) ? 'Refunded' : value === 'refunded' ? 'Refunded' : String(value || 'pending').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 const sourceLabel = (value: string) => ({ ecommerce_return: 'Ecommerce Return', ecommerce: 'Ecommerce', sales: 'In Store', manual: 'Manual' } as any)[value] || label(value)
-const severity = (value: string) => ['approved', 'sent'].includes(value) ? 'success' : ['rejected', 'transfer_failed'].includes(value) ? 'danger' : ['processing', 'simulated'].includes(value) ? 'info' : 'warn'
+const severity = (value: string) => ['approved', 'sent', 'simulated'].includes(value) ? 'success' : ['rejected', 'transfer_failed'].includes(value) ? 'danger' : ['processing', 'simulated'].includes(value) ? 'info' : 'warn'
 const isLegacyUnpaid = (item: any) => ['simulation', 'paymongo_wallet_test'].includes(item.payout_provider) && item.status === 'sent'
 const displayStatusValue = (item: any) => isLegacyUnpaid(item) ? 'awaiting_payout' : item.status
 const displayStatus = (item: any) => label(displayStatusValue(item))
@@ -94,7 +94,7 @@ const summary = computed(() => [
   { key: 'inspection', label: 'For Inspection', value: refundSummary.value.current.inspection },
   { key: 'pending', label: 'Pending Approval', value: refundSummary.value.current.pending },
   { key: 'awaiting_payout', label: 'Awaiting Payout', value: refundSummary.value.current.awaiting_payout },
-  { key: 'simulated', label: 'Sandbox Simulated', value: refundSummary.value.current.simulated },
+  { key: 'simulated', label: 'Refunded', value: refundSummary.value.current.simulated },
   { key: 'amount_to_send', label: 'Amount To Send', value: refundSummary.value.current.amount_to_send, money: true },
 ])
 const comparisonLabel = (key: keyof typeof refundSummary.value.current) => {

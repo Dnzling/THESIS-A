@@ -21,12 +21,12 @@ Route::prefix('product-catalog')->group(function () {
 
     // Merchandising reports and store 3D model requests belong to Product Catalog.
     Route::get('reports', [DashboardController::class, 'reports'])->middleware('can:merchandising.reports.view');
-    Route::get('3d-model-requests', [Model3dRequestController::class, 'index'])->middleware('can:merchandising.3d.manage');
-    Route::post('3d-model-requests', [Model3dRequestController::class, 'store'])->middleware('can:merchandising.3d.manage');
-    Route::get('3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show'])->middleware('can:merchandising.3d.manage');
-    Route::get('3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download'])->middleware('can:merchandising.3d.manage');
-    Route::post('3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction'])->middleware('can:merchandising.3d.manage');
-    Route::post('3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction'])->middleware('can:merchandising.3d.manage');
+    Route::get('3d-model-requests', [Model3dRequestController::class, 'index']);
+    Route::post('3d-model-requests', [Model3dRequestController::class, 'store']);
+    Route::get('3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
+    Route::get('3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download']);
+    Route::post('3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
+    Route::post('3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
 
     Route::get('dashboard/stats', [DashboardController::class, 'stats'])->middleware('can:merchandising.dashboard.view');
     Route::get('dashboard/overview', [DashboardController::class, 'overview'])->middleware('can:merchandising.dashboard.view');
