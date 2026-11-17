@@ -59,7 +59,7 @@
             <div class="p-inputgroup">
               <Password id="password" v-model="formData.password" :feedback="false" toggleMask
                 placeholder="Enter your password" :class="{ 'p-invalid': validationErrors.password }" class="w-full"
-                autocomplete="current-password" />
+                :inputProps="{ autocomplete: 'current-password' }" />
             </div>
             <small v-if="validationErrors.password" class="p-error">
               {{ validationErrors.password }}

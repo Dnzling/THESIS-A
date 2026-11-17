@@ -25,19 +25,19 @@
               <form class="mt-6 space-y-5" @submit.prevent="submit">
                 <div class="space-y-2">
                   <label for="reset-email" class="text-sm font-semibold text-slate-800">Email address</label>
-                  <InputText id="reset-email" v-model="form.email" type="email" autocomplete="email" placeholder="you@example.com" fluid autofocus :invalid="Boolean(form.errors.email)" />
+                  <InputText id="reset-email" v-model="form.email" type="email" autocomplete="email" placeholder="you@example.com" fluid :invalid="Boolean(form.errors.email)" />
                   <small v-if="form.errors.email" class="text-red-600">{{ form.errors.email }}</small>
                 </div>
 
                 <div class="space-y-2">
                   <label for="reset-password" class="text-sm font-semibold text-slate-800">New password</label>
-                  <Password id="reset-password" v-model="form.password" autocomplete="new-password" placeholder="Enter a new password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password)" />
+                  <Password id="reset-password" v-model="form.password" :inputProps="{ autocomplete: 'new-password' }" placeholder="Enter a new password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password)" />
                   <small v-if="form.errors.password" class="text-red-600">{{ form.errors.password }}</small>
                 </div>
 
                 <div class="space-y-2">
                   <label for="reset-password-confirmation" class="text-sm font-semibold text-slate-800">Confirm new password</label>
-                  <Password id="reset-password-confirmation" v-model="form.password_confirmation" autocomplete="new-password" placeholder="Re-enter your new password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password_confirmation)" />
+                  <Password id="reset-password-confirmation" v-model="form.password_confirmation" :inputProps="{ autocomplete: 'new-password' }" placeholder="Re-enter your new password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password_confirmation)" />
                   <small v-if="form.errors.password_confirmation" class="text-red-600">{{ form.errors.password_confirmation }}</small>
                 </div>
 
@@ -72,19 +72,19 @@
             <form class="space-y-5" @submit.prevent="submit">
               <div class="space-y-2">
                 <label for="business-reset-email" class="block text-sm font-medium text-slate-700">Email address</label>
-                <InputText id="business-reset-email" v-model="form.email" type="email" placeholder="you@business.com" autocomplete="email" autofocus fluid :invalid="Boolean(form.errors.email)" />
+                <InputText id="business-reset-email" v-model="form.email" type="email" placeholder="you@business.com" autocomplete="email" fluid :invalid="Boolean(form.errors.email)" />
                 <small v-if="form.errors.email" class="block text-sm text-red-600">{{ form.errors.email }}</small>
               </div>
 
               <div class="space-y-2">
                 <label for="business-reset-password" class="block text-sm font-medium text-slate-700">New password</label>
-                <Password id="business-reset-password" v-model="form.password" placeholder="Enter a new password" autocomplete="new-password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password)" />
+                <Password id="business-reset-password" v-model="form.password" placeholder="Enter a new password" :inputProps="{ autocomplete: 'new-password' }" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password)" />
                 <small v-if="form.errors.password" class="block text-sm text-red-600">{{ form.errors.password }}</small>
               </div>
 
               <div class="space-y-2">
                 <label for="business-reset-password-confirmation" class="block text-sm font-medium text-slate-700">Confirm new password</label>
-                <Password id="business-reset-password-confirmation" v-model="form.password_confirmation" placeholder="Re-enter your new password" autocomplete="new-password" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password_confirmation)" />
+                <Password id="business-reset-password-confirmation" v-model="form.password_confirmation" placeholder="Re-enter your new password" :inputProps="{ autocomplete: 'new-password' }" toggleMask :feedback="false" fluid :invalid="Boolean(form.errors.password_confirmation)" />
                 <small v-if="form.errors.password_confirmation" class="block text-sm text-red-600">{{ form.errors.password_confirmation }}</small>
               </div>
 

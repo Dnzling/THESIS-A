@@ -121,8 +121,6 @@ const handleLogin = async (formData: LoginFormData) => {
     router.visit(redirectTo)
 
   } catch (error: any) {
-    console.error('❌ Login error:', error)
-
     const requiresVerification = Boolean(error?.response?.data?.requires_verification)
     if (requiresVerification) {
       const verificationToken = error?.response?.data?.access_token
